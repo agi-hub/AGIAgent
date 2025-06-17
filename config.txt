@@ -1,0 +1,153 @@
+# Language setting: en for English, zh for Chinese
+#LANG=en
+LANG=zh
+
+
+
+
+# OpenAI API configuration (commented out)
+# api_key=your key
+# api_base=https://api.openai-proxy.org/v1
+# model=gpt-4.1
+# max_tokens=8192
+
+
+
+# SiliconFlow API configuration (currently active)
+# api_key=your key
+# api_base=https://api.siliconflow.cn/v1
+# model=Qwen/Qwen3-32B
+# model=Qwen/Qwen3-30B-A3B
+# model=Qwen/Qwen2.5-7B-Instruct
+# max_tokens=4096
+
+
+
+# Anthropic models
+api_key=your key
+api_base=https://api.openai-proxy.org/anthropic
+model=claude-sonnet-4-0
+# model=claude-3-haiku-20240307
+max_tokens=16384
+
+
+
+# DeepSeek API configuration (alternative option)
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
+
+
+
+# Volcengine Doubao API configuration (commented out)
+# api_key=your key
+# api_base=https://ark.cn-beijing.volces.com/api/v3
+# model=doubao-1-5-pro-32k-250115
+
+
+# Ollama (local serve)
+# api_key=your key
+# api_base=http://localhost:11434/v1
+# model=qwen3:8b
+# max_tokens=4096
+
+# Streaming output configuration: True for streaming, False for batch output
+streaming=True
+
+
+
+# Truncation Length Configuration
+# These configurations control the length of information returned by tool calls to the large model,
+# preventing overly long content from affecting performance
+
+# Main tool result truncation length, default 10000 characters
+# Used for truncating tool execution results, parameter displays, formatted outputs, etc.
+# Recommended values: 5000-20000, adjust based on model context window size
+# Affects:
+# - Tool results returned to LLM
+# - Tool parameter displays
+# - Search result summaries
+# - Output limits in debug logs
+truncation_length=10000
+
+# History record truncation length, default 10000 if not set
+# Used for truncating conversation history, warning messages, etc.
+# Recommended values: 500-2000
+# Affects:
+# - Conversation history records
+# - Tool call warning messages
+# - Task execution log summaries
+# - Prompt information limits in debug logs
+history_truncation_length=10000
+
+# Web content truncation length, default 50000 characters, uses 5x truncation_length if not set
+# Used for truncating large-capacity content like web search results
+# Recommended values: 10000-100000
+# Affects:
+# - Web search content
+# - Web scraping results
+# - Large document content
+web_content_truncation_length=50000
+
+# Usage recommendations:
+# 1. If using models with smaller context windows (<32K), consider lowering all truncation values
+# 2. If using models with large context windows (>128K), you can appropriately increase truncation values
+# 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
+# 4. Changes to configuration require program restart to take effect
+
+# History Summarization Configuration
+# Controls whether to use AI to summarize conversation history to reduce context length
+# When enabled, only the latest tool execution result is kept in full, while previous conversation 
+# history is summarized using the large model to maintain important context
+summary_history=True
+
+# Maximum length for conversation history summary (in characters)
+# Used when summary_history=True to control the length of the generated summary
+# Recommended values: 3000-8000 characters
+# Lower values save more context but may lose some detail
+# Higher values preserve more information but use more context
+summary_max_length=5000
+
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+summary_trigger_length=100000
+
+# History summarization usage recommendations:
+# 1. Enable summary_history=True for long conversation sessions to control context length
+# 2. Adjust summary_trigger_length based on when you want summarization to start (20000 is good for most cases)
+# 3. Adjust summary_max_length based on your model's context window and task complexity
+# 4. For critical tasks requiring full context, keep summary_history=False
+# 5. When enabled, the latest tool result is always preserved in full text
+# 6. Summarization only occurs when conversation exceeds trigger length, not every round
+# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities
+
+# Simplified search result terminal output (default: True)
+# When enabled, codebase_search and web_search only display simplified result summaries in terminal
+# When disabled, display full search result details
+simplified_search_output=True
+
+# Summary report generation (default: False)
+# When enabled, generates single task summary and task summary reports
+# When disabled, skips summary report generation to save time and resources
+# Affects:
+# - Single task summary generation
+# - Task summary report creation
+# - Summary markdown file output
+summary_report=False
+
+# GUI Default User Data Directory Configuration
+# Specifies the default directory for GUI to display file lists and manage workspace directories
+# If not set or the specified directory doesn't exist, uses the current working directory as default
+# This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
+gui_default_data_directory=.
+
+# Interactive Command Auto-Fix Configuration
+# Controls whether to automatically fix interactive commands to non-interactive versions
+# When enabled, the system will automatically add flags like --quiet, -y, -n to commands
+# to prevent them from requiring user input during execution
+# Default: False (disabled)
+# Set to True to enable automatic modification of interactive commands
+auto_fix_interactive_commands=False

@@ -1,0 +1,4453 @@
+<!DOCTYPE html>
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ i18n.app_title.replace(' GUI', '') }}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            height: 100vh;
+            overflow: hidden;
+            color: #cccccc;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            background: #252526;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            min-width: 0;
+            min-width: 400px;
+        }
+
+        #resizer {
+            width: 5px;
+            background: #3e3e42;
+            cursor: col-resize;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        #resizer:hover {
+            background: #569cd6;
+            width: 6px;
+        }
+
+        #resizer:active {
+            background: #007acc;
+            width: 6px;
+        }
+
+        /* Add visual indicator when dragging */
+        #resizer::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 1px;
+            pointer-events: none;
+            transition: all 0.2s ease;
+        }
+
+        #resizer:hover::before {
+            background: rgba(255, 255, 255, 0.6);
+            height: 40px;
+        }
+
+        .sidebar {
+            width: 400px;
+            background: #252526;
+            border-left: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #cccccc;
+        }
+
+        .header h1 {
+            font-size: 1.2em;
+            font-weight: 700;
+            margin-bottom: 0;
+            color: #569cd6;
+        }
+
+        .header p {
+            display: none;
+        }
+
+        .chat-container {
+            flex: 1;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chat-header {
+            background: #007acc;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        .chat-header h3 {
+            font-size: 0.95em;
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #1e1e1e;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 6px;
+            max-width: 80%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease-in;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+
+        .message-text {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-wrap: anywhere;
+            line-height: 1.4;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            background: #0e639c;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 3px;
+        }
+
+        .message.system {
+            background: #264f78;
+            color: #9cdcfe;
+            border-left: 3px solid #007acc;
+            padding: 6px 8px !important;
+            max-width: 95% !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        .message.info {
+            background: #1a1a1a;
+            color: #cccccc;
+            border-left: 3px solid #569cd6;
+        }
+
+        .message.error {
+            background: #5a1d1d;
+            color: #f48771;
+            border-left: 3px solid #f14c4c;
+        }
+
+        .message.success {
+            background: #0f5132;
+            color: #75b798;
+            border-left: 3px solid #198754;
+        }
+
+        /* Tool execution message styles */
+        .message.tool {
+            background: #2d2d30;
+            color: #cccccc;
+            border-left: 3px solid #ffa500;
+            border-radius: 8px;
+            overflow: hidden;
+            max-width: 100%;
+        }
+
+        .tool-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 165, 0, 0.1);
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+        }
+
+        .tool-header:hover {
+            background: rgba(255, 165, 0, 0.15);
+        }
+
+        .tool-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .tool-icon {
+            color: #ffa500;
+            font-size: 16px;
+        }
+
+        .tool-name {
+            font-weight: 600;
+            color: #ffa500;
+            font-size: 14px;
+        }
+
+        .tool-params {
+            font-size: 12px;
+            color: #9cdcfe;
+            opacity: 0.8;
+            margin-left: 8px;
+        }
+
+        .tool-toggle {
+            color: #cccccc;
+            font-size: 14px;
+            transition: transform 0.2s ease;
+        }
+
+        .tool-toggle.expanded {
+            transform: rotate(180deg);
+        }
+
+        .tool-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background: #1e1e1e;
+        }
+
+        .tool-content.expanded {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .tool-content-inner {
+            padding: 16px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #cccccc;
+        }
+
+        .tool-status {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .tool-status.success {
+            background: rgba(75, 181, 67, 0.2);
+            color: #4bb543;
+        }
+
+        .tool-status.error {
+            background: rgba(244, 67, 54, 0.2);
+            color: #f44336;
+        }
+
+        .tool-status.running {
+            background: rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+            animation: pulse 2s infinite;
+        }
+
+        .tool-status.success {
+            background: rgba(75, 181, 67, 0.2);
+            color: #4bb543;
+        }
+
+        .tool-status.error {
+            background: rgba(244, 67, 54, 0.2);
+            color: #f44336;
+        }
+
+        /* 工具调用消息样式 */
+        .message.function-call {
+            background: #2d2d30;
+            color: #cccccc;
+            border-left: 3px solid #007acc;
+            border-radius: 8px;
+            overflow: hidden;
+            max-width: 100%;
+        }
+
+        .function-call-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(0, 122, 204, 0.1);
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border-bottom: 1px solid rgba(0, 122, 204, 0.2);
+        }
+
+        .function-call-header:hover {
+            background: rgba(0, 122, 204, 0.15);
+        }
+
+        .function-call-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .function-call-icon {
+            color: #007acc;
+            font-size: 16px;
+        }
+
+        .function-call-name {
+            font-weight: 600;
+            color: #007acc;
+            font-size: 14px;
+        }
+
+        .function-call-toggle {
+            color: #cccccc;
+            font-size: 14px;
+            transition: transform 0.2s ease;
+        }
+
+        .function-call-toggle.expanded {
+            transform: rotate(180deg);
+        }
+
+        .function-call-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background: #1e1e1e;
+        }
+
+        .function-call-content.expanded {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .function-call-content-inner {
+            padding: 16px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #cccccc;
+        }
+
+        .function-call-status {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .function-call-status.success {
+            background: rgba(0, 122, 204, 0.2);
+            color: #007acc;
+        }
+
+        .function-call-status.calling {
+            background: rgba(0, 122, 204, 0.2);
+            color: #007acc;
+            animation: pulse 2s infinite;
+        }
+
+        .input-container {
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        #userInput {
+            width: 100%;
+            min-height: 50px;
+            max-height: 120px;
+            padding: 15px 20px;
+            border: 1px solid #3e3e42;
+            border-radius: 6px;
+            font-size: 14px;
+            resize: vertical;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            background: #1e1e1e;
+            color: #cccccc;
+        }
+
+        #userInput:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+        }
+
+        #userInput::placeholder {
+            color: #6a6a6a;
+        }
+
+        .send-button {
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .send-button:hover {
+            background: #005a9e;
+            transform: translateY(-1px);
+        }
+
+        .send-button:disabled {
+            background: #3e3e42;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 特定按钮的悬停效果 */
+        #planButton:hover:not(:disabled) {
+            background: #f57c00;
+        }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #3e3e42;
+            background: #2d2d30;
+        }
+
+        .sidebar-header h3 {
+            margin: 0;
+            color: #cccccc;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .sidebar-header .action-btn {
+            background: transparent;
+            border: 1px solid #569cd6;
+            color: #569cd6;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9em;
+        }
+
+        .sidebar-header .action-btn:hover:not(:disabled) {
+            background: #569cd6;
+            color: white;
+        }
+
+        .sidebar-header .action-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .sidebar-header .action-btn .fa-spin {
+            animation: fa-spin 1s infinite linear;
+        }
+
+        .directory-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+            margin: 0;
+        }
+
+        .directory-item {
+            background: #1e1e1e;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            padding: 15px;
+            border: 1px solid #3e3e42;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .directory-item:hover {
+            background: #2d2d30;
+            border-color: #569cd6;
+            transform: translateY(-1px);
+        }
+
+        .directory-item.expanded {
+            background: #0f3460;
+            border-color: #007acc;
+        }
+
+        .directory-item.current {
+            background: #2d2d30;
+            color: #cccccc;
+            border-color: #3e3e42;
+            box-shadow: none;
+        }
+
+        .directory-item.current .directory-name,
+        .directory-item.current .directory-info {
+            color: #cccccc;
+        }
+
+        .directory-item.current .action-btn {
+            color: #9cdcfe;
+        }
+
+        .directory-item.current .action-btn:hover {
+            background: rgba(156, 220, 254, 0.1);
+        }
+
+        .directory-item.selected {
+            background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
+            color: white;
+            border-color: #007acc;
+            box-shadow: 0 3px 10px rgba(0, 122, 204, 0.3);
+        }
+
+        .directory-item.selected .directory-name,
+        .directory-item.selected .directory-info {
+            color: white;
+        }
+
+        .directory-item.selected .action-btn {
+            color: white;
+        }
+
+        .directory-item.selected .action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .directory-item.last {
+            border: 2px solid #569cd6;
+            background: #0f3460;
+        }
+
+        .directory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .directory-name {
+            font-weight: 600;
+            color: #cccccc;
+            font-size: 0.9em;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-right: 10px;
+        }
+
+        .directory-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            color: #9cdcfe;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+        }
+
+        .action-btn:hover {
+            background: rgba(156, 220, 254, 0.1);
+            color: #569cd6;
+        }
+
+        .rename-btn {
+            color: #ffc107 !important;
+        }
+
+        .rename-btn:hover {
+            background: rgba(255, 193, 7, 0.1) !important;
+            color: #ffc107 !important;
+        }
+
+        .delete-btn {
+            color: #ff6b6b !important;
+        }
+
+        .delete-btn:hover {
+            background: rgba(255, 107, 107, 0.1) !important;
+            color: #ff5252 !important;
+        }
+
+        .directory-info {
+            font-size: 0.85em;
+            color: #9cdcfe;
+            margin-bottom: 10px;
+        }
+
+        .file-tree {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            border-top: 1px solid #3e3e42;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+
+        .file-tree.show {
+            display: block;
+        }
+
+        .sub-file-tree {
+            display: none;
+            margin-left: 20px;
+        }
+
+        .sub-file-tree.show {
+            display: block;
+        }
+
+        .sub-folder-toggle {
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .sub-folder-toggle:hover {
+            opacity: 1;
+            background: rgba(156, 220, 254, 0.2) !important;
+            border-radius: 3px;
+        }
+
+        .file-item.directory > div[onclick]:hover {
+            background: rgba(156, 220, 254, 0.1);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin: -2px -6px;
+        }
+
+        .file-item {
+            padding: 5px 0;
+            margin-left: 20px;
+            font-size: 0.9em;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-item:hover {
+            background: rgba(156, 220, 254, 0.2);
+            border-radius: 4px;
+            padding-left: 5px;
+        }
+
+        .file-item.directory {
+            font-weight: 500;
+            color: #9cdcfe;
+        }
+
+        .file-item.previewable {
+            color: #ffffff;
+        }
+
+        .file-item.previewable:hover {
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .file-item i {
+            width: 16px;
+            text-align: center;
+        }
+
+        .file-item.grayed {
+            color: #888888 !important;
+        }
+
+        .file-item.grayed:hover {
+            color: #aaaaaa !important;
+        }
+
+        .file-item.grayed.previewable {
+            cursor: pointer;
+        }
+
+        .file-item.grayed.previewable:hover {
+            color: #cccccc !important;
+            background: rgba(156, 220, 254, 0.1);
+            border-radius: 4px;
+            padding-left: 5px;
+        }
+
+
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #9cdcfe;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #3e3e42;
+            border-top: 3px solid #007acc;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .scrollbar-custom {
+            scrollbar-width: thin;
+            scrollbar-color: #569cd6 #2d2d30;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: #2d2d30;
+            border-radius: 4px;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: #569cd6;
+            border-radius: 4px;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+            background: #007acc;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: 100vh;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 40vh;
+                border-radius: 0;
+                border-right: none;
+                border-bottom: 1px solid #3e3e42;
+            }
+            
+            .main-content {
+                height: 60vh;
+            }
+        }
+
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: #2d2d30;
+            margin: 2% auto;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 1200px;
+            height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            background: #007acc;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #3e3e42;
+            flex-shrink: 0;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.2em;
+        }
+
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover {
+            opacity: 0.7;
+        }
+
+        .modal-body {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #cccccc;
+            min-height: 0;
+        }
+
+        /* 特殊处理预览模态框 */
+        #previewModal .modal-content {
+            width: 90%;
+            max-width: 1200px;
+            height: 90%;
+            max-height: 800px;
+        }
+
+        #previewModal .modal-body {
+            padding: 10px;
+        }
+
+        /* iframe 样式优化 */
+        #previewContent iframe {
+            width: 100%;
+            height: calc(90vh - 120px);
+            border: none;
+            border-radius: 4px;
+        }
+
+        /* 上传区域样式 */
+        .upload-area {
+            border: 2px dashed #569cd6;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            background: #1e1e1e;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #007acc;
+            background: #2d2d30;
+        }
+
+        .upload-area.dragover {
+            border-color: #007acc;
+            background: #2d2d30;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #569cd6;
+            margin-bottom: 20px;
+        }
+
+        .upload-text p {
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        .upload-hint {
+            font-size: 14px !important;
+            color: #9cdcfe !important;
+            opacity: 0.8;
+        }
+
+        .upload-btn {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.3s ease;
+        }
+
+        .upload-btn:hover {
+            background: #005a9e;
+        }
+
+        /* 进度条样式 */
+        .upload-progress {
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #3e3e42;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #007acc;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #9cdcfe;
+        }
+
+        /* 上传结果样式 */
+        .upload-result {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .upload-result .success {
+            color: #75b798;
+            background: #0f5132;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #198754;
+        }
+
+        .upload-result .error {
+            color: #f48771;
+            background: #5a1d1d;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #f14c4c;
+        }
+
+        /* 滚动到底部提示 */
+        .scroll-to-bottom-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4);
+            transition: all 0.3s ease;
+            z-index: 100;
+            animation: bounceIn 0.3s ease;
+        }
+
+        .scroll-to-bottom-hint:hover {
+            background: #005a9e;
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(0, 122, 204, 0.6);
+        }
+
+        .scroll-to-bottom-hint.show {
+            display: flex;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* 新消息提示 */
+        .new-message-indicator {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: #007acc;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4);
+            animation: slideInRight 0.3s ease;
+            z-index: 99;
+            cursor: pointer;
+        }
+
+        .new-message-indicator.show {
+            display: flex;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* 自动滚动状态指示器 */
+        .auto-scroll-indicator {
+            position: absolute;
+            bottom: 130px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            transition: all 0.3s ease;
+            z-index: 98;
+            opacity: 0.8;
+        }
+
+        .auto-scroll-indicator.disabled {
+            background: #9e9e9e;
+            box-shadow: 0 2px 8px rgba(158, 158, 158, 0.3);
+        }
+
+        .auto-scroll-indicator i {
+            animation: bounce 1.5s infinite;
+        }
+
+        .auto-scroll-indicator.disabled i {
+            animation: none;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-3px);
+            }
+            60% {
+                transform: translateY(-2px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="header">
+                <h1><i class="fas fa-robot"></i> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+                <p>{{ i18n.app_subtitle }}</p>
+            </div>
+
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h3>
+                        <i class="fas fa-comments"></i>
+                        {{ i18n.chat_title }}
+                    </h3>
+                    <div class="status-indicator" id="statusIndicator"></div>
+                </div>
+                <div class="chat-messages scrollbar-custom" id="chatMessages">
+                    <div class="message system">
+                        <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
+                        {{ i18n.get('welcome_message', '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Bot! Please enter your requirements below, and the system will automatically process tasks for you.') }}
+                    </div>
+                </div>
+                
+                <!-- 滚动到底部按钮 -->
+                <button class="scroll-to-bottom-hint" id="scrollToBottomBtn" title="{{ i18n.get('scroll_to_bottom', '滚动到底部' if lang == 'zh' else 'Scroll to Bottom') }}">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                
+                <!-- 新消息提示 -->
+                <div class="new-message-indicator" id="newMessageIndicator">
+                    <i class="fas fa-bell"></i>
+                    <span id="newMessageCount">1</span> 条新消息
+                </div>
+                
+                <!-- 自动滚动状态指示器 -->
+                <div class="auto-scroll-indicator" id="autoScrollIndicator">
+                    <i class="fas fa-arrow-down"></i>
+                    <span>自动滚动</span>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-group">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="userInput" 
+                            placeholder="{{ i18n.input_placeholder }}"
+                            rows="1"
+                        ></textarea>
+                    </div>
+                    <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button class="send-button" id="planButton" style="background-color: #ff9800;" title="{{ i18n.plan_tooltip }}">
+                        <i class="fas fa-list-ul"></i>
+                    </button>
+
+                    <button class="send-button" id="newTaskButton" style="background-color: #4caf50;" title="{{ i18n.new_tooltip }}">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                </div>
+                <div id="taskModeInfo" style="margin-top: 10px; font-size: 0.9em; color: #666; text-align: center;">
+                    <!-- 任务模式信息将在这里显示 -->
+                </div>
+            </div>
+        </div>
+
+        <div class="resizer" id="resizer"></div>
+
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-folder-open"></i>
+                <h3>{{ i18n.get('workspace_title', '工作目录' if lang == 'zh' else 'Workspace') }}</h3>
+                <button class="action-btn" onclick="manualRefresh()" title="{{ i18n.refresh_tooltip }}">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            
+            <div class="loading" id="sidebarLoading">
+                <div class="spinner"></div>
+                <p>{{ i18n.loading }}</p>
+            </div>
+            
+            <div class="directory-list scrollbar-custom" id="directoryList">
+                <!-- 目录列表将通过JavaScript动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件预览模态框 -->
+    <div id="previewModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="previewTitle">{{ i18n.get('file_preview', '文件预览' if lang == 'zh' else 'File Preview') }}</h3>
+                <span class="close" id="previewClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件上传模态框 -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="uploadTitle">{{ i18n.upload_title }}</h3>
+                <span class="close" id="uploadClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">
+                        <p>{{ i18n.get('drag_files', '拖拽文件到此处或点击选择文件' if lang == 'zh' else 'Drag files here or click to select files') }}</p>
+                        <p class="upload-hint">{{ i18n.get('upload_hint', '支持多文件上传，文件将保存到选定目录的workspace文件夹中' if lang == 'zh' else 'Supports multiple file upload, files will be saved to the workspace folder of the selected directory') }}</p>
+                    </div>
+                    <input type="file" id="fileInput" multiple style="display: none;">
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                        <i class="fas fa-folder-open"></i> {{ i18n.get('select_files', '选择文件' if lang == 'zh' else 'Select Files') }}
+                    </button>
+                </div>
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">上传中...</div>
+                </div>
+                <div class="upload-result" id="uploadResult"></div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- 重命名目录模态框 -->
+    <div id="renameModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 500px; height: auto;">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> {{ i18n.rename_title }}</h3>
+                <span class="close" id="renameClose">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">当前名称：</label>
+                    <div id="currentDirName" style="background: #2d2d30; padding: 10px; border-radius: 4px; color: #9cdcfe; font-family: monospace;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">新名称：</label>
+                    <input type="text" id="newDirName" placeholder="{{ i18n.get('rename_placeholder', '输入新的目录名称...' if lang == 'zh' else 'Enter new directory name...') }}" 
+                           style="width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
+                    <div style="margin-top: 5px; font-size: 0.9em; color: #9cdcfe;">
+                        <i class="fas fa-info-circle"></i> 将使用您输入的名称作为目录名
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="renameCancel" class="action-btn" style="background: #6c757d; color: white; padding: 10px 20px;">
+                        <i class="fas fa-times"></i> 取消
+                    </button>
+                    <button id="renameConfirm" class="action-btn" style="background: #007acc; color: white; padding: 10px 20px;">
+                        <i class="fas fa-check"></i> 确认重命名
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script>
+        // 国际化配置
+        const I18N = {{ i18n | tojson }};
+        const CURRENT_LANG = '{{ lang }}';
+    </script>
+    <script>
+        // Socket.IO连接配置
+        const socket = io({
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+            timeout: 20000,
+            forceNew: true
+        });
+        
+        // DOM元素
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const planButton = document.getElementById('planButton');
+
+        const newTaskButton = document.getElementById('newTaskButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const directoryList = document.getElementById('directoryList');
+        const sidebarLoading = document.getElementById('sidebarLoading');
+
+        // 状态管理
+        let isTaskRunning = false;
+        let selectedDirectory = null;
+        let taskMode = 'new'; // 'new', 'continue', 'selected'
+        let expandedDirectories = new Set(); // 保存展开的目录状态
+        let collapsedSubDirectories = new Set(); // 保存收起的子目录状态
+        let isUserScrolling = false; // 用户是否正在手动滚动
+        let autoScrollEnabled = true; // 是否启用自动滚动
+        let refreshTimeout = null; // 防抖定时器
+
+        // 文件预览功能
+        const previewModal = document.getElementById('previewModal');
+        const previewTitle = document.getElementById('previewTitle');
+        const previewContent = document.getElementById('previewContent');
+        const previewClose = document.getElementById('previewClose');
+
+        // 文件上传功能
+        const uploadModal = document.getElementById('uploadModal');
+        const uploadTitle = document.getElementById('uploadTitle');
+        const uploadClose = document.getElementById('uploadClose');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const uploadResult = document.getElementById('uploadResult');
+        
+        let currentUploadDir = null;
+        let newMessageCount = 0; // 新消息计数器
+        
+        // 自动滚动状态指示器
+        const autoScrollIndicator = document.getElementById('autoScrollIndicator');
+
+        // Socket事件监听
+        socket.on('connect', function() {
+            addMessage(I18N.connected, 'system');
+            updateStatus('connected');
+            updateTaskModeInfo(); // 初始化任务模式信息显示
+            // 确保连接后滚动到底部
+            setTimeout(() => {
+                scrollToBottom(false);
+            }, 100);
+            console.log('✅ Socket connected');
+        });
+
+        socket.on('disconnect', function(reason) {
+            addMessage(`${I18N.disconnected} (${reason})`, 'info');
+            updateStatus('disconnected');
+            console.log('❌ Socket disconnected:', reason);
+        });
+
+        socket.on('reconnect', function(attemptNumber) {
+            addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
+            updateStatus('connected');
+            console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+        });
+
+        socket.on('reconnect_attempt', function(attemptNumber) {
+            console.log('🔄 Reconnection attempt', attemptNumber);
+        });
+
+        socket.on('reconnect_error', function(error) {
+            console.log('❌ Reconnection error:', error);
+        });
+
+        socket.on('reconnect_failed', function() {
+            addMessage(I18N.reconnect_failed, 'info');
+            console.log('❌ Reconnection failed');
+        });
+
+        socket.on('task_started', function(data) {
+            addMessage(data.message, 'info');
+            setTaskRunning(true);
+        });
+
+        socket.on('output', function(data) {
+            addMessage(data.message, data.type || 'info');
+        });
+
+        socket.on('task_completed', function(data) {
+            addMessage(data.message, data.success ? 'success' : 'error');
+            setTaskRunning(false);
+            
+            // 任务完成后，如果有选择的目录，保持选择状态，否则切换到继续模式
+            if (selectedDirectory) {
+                taskMode = 'selected';
+                // 如果任务完成的目录是选择的目录，自动展开它
+                if (data.output_dir && data.output_dir === selectedDirectory) {
+                    expandedDirectories.add(selectedDirectory);
+                }
+            } else {
+                taskMode = 'continue';
+                // 如果有工作目录，自动展开最新的目录
+                if (data.output_dir) {
+                    expandedDirectories.add(data.output_dir);
+                }
+            }
+            updateTaskModeInfo();
+            
+            // 刷新目录列表，延迟稍长一些确保文件已生成
+            setTimeout(() => {
+                refreshDirectories();
+            }, 2000);
+        });
+
+        socket.on('task_stopped', function(data) {
+            addMessage(data.message, data.type || 'error');
+            setTaskRunning(false);
+            // 保持当前的任务模式
+            updateTaskModeInfo();
+            // 停止任务后也刷新一下目录
+            setTimeout(refreshDirectories, 1000);
+        });
+
+        socket.on('error', function(data) {
+            addMessage(data.message, 'error');
+            setTaskRunning(false);
+        });
+
+
+
+        socket.on('directory_selected', function(data) {
+            selectedDirectory = data.dir_name;
+            if (selectedDirectory) {
+                taskMode = 'selected';
+                updateTaskModeInfo();
+                refreshDirectories();
+            }
+        });
+
+        socket.on('directory_created', function(data) {
+            if (data.success) {
+                selectedDirectory = data.dir_name;
+                taskMode = 'selected';
+                addMessage(data.message, 'success');
+                updateTaskModeInfo();
+                refreshDirectories();
+            } else {
+                addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
+            }
+        });
+
+        // 消息处理
+        let lastMessageType = null;
+        let lastMessageDiv = null;
+        
+        // 检查是否应该自动滚动到底部
+        function shouldAutoScroll() {
+            // 如果自动滚动被禁用，不滚动
+            if (!autoScrollEnabled) {
+                console.log('🚫 Auto-scroll disabled');
+                return false;
+            }
+            
+            // 检查是否已经在底部附近（容差30px，增加容差）
+            const threshold = 30;
+            const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - threshold;
+            
+            // 如果用户正在向上滚动且不在底部附近，不自动滚动
+            if (isUserScrolling && scrollDirection === 'up' && !isNearBottom) {
+                console.log('🚫 User scrolling up away from bottom');
+                return false;
+            }
+            
+            // 其他情况下，只要自动滚动启用就允许滚动
+            console.log('✅ Auto-scroll allowed', {
+                autoScrollEnabled,
+                isUserScrolling,
+                scrollDirection,
+                isNearBottom
+            });
+            return autoScrollEnabled;
+        }
+        
+        // HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function addMessage(message, type = 'info') {
+            // 特殊过滤：隐藏包含特定内容的行
+            if (message.trim() === '```' || message.trim() === '```xml') {
+                return; // 不显示这些行
+            }
+            
+            // 调试日志：记录XML标签和工具调用状态
+            if (message.trim().startsWith('<') || message.trim() === 'function_calls') {
+                console.log('XML/Tag detected:', {
+                    message: message.trim(),
+                    insideFunctionCalls: insideFunctionCalls,
+                    currentFunctionCall: currentFunctionCall ? {
+                        isActive: currentFunctionCall.isActive,
+                        toolNames: currentFunctionCall.toolNames,
+                        status: currentFunctionCall.status
+                    } : null
+                });
+            }
+            
+            const shouldScroll = shouldAutoScroll();
+            
+            // 检测工具执行消息
+            const toolMatch = detectToolMessage(message);
+            if (toolMatch) {
+                // 检查是否是工具调用相关消息
+                if (['function_calls_start', 'function_calls_end'].includes(toolMatch.type)) {
+                    addFunctionCallMessage(toolMatch, shouldScroll);
+                    return;
+                } else {
+                    addToolMessage(toolMatch, shouldScroll);
+                    return;
+                }
+            }
+            
+            // 如果当前工具已完成且这不是工具相关消息，结束工具消息
+            if (currentToolMessage && (currentToolMessage.status === 'completed' || currentToolMessage.status === 'error')) {
+                finalizeToolMessage(shouldScroll);
+            }
+            
+            // 检查是否是工具调用相关的XML标签（优先级最高）
+            const isXmlTag = message.trim().match(/^<(\/?)(\w+)(\s[^>]*)?>/) || 
+                           message.trim().match(/^<parameter name="[^"]+">/) ||
+                           message.trim() === '</parameter>' ||
+                           message.trim() === '</invoke>' ||
+                           message.trim() === '<function_calls>' ||
+                           message.trim() === '</function_calls>';
+            
+            // 如果是XML标签且当前有活跃的工具调用框，将XML标签添加到工具调用框
+            if (isXmlTag && currentFunctionCall && currentFunctionCall.isActive) {
+                functionCallBuffer.push(message);
+                
+                // 提取工具名称（如果是invoke标签）
+                const invokeMatch = message.match(/^<invoke name="([^"]+)">$/);
+                if (invokeMatch && !currentFunctionCall.toolNames.includes(invokeMatch[1])) {
+                    currentFunctionCall.toolNames.push(invokeMatch[1]);
+                }
+                
+                // 创建或更新UI
+                if (!currentFunctionCall.element) {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                } else {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                }
+                return;
+            }
+            
+            // 简化的工具调用消息处理：如果在<function_calls>标签内且工具调用框处于活跃状态，就添加到工具调用框
+            if (insideFunctionCalls && currentFunctionCall && currentFunctionCall.isActive) {
+                // 过滤特殊内容后再添加到工具调用缓冲区
+                if (message.trim() !== '```' && message.trim() !== '```xml') {
+                    functionCallBuffer.push(message);
+                }
+                
+                // 创建或更新UI
+                if (!currentFunctionCall.element) {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                } else {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                }
+                return;
+            }
+
+            // 额外检查：如果有活跃的工具调用框且消息看起来像参数内容，添加到工具调用框
+            if (currentFunctionCall && currentFunctionCall.isActive && !message.match(/^</) && !message.match(/^>/) && message.trim() !== '') {
+                // 检查是否在参数标签内（简化版本）
+                var lastBuffer = functionCallBuffer.slice(-3).join('\n');
+                var inParameter = lastBuffer.includes('<parameter name="code_edit">') || 
+                                 lastBuffer.includes('<parameter name="instructions">') || 
+                                 lastBuffer.includes('<parameter name="old_string">') || 
+                                 lastBuffer.includes('<parameter name="new_string">');
+                
+                // 如果在参数内或消息看起来像代码内容，添加到工具调用框
+                if (inParameter || message.length > 30 || message.match(/^\s*(def |class |import |function|var|const)/)) {
+                    functionCallBuffer.push(message);
+                    if (!currentFunctionCall.element) {
+                        createOrUpdateFunctionCallUI(shouldScroll);
+                    } else {
+                        createOrUpdateFunctionCallUI(shouldScroll);
+                    }
+                    return;
+                }
+            }
+
+            // 修改逻辑：只有在工具框还在活跃状态时才将消息添加到工具框中
+            // 一旦收到</tool_execute>标记，工具框就不再接收新消息
+            if (currentToolMessage && currentToolMessage.isActive && isToolRelatedMessage(message)) {
+                // 过滤特殊内容后再添加到工具缓冲区
+                if (message.trim() !== '```' && message.trim() !== '```xml') {
+                    toolMessageBuffer.push(message);
+                }
+                if (!currentToolMessage.element) {
+                    createOrUpdateToolMessageUI(shouldScroll);
+                } else {
+                    createOrUpdateToolMessageUI(shouldScroll);
+                }
+                return;
+            }
+            
+            // 检查是否是孤立的"function_calls"文本，这通常表示工具调用结束
+            if (message.trim() === 'function_calls' && currentFunctionCall && currentFunctionCall.isActive) {
+                // 结束当前的工具调用框
+                currentFunctionCall.status = 'completed';
+                currentFunctionCall.isActive = false;
+                insideFunctionCalls = false;
+                
+                // 创建或更新UI
+                if (!currentFunctionCall.element) {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                } else {
+                    createOrUpdateFunctionCallUI(shouldScroll);
+                }
+                
+                // 完成工具调用消息
+                finalizeFunctionCallMessage(shouldScroll);
+                return;
+            }
+            
+            // 检查是否刚刚完成了工具执行或工具调用，如果是，则强制创建新的消息框
+            const justFinishedTool = currentToolMessage && !currentToolMessage.isActive;
+            const justFinishedFunctionCall = currentFunctionCall && !currentFunctionCall.isActive;
+            
+            if (['info', 'error', 'success'].includes(type) && lastMessageType === type && lastMessageDiv && !justFinishedTool && !justFinishedFunctionCall) {
+                // 对于连续的同类型消息，安全地添加内容
+                const textSpan = lastMessageDiv.querySelector('.message-text');
+                if (textSpan) {
+                    textSpan.innerHTML += '<br>' + escapeHtml(message);
+                } else {
+                    // 如果没有找到text span，回退到原来的方法但要转义
+                    lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                }
+                if (shouldScroll) {
+                    // 使用requestAnimationFrame确保DOM更新完成后再滚动
+                    requestAnimationFrame(() => {
+                        chatMessages.scrollTo({
+                            top: chatMessages.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                    });
+                } else {
+                    // 如果不能自动滚动，显示新消息提示
+                    showNewMessageIndicator();
+                }
+                return;
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            // 创建文本元素，使用textContent确保安全显示
+            const textSpan = document.createElement('span');
+            textSpan.className = 'message-text';
+            textSpan.textContent = message;
+            
+            // 直接添加文本，不添加图标
+            messageDiv.appendChild(textSpan);
+            
+            chatMessages.appendChild(messageDiv);
+            
+            // 只在应该自动滚动时才滚动
+            if (shouldScroll) {
+                // 使用requestAnimationFrame确保DOM更新完成后再滚动
+                requestAnimationFrame(() => {
+                    chatMessages.scrollTo({
+                        top: chatMessages.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                });
+            } else {
+                // 如果不能自动滚动，显示新消息提示（除了用户消息）
+                if (type !== 'user') {
+                    showNewMessageIndicator();
+                }
+            }
+
+            if (['info', 'error', 'success'].includes(type)) {
+                lastMessageType = type;
+                lastMessageDiv = messageDiv;
+            } else {
+                lastMessageType = null;
+                lastMessageDiv = null;
+            }
+        }
+
+
+
+        // 工具消息检测和处理
+        function detectToolMessage(message) {
+            // 检测工具执行开始标签 - "<tool_execute tool_name="read_file" tool_number="1">"
+            const toolStartMatch = message.match(/^<tool_execute tool_name="([^"]+)" tool_number="(\d+)">$/);
+            if (toolStartMatch) {
+                return {
+                    type: 'tool_start',
+                    toolName: toolStartMatch[1],
+                    toolNumber: toolStartMatch[2],
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具执行结束标签 - "</tool_execute>"
+            if (message.trim() === '</tool_execute>') {
+                return {
+                    type: 'tool_end',
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具执行开始消息 - "Executing tool 2: read_file" 或 "- Executing tool 1: list_dir"
+            const executingMatch = message.match(/^-?\s*Executing tool (\d+): (\w+)$/);
+            if (executingMatch) {
+                return {
+                    type: 'executing',
+                    toolNumber: executingMatch[1],
+                    toolName: executingMatch[2],
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具执行详细信息 - "Executing tool: read_file with params: [...]"
+            const detailMatch = message.match(/^Executing tool: (\w+) with params: (.+)$/);
+            if (detailMatch) {
+                return {
+                    type: 'detail',
+                    toolName: detailMatch[1],
+                    params: detailMatch[2],
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具执行结果开始 - "🛠️ Tool 2 execution result (read_file):"
+            const resultMatch = message.match(/^🛠️ Tool (\d+) execution result \((\w+)\):$/);
+            if (resultMatch) {
+                return {
+                    type: 'result_start',
+                    toolNumber: resultMatch[1],
+                    toolName: resultMatch[2],
+                    fullMessage: message
+                };
+            }
+
+            // 检测结果分隔线
+            const separatorMatch = message.match(/^={40,}$/);
+            if (separatorMatch) {
+                return {
+                    type: 'separator',
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具相关的emoji消息
+            const emojiMatch = message.match(/^[📖🎯📂🔍✅📊📄🛠️]/);
+            if (emojiMatch) {
+                return {
+                    type: 'tool_info',
+                    fullMessage: message
+                };
+            }
+
+            // 检测状态消息 - "Status: success"
+            const statusMatch = message.match(/^Status: (\w+)$/);
+            if (statusMatch) {
+                return {
+                    type: 'status',
+                    status: statusMatch[1],
+                    fullMessage: message
+                };
+            }
+
+            // 检测文件信息 - "File: xxx"
+            const fileMatch = message.match(/^File: (.+)$/);
+            if (fileMatch) {
+                return {
+                    type: 'file_info',
+                    fullMessage: message
+                };
+            }
+
+            // 检测内容信息 - "Content:"
+            if (message === 'Content:') {
+                return {
+                    type: 'content_start',
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具描述信息 - 以工具名开头的描述行
+            const toolDescMatch = message.match(/^(\w+): (.+)$/);
+            if (toolDescMatch && currentToolMessage && toolDescMatch[1].toLowerCase() === currentToolMessage.toolName.toLowerCase()) {
+                return {
+                    type: 'tool_desc',
+                    fullMessage: message
+                };
+            }
+
+            // 检测结构化数据 - 以特定关键词开头的行
+            const structuredMatch = message.match(/^(path|directories|files|query|target_directories|explanation):\s*(.*)$/);
+            if (structuredMatch && currentToolMessage) {
+                return {
+                    type: 'structured_data',
+                    fullMessage: message
+                };
+            }
+
+            // 检测数组数据 - 以 [ 开头或包含数组格式的行
+            if ((message.trim().startsWith('[') || message.trim().startsWith('"')) && currentToolMessage) {
+                return {
+                    type: 'array_data',
+                    fullMessage: message
+                };
+            }
+
+            // 检测数组结束 - 以 ] 结尾的行
+            if (message.trim().endsWith(']') && currentToolMessage) {
+                return {
+                    type: 'array_end',
+                    fullMessage: message
+                };
+            }
+
+            // 检测搜索结果开始 - "Results (X items):"
+            const resultsMatch = message.match(/^Results \((\d+) items?\):$/);
+            if (resultsMatch && currentToolMessage) {
+                return {
+                    type: 'results_start',
+                    itemCount: resultsMatch[1],
+                    fullMessage: message
+                };
+            }
+
+            // 检测搜索结果项 - "1. filename - content..."
+            const resultItemMatch = message.match(/^\s*\d+\.\s+(.+)$/);
+            if (resultItemMatch && currentToolMessage) {
+                return {
+                    type: 'result_item',
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具调用开始标签 - "<function_calls>"
+            if (message.trim() === '<function_calls>') {
+                // 如果检测到新的function_calls开始，确保之前的状态被清理
+                if (currentFunctionCall && currentFunctionCall.isActive) {
+                    console.log('Warning: New function_calls detected while previous one is still active');
+                }
+                return {
+                    type: 'function_calls_start',
+                    fullMessage: message
+                };
+            }
+
+            // 检测工具调用结束标签 - "</function_calls>"
+            if (message.trim() === '</function_calls>') {
+                return {
+                    type: 'function_calls_end',
+                    fullMessage: message
+                };
+            }
+
+            // 检测孤立的"function_calls"文本 - 这通常表示工具调用结束
+            if (message.trim() === 'function_calls') {
+                if (insideFunctionCalls) {
+                    return {
+                        type: 'function_calls_end',
+                        fullMessage: message
+                    };
+                } else {
+                    // 如果不在function_calls内部，这可能是一个错误的结束标记，忽略它
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
+        let currentToolMessage = null;
+        let toolMessageBuffer = [];
+        let toolTimeoutId = null;
+
+        // 工具调用框相关变量
+        let currentFunctionCall = null;
+        let functionCallBuffer = [];
+        let insideFunctionCalls = false; // 简化：只跟踪是否在<function_calls>标签内部
+
+        // 判断消息是否与当前工具调用相关 - 简化版本
+        function isFunctionCallRelatedMessage(message) {
+            // 简单逻辑：如果在<function_calls>和</function_calls>之间，就是相关消息
+            return insideFunctionCalls;
+        }
+
+        // 判断消息是否与当前工具相关
+        function isToolRelatedMessage(message) {
+            // 检查是否是工具标签
+            const toolMatch = detectToolMessage(message);
+            if (toolMatch && ['tool_start', 'tool_end'].includes(toolMatch.type)) {
+                return true;
+            }
+            
+            if (!currentToolMessage || !currentToolMessage.isActive) return false;
+            
+            // 检查是否是工具相关的各种消息类型
+            if (toolMatch && ['tool_info', 'file_info', 'content_start', 'separator', 'tool_desc', 'structured_data', 'array_data', 'array_end', 'status', 'result_start', 'executing', 'detail', 'results_start', 'result_item'].includes(toolMatch.type)) {
+                return true;
+            }
+            
+            // 只有在工具活跃且运行中时，才考虑将普通文本消息添加到工具框
+            if (currentToolMessage.status === 'running') {
+                // 检查是否是新的工具执行开始
+                const isNewTool = message.match(/^<tool_execute/) || message.match(/^-?\s*Executing tool \d+:/);
+                if (isNewTool) {
+                    return false; // 新工具开始，当前工具应该结束
+                }
+                
+                // 检查是否是明显的工具输出内容（更宽松的判断以包含文件内容）
+                const isToolOutput = message.match(/^[📖🎯📂🔍✅📊📄🛠️]/) || 
+                                   message.match(/^(path|directories|files|query|target_directories|explanation):\s*/) ||
+                                   message.match(/^Status:\s*/) ||
+                                   message.match(/^File:\s*/) ||
+                                   message === 'Content:' ||
+                                   message.match(/^={40,}$/) ||
+                                   (message.trim().startsWith('[') && message.trim().endsWith(']')) ||
+                                   (message.trim().startsWith('"') && message.trim().endsWith('"'));
+                
+                // 如果已经检测到"Content:"，那么后续的文本行也应该被认为是工具相关的
+                // 直到遇到新的工具开始或明确的结束标记
+                if (!isToolOutput && toolMessageBuffer.length > 0) {
+                    const hasContentStart = toolMessageBuffer.some(msg => msg === 'Content:');
+                    if (hasContentStart) {
+                        // 检查是否是明显的非工具内容（如新的用户输入或系统消息）
+                        const isNonToolContent = message.match(/^(用户|User|系统|System|🤖|📝|⚡|Task|Creating|Normal|Initialized|Starting|Received|🔧|Found|Execute|Auto-approving|Running|Working|Output|Command|📤|✅|❌|⚠️|🎉|📋|🚀|🛑|🔄|🔗|💾|📁|🔍|📊|🎯|📋)/) ||
+                                                 message.match(/^(LLM|Model|API|Workspace|Language|Streaming|Cache|History|Subtask|Log|Detailed|Processing|Calling|Round|Warning|Expected|No tool|task completed|work is done|finished|完成了|任务完成)/) ||
+                                                 message.match(/^(execution started|execution completed|execution rounds|directory|Workspace directory|Detailed summary)/) ||
+                                                 message.match(/^[A-Z][a-z]+ [a-z]+ [a-z]+:/) || // 英文句子模式
+                                                 message.match(/^[一-龟][一-龟]+[：:]/) || // 中文句子模式
+                                                 message.length > 200; // 很长的消息通常不是工具输出
+                        
+                        return !isNonToolContent;
+                    }
+                }
+                
+                return isToolOutput;
+            }
+            
+            return false;
+        }
+
+        function addFunctionCallMessage(toolMatch, shouldScroll) {
+            if (toolMatch.type === 'function_calls_start') {
+                // 开始收集工具调用内容
+                insideFunctionCalls = true;
+                
+                // 如果有之前的工具调用，先完成它
+                if (currentFunctionCall) {
+                    finalizeFunctionCallMessage(shouldScroll);
+                }
+                
+                currentFunctionCall = {
+                    toolNames: [],
+                    status: 'calling',
+                    element: null,
+                    isActive: true
+                };
+                functionCallBuffer = []; // 不包含开始标签本身
+                
+                // 清除消息引用，确保后续消息创建新的消息框
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+            } else if (toolMatch.type === 'function_calls_end') {
+                // 结束收集工具调用内容
+                insideFunctionCalls = false;
+                
+                if (currentFunctionCall) {
+                    currentFunctionCall.status = 'completed';
+                    currentFunctionCall.isActive = false;
+                    
+                    // 创建或更新UI
+                    if (!currentFunctionCall.element) {
+                        createOrUpdateFunctionCallUI(shouldScroll);
+                    } else {
+                        // 最终更新状态
+                        createOrUpdateFunctionCallUI(shouldScroll);
+                    }
+                    
+                    // 立即完成工具调用消息，不延迟
+                    finalizeFunctionCallMessage(shouldScroll);
+                }
+                
+                // 清除消息引用，确保后续消息创建新的消息框
+                lastMessageType = null;
+                lastMessageDiv = null;
+            }
+        }
+
+        function addToolMessage(toolMatch, shouldScroll) {
+            if (toolMatch.type === 'tool_start') {
+                // 开始新的工具消息
+                if (currentToolMessage) {
+                    // 完成之前的工具消息
+                    finalizeToolMessage(shouldScroll);
+                }
+                
+                currentToolMessage = {
+                    toolNumber: toolMatch.toolNumber,
+                    toolName: toolMatch.toolName,
+                    params: '',
+                    content: [],
+                    status: 'running',
+                    element: null,
+                    isActive: true  // 标记工具框是否还在接收消息
+                };
+                toolMessageBuffer = []; // 不包含标签本身
+                
+                // 立即清除最后一个消息的引用，确保工具框创建后的新消息创建新的消息框
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+                // 不立即创建UI，等待收集一些内容后再创建
+                
+            } else if (toolMatch.type === 'tool_end' && currentToolMessage) {
+                // 工具执行结束，但延迟设置isActive为false，确保工具结果能被包含进来
+                currentToolMessage.status = 'completed';
+                
+                // 如果还没有创建UI，现在创建
+                if (!currentToolMessage.element) {
+                    createOrUpdateToolMessageUI(shouldScroll);
+                }
+                
+                // 延迟设置工具框为非活跃状态，给工具结果一些时间被包含进来
+                setTimeout(() => {
+                    if (currentToolMessage) {
+                        currentToolMessage.isActive = false;
+                        // 清除最后一个消息的引用，确保后续消息创建新的消息框
+                        lastMessageType = null;
+                        lastMessageDiv = null;
+                        
+                        // 完成工具消息
+                        finalizeToolMessage(shouldScroll);
+                    }
+                }, 500); // 增加延迟时间到500ms，确保工具结果能被包含
+                
+            } else if (currentToolMessage && currentToolMessage.isActive) {
+                // 只有在工具框还在活跃状态时才添加内容到缓冲区
+                if (toolMatch.type === 'executing') {
+                    // 添加执行信息（在tool_start之后）
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    // 第一次收到执行信息时创建UI
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                    
+                } else if (toolMatch.type === 'detail') {
+                    // 添加参数信息
+                    currentToolMessage.params = toolMatch.params;
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    } else {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                    
+                } else if (toolMatch.type === 'result_start') {
+                    // 工具执行结果开始
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    } else {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                    
+                } else if (toolMatch.type === 'status') {
+                    // 更新状态
+                    const newStatus = toolMatch.status === 'success' ? 'completed' : 'error';
+                    if (currentToolMessage.status !== 'completed') {
+                        currentToolMessage.status = newStatus;
+                    }
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    } else {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                    
+                } else if (['tool_info', 'file_info', 'content_start', 'separator', 'tool_desc', 'structured_data', 'array_data', 'array_end', 'results_start', 'result_item'].includes(toolMatch.type)) {
+                    // 添加工具信息到缓冲区
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    } else {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                    
+                } else {
+                    // 其他类型的消息
+                    if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
+                        toolMessageBuffer.push(toolMatch.fullMessage);
+                    }
+                    if (!currentToolMessage.element) {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    } else {
+                        createOrUpdateToolMessageUI(shouldScroll);
+                    }
+                }
+            }
+            // 如果工具框不再活跃（isActive为false），则不再向工具框添加任何内容
+            // 这些消息将作为普通消息显示在工具框之后
+        }
+
+        // 工具名称的中英文映射
+        const TOOL_DISPLAY_NAMES = {
+            'read_file': {
+                'zh': '读取文件',
+                'en': 'Read File'
+            },
+            'edit_file': {
+                'zh': '编辑文件',
+                'en': 'Edit File'
+            },
+            'codebase_search': {
+                'zh': '代码搜索',
+                'en': 'Code Search'
+            },
+            'web_search': {
+                'zh': '网络搜索',
+                'en': 'Web Search'
+            },
+            'grep_search': {
+                'zh': '文本搜索',
+                'en': 'Text Search'
+            },
+            'file_search': {
+                'zh': '文件搜索',
+                'en': 'File Search'
+            },
+            'list_dir': {
+                'zh': '列表目录',
+                'en': 'List Directory'
+            },
+            'run_terminal_cmd': {
+                'zh': '命令',
+                'en': 'Command'
+            },
+            'delete_file': {
+                'zh': '删除文件',
+                'en': 'Delete File'
+            },
+            'create_diagram': {
+                'zh': '创建图表',
+                'en': 'Create Diagram'
+            },
+            'edit_notebook': {
+                'zh': '编辑笔记本',
+                'en': 'Edit Notebook'
+            },
+            'search_replace': {
+                'zh': '搜索替换',
+                'en': 'Search Replace'
+            },
+            'reapply': {
+                'zh': '重新应用',
+                'en': 'Reapply'
+            }
+        };
+
+        // 获取工具的显示名称
+        function getToolDisplayName(toolName) {
+            const lang = CURRENT_LANG || 'zh';
+            const displayNames = TOOL_DISPLAY_NAMES[toolName];
+            return displayNames ? displayNames[lang] : toolName;
+        }
+
+        // 提取工具关键参数的统一函数
+        function extractToolKeyInfo(toolName, content) {
+            if (!content || !toolName) return '';
+            
+            try {
+                const contentStr = typeof content === 'string' ? content : content.join('\n');
+                
+                switch (toolName.toLowerCase()) {
+                    case 'read_file':
+                    case 'edit_file':
+                        // 提取文件路径
+                        const fileMatch = contentStr.match(/<parameter name="target_file">\s*([^<]+)\s*<\/parameter>/i) ||
+                                         contentStr.match(/target_file['":\s]*([^,}\n]+)/i) ||
+                                         contentStr.match(/file_path['":\s]*([^,}\n]+)/i);
+                        if (fileMatch) {
+                            const filePath = fileMatch[1].replace(/['"]/g, '').trim();
+                            const fileName = filePath.split('/').pop() || filePath;
+                            return `: ${fileName}`;
+                        }
+                        break;
+                        
+                    case 'codebase_search':
+                        // 提取搜索查询
+                        const codeSearchMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
+                                               contentStr.match(/query['":\s]*([^,}\n]+)/i);
+                        if (codeSearchMatch) {
+                            const query = codeSearchMatch[1].replace(/['"]/g, '').trim();
+                            return `: "${query}"`;
+                        }
+                        break;
+                        
+                    case 'web_search':
+                        // 提取搜索词
+                        const webSearchMatch = contentStr.match(/<parameter name="search_term">\s*([^<]+)\s*<\/parameter>/i) ||
+                                              contentStr.match(/search_term['":\s]*([^,}\n]+)/i);
+                        if (webSearchMatch) {
+                            const searchTerm = webSearchMatch[1].replace(/['"]/g, '').trim();
+                            return `: "${searchTerm}"`;
+                        }
+                        break;
+                        
+                    case 'grep_search':
+                        // 提取搜索模式
+                        const grepMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
+                                         contentStr.match(/query['":\s]*([^,}\n]+)/i);
+                        if (grepMatch) {
+                            const pattern = grepMatch[1].replace(/['"]/g, '').trim();
+                            return `: "${pattern}"`;
+                        }
+                        break;
+                        
+                    case 'file_search':
+                        // 提取文件搜索查询
+                        const fileSearchMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
+                                               contentStr.match(/query['":\s]*([^,}\n]+)/i);
+                        if (fileSearchMatch) {
+                            const query = fileSearchMatch[1].replace(/['"]/g, '').trim();
+                            return `: "${query}"`;
+                        }
+                        break;
+                        
+                    case 'list_dir':
+                        // 提取目录路径
+                        const dirMatch = contentStr.match(/<parameter name="relative_workspace_path">\s*([^<]+)\s*<\/parameter>/i);
+                        if (dirMatch) {
+                            let dirPath = dirMatch[1].trim();
+                            // 清理引号和特殊字符
+                            dirPath = dirPath.replace(/^["']|["']$/g, '').replace(/[\[\]]/g, '');
+                            return dirPath ? `: ${dirPath}` : ': .';
+                        }
+                        // 如果XML格式没匹配到，尝试简单的键值对格式
+                        const simpleMatch = contentStr.match(/relative_workspace_path.*?["']([^"']+)["']/i);
+                        if (simpleMatch) {
+                            return simpleMatch[1] ? `: ${simpleMatch[1]}` : ': .';
+                        }
+                        break;
+                        
+                    case 'run_terminal_cmd':
+                        // 提取命令
+                        const cmdMatch = contentStr.match(/<parameter name="command">\s*([^<]+)\s*<\/parameter>/i) ||
+                                        contentStr.match(/command['":\s]*([^,}\n]+)/i);
+                        if (cmdMatch) {
+                            const command = cmdMatch[1].replace(/['"]/g, '').trim();
+                            // 只显示命令的前30个字符
+                            const shortCmd = command.length > 30 ? command.substring(0, 30) + '...' : command;
+                            return `: ${shortCmd}`;
+                        }
+                        break;
+                }
+            } catch (e) {
+                console.log('Error extracting tool key info:', e);
+            }
+            
+            return '';
+        }
+
+        // 为工具执行框生成优化的显示名称
+        function getOptimizedToolName(toolName, params) {
+            if (!toolName) return '';
+            
+            const lang = CURRENT_LANG || 'zh';
+            const prefix = lang === 'zh' ? '执行' : 'Executing';
+            const displayName = getToolDisplayName(toolName);
+            const keyInfo = extractToolKeyInfo(toolName, params);
+            return `${prefix} ${displayName}${keyInfo}`;
+        }
+
+        // 为工具调用框生成优化的显示名称
+        function getOptimizedFunctionCallName(toolNames, buffer) {
+            const lang = CURRENT_LANG || 'zh';
+            const prefix = lang === 'zh' ? '调用' : 'Calling';
+            
+            if (!toolNames || toolNames.length === 0) {
+                return prefix;
+            }
+            
+            if (toolNames.length === 1) {
+                const displayName = getToolDisplayName(toolNames[0]);
+                const keyInfo = extractToolKeyInfo(toolNames[0], buffer);
+                return `${prefix} ${displayName}${keyInfo}`;
+            } else {
+                // 多个工具时，尝试为每个工具提取关键信息
+                const toolInfos = toolNames.map(toolName => {
+                    const displayName = getToolDisplayName(toolName);
+                    const keyInfo = extractToolKeyInfo(toolName, buffer);
+                    return `${displayName}${keyInfo}`;
+                });
+                
+                // 如果总长度不超过50字符，显示所有工具信息
+                const allInfo = toolInfos.join(', ');
+                if (allInfo.length <= 50) {
+                    return `${prefix} ${allInfo}`;
+                } else {
+                    const toolsText = lang === 'zh' ? '个工具' : ' tools';
+                    return `${prefix} ${toolNames.length}${toolsText}`;
+                }
+            }
+        }
+
+        function createOrUpdateToolMessageUI(shouldScroll) {
+            if (!currentToolMessage.element) {
+                // 创建工具消息元素
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message tool';
+                
+                // 创建头部
+                const header = document.createElement('div');
+                header.className = 'tool-header';
+                header.onclick = () => toggleToolContent(messageDiv);
+                
+                const headerLeft = document.createElement('div');
+                headerLeft.className = 'tool-header-left';
+                
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-tools tool-icon';
+                
+                const toolName = document.createElement('span');
+                toolName.className = 'tool-name';
+                
+                // 使用优化的工具名称显示
+                toolName.textContent = getOptimizedToolName(currentToolMessage.toolName, currentToolMessage.params);
+                
+                headerLeft.appendChild(icon);
+                headerLeft.appendChild(toolName);
+                
+                const toggle = document.createElement('i');
+                toggle.className = 'fas fa-chevron-down tool-toggle';
+                
+                header.appendChild(headerLeft);
+                header.appendChild(toggle);
+                
+                // 创建内容区域
+                const content = document.createElement('div');
+                content.className = 'tool-content';
+                
+                const contentInner = document.createElement('div');
+                contentInner.className = 'tool-content-inner';
+                contentInner.textContent = toolMessageBuffer.join('\n');
+                
+                content.appendChild(contentInner);
+                
+                messageDiv.appendChild(header);
+                messageDiv.appendChild(content);
+                
+                chatMessages.appendChild(messageDiv);
+                currentToolMessage.element = messageDiv;
+                
+                // 工具框创建后，立即清除消息引用，确保后续消息创建新的消息框
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+            } else {
+                // 更新现有元素
+                const contentInner = currentToolMessage.element.querySelector('.tool-content-inner');
+                if (contentInner) {
+                    contentInner.textContent = toolMessageBuffer.join('\n');
+                }
+                
+                // 状态图标和参数信息已移除，不需要更新
+                
+                // 更新工具名称
+                const toolNameElement = currentToolMessage.element.querySelector('.tool-name');
+                if (toolNameElement) {
+                    toolNameElement.textContent = getOptimizedToolName(currentToolMessage.toolName, currentToolMessage.params);
+                }
+            }
+            
+            // 滚动处理
+            if (shouldScroll) {
+                requestAnimationFrame(() => {
+                    chatMessages.scrollTo({
+                        top: chatMessages.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                });
+            } else {
+                showNewMessageIndicator();
+            }
+        }
+
+        function finalizeToolMessage(shouldScroll) {
+            if (currentToolMessage && currentToolMessage.element) {
+                // 最终更新工具消息
+                createOrUpdateToolMessageUI(shouldScroll);
+            }
+            currentToolMessage = null;
+            toolMessageBuffer = [];
+            // 清除最后一个消息的引用，确保工具完成后的新消息创建新的消息框
+            lastMessageType = null;
+            lastMessageDiv = null;
+        }
+
+        function createOrUpdateFunctionCallUI(shouldScroll) {
+            if (!currentFunctionCall.element) {
+                // 创建工具调用消息元素
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message function-call';
+                
+                // 创建头部
+                const header = document.createElement('div');
+                header.className = 'function-call-header';
+                header.onclick = () => toggleFunctionCallContent(messageDiv);
+                
+                const headerLeft = document.createElement('div');
+                headerLeft.className = 'function-call-header-left';
+                
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-code function-call-icon';
+                
+                const toolName = document.createElement('span');
+                toolName.className = 'function-call-name';
+                
+                // 使用优化的工具调用名称显示
+                toolName.textContent = getOptimizedFunctionCallName(currentFunctionCall.toolNames, functionCallBuffer);
+                
+                const status = document.createElement('span');
+                const statusClass = currentFunctionCall.status === 'completed' ? 'success' : 'calling';
+                status.className = `function-call-status ${statusClass}`;
+                status.textContent = currentFunctionCall.status === 'completed' ? '📤' : '📝';
+                
+                headerLeft.appendChild(icon);
+                headerLeft.appendChild(toolName);
+                headerLeft.appendChild(status);
+                
+                const toggle = document.createElement('i');
+                toggle.className = 'fas fa-chevron-down function-call-toggle';
+                
+                header.appendChild(headerLeft);
+                header.appendChild(toggle);
+                
+                // 创建内容区域
+                const content = document.createElement('div');
+                content.className = 'function-call-content';
+                
+                const contentInner = document.createElement('div');
+                contentInner.className = 'function-call-content-inner';
+                contentInner.textContent = functionCallBuffer.join('\n');
+                
+                content.appendChild(contentInner);
+                
+                messageDiv.appendChild(header);
+                messageDiv.appendChild(content);
+                
+                chatMessages.appendChild(messageDiv);
+                currentFunctionCall.element = messageDiv;
+                
+                // 工具调用框创建后，立即清除消息引用，确保后续消息创建新的消息框
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+            } else {
+                // 更新现有元素
+                const contentInner = currentFunctionCall.element.querySelector('.function-call-content-inner');
+                if (contentInner) {
+                    contentInner.textContent = functionCallBuffer.join('\n');
+                }
+                
+                // 更新状态
+                const status = currentFunctionCall.element.querySelector('.function-call-status');
+                if (status) {
+                    const statusClass = currentFunctionCall.status === 'completed' ? 'success' : 'calling';
+                    status.className = `function-call-status ${statusClass}`;
+                    status.textContent = currentFunctionCall.status === 'completed' ? '📤' : '📝';
+                }
+                
+                // 更新工具名称
+                const toolName = currentFunctionCall.element.querySelector('.function-call-name');
+                if (toolName) {
+                    toolName.textContent = getOptimizedFunctionCallName(currentFunctionCall.toolNames, functionCallBuffer);
+                }
+            }
+            
+            // 滚动处理
+            if (shouldScroll) {
+                requestAnimationFrame(() => {
+                    chatMessages.scrollTo({
+                        top: chatMessages.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                });
+            } else {
+                showNewMessageIndicator();
+            }
+        }
+
+        function finalizeFunctionCallMessage(shouldScroll) {
+            if (currentFunctionCall && currentFunctionCall.element) {
+                // 最终更新工具调用消息
+                createOrUpdateFunctionCallUI(shouldScroll);
+            }
+            
+            // 完全重置所有工具调用相关状态
+            currentFunctionCall = null;
+            functionCallBuffer = [];
+            insideFunctionCalls = false;
+            
+            // 清除最后一个消息的引用，确保工具调用完成后的新消息创建新的消息框
+            lastMessageType = null;
+            lastMessageDiv = null;
+        }
+
+        function toggleFunctionCallContent(messageElement) {
+            const content = messageElement.querySelector('.function-call-content');
+            const toggle = messageElement.querySelector('.function-call-toggle');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                toggle.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                toggle.classList.add('expanded');
+            }
+        }
+
+        function toggleToolContent(messageElement) {
+            const content = messageElement.querySelector('.tool-content');
+            const toggle = messageElement.querySelector('.tool-toggle');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                toggle.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                toggle.classList.add('expanded');
+            }
+        }
+
+        // 状态更新
+        function updateStatus(status) {
+            const indicator = statusIndicator;
+            indicator.className = 'status-indicator';
+            
+            if (status === 'connected') {
+                indicator.style.background = '#4CAF50';
+            } else if (status === 'running') {
+                indicator.style.background = '#007acc';
+            } else if (status === 'disconnected') {
+                indicator.style.background = '#F44336';
+            }
+        }
+
+        function setTaskRunning(running) {
+            isTaskRunning = running;
+            userInput.disabled = running;
+            
+            if (running) {
+                sendButton.style.display = 'none';
+                planButton.style.display = 'none';
+                newTaskButton.style.display = 'none';
+                stopButton.style.display = 'flex';
+                updateStatus('running');
+            } else {
+                sendButton.style.display = 'flex';
+                planButton.style.display = 'flex';
+                newTaskButton.style.display = 'flex';
+                stopButton.style.display = 'none';
+                updateStatus('connected');
+            }
+        }
+
+        // 输入处理
+        function sendMessage(planMode = false) {
+            const message = userInput.value.trim();
+            if (!message || isTaskRunning) return;
+
+            // 在新建模式下，提示用户先创建或选择目录
+            if (taskMode === 'new') {
+                addMessage(I18N.create_or_select_directory, 'error');
+                return;
+            }
+
+            // 显示执行模式信息
+            let modeInfo = '';
+            if (planMode) {
+                modeInfo = I18N.plan_mode_suffix;
+                addMessage(`${message}${modeInfo}`, 'user');
+                addMessage(I18N.plan_mode_info, 'info');
+            } else {
+                addMessage(message, 'user');
+                addMessage(I18N.direct_mode_info, 'info');
+            }
+            
+            if (taskMode === 'selected' && selectedDirectory) {
+                socket.emit('execute_task', {
+                    requirement: message,
+                    type: 'selected',
+                    plan_mode: planMode
+                });
+            } else {
+                socket.emit('execute_task', {
+                    requirement: message,
+                    type: 'continue',
+                    plan_mode: planMode
+                });
+            }
+
+            userInput.value = '';
+            resizeTextarea();
+        }
+
+        function createNewDirectory() {
+            if (isTaskRunning) return;
+            
+            socket.emit('create_new_directory');
+        }
+
+        function executeSelectedTask() {
+            const message = userInput.value.trim();
+            if (!message || isTaskRunning) return;
+
+            if (!selectedDirectory) {
+                addMessage(I18N.select_directory_first, 'error');
+                return;
+            }
+
+            addMessage(message, 'user');
+            
+            socket.emit('execute_task', {
+                requirement: message,
+                type: 'selected'
+            });
+
+            userInput.value = '';
+            resizeTextarea();
+        }
+
+        function selectDirectory(dirName) {
+            // 如果已经选择了相同的目录，不需要重复操作
+            if (selectedDirectory === dirName) {
+                console.log(`📌 Directory ${dirName} already selected`);
+                return;
+            }
+            
+            console.log(`🎯 Selecting directory: ${dirName}`);
+            selectedDirectory = dirName;
+            
+            // 切换到选择目录模式
+            taskMode = 'selected';
+            
+            // 只选择目录，不自动切换展开状态
+            socket.emit('select_directory', {
+                dir_name: dirName
+            });
+            
+            // 更新UI显示选中状态，但不刷新整个列表
+            document.querySelectorAll('.directory-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            const selectedItem = document.querySelector(`[data-dir="${dirName}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('selected');
+            }
+            
+            // 更新任务模式信息
+            updateTaskModeInfo();
+            
+            console.log(`✅ Directory selected: ${dirName}, mode: ${taskMode}`);
+        }
+
+        function updateTaskModeInfo() {
+            const taskModeInfo = document.getElementById('taskModeInfo');
+            let baseInfo = '';
+            
+            if (taskMode === 'selected' && selectedDirectory) {
+                baseInfo = `<i class="fas fa-info-circle"></i> ${I18N.selected_dir_info}: <strong>${selectedDirectory}</strong>`;
+                taskModeInfo.style.color = '#569cd6';
+            } else if (taskMode === 'continue') {
+                baseInfo = `<i class="fas fa-info-circle"></i> ${I18N.continue_mode_info}`;
+                taskModeInfo.style.color = '#9cdcfe';
+            } else if (taskMode === 'new') {
+                baseInfo = `<i class="fas fa-plus-circle"></i> ${I18N.new_mode_info}`;
+                taskModeInfo.style.color = '#4CAF50';
+            } else {
+                baseInfo = `<i class="fas fa-plus-circle"></i> ${I18N.create_or_select_directory}`;
+                taskModeInfo.style.color = '#9cdcfe';
+            }
+            
+            taskModeInfo.innerHTML = baseInfo;
+        }
+
+        function resizeTextarea() {
+            userInput.style.height = 'auto';
+            userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+        }
+
+        // 事件监听
+        sendButton.addEventListener('click', () => sendMessage(false));
+
+        planButton.addEventListener('click', () => sendMessage(true));
+
+        newTaskButton.addEventListener('click', createNewDirectory);
+
+        stopButton.addEventListener('click', function() {
+            socket.emit('stop_task');
+        });
+
+        userInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(false); // Default to direct execution mode
+            }
+        });
+
+        userInput.addEventListener('input', resizeTextarea);
+
+        // 聊天滚动行为管理
+        let scrollTimeout;
+        let lastScrollTop = 0;
+        let scrollDirection = 'down'; // 'up' 或 'down'
+        
+        chatMessages.addEventListener('scroll', function() {
+            // 清除之前的超时
+            clearTimeout(scrollTimeout);
+            
+            // 检测滚动方向
+            const currentScrollTop = chatMessages.scrollTop;
+            scrollDirection = currentScrollTop > lastScrollTop ? 'down' : 'up';
+            lastScrollTop = currentScrollTop;
+            
+            // 标记用户正在滚动
+            isUserScrolling = true;
+            
+            // 检查是否滚动到底部附近
+            const threshold = 20;
+            const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - threshold;
+            
+            // 智能自动滚动控制
+            if (isNearBottom) {
+                // 用户滚动到底部附近，启用自动滚动
+                if (!autoScrollEnabled) {
+                    autoScrollEnabled = true;
+                    updateAutoScrollIndicator();
+                    console.log('🔄 User scrolled to bottom, enabling auto-scroll');
+                }
+                hideScrollToBottomHint();
+            } else {
+                // 用户明确向上滚动且距离底部较远时，禁用自动滚动
+                const farFromBottom = chatMessages.scrollTop + chatMessages.clientHeight < chatMessages.scrollHeight - 100;
+                if (autoScrollEnabled && scrollDirection === 'up' && farFromBottom) {
+                    autoScrollEnabled = false;
+                    updateAutoScrollIndicator();
+                    console.log('⬆️ User scrolled up away from bottom, disabling auto-scroll');
+                }
+                
+                // 只有在不是自动滚动状态时才显示滚动提示
+                if (!autoScrollEnabled) {
+                    showScrollToBottomHint();
+                }
+            }
+            
+            // 150ms后重置滚动状态（进一步减少延迟以提高自动滚动响应性）
+            scrollTimeout = setTimeout(() => {
+                isUserScrolling = false;
+            }, 150);
+        });
+
+        // 滚动提示管理
+        function showScrollToBottomHint() {
+            const scrollBtn = document.getElementById('scrollToBottomBtn');
+            if (scrollBtn && !scrollBtn.classList.contains('show')) {
+                scrollBtn.classList.add('show');
+            }
+        }
+
+        function hideScrollToBottomHint() {
+            const scrollBtn = document.getElementById('scrollToBottomBtn');
+            if (scrollBtn && scrollBtn.classList.contains('show')) {
+                scrollBtn.classList.remove('show');
+            }
+            hideNewMessageIndicator(); // 同时隐藏新消息提示
+        }
+
+        function showNewMessageIndicator() {
+            if (!autoScrollEnabled) {
+                newMessageCount++;
+                const indicator = document.getElementById('newMessageIndicator');
+                const countSpan = document.getElementById('newMessageCount');
+                if (indicator && countSpan) {
+                    countSpan.textContent = newMessageCount;
+                    indicator.classList.add('show');
+                }
+            }
+        }
+
+        function hideNewMessageIndicator() {
+            newMessageCount = 0;
+            const indicator = document.getElementById('newMessageIndicator');
+            if (indicator && indicator.classList.contains('show')) {
+                indicator.classList.remove('show');
+            }
+        }
+
+        // 更新自动滚动状态指示器
+        function updateAutoScrollIndicator() {
+            if (autoScrollIndicator) {
+                if (autoScrollEnabled) {
+                    autoScrollIndicator.classList.remove('disabled');
+                    autoScrollIndicator.innerHTML = `<i class="fas fa-arrow-down"></i><span>${I18N.auto_scroll}</span>`;
+                } else {
+                    autoScrollIndicator.classList.add('disabled');
+                    autoScrollIndicator.innerHTML = `<i class="fas fa-pause"></i><span>${I18N.paused}</span>`;
+                }
+                console.log(`🔄 Auto-scroll status updated: ${autoScrollEnabled ? 'ENABLED' : 'DISABLED'}`);
+            }
+        }
+
+        // 滚动到底部功能
+        function scrollToBottom(smooth = true) {
+            if (smooth) {
+                chatMessages.scrollTo({
+                    top: chatMessages.scrollHeight,
+                    behavior: 'smooth'
+                });
+            } else {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            autoScrollEnabled = true;
+            updateAutoScrollIndicator();
+            hideScrollToBottomHint();
+        }
+
+        // 绑定滚动到底部按钮事件
+        document.getElementById('scrollToBottomBtn').addEventListener('click', () => {
+            scrollToBottom(true);
+        });
+
+        // 绑定新消息提示点击事件
+        document.getElementById('newMessageIndicator').addEventListener('click', () => {
+            scrollToBottom(true);
+        });
+
+        // 目录管理
+        function refreshDirectories() {
+            // 保存当前展开状态
+            const currentExpanded = new Set(expandedDirectories);
+            
+            sidebarLoading.classList.add('show');
+            directoryList.innerHTML = '';
+            
+            fetch('/api/output-dirs')
+                .then(response => response.json())
+                .then(data => {
+                    sidebarLoading.classList.remove('show');
+                    
+                    if (data.success) {
+                        // 恢复展开状态
+                        expandedDirectories = currentExpanded;
+                        renderDirectories(data.directories);
+                    } else {
+                        directoryList.innerHTML = `
+                            <div class="message error">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                ${I18N.load_directory_failed}: ${data.error}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    sidebarLoading.classList.remove('show');
+                    directoryList.innerHTML = `
+                        <div class="message error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            ${I18N.network_error}: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        function renderDirectories(directories) {
+            if (directories.length === 0) {
+                directoryList.innerHTML = `
+                    <div class="message system">
+                        <i class="fas fa-folder-open"></i>
+                        暂无工作目录（包含workspace子目录的目录）
+                    </div>
+                `;
+                return;
+            }
+
+            directoryList.innerHTML = directories.map(dir => {
+                let classes = ['directory-item'];
+                let statusText = '';
+                
+                if (dir.is_current) {
+                    classes.push('current');
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(当前执行)</span>';
+                }
+                if (dir.is_selected) {
+                    classes.push('selected');
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(已选择)</span>';
+                }
+                if (dir.is_last && !dir.is_current && !dir.is_selected) {
+                    classes.push('last');
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(上次使用)</span>';
+                }
+                
+                // 检查是否应该展开
+                const isExpanded = expandedDirectories.has(dir.name);
+                if (isExpanded) {
+                    classes.push('expanded');
+                }
+                
+                return `
+                    <div class="${classes.join(' ')}" data-dir="${dir.name}">
+                        <div class="directory-header">
+                            <div class="directory-name" onclick="selectDirectory('${dir.name}')">
+                                <i class="fas fa-folder"></i>
+                                ${dir.name}
+                                ${statusText}
+                            </div>
+                            <div class="directory-actions">
+                                <button class="action-btn" onclick="return toggleDirectory('${dir.name}', event)" title="展开/收起">
+                                    <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
+                                </button>
+                                <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="上传文件到Workspace">
+                                    <i class="fas fa-upload"></i>
+                                </button>
+                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除workspace_code_index）">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="action-btn rename-btn" onclick="event.stopPropagation(); showRenameDialog('${dir.name}')" title="重命名目录">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteDirectory('${dir.name}')" title="删除目录">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="directory-info" onclick="selectDirectory('${dir.name}')">
+                            <div><i class="fas fa-clock"></i> ${dir.modified_time}</div>
+                            <div><i class="fas fa-hdd"></i> ${dir.size}</div>
+                        </div>
+                        <div class="file-tree ${isExpanded ? 'show' : ''}" id="tree-${dir.name}">
+                            ${renderFileTree(dir.files, dir.name)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderFileTree(files, dirName, indent = 0) {
+            return files.map(file => {
+                const icon = file.type === 'directory' ? 'fas fa-folder' : getFileIcon(file.name);
+                const className = file.type === 'directory' ? 'file-item directory' : 'file-item';
+                const sizeInfo = file.size ? ` (${file.size})` : '';
+                const isPreviewable = file.type === 'file' && isFilePreviewable(file.name);
+                const previewClass = isPreviewable ? ' previewable' : '';
+                
+                // 检查是否在特定目录下，如果是则添加灰色样式
+                const isInSpecialDir = file.path && (
+                    file.path.includes('/web_search_result/') || 
+                    file.path.includes('/workspace_code_index/') ||
+                    file.path.includes('\\web_search_result\\') || 
+                    file.path.includes('\\workspace_code_index\\')
+                );
+                const grayedClass = (file.type === 'file' && isInSpecialDir) ? ' grayed' : '';
+                
+                // 构造文件路径 - 后端现在返回相对路径
+                let relativePath = '';
+                if (file.path) {
+                    // 直接使用后端返回的相对路径
+                    relativePath = file.path;
+                } else {
+                    // 如果没有路径，构造路径
+                    relativePath = `${dirName}/${file.name}`;
+                }
+                
+                // 为子文件夹生成唯一ID
+                const subDirId = `${dirName}-${file.name}`;
+                const hasChildren = file.children && file.children.length > 0;
+                // 子文件夹默认展开，只有在collapsedSubDirectories中的才收起
+                const isSubDirExpanded = !collapsedSubDirectories.has(subDirId);
+                
+                let html = '';
+                
+                if (file.type === 'directory' && hasChildren) {
+                    // 子文件夹：带展开/收起功能
+                    html = `
+                        <div class="file-item directory" style="margin-left: ${indent * 20}px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
+                                 onclick="toggleSubDirectory('${subDirId}', event)">
+                                <i class="${icon}"></i>
+                                ${file.name}${sizeInfo}
+                            </div>
+                            <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
+                                    style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px; margin-right: 10px;">
+                                <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 12px;"></i>
+                            </button>
+                        </div>
+                        <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
+                            ${renderFileTree(file.children, dirName, indent + 1)}
+                        </div>
+                    `;
+                } else if (file.type === 'directory') {
+                    // 空文件夹
+                    html = `
+                        <div class="${className}" style="margin-left: ${indent * 20}px">
+                            <i class="${icon}"></i>
+                            ${file.name}${sizeInfo}
+                        </div>
+                    `;
+                } else {
+                    // 文件
+                    html = `
+                        <div class="${className}${previewClass}${grayedClass}" style="margin-left: ${indent * 20}px" 
+                             ${isPreviewable ? `onclick="previewFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')"` : ''}>
+                            <i class="${icon}"></i>
+                            ${file.name}${sizeInfo}
+                        </div>
+                    `;
+                }
+                
+                return html;
+            }).join('');
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const iconMap = {
+                'html': 'fab fa-html5',
+                'htm': 'fab fa-html5',
+                'css': 'fab fa-css3-alt',
+                'js': 'fab fa-js-square',
+                'py': 'fab fa-python',
+                'md': 'fab fa-markdown',
+                'json': 'fas fa-code',
+                'txt': 'fas fa-file-alt',
+                'log': 'fas fa-file-alt',
+                'yaml': 'fas fa-code',
+                'yml': 'fas fa-code'
+            };
+            return iconMap[ext] || 'fas fa-file';
+        }
+
+        function isFilePreviewable(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['html', 'htm', 'md', 'markdown', 'py', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 
+                    'txt', 'log', 'yaml', 'yml', 'pdf', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 
+                    'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 
+                    'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl', 
+                    'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg', 
+                    'conf', 'toml', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'].includes(ext);
+        }
+
+        function toggleDirectory(dirName, event) {
+            // 阻止事件冒泡
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            
+            console.log(`🔄 Toggle directory: ${dirName}`);
+            console.log(`🔍 Event details:`, event);
+            
+            // 获取DOM元素
+            const tree = document.getElementById(`tree-${dirName}`);
+            const button = document.querySelector(`[data-dir="${dirName}"] .directory-actions button[title="展开/收起"]`);
+            const icon = button ? button.querySelector('i') : null;
+            
+            console.log(`🔍 DOM elements:`, {
+                tree: tree,
+                treeId: `tree-${dirName}`,
+                button: button,
+                icon: icon,
+                treeClasses: tree ? tree.className : 'null',
+                treeStyle: tree ? tree.style.cssText : 'null'
+            });
+            
+            if (!tree) {
+                console.error(`❌ Tree element not found: tree-${dirName}`);
+                // 尝试查找所有可能的tree元素
+                const allTrees = document.querySelectorAll('[id^="tree-"]');
+                console.log(`🔍 All tree elements found:`, Array.from(allTrees).map(t => t.id));
+                return false;
+            }
+            
+            // 检查当前状态
+            const isCurrentlyExpanded = tree.classList.contains('show');
+            console.log(`📊 Current state: ${dirName} expanded = ${isCurrentlyExpanded}`);
+            console.log(`📊 Tree computed style:`, window.getComputedStyle(tree).display);
+            
+            if (isCurrentlyExpanded) {
+                // 收起
+                tree.classList.remove('show');
+                expandedDirectories.delete(dirName);
+                if (icon) {
+                    icon.className = 'fas fa-chevron-down';
+                }
+                console.log(`📥 Collapsed: ${dirName}`);
+                console.log(`📥 After collapse - display:`, window.getComputedStyle(tree).display);
+            } else {
+                // 展开
+                tree.classList.add('show');
+                expandedDirectories.add(dirName);
+                if (icon) {
+                    icon.className = 'fas fa-chevron-up';
+                }
+                console.log(`📤 Expanded: ${dirName}`);
+                console.log(`📤 After expand - display:`, window.getComputedStyle(tree).display);
+            }
+            
+            console.log(`✅ Toggle complete. Tree classes: ${tree.className}`);
+            console.log(`✅ Expanded dirs: [${Array.from(expandedDirectories).join(', ')}]`);
+            return false;
+        }
+
+        function toggleSubDirectory(subDirId, event) {
+            // 阻止事件冒泡
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            
+            console.log(`🔄 Toggle sub-directory: ${subDirId}`);
+            
+            // 获取DOM元素
+            const subTree = document.getElementById(`subtree-${subDirId}`);
+            const button = event.target.closest('.sub-folder-toggle');
+            const icon = button ? button.querySelector('i') : null;
+            
+            console.log(`🔍 Sub-directory DOM elements:`, {
+                subTree: subTree,
+                subTreeId: `subtree-${subDirId}`,
+                button: button,
+                icon: icon,
+                subTreeClasses: subTree ? subTree.className : 'null'
+            });
+            
+            if (!subTree) {
+                console.error(`❌ Sub-tree element not found: subtree-${subDirId}`);
+                return false;
+            }
+            
+            // 检查当前状态
+            const isCurrentlyExpanded = subTree.classList.contains('show');
+            console.log(`📊 Sub-directory current state: ${subDirId} expanded = ${isCurrentlyExpanded}`);
+            
+            if (isCurrentlyExpanded) {
+                // 收起子文件夹
+                subTree.classList.remove('show');
+                collapsedSubDirectories.add(subDirId);
+                if (icon) {
+                    icon.className = 'fas fa-chevron-down';
+                }
+                console.log(`📥 Collapsed sub-directory: ${subDirId}`);
+            } else {
+                // 展开子文件夹
+                subTree.classList.add('show');
+                collapsedSubDirectories.delete(subDirId);
+                if (icon) {
+                    icon.className = 'fas fa-chevron-up';
+                }
+                console.log(`📤 Expanded sub-directory: ${subDirId}`);
+            }
+            
+            console.log(`✅ Sub-directory toggle complete. Classes: ${subTree.className}`);
+            console.log(`✅ Collapsed sub-dirs: [${Array.from(collapsedSubDirectories).join(', ')}]`);
+            return false;
+        }
+
+        function downloadDirectory(dirName) {
+            const link = document.createElement('a');
+            link.href = `/api/download/${dirName}`;
+            link.download = `${dirName}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+
+
+        function confirmDeleteDirectory(dirName) {
+            const isCurrentDir = document.querySelector(`[data-dir="${dirName}"]`).classList.contains('current');
+            const isSelectedDir = document.querySelector(`[data-dir="${dirName}"]`).classList.contains('selected');
+            
+            let warningMessage = `确定要删除目录 "${dirName}" 吗？\n\n此操作不可撤销，将永久删除该目录及其所有内容。`;
+            
+            if (isCurrentDir) {
+                warningMessage += '\n\n⚠️ 警告：这是当前正在执行的目录！';
+            }
+            if (isSelectedDir) {
+                warningMessage += '\n\n⚠️ 警告：这是当前选择的目录！';
+            }
+            
+            if (confirm(warningMessage)) {
+                deleteDirectory(dirName);
+            }
+        }
+
+        function deleteDirectory(dirName) {
+            console.log(`🗑️ Deleting directory: ${dirName}`);
+            
+            // 显示删除中状态
+            const dirElement = document.querySelector(`[data-dir="${dirName}"]`);
+            if (dirElement) {
+                dirElement.style.opacity = '0.5';
+                dirElement.style.pointerEvents = 'none';
+                
+                // 在目录名后添加删除中提示
+                const nameElement = dirElement.querySelector('.directory-name');
+                if (nameElement && !nameElement.querySelector('.deleting-indicator')) {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'deleting-indicator';
+                    indicator.style.cssText = 'color: #ff6b6b; font-size: 0.8em; margin-left: 8px;';
+                    indicator.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.deleting}`;
+                    nameElement.appendChild(indicator);
+                }
+            }
+            
+            fetch(`/api/delete-directory/${dirName}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('🗑️ Delete response:', data);
+                if (data.success) {
+                    console.log(`✅ Directory deleted successfully: ${dirName}`);
+                    // 从DOM中移除目录元素
+                    if (dirElement) {
+                        dirElement.remove();
+                    }
+                    // 清理相关状态
+                    expandedDirectories.delete(dirName);
+                    // 清理子目录状态
+                    Array.from(collapsedSubDirectories).forEach(subDirId => {
+                        if (subDirId.startsWith(dirName + '-')) {
+                            collapsedSubDirectories.delete(subDirId);
+                        }
+                    });
+                    // 如果删除的是当前选择的目录，清理状态
+                    if (selectedDirectory === dirName) {
+                        selectedDirectory = null;
+                        taskMode = 'continue';
+                        updateTaskModeInfo();
+                    }
+                    
+                    alert(`目录 "${dirName}" 已成功删除`);
+                } else {
+                    console.error('❌ Delete failed:', data.error);
+                    alert(`删除失败: ${data.error}`);
+                    // 恢复目录元素状态
+                    if (dirElement) {
+                        dirElement.style.opacity = '1';
+                        dirElement.style.pointerEvents = 'auto';
+                        const indicator = dirElement.querySelector('.deleting-indicator');
+                        if (indicator) {
+                            indicator.remove();
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('❌ Delete error:', error);
+                alert(`删除出错: ${error.message}`);
+                // 恢复目录元素状态
+                if (dirElement) {
+                    dirElement.style.opacity = '1';
+                    dirElement.style.pointerEvents = 'auto';
+                    const indicator = dirElement.querySelector('.deleting-indicator');
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            });
+        }
+
+        // 文件预览功能
+        function previewFile(filePath, fileName) {
+            console.log('🔍 Preview file called with:', filePath, fileName);
+            console.log('🔍 Preview modal elements:', {
+                previewModal: previewModal,
+                previewTitle: previewTitle,
+                previewContent: previewContent
+            });
+            
+            if (!previewModal || !previewTitle || !previewContent) {
+                console.error('❌ Preview modal elements not found');
+                return;
+            }
+            
+            // 存储当前文件路径，用于Office预览返回功能
+            currentFilePath = filePath;
+            
+            previewTitle.textContent = `${I18N.preview}: ${fileName}`;
+            previewContent.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ${I18N.loading}</div>`;
+            previewModal.style.display = 'block';
+            
+            console.log('🔍 Making API request to:', `/api/file/${filePath}`);
+
+            fetch(`/api/file/${filePath}`)
+                .then(response => {
+                    console.log('🔍 API response status:', response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('🔍 Preview response data:', data);
+                    if (data.success) {
+                        displayFileContent(data, fileName);
+                    } else {
+                        console.error('❌ Preview failed:', data.error);
+                        previewContent.innerHTML = `<div style="color: red; text-align: center; padding: 20px;">
+                            <i class="fas fa-exclamation-triangle"></i> 
+                            预览失败: ${data.error}
+                        </div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Preview error:', error);
+                    previewContent.innerHTML = `<div style="color: red; text-align: center; padding: 20px;">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        ${I18N.network_error}: ${error.message}
+                    </div>`;
+                });
+        }
+
+        function displayFileContent(data, fileName) {
+            const { content, type, language, size, file_path } = data;
+            
+            if (type === 'html') {
+                // 处理转义字符，然后转义引号
+                const processedContent = processFileContent(content).replace(/"/g, '&quot;');
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: HTML
+                    </div>
+                    <iframe srcdoc="${processedContent}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
+                `;
+            } else if (type === 'markdown') {
+                // 处理转义字符
+                const processedContent = processFileContent(content);
+                const htmlContent = marked.parse(processedContent);
+                previewContent.innerHTML = `
+                    <div style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #9cdcfe;">
+                        文件大小: ${size} | 类型: Markdown
+                    </div>
+                    <div style="background: #1e1e1e; color: #cccccc; padding: 20px; border-radius: 5px; line-height: 1.6; max-height: calc(90vh - 160px); overflow-y: auto;">
+                        ${htmlContent}
+                    </div>
+                `;
+            } else if (type === 'pdf') {
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: PDF
+                    </div>
+                    <div id="pdfContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
+                        <div style="text-align: center; padding: 20px;">
+                            <i class="fas fa-spinner fa-spin"></i> 正在加载PDF...
+                        </div>
+                    </div>
+                `;
+                loadPDF(file_path);
+            } else if (type === 'office') {
+                const { file_ext } = data;
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: ${file_ext.toUpperCase()} Office文档
+                    </div>
+                    <div id="officeContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
+                            <h3 style="margin-bottom: 20px;">Office文档预览</h3>
+                            <p style="margin-bottom: 20px;">选择以下方式预览Office文档：</p>
+                            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                                <button onclick="previewOfficeCloud('${file_path}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                    <i class="fas fa-cloud-upload-alt"></i> 云存储预览
+                                </button>
+                                <a href="/api/download-file/${file_path}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                                    <i class="fas fa-download"></i> 下载文件
+                                </a>
+                            </div>
+                            <div style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; text-align: left; max-width: 600px;">
+                                <h4 style="color: #856404; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> 预览说明</h4>
+                                <ul style="color: #856404; margin: 0; padding-left: 20px;">
+                                    <li><strong>云存储预览</strong>: 先上传到云存储，再使用在线预览服务</li>
+                                    <li><strong>下载文件</strong>: 下载到本地使用Office软件打开</li>
+                                </ul>
+                                <div style="margin-top: 15px; padding: 10px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 3px;">
+                                    <small><i class="fas fa-lightbulb"></i> <strong>提示</strong>: 如果某个预览服务无法正常工作，请尝试其他选项。不同服务对文档格式的支持程度可能不同。</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (type === 'csv') {
+                // CSV文件表格预览
+                const { headers, data: csvRows, total_rows, displayed_rows, truncated, encoding } = data;
+                
+                // 创建表格HTML
+                let tableHtml = '<table id="csvTable" style="width: 100%; border-collapse: collapse; background: white; font-size: 13px; color: #333;">';
+                
+                // 表头
+                if (headers && headers.length > 0) {
+                    tableHtml += '<thead><tr style="background: #f8f9fa; position: sticky; top: 0; z-index: 10;">';
+                    headers.forEach((header, index) => {
+                        const escapedHeader = escapeHtml(header || `列${index + 1}`);
+                        tableHtml += `<th onclick="sortCSVTable(${index})" style="border: 1px solid #dee2e6; padding: 12px 8px; text-align: left; font-weight: 600; cursor: pointer; user-select: none; position: relative; min-width: 120px; color: #333;" title="点击排序">${escapedHeader}<span style="margin-left: 5px; color: #6c757d;">⇅</span></th>`;
+                    });
+                    tableHtml += '</tr></thead>';
+                }
+                
+                // 表格数据
+                tableHtml += '<tbody id="csvTableBody">';
+                if (csvRows && csvRows.length > 0) {
+                    csvRows.forEach((row, rowIndex) => {
+                        const rowStyle = rowIndex % 2 === 0 ? 'background: #ffffff;' : 'background: #f8f9fa;';
+                        tableHtml += `<tr style="${rowStyle}">`;
+                        
+                        // 确保每行都有足够的列
+                        const maxCols = Math.max(headers.length, row.length);
+                        for (let i = 0; i < maxCols; i++) {
+                            const cellValue = row[i] || '';
+                            const escapedValue = escapeHtml(cellValue);
+                            tableHtml += `<td style="border: 1px solid #dee2e6; padding: 8px; vertical-align: top; word-break: break-word; max-width: 300px; color: #333;" title="${escapedValue}">${escapedValue}</td>`;
+                        }
+                        tableHtml += '</tr>';
+                    });
+                } else {
+                    tableHtml += `<tr><td colspan="${headers.length}" style="text-align: center; padding: 40px; color: #6c757d; font-style: italic;">暂无数据</td></tr>`;
+                }
+                tableHtml += '</tbody></table>';
+                
+                // 创建搜索和工具栏
+                const searchHtml = `
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px 5px 0 0; border-bottom: 1px solid #dee2e6; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <input type="text" id="csvSearchInput" placeholder="搜索表格内容..." 
+                                style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;"
+                                oninput="filterCSVTable()">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <button onclick="exportCSVTable()" style="padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-download"></i> 导出
+                            </button>
+                            <span style="font-size: 12px; color: #6c757d;">
+                                显示 ${displayed_rows}/${total_rows} 行
+                                ${truncated ? '(已截断)' : ''}
+                                ${encoding ? `| 编码: ${encoding.toUpperCase()}` : ''}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: CSV表格 | 总行数: ${total_rows} | 列数: ${headers.length}
+                        ${truncated ? ' | ⚠️ 大文件已截断显示' : ''}
+                    </div>
+                    <div style="border: 1px solid #dee2e6; border-radius: 5px; overflow: hidden; max-height: calc(90vh - 160px); display: flex; flex-direction: column;">
+                        ${searchHtml}
+                        <div style="flex: 1; overflow: auto;">
+                            ${tableHtml}
+                        </div>
+                    </div>
+                `;
+                
+                // 存储原始数据用于搜索和排序
+                window.csvData = {
+                    headers: headers,
+                    originalData: csvRows,
+                    currentData: csvRows,
+                    sortColumn: -1,
+                    sortDirection: 'asc'
+                };
+                
+            } else if (type === 'code') {
+                // 特殊处理txt和log文件，提供更好的阅读体验
+                if (language === 'text' || language === 'log') {
+                    // 先处理转义字符，再进行HTML转义
+                    const processedContent = escapeHtml(processFileContent(content));
+                    previewContent.innerHTML = `
+                        <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                            文件大小: ${size} | 类型: ${language.toUpperCase()}
+                        </div>
+                        <div style="background: #1e1e1e; color: #cccccc; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px);">${processedContent}</div>
+                    `;
+                } else {
+                    // 使用Prism.js进行语法高亮
+                    // 先处理转义字符，再进行HTML转义
+                    const processedContent = escapeHtml(processFileContent(content));
+                    previewContent.innerHTML = `
+                        <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                            文件大小: ${size} | 语言: ${language}
+                        </div>
+                        <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
+                            <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4;"><code class="language-${language}">${processedContent}</code></pre>
+                        </div>
+                    `;
+                    
+                    // 触发Prism.js语法高亮
+                    setTimeout(() => {
+                        if (typeof Prism !== 'undefined') {
+                            Prism.highlightAll();
+                        }
+                    }, 100);
+                }
+            }
+        }
+
+        function loadPDF(filePath) {
+            if (typeof pdfjsLib === 'undefined') {
+                document.getElementById('pdfContainer').innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: red;">
+                        <i class="fas fa-exclamation-triangle"></i> PDF.js 未加载，无法预览PDF文件
+                    </div>
+                `;
+                return;
+            }
+
+            const pdfUrl = `/api/pdf/${filePath}`;
+            
+            pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {
+                const container = document.getElementById('pdfContainer');
+                container.innerHTML = '';
+                
+                // 创建页面导航
+                const nav = document.createElement('div');
+                nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;';
+                nav.innerHTML = `
+                    <button onclick="previousPage()" style="margin-right: 10px; padding: 5px 10px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">上一页</button>
+                    <span id="pageInfo">第 1 页，共 ${pdf.numPages} 页</span>
+                    <button onclick="nextPage()" style="margin-left: 10px; padding: 5px 10px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">下一页</button>
+                    <a href="/api/download-file/${filePath}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;">
+                        <i class="fas fa-download"></i> 下载PDF
+                    </a>
+                `;
+                container.appendChild(nav);
+                
+                // 创建页面容器
+                const pagesContainer = document.createElement('div');
+                pagesContainer.id = 'pdfPages';
+                pagesContainer.style.cssText = 'padding: 20px; text-align: center;';
+                container.appendChild(pagesContainer);
+                
+                // 存储PDF对象和当前页码
+                window.currentPDF = pdf;
+                window.currentPage = 1;
+                
+                // 渲染第一页
+                renderPDFPage(1);
+                
+            }).catch(function(error) {
+                console.error('PDF加载失败:', error);
+                document.getElementById('pdfContainer').innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: red;">
+                        <i class="fas fa-exclamation-triangle"></i> PDF加载失败: ${error.message}
+                    </div>
+                `;
+            });
+        }
+
+        function renderPDFPage(pageNum) {
+            if (!window.currentPDF) return;
+            
+            window.currentPDF.getPage(pageNum).then(function(page) {
+                const scale = 1.5;
+                const viewport = page.getViewport({ scale: scale });
+                
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                canvas.style.cssText = 'max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px;';
+                
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                
+                const pagesContainer = document.getElementById('pdfPages');
+                pagesContainer.innerHTML = '';
+                pagesContainer.appendChild(canvas);
+                
+                page.render(renderContext);
+                
+                // 更新页面信息
+                document.getElementById('pageInfo').textContent = I18N.page_info.replace('{0}', pageNum).replace('{1}', window.currentPDF.numPages);
+            });
+        }
+
+        function previousPage() {
+            if (window.currentPage > 1) {
+                window.currentPage--;
+                renderPDFPage(window.currentPage);
+            }
+        }
+
+        function nextPage() {
+            if (window.currentPage < window.currentPDF.numPages) {
+                window.currentPage++;
+                renderPDFPage(window.currentPage);
+            }
+        }
+
+        // Office文档预览函数
+        function previewOfficeCloud(filePath) {
+            // 云存储预览 - 先上传到云存储，再使用在线预览服务
+            const container = document.getElementById('officeContainer');
+            
+            // 显示上传进度
+            container.innerHTML = `
+                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                    <span>云存储预览</span>
+                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                </div>
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <div style="margin-bottom: 20px;">
+                        <i class="fas fa-cloud-upload-alt fa-spin" style="font-size: 48px; color: #28a745;"></i>
+                    </div>
+                    <h3 style="margin-bottom: 20px;">正在上传文件到云存储...</h3>
+                    <p style="margin-bottom: 20px; color: #666;">请稍候，文件上传完成后将自动开始预览</p>
+                    <div style="background: #e9ecef; border-radius: 10px; height: 20px; overflow: hidden; margin: 20px auto; max-width: 400px;">
+                        <div id="uploadProgress" style="background: #28a745; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                    <div id="uploadStatus" style="font-size: 14px; color: #666;">准备上传...</div>
+                </div>
+            `;
+            
+            // 模拟进度条
+            let progress = 0;
+            const progressBar = document.getElementById('uploadProgress');
+            const statusText = document.getElementById('uploadStatus');
+            
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+                statusText.textContent = `上传进度: ${Math.round(progress)}%`;
+            }, 200);
+            
+            // 上传文件到云存储
+            fetch(`/api/upload-to-cloud/${filePath}`)
+                .then(response => response.json())
+                .then(data => {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    statusText.textContent = '上传完成！';
+                    
+                    if (data.success) {
+                        // 上传成功，使用云URL进行预览
+                        setTimeout(() => {
+                            const cloudUrl = data.cloud_url;
+                            const serviceName = data.service;
+                            const expires = data.expires;
+                            
+                            // 选择合适的预览服务
+                            let previewUrl;
+                            if (serviceName === 'Local Test') {
+                                // 本地测试模式：显示提示信息而不是预览
+                                container.innerHTML = `
+                                    <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                                        <span>云存储预览 (${serviceName}) - ${expires}</span>
+                                        <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                                    </div>
+                                    <div style="text-align: center; padding: 40px; color: #666;">
+                                        <i class="fas fa-check-circle" style="font-size: 48px; margin-bottom: 20px; color: #28a745;"></i>
+                                        <h3 style="margin-bottom: 20px; color: #28a745;">云存储上传成功！</h3>
+                                        <p style="margin-bottom: 20px;">文件已成功"上传"到本地测试服务</p>
+                                        <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; margin: 20px auto; border-radius: 5px; max-width: 600px; text-align: left;">
+                                            <h4 style="margin-bottom: 15px;"><i class="fas fa-info-circle"></i> 测试模式说明</h4>
+                                            <ul style="margin: 0; padding-left: 20px;">
+                                                <li><strong>当前为本地测试模式</strong>：模拟云存储上传成功</li>
+                                                <li><strong>实际部署时</strong>：文件会上传到真实的云存储服务</li>
+                                                <li><strong>预览功能</strong>：云存储的文件可以通过Google Docs等服务预览</li>
+                                                <li><strong>网络要求</strong>：需要外网访问才能使用在线预览服务</li>
+                                            </ul>
+                                        </div>
+                                        <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; margin-top: 30px;">
+                                            <a href="${cloudUrl}" target="_blank" style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                                                <i class="fas fa-external-link-alt"></i> 在新窗口中打开文件
+                                            </a>
+                                            <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                                <i class="fas fa-arrow-left"></i> 返回重新选择
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                                return; // 直接返回，不继续执行iframe预览逻辑
+                            } else if (serviceName === 'File.io' || serviceName === '0x0.st' || serviceName === 'tmpfiles.org') {
+                                // 使用WPS在线预览云存储的文件
+                                previewUrl = `https://wwo.wps.cn/office/w?url=${encodeURIComponent(cloudUrl)}`;
+                            } else {
+                                previewUrl = cloudUrl;
+                            }
+                            
+                            container.innerHTML = `
+                                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                                    <span>WPS云预览 (${serviceName}) - 有效期: ${expires}</span>
+                                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                                </div>
+                                <iframe src="${previewUrl}" style="width: 100%; height: calc(100% - 50px); border: none;" frameborder="0" onload="handleCloudPreviewLoad(this)" onerror="handleCloudPreviewError(this, '${serviceName}')">
+                                    <div style="text-align: center; padding: 20px; color: red;">
+                                        <i class="fas fa-exclamation-triangle"></i> 
+                                        您的浏览器不支持iframe，无法预览Office文档
+                                    </div>
+                                </iframe>
+                                <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 10px; margin: 10px; border-radius: 5px; font-size: 12px;">
+                                    <i class="fas fa-info-circle"></i> 
+                                    <strong>云存储信息:</strong> 文件已上传到 ${serviceName}，使用WPS在线预览，链接有效期为 ${expires}。
+                                    <a href="${cloudUrl}" target="_blank" style="color: #155724; margin-left: 10px;">
+                                        <i class="fas fa-external-link-alt"></i> 直接访问云文件
+                                    </a>
+                                </div>
+                            `;
+                        }, 1000);
+                    } else {
+                        // 上传失败
+                        container.innerHTML = `
+                            <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                                <span>云存储预览</span>
+                                <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                            </div>
+                            <div style="text-align: center; padding: 40px; color: #666;">
+                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
+                                <h3 style="margin-bottom: 20px; color: #dc3545;">云存储上传失败</h3>
+                                <p style="margin-bottom: 20px;">错误信息: ${data.error}</p>
+                                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                                    <button onclick="previewOfficeCloud('${filePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                        <i class="fas fa-redo"></i> 重试上传
+                                    </button>
+                                    <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                        <i class="fas fa-arrow-left"></i> 返回重新选择
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    clearInterval(progressInterval);
+                    console.error('云存储上传失败:', error);
+                    container.innerHTML = `
+                        <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                            <span>云存储预览</span>
+                            <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                        </div>
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
+                            <h3 style="margin-bottom: 20px; color: #dc3545;">网络错误</h3>
+                            <p style="margin-bottom: 20px;">无法连接到云存储服务，请检查网络连接</p>
+                            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                                <button onclick="previewOfficeCloud('${filePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                    <i class="fas fa-redo"></i> 重试上传
+                                </button>
+                                <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                    <i class="fas fa-arrow-left"></i> 返回重新选择
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+        }
+
+
+
+        // 重置Office预览界面
+        function resetOfficePreview() {
+            const container = document.getElementById('officeContainer');
+            if (container) {
+                // 重新显示选择界面
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
+                        <h3 style="margin-bottom: 20px;">Office文档预览</h3>
+                        <p style="margin-bottom: 20px;">选择以下方式预览Office文档：</p>
+                        <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                            <button onclick="previewOfficeCloud('${currentFilePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                                <i class="fas fa-cloud-upload-alt"></i> 云存储预览
+                            </button>
+                            <a href="/api/download-file/${currentFilePath}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                                <i class="fas fa-download"></i> 下载文件
+                            </a>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // 处理云预览加载成功
+        function handleCloudPreviewLoad(iframe) {
+            console.log('✅ Cloud preview loaded successfully');
+            // 可以在这里添加加载成功的处理逻辑
+        }
+
+        // 处理云预览加载错误
+        function handleCloudPreviewError(iframe, serviceName) {
+            console.error(`❌ Cloud preview (${serviceName}) failed to load`);
+            const container = iframe.parentElement;
+            container.innerHTML = `
+                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                    <span>云存储预览</span>
+                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                </div>
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
+                    <h3 style="margin-bottom: 20px; color: #dc3545;">云预览失败</h3>
+                    <p style="margin-bottom: 20px;">文件已成功上传到 ${serviceName}，但预览服务无法加载</p>
+                    <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                        <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
+                            <i class="fas fa-arrow-left"></i> 返回重新选择
+                        </button>
+                        <a href="/api/download-file/${currentFilePath}" download style="padding: 12px 24px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                            <i class="fas fa-download"></i> 下载文件
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 存储当前文件路径，用于返回时重新构建界面
+        let currentFilePath = '';
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 处理文件内容中的转义字符
+        function processFileContent(content) {
+            return content
+                .replace(/\\n/g, '\n')      // 换行符
+                .replace(/\\t/g, '\t')      // 制表符
+                .replace(/\\r/g, '\r')      // 回车符
+                .replace(/\\\\/g, '\\');    // 反斜杠
+        }
+
+        // 关闭预览模态框
+        previewClose.onclick = function() {
+            previewModal.style.display = 'none';
+        }
+
+
+
+        // 重命名功能
+        const renameModal = document.getElementById('renameModal');
+        const renameClose = document.getElementById('renameClose');
+        const currentDirName = document.getElementById('currentDirName');
+        const newDirName = document.getElementById('newDirName');
+        const renameConfirm = document.getElementById('renameConfirm');
+        const renameCancel = document.getElementById('renameCancel');
+        
+        let currentRenamingDir = null;
+
+        function showRenameDialog(dirName) {
+            currentRenamingDir = dirName;
+            currentDirName.textContent = dirName;
+            newDirName.value = dirName; // 直接使用原名称，不做任何处理
+            newDirName.focus();
+            newDirName.select();
+            renameModal.style.display = 'block';
+        }
+
+        function hideRenameDialog() {
+            renameModal.style.display = 'none';
+            currentRenamingDir = null;
+            newDirName.value = '';
+        }
+
+        function performRename() {
+            if (!currentRenamingDir) return;
+            
+            const newName = newDirName.value.trim();
+            if (!newName) {
+                alert('请输入新的目录名称');
+                return;
+            }
+            
+            // 显示加载状态
+            renameConfirm.disabled = true;
+            renameConfirm.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.renaming}`;
+            
+            fetch(`/api/rename-directory/${encodeURIComponent(currentRenamingDir)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    new_name: newName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addMessage(data.message, 'success');
+                    
+                    // 更新前端状态
+                    if (selectedDirectory === currentRenamingDir) {
+                        selectedDirectory = data.new_name;
+                        updateTaskModeInfo();
+                    }
+                    
+                    // 刷新目录列表
+                    refreshDirectories();
+                    hideRenameDialog();
+                } else {
+                    addMessage(`${I18N.rename_failed}: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Rename error:', error);
+                addMessage(`${I18N.rename_error}: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                renameConfirm.disabled = false;
+                renameConfirm.innerHTML = `<i class="fas fa-check"></i> ${I18N.confirm_rename}`;
+            });
+        }
+
+        // 重命名事件监听
+        renameConfirm.onclick = performRename;
+        renameCancel.onclick = hideRenameDialog;
+        renameClose.onclick = hideRenameDialog;
+
+        newDirName.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performRename();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                hideRenameDialog();
+            }
+        });
+
+        window.onclick = function(event) {
+            if (event.target === previewModal) {
+                previewModal.style.display = 'none';
+            }
+            if (event.target === uploadModal) {
+                uploadModal.style.display = 'none';
+            }
+
+            if (event.target === renameModal) {
+                hideRenameDialog();
+            }
+        }
+
+        // 键盘快捷键
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+R 或 F5 刷新目录
+            if ((e.ctrlKey && e.key === 'r') || e.key === 'F5') {
+                e.preventDefault();
+                manualRefresh();
+            }
+            
+            // Esc 键关闭预览模态框
+            if (e.key === 'Escape' && previewModal.style.display === 'block') {
+                previewModal.style.display = 'none';
+            }
+            
+            // End 键滚动到底部
+            if (e.key === 'End' && e.target === chatMessages) {
+                e.preventDefault();
+                scrollToBottom(true);
+            }
+            
+            // Ctrl+End 强制滚动到底部并启用自动滚动
+            if (e.ctrlKey && e.key === 'End') {
+                e.preventDefault();
+                scrollToBottom(true);
+            }
+        });
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshDirectories();
+            userInput.focus();
+            updateTaskModeInfo();
+            initResizer();
+            startAutoRefresh();
+            
+            // 初始化时滚动到底部
+            setTimeout(() => {
+                scrollToBottom(false);
+            }, 100);
+        });
+
+        // 自动刷新功能
+        function startAutoRefresh() {
+            // 每30秒自动刷新一次目录列表（仅在有任务运行时）
+            setInterval(() => {
+                if (isTaskRunning) {
+                    refreshDirectories();
+                }
+            }, 30000);
+            
+            // 每5分钟刷新一次（无论是否有任务运行）
+            setInterval(() => {
+                refreshDirectories();
+            }, 300000);
+        }
+
+        // 分隔条拖拽功能
+        function initResizer() {
+            const resizer = document.getElementById('resizer');
+            const sidebar = document.getElementById('sidebar');
+            const container = document.querySelector('.container');
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+
+            resizer.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = parseInt(document.defaultView.getComputedStyle(sidebar).width, 10);
+                
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                
+                // 添加视觉反馈
+                resizer.style.background = '#007acc';
+            });
+
+            function handleMouseMove(e) {
+                if (!isResizing) return;
+                e.preventDefault();
+                
+                const dx = startX - e.clientX; // 向左拖拽为正值
+                const newWidth = startWidth + dx;
+                
+                // 限制侧边栏宽度
+                const minWidth = 250;
+                const maxWidth = 600;
+                const constrainedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+                
+                sidebar.style.width = constrainedWidth + 'px';
+            }
+
+            function handleMouseUp(e) {
+                if (!isResizing) return;
+                e.preventDefault();
+                
+                isResizing = false;
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                // 移除视觉反馈
+                resizer.style.background = '';
+            }
+        }
+
+        // 手动刷新目录
+        function manualRefresh() {
+            const refreshBtn = document.querySelector('.sidebar-header .action-btn');
+            const icon = refreshBtn.querySelector('i');
+            
+            // 添加旋转动画
+            icon.classList.add('fa-spin');
+            refreshBtn.disabled = true;
+            
+            // 保存当前展开状态
+            const currentExpanded = new Set(expandedDirectories);
+            
+            fetch('/api/refresh-dirs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 恢复展开状态
+                    expandedDirectories = currentExpanded;
+                    renderDirectories(data.directories);
+                    // 显示成功消息（更简洁）
+                    console.log('Directory refreshed');
+                } else {
+                    addMessage(`${I18N.refresh_failed}: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                addMessage(`${I18N.refresh_failed}: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                // 移除旋转动画
+                icon.classList.remove('fa-spin');
+                refreshBtn.disabled = false;
+            });
+        }
+
+        // 上传功能
+        function showUploadModal(dirName) {
+            currentUploadDir = dirName;
+            uploadTitle.textContent = `${I18N.upload_to} ${dirName}${I18N.workspace}`;
+            uploadResult.innerHTML = '';
+            uploadProgress.style.display = 'none';
+            progressFill.style.width = '0%';
+            uploadModal.style.display = 'block';
+        }
+
+        // 关闭上传模态框
+        uploadClose.onclick = function() {
+            uploadModal.style.display = 'none';
+        }
+
+        // 文件选择处理
+        fileInput.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                uploadFiles(Array.from(e.target.files));
+            }
+        });
+
+        // 拖拽功能
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+                uploadFiles(files);
+            }
+        });
+
+        // 上传文件函数
+        function uploadFiles(files) {
+            if (!currentUploadDir) {
+                uploadResult.innerHTML = `<div class="error">${I18N.select_directory_error}</div>`;
+                return;
+            }
+
+            const formData = new FormData();
+            files.forEach(file => {
+                formData.append('files', file);
+            });
+
+            // 显示进度条
+            uploadProgress.style.display = 'block';
+            uploadResult.innerHTML = '';
+            progressText.textContent = I18N.uploading_files.replace('{0}', files.length);
+
+            // 创建XMLHttpRequest以支持进度监控
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressFill.style.width = percentComplete + '%';
+                    progressText.textContent = I18N.upload_progress.replace('{0}', Math.round(percentComplete));
+                }
+            });
+
+            xhr.addEventListener('load', function() {
+                uploadProgress.style.display = 'none';
+                
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        uploadResult.innerHTML = `
+                            <div class="success">
+                                <i class="fas fa-check-circle"></i> ${response.message}
+                                <br><small>文件: ${response.files.join(', ')}</small>
+                            </div>
+                        `;
+                        // 清空文件输入
+                        fileInput.value = '';
+                        // 刷新目录列表
+                        setTimeout(() => {
+                            refreshDirectories();
+                        }, 1000);
+                    } else {
+                        uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${response.error}</div>`;
+                    }
+                } else {
+                    uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${I18N.upload_failed_http.replace('{0}', xhr.status)}</div>`;
+                }
+            });
+
+            xhr.addEventListener('error', function() {
+                uploadProgress.style.display = 'none';
+                uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${I18N.upload_network_error}</div>`;
+            });
+
+            xhr.open('POST', `/api/upload/${currentUploadDir}`);
+            xhr.send(formData);
+        }
+
+        // CSV表格相关功能
+        function sortCSVTable(columnIndex) {
+            if (!window.csvData) return;
+            
+            const { headers, currentData, sortColumn, sortDirection } = window.csvData;
+            
+            // 确定排序方向
+            let newDirection = 'asc';
+            if (sortColumn === columnIndex) {
+                newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            }
+            
+            // 排序数据
+            const sortedData = [...currentData].sort((a, b) => {
+                const aVal = (a[columnIndex] || '').toString().toLowerCase();
+                const bVal = (b[columnIndex] || '').toString().toLowerCase();
+                
+                // 尝试数字比较
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return newDirection === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+                
+                // 字符串比较
+                if (newDirection === 'asc') {
+                    return aVal.localeCompare(bVal);
+                } else {
+                    return bVal.localeCompare(aVal);
+                }
+            });
+            
+            // 更新状态
+            window.csvData.currentData = sortedData;
+            window.csvData.sortColumn = columnIndex;
+            window.csvData.sortDirection = newDirection;
+            
+            // 重新渲染表格
+            renderCSVTableBody(sortedData);
+            
+            // 更新表头排序指示器
+            updateSortIndicators(columnIndex, newDirection);
+        }
+        
+        function updateSortIndicators(sortColumn, sortDirection) {
+            const headers = document.querySelectorAll('#csvTable th');
+            headers.forEach((th, index) => {
+                const span = th.querySelector('span');
+                if (span) {
+                    if (index === sortColumn) {
+                        span.textContent = sortDirection === 'asc' ? '↑' : '↓';
+                        span.style.color = '#007acc';
+                    } else {
+                        span.textContent = '⇅';
+                        span.style.color = '#6c757d';
+                    }
+                }
+            });
+        }
+        
+        function renderCSVTableBody(data) {
+            if (!window.csvData) return;
+            
+            const tbody = document.getElementById('csvTableBody');
+            const { headers } = window.csvData;
+            
+            if (!tbody || !headers) return;
+            
+            let html = '';
+            if (data && data.length > 0) {
+                data.forEach((row, rowIndex) => {
+                    const rowStyle = rowIndex % 2 === 0 ? 'background: #ffffff;' : 'background: #f8f9fa;';
+                    html += `<tr style="${rowStyle}">`;
+                    
+                    const maxCols = Math.max(headers.length, row.length);
+                    for (let i = 0; i < maxCols; i++) {
+                        const cellValue = row[i] || '';
+                        const escapedValue = escapeHtml(cellValue);
+                        html += `<td style="border: 1px solid #dee2e6; padding: 8px; vertical-align: top; word-break: break-word; max-width: 300px; color: #333;" title="${escapedValue}">${escapedValue}</td>`;
+                    }
+                    html += '</tr>';
+                });
+            } else {
+                html = `<tr><td colspan="${headers.length}" style="text-align: center; padding: 40px; color: #6c757d; font-style: italic;">无匹配结果</td></tr>`;
+            }
+            
+            tbody.innerHTML = html;
+        }
+        
+        function filterCSVTable() {
+            if (!window.csvData) return;
+            
+            const searchInput = document.getElementById('csvSearchInput');
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 显示所有数据
+                window.csvData.currentData = window.csvData.originalData;
+                renderCSVTableBody(window.csvData.originalData);
+                return;
+            }
+            
+            // 过滤数据
+            const filteredData = window.csvData.originalData.filter(row => {
+                return row.some(cell => {
+                    const cellValue = (cell || '').toString().toLowerCase();
+                    return cellValue.includes(searchTerm);
+                });
+            });
+            
+            window.csvData.currentData = filteredData;
+            renderCSVTableBody(filteredData);
+        }
+        
+        function exportCSVTable() {
+            if (!window.csvData) return;
+            
+            const { headers, currentData } = window.csvData;
+            
+            // 创建CSV内容
+            let csvContent = '';
+            
+            // 添加表头
+            if (headers && headers.length > 0) {
+                csvContent += headers.map(header => `"${(header || '').replace(/"/g, '""')}"`).join(',') + '\n';
+            }
+            
+            // 添加数据行
+            currentData.forEach(row => {
+                const csvRow = row.map(cell => {
+                    const cellValue = (cell || '').toString();
+                    return `"${cellValue.replace(/"/g, '""')}"`;
+                }).join(',');
+                csvContent += csvRow + '\n';
+            });
+            
+            // 创建下载链接
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'exported_data.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                // 后备方案：打开新窗口显示CSV内容
+                const newWindow = window.open();
+                newWindow.document.write('<pre>' + escapeHtml(csvContent) + '</pre>');
+            }
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTaskModeInfo(); // 确保任务模式信息正确显示
+            updateAutoScrollIndicator(); // 初始化自动滚动状态指示器
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script>
+        // Configure Prism.js autoloader
+        Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+        
+        // Configure PDF.js
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+</body>
+</html> 
