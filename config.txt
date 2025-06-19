@@ -25,7 +25,7 @@ LANG=zh
 
 
 # DeepSeek API configuration (alternative option)
-api_key=sk-1e7d58ad85884fa1a77408ceb7e0174e
+api_key=your key
 api_base=https://api.deepseek.com/v1
 model=deepseek-chat
 

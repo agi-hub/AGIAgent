@@ -19,7 +19,7 @@ def example_basic_usage():
     
     # Initialize the client with your API credentials
     client = AGIBotClient(
-        api_key="sk-EjTppzE0xnr61QCj0d0MrZREohrwbV8xoMvOlvpw35g61vVG",  # Replace with your actual API key
+        api_key="your_api_key_here",  # Replace with your actual API key
         model="claude-sonnet-4-0",  # or "gpt-4", "gpt-3.5-turbo", etc.
         api_base="https://api.openai-proxy.org/anthropic",  # Optional: API base URL
         debug_mode=False,  # Enable debug logging
