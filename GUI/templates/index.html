@@ -332,7 +332,7 @@
             color: #f44336;
         }
 
-        /* 工具调用消息样式 */
+        /* Function call message styles */
         .message.function-call {
             background: #2d2d30;
             color: #cccccc;
@@ -496,7 +496,7 @@
             transform: none;
         }
 
-        /* 特定按钮的悬停效果 */
+        /* Specific button hover effects */
         #planButton:hover:not(:disabled) {
             background: #f57c00;
         }
@@ -826,7 +826,7 @@
             background: #007acc;
         }
 
-        /* 响应式设计 */
+        /* Responsive design */
         @media (max-width: 768px) {
             .container {
                 flex-direction: column;
@@ -846,7 +846,7 @@
             }
         }
 
-        /* 模态框样式 */
+        /* Modal styles */
         .modal {
             display: none;
             position: fixed;
@@ -909,7 +909,7 @@
             min-height: 0;
         }
 
-        /* 特殊处理预览模态框 */
+        /* Special handling for preview modal */
         #previewModal .modal-content {
             width: 90%;
             max-width: 1200px;
@@ -921,7 +921,7 @@
             padding: 10px;
         }
 
-        /* iframe 样式优化 */
+        /* iframe style optimization */
         #previewContent iframe {
             width: 100%;
             height: calc(90vh - 120px);
@@ -929,7 +929,7 @@
             border-radius: 4px;
         }
 
-        /* 上传区域样式 */
+        /* Upload area styles */
         .upload-area {
             border: 2px dashed #569cd6;
             border-radius: 8px;
@@ -984,7 +984,7 @@
             background: #005a9e;
         }
 
-        /* 进度条样式 */
+        /* Progress bar styles */
         .upload-progress {
             margin-top: 20px;
         }
@@ -1010,7 +1010,7 @@
             color: #9cdcfe;
         }
 
-        /* 上传结果样式 */
+        /* Upload result styles */
         .upload-result {
             margin-top: 15px;
             padding: 10px;
@@ -1034,7 +1034,7 @@
             border-left: 3px solid #f14c4c;
         }
 
-        /* 滚动到底部提示 */
+        /* Scroll to bottom hint */
         .scroll-to-bottom-hint {
             position: absolute;
             bottom: 20px;
@@ -1081,7 +1081,7 @@
             }
         }
 
-        /* 新消息提示 */
+        /* New message indicator */
         .new-message-indicator {
             position: absolute;
             bottom: 80px;
@@ -1115,7 +1115,7 @@
             }
         }
 
-        /* 自动滚动状态指示器 */
+        /* Auto-scroll status indicator */
         .auto-scroll-indicator {
             position: absolute;
             bottom: 130px;
@@ -1183,18 +1183,18 @@
                     </div>
                 </div>
                 
-                <!-- 滚动到底部按钮 -->
+                <!-- Scroll to bottom button -->
                 <button class="scroll-to-bottom-hint" id="scrollToBottomBtn" title="{{ i18n.get('scroll_to_bottom', '滚动到底部' if lang == 'zh' else 'Scroll to Bottom') }}">
                     <i class="fas fa-chevron-down"></i>
                 </button>
                 
-                <!-- 新消息提示 -->
+                <!-- New message indicator -->
                 <div class="new-message-indicator" id="newMessageIndicator">
                     <i class="fas fa-bell"></i>
                     <span id="newMessageCount">1</span> 条新消息
                 </div>
                 
-                <!-- 自动滚动状态指示器 -->
+                <!-- Auto-scroll status indicator -->
                 <div class="auto-scroll-indicator" id="autoScrollIndicator">
                     <i class="fas fa-arrow-down"></i>
                     <span>自动滚动</span>
@@ -1224,8 +1224,8 @@
                         <i class="fas fa-stop"></i>
                     </button>
                 </div>
-                <div id="taskModeInfo" style="margin-top: 10px; font-size: 0.9em; color: #666; text-align: center;">
-                    <!-- 任务模式信息将在这里显示 -->
+                                    <div id="taskModeInfo" style="margin-top: 10px; font-size: 0.9em; color: #666; text-align: center;">
+                    <!-- Task mode information will be displayed here -->
                 </div>
             </div>
         </div>
@@ -1247,12 +1247,12 @@
             </div>
             
             <div class="directory-list scrollbar-custom" id="directoryList">
-                <!-- 目录列表将通过JavaScript动态生成 -->
+                <!-- Directory list will be dynamically generated through JavaScript -->
             </div>
         </div>
     </div>
 
-    <!-- 文件预览模态框 -->
+    <!-- File preview modal -->
     <div id="previewModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1265,7 +1265,7 @@
         </div>
     </div>
 
-    <!-- 文件上传模态框 -->
+    <!-- File upload modal -->
     <div id="uploadModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1299,7 +1299,7 @@
 
 
 
-    <!-- 重命名目录模态框 -->
+    <!-- Rename Directory Modal -->
     <div id="renameModal" class="modal">
         <div class="modal-content" style="width: 80%; max-width: 500px; height: auto;">
             <div class="modal-header">
@@ -1308,23 +1308,23 @@
             </div>
             <div class="modal-body" style="padding: 20px;">
                 <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">当前名称：</label>
+                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.current_name }}</label>
                     <div id="currentDirName" style="background: #2d2d30; padding: 10px; border-radius: 4px; color: #9cdcfe; font-family: monospace;"></div>
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">新名称：</label>
-                    <input type="text" id="newDirName" placeholder="{{ i18n.get('rename_placeholder', '输入新的目录名称...' if lang == 'zh' else 'Enter new directory name...') }}" 
+                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.new_name }}</label>
+                    <input type="text" id="newDirName" placeholder="{{ i18n.get('rename_placeholder', 'Enter new directory name...' if lang == 'en' else '输入新的目录名称...') }}" 
                            style="width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
                     <div style="margin-top: 5px; font-size: 0.9em; color: #9cdcfe;">
-                        <i class="fas fa-info-circle"></i> 将使用您输入的名称作为目录名
+                        <i class="fas fa-info-circle"></i> {{ i18n.rename_info }}
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button id="renameCancel" class="action-btn" style="background: #6c757d; color: white; padding: 10px 20px;">
-                        <i class="fas fa-times"></i> 取消
+                        <i class="fas fa-times"></i> {{ i18n.cancel }}
                     </button>
                     <button id="renameConfirm" class="action-btn" style="background: #007acc; color: white; padding: 10px 20px;">
-                        <i class="fas fa-check"></i> 确认重命名
+                        <i class="fas fa-check"></i> {{ i18n.confirm_rename }}
                     </button>
                 </div>
             </div>
@@ -1334,12 +1334,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
     <script>
-        // 国际化配置
+        // Internationalization configuration
         const I18N = {{ i18n | tojson }};
         const CURRENT_LANG = '{{ lang }}';
     </script>
     <script>
-        // Socket.IO连接配置
+        // Socket.IO connection configuration
         const socket = io({
             reconnection: true,
             reconnectionDelay: 1000,
@@ -1348,7 +1348,7 @@
             forceNew: true
         });
         
-        // DOM元素
+        // DOM elements
         const chatMessages = document.getElementById('chatMessages');
         const userInput = document.getElementById('userInput');
         const sendButton = document.getElementById('sendButton');
@@ -1360,23 +1360,23 @@
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
 
-        // 状态管理
+        // State management
         let isTaskRunning = false;
         let selectedDirectory = null;
         let taskMode = 'new'; // 'new', 'continue', 'selected'
-        let expandedDirectories = new Set(); // 保存展开的目录状态
-        let collapsedSubDirectories = new Set(); // 保存收起的子目录状态
-        let isUserScrolling = false; // 用户是否正在手动滚动
-        let autoScrollEnabled = true; // 是否启用自动滚动
-        let refreshTimeout = null; // 防抖定时器
+        let expandedDirectories = new Set(); // Save expanded directory state
+        let collapsedSubDirectories = new Set(); // Save collapsed subdirectory state
+        let isUserScrolling = false; // Whether user is manually scrolling
+        let autoScrollEnabled = true; // Whether auto-scroll is enabled
+        let refreshTimeout = null; // Debounce timer
 
-        // 文件预览功能
+        // File preview functionality
         const previewModal = document.getElementById('previewModal');
         const previewTitle = document.getElementById('previewTitle');
         const previewContent = document.getElementById('previewContent');
         const previewClose = document.getElementById('previewClose');
 
-        // 文件上传功能
+        // File upload functionality
         const uploadModal = document.getElementById('uploadModal');
         const uploadTitle = document.getElementById('uploadTitle');
         const uploadClose = document.getElementById('uploadClose');
@@ -1388,17 +1388,17 @@
         const uploadResult = document.getElementById('uploadResult');
         
         let currentUploadDir = null;
-        let newMessageCount = 0; // 新消息计数器
+        let newMessageCount = 0; // New message counter
         
-        // 自动滚动状态指示器
+        // Auto-scroll status indicator
         const autoScrollIndicator = document.getElementById('autoScrollIndicator');
 
-        // Socket事件监听
+        // Socket event listeners
         socket.on('connect', function() {
             addMessage(I18N.connected, 'system');
             updateStatus('connected');
-            updateTaskModeInfo(); // 初始化任务模式信息显示
-            // 确保连接后滚动到底部
+            updateTaskModeInfo(); // Initialize task mode info display
+            // Ensure scroll to bottom after connection
             setTimeout(() => {
                 scrollToBottom(false);
             }, 100);
@@ -1443,23 +1443,23 @@
             addMessage(data.message, data.success ? 'success' : 'error');
             setTaskRunning(false);
             
-            // 任务完成后，如果有选择的目录，保持选择状态，否则切换到继续模式
+            // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
             if (selectedDirectory) {
                 taskMode = 'selected';
-                // 如果任务完成的目录是选择的目录，自动展开它
+                // If the completed task directory is the selected directory, auto-expand it
                 if (data.output_dir && data.output_dir === selectedDirectory) {
                     expandedDirectories.add(selectedDirectory);
                 }
             } else {
                 taskMode = 'continue';
-                // 如果有工作目录，自动展开最新的目录
+                // If there's a working directory, auto-expand the latest directory
                 if (data.output_dir) {
                     expandedDirectories.add(data.output_dir);
                 }
             }
             updateTaskModeInfo();
             
-            // 刷新目录列表，延迟稍长一些确保文件已生成
+            // Refresh directory list with longer delay to ensure files are generated
             setTimeout(() => {
                 refreshDirectories();
             }, 2000);
@@ -1468,9 +1468,9 @@
         socket.on('task_stopped', function(data) {
             addMessage(data.message, data.type || 'error');
             setTaskRunning(false);
-            // 保持当前的任务模式
+            // Keep current task mode
             updateTaskModeInfo();
-            // 停止任务后也刷新一下目录
+            // Refresh directories after stopping task
             setTimeout(refreshDirectories, 1000);
         });
 
@@ -1502,23 +1502,30 @@
             }
         });
 
-        // 消息处理
+        // Message handling
         let lastMessageType = null;
         let lastMessageDiv = null;
         
-        // 检查是否应该自动滚动到底部
+        /**
+         * 检查是否应该执行自动滚动到底部
+         * @returns {boolean} 是否应该自动滚动
+         * @description 智能判断自动滚动条件：
+         * 1. 自动滚动功能必须启用
+         * 2. 如果用户正在向上滚动且不在底部附近，则不自动滚动
+         * 3. 其他情况下允许自动滚动
+         */
         function shouldAutoScroll() {
-            // 如果自动滚动被禁用，不滚动
+            // 如果自动滚动被禁用，直接返回false
             if (!autoScrollEnabled) {
                 console.log('🚫 Auto-scroll disabled');
                 return false;
             }
             
-            // 检查是否已经在底部附近（容差30px，增加容差）
+            // 检查是否已经接近底部（容差30px，增加了容错范围）
             const threshold = 30;
             const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - threshold;
             
-            // 如果用户正在向上滚动且不在底部附近，不自动滚动
+            // 如果用户正在向上滚动且不在底部附近，则不执行自动滚动
             if (isUserScrolling && scrollDirection === 'up' && !isNearBottom) {
                 console.log('🚫 User scrolling up away from bottom');
                 return false;
@@ -1534,7 +1541,7 @@
             return autoScrollEnabled;
         }
         
-        // HTML转义函数
+        // HTML escape function
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -1542,12 +1549,12 @@
         }
         
         function addMessage(message, type = 'info') {
-            // 特殊过滤：隐藏包含特定内容的行
+            // Special filtering: hide lines containing specific content
             if (message.trim() === '```' || message.trim() === '```xml') {
-                return; // 不显示这些行
+                return; // Don't display these lines
             }
             
-            // 调试日志：记录XML标签和工具调用状态
+            // Debug log: record XML tags and tool call status
             if (message.trim().startsWith('<') || message.trim() === 'function_calls') {
                 console.log('XML/Tag detected:', {
                     message: message.trim(),
@@ -1562,10 +1569,10 @@
             
             const shouldScroll = shouldAutoScroll();
             
-            // 检测工具执行消息
+            // Detect tool execution messages
             const toolMatch = detectToolMessage(message);
             if (toolMatch) {
-                // 检查是否是工具调用相关消息
+                // Check if it's a tool call related message
                 if (['function_calls_start', 'function_calls_end'].includes(toolMatch.type)) {
                     addFunctionCallMessage(toolMatch, shouldScroll);
                     return;
@@ -1575,12 +1582,12 @@
                 }
             }
             
-            // 如果当前工具已完成且这不是工具相关消息，结束工具消息
+            // If current tool is completed and this is not a tool-related message, end tool message
             if (currentToolMessage && (currentToolMessage.status === 'completed' || currentToolMessage.status === 'error')) {
                 finalizeToolMessage(shouldScroll);
             }
             
-            // 检查是否是工具调用相关的XML标签（优先级最高）
+            // Check if it's a function call related XML tag (highest priority)
             const isXmlTag = message.trim().match(/^<(\/?)(\w+)(\s[^>]*)?>/) || 
                            message.trim().match(/^<parameter name="[^"]+">/) ||
                            message.trim() === '</parameter>' ||
@@ -1588,17 +1595,17 @@
                            message.trim() === '<function_calls>' ||
                            message.trim() === '</function_calls>';
             
-            // 如果是XML标签且当前有活跃的工具调用框，将XML标签添加到工具调用框
+            // If it's an XML tag and there's an active function call box, add XML tag to function call box
             if (isXmlTag && currentFunctionCall && currentFunctionCall.isActive) {
                 functionCallBuffer.push(message);
                 
-                // 提取工具名称（如果是invoke标签）
+                // Extract tool name (if it's an invoke tag)
                 const invokeMatch = message.match(/^<invoke name="([^"]+)">$/);
                 if (invokeMatch && !currentFunctionCall.toolNames.includes(invokeMatch[1])) {
                     currentFunctionCall.toolNames.push(invokeMatch[1]);
                 }
                 
-                // 创建或更新UI
+                // Create or update UI
                 if (!currentFunctionCall.element) {
                     createOrUpdateFunctionCallUI(shouldScroll);
                 } else {
@@ -1607,14 +1614,14 @@
                 return;
             }
             
-            // 简化的工具调用消息处理：如果在<function_calls>标签内且工具调用框处于活跃状态，就添加到工具调用框
+            // Simplified function call message handling: if inside <function_calls> tag and function call box is active, add to function call box
             if (insideFunctionCalls && currentFunctionCall && currentFunctionCall.isActive) {
-                // 过滤特殊内容后再添加到工具调用缓冲区
+                // Filter special content before adding to function call buffer
                 if (message.trim() !== '```' && message.trim() !== '```xml') {
                     functionCallBuffer.push(message);
                 }
                 
-                // 创建或更新UI
+                // Create or update UI
                 if (!currentFunctionCall.element) {
                     createOrUpdateFunctionCallUI(shouldScroll);
                 } else {
@@ -1623,16 +1630,16 @@
                 return;
             }
 
-            // 额外检查：如果有活跃的工具调用框且消息看起来像参数内容，添加到工具调用框
+            // Additional check: if there's an active function call box and message looks like parameter content, add to function call box
             if (currentFunctionCall && currentFunctionCall.isActive && !message.match(/^</) && !message.match(/^>/) && message.trim() !== '') {
-                // 检查是否在参数标签内（简化版本）
+                // Check if inside parameter tag (simplified version)
                 var lastBuffer = functionCallBuffer.slice(-3).join('\n');
                 var inParameter = lastBuffer.includes('<parameter name="code_edit">') || 
                                  lastBuffer.includes('<parameter name="instructions">') || 
                                  lastBuffer.includes('<parameter name="old_string">') || 
                                  lastBuffer.includes('<parameter name="new_string">');
                 
-                // 如果在参数内或消息看起来像代码内容，添加到工具调用框
+                // If inside parameter or message looks like code content, add to function call box
                 if (inParameter || message.length > 30 || message.match(/^\s*(def |class |import |function|var|const)/)) {
                     functionCallBuffer.push(message);
                     if (!currentFunctionCall.element) {
@@ -1644,10 +1651,10 @@
                 }
             }
 
-            // 修改逻辑：只有在工具框还在活跃状态时才将消息添加到工具框中
-            // 一旦收到</tool_execute>标记，工具框就不再接收新消息
+            // Modified logic: only add messages to tool box when it's still in active state
+            // Once </tool_execute> tag is received, tool box no longer accepts new messages
             if (currentToolMessage && currentToolMessage.isActive && isToolRelatedMessage(message)) {
-                // 过滤特殊内容后再添加到工具缓冲区
+                // Filter special content before adding to tool buffer
                 if (message.trim() !== '```' && message.trim() !== '```xml') {
                     toolMessageBuffer.push(message);
                 }
@@ -1659,40 +1666,40 @@
                 return;
             }
             
-            // 检查是否是孤立的"function_calls"文本，这通常表示工具调用结束
+            // Check if it's an isolated "function_calls" text, which usually indicates tool call end
             if (message.trim() === 'function_calls' && currentFunctionCall && currentFunctionCall.isActive) {
-                // 结束当前的工具调用框
+                // End the current tool call box
                 currentFunctionCall.status = 'completed';
                 currentFunctionCall.isActive = false;
                 insideFunctionCalls = false;
                 
-                // 创建或更新UI
+                // Create or update UI
                 if (!currentFunctionCall.element) {
                     createOrUpdateFunctionCallUI(shouldScroll);
                 } else {
                     createOrUpdateFunctionCallUI(shouldScroll);
                 }
                 
-                // 完成工具调用消息
+                // Complete tool call message
                 finalizeFunctionCallMessage(shouldScroll);
                 return;
             }
             
-            // 检查是否刚刚完成了工具执行或工具调用，如果是，则强制创建新的消息框
+            // Check if tool execution or tool call just finished, if so, force create new message box
             const justFinishedTool = currentToolMessage && !currentToolMessage.isActive;
             const justFinishedFunctionCall = currentFunctionCall && !currentFunctionCall.isActive;
             
             if (['info', 'error', 'success'].includes(type) && lastMessageType === type && lastMessageDiv && !justFinishedTool && !justFinishedFunctionCall) {
-                // 对于连续的同类型消息，安全地添加内容
+                // For consecutive messages of the same type, safely add content
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
                     textSpan.innerHTML += '<br>' + escapeHtml(message);
                 } else {
-                    // 如果没有找到text span，回退到原来的方法但要转义
+                    // If no text span found, fallback to original method but with escaping
                     lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
                 }
                 if (shouldScroll) {
-                    // 使用requestAnimationFrame确保DOM更新完成后再滚动
+                    // Use requestAnimationFrame to ensure DOM update completes before scrolling
                     requestAnimationFrame(() => {
                         chatMessages.scrollTo({
                             top: chatMessages.scrollHeight,
@@ -1700,7 +1707,7 @@
                         });
                     });
                 } else {
-                    // 如果不能自动滚动，显示新消息提示
+                    // If can't auto-scroll, show new message indicator
                     showNewMessageIndicator();
                 }
                 return;
@@ -1709,19 +1716,19 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
             
-            // 创建文本元素，使用textContent确保安全显示
+            // Create text element, use textContent to ensure safe display
             const textSpan = document.createElement('span');
             textSpan.className = 'message-text';
             textSpan.textContent = message;
             
-            // 直接添加文本，不添加图标
+            // Directly add text, no icons
             messageDiv.appendChild(textSpan);
             
             chatMessages.appendChild(messageDiv);
             
-            // 只在应该自动滚动时才滚动
+            // Only scroll when auto-scroll is enabled
             if (shouldScroll) {
-                // 使用requestAnimationFrame确保DOM更新完成后再滚动
+                // Use requestAnimationFrame to ensure DOM update completes before scrolling
                 requestAnimationFrame(() => {
                     chatMessages.scrollTo({
                         top: chatMessages.scrollHeight,
@@ -1729,7 +1736,7 @@
                     });
                 });
             } else {
-                // 如果不能自动滚动，显示新消息提示（除了用户消息）
+                // If can't auto-scroll, show new message indicator (except for user messages)
                 if (type !== 'user') {
                     showNewMessageIndicator();
                 }
@@ -1746,9 +1753,9 @@
 
 
 
-        // 工具消息检测和处理
+        // Tool message detection and processing
         function detectToolMessage(message) {
-            // 检测工具执行开始标签 - "<tool_execute tool_name="read_file" tool_number="1">"
+            // Detect tool execution start tag - "<tool_execute tool_name="read_file" tool_number="1">"
             const toolStartMatch = message.match(/^<tool_execute tool_name="([^"]+)" tool_number="(\d+)">$/);
             if (toolStartMatch) {
                 return {
@@ -1759,7 +1766,7 @@
                 };
             }
 
-            // 检测工具执行结束标签 - "</tool_execute>"
+            // Detect tool execution end tag - "</tool_execute>"
             if (message.trim() === '</tool_execute>') {
                 return {
                     type: 'tool_end',
@@ -1767,7 +1774,7 @@
                 };
             }
 
-            // 检测工具执行开始消息 - "Executing tool 2: read_file" 或 "- Executing tool 1: list_dir"
+            // Detect tool execution start message - "Executing tool 2: read_file" or "- Executing tool 1: list_dir"
             const executingMatch = message.match(/^-?\s*Executing tool (\d+): (\w+)$/);
             if (executingMatch) {
                 return {
@@ -1778,7 +1785,7 @@
                 };
             }
 
-            // 检测工具执行详细信息 - "Executing tool: read_file with params: [...]"
+            // Detect tool execution details - "Executing tool: read_file with params: [...]"
             const detailMatch = message.match(/^Executing tool: (\w+) with params: (.+)$/);
             if (detailMatch) {
                 return {
@@ -1789,7 +1796,7 @@
                 };
             }
 
-            // 检测工具执行结果开始 - "🛠️ Tool 2 execution result (read_file):"
+            // Detect tool execution result start - "🛠️ Tool 2 execution result (read_file):"
             const resultMatch = message.match(/^🛠️ Tool (\d+) execution result \((\w+)\):$/);
             if (resultMatch) {
                 return {
@@ -1800,7 +1807,7 @@
                 };
             }
 
-            // 检测结果分隔线
+            // Detect result separator line
             const separatorMatch = message.match(/^={40,}$/);
             if (separatorMatch) {
                 return {
@@ -1809,7 +1816,7 @@
                 };
             }
 
-            // 检测工具相关的emoji消息
+            // Detect tool-related emoji messages
             const emojiMatch = message.match(/^[📖🎯📂🔍✅📊📄🛠️]/);
             if (emojiMatch) {
                 return {
@@ -1818,7 +1825,7 @@
                 };
             }
 
-            // 检测状态消息 - "Status: success"
+            // Detect status messages - "Status: success"
             const statusMatch = message.match(/^Status: (\w+)$/);
             if (statusMatch) {
                 return {
@@ -1828,7 +1835,7 @@
                 };
             }
 
-            // 检测文件信息 - "File: xxx"
+            // Detect file information - "File: xxx"
             const fileMatch = message.match(/^File: (.+)$/);
             if (fileMatch) {
                 return {
@@ -1837,7 +1844,7 @@
                 };
             }
 
-            // 检测内容信息 - "Content:"
+            // Detect content information - "Content:"
             if (message === 'Content:') {
                 return {
                     type: 'content_start',
@@ -1845,7 +1852,7 @@
                 };
             }
 
-            // 检测工具描述信息 - 以工具名开头的描述行
+            // Detect tool description information - lines starting with tool name
             const toolDescMatch = message.match(/^(\w+): (.+)$/);
             if (toolDescMatch && currentToolMessage && toolDescMatch[1].toLowerCase() === currentToolMessage.toolName.toLowerCase()) {
                 return {
@@ -1854,7 +1861,7 @@
                 };
             }
 
-            // 检测结构化数据 - 以特定关键词开头的行
+            // Detect structured data - lines starting with specific keywords
             const structuredMatch = message.match(/^(path|directories|files|query|target_directories|explanation):\s*(.*)$/);
             if (structuredMatch && currentToolMessage) {
                 return {
@@ -1863,7 +1870,7 @@
                 };
             }
 
-            // 检测数组数据 - 以 [ 开头或包含数组格式的行
+            // Detect array data - lines starting with [ or containing array format
             if ((message.trim().startsWith('[') || message.trim().startsWith('"')) && currentToolMessage) {
                 return {
                     type: 'array_data',
@@ -1871,7 +1878,7 @@
                 };
             }
 
-            // 检测数组结束 - 以 ] 结尾的行
+            // Detect array end - lines ending with ]
             if (message.trim().endsWith(']') && currentToolMessage) {
                 return {
                     type: 'array_end',
@@ -1879,7 +1886,7 @@
                 };
             }
 
-            // 检测搜索结果开始 - "Results (X items):"
+            // Detect search results start - "Results (X items):"
             const resultsMatch = message.match(/^Results \((\d+) items?\):$/);
             if (resultsMatch && currentToolMessage) {
                 return {
@@ -1889,7 +1896,7 @@
                 };
             }
 
-            // 检测搜索结果项 - "1. filename - content..."
+            // Detect search result items - "1. filename - content..."
             const resultItemMatch = message.match(/^\s*\d+\.\s+(.+)$/);
             if (resultItemMatch && currentToolMessage) {
                 return {
@@ -1898,9 +1905,9 @@
                 };
             }
 
-            // 检测工具调用开始标签 - "<function_calls>"
+            // Detect tool call start tag - "<function_calls>"
             if (message.trim() === '<function_calls>') {
-                // 如果检测到新的function_calls开始，确保之前的状态被清理
+                // If new function_calls start detected, ensure previous state is cleaned
                 if (currentFunctionCall && currentFunctionCall.isActive) {
                     console.log('Warning: New function_calls detected while previous one is still active');
                 }
@@ -1910,7 +1917,7 @@
                 };
             }
 
-            // 检测工具调用结束标签 - "</function_calls>"
+            // Detect tool call end tag - "</function_calls>"
             if (message.trim() === '</function_calls>') {
                 return {
                     type: 'function_calls_end',
@@ -1918,7 +1925,7 @@
                 };
             }
 
-            // 检测孤立的"function_calls"文本 - 这通常表示工具调用结束
+            // Detect isolated "function_calls" text - this usually indicates tool call end
             if (message.trim() === 'function_calls') {
                 if (insideFunctionCalls) {
                     return {
@@ -1926,7 +1933,7 @@
                         fullMessage: message
                     };
                 } else {
-                    // 如果不在function_calls内部，这可能是一个错误的结束标记，忽略它
+                    // If not inside function_calls, this might be an erroneous end marker, ignore it
                     return null;
                 }
             }
@@ -1938,20 +1945,20 @@
         let toolMessageBuffer = [];
         let toolTimeoutId = null;
 
-        // 工具调用框相关变量
+        // Tool call box related variables
         let currentFunctionCall = null;
         let functionCallBuffer = [];
-        let insideFunctionCalls = false; // 简化：只跟踪是否在<function_calls>标签内部
+        let insideFunctionCalls = false; // Simplified: only track if inside <function_calls> tags
 
-        // 判断消息是否与当前工具调用相关 - 简化版本
+        // Determine if message is related to current tool call - simplified version
         function isFunctionCallRelatedMessage(message) {
-            // 简单逻辑：如果在<function_calls>和</function_calls>之间，就是相关消息
+            // Simple logic: if between <function_calls> and </function_calls>, it's a related message
             return insideFunctionCalls;
         }
 
-        // 判断消息是否与当前工具相关
+        // Determine if message is related to current tool
         function isToolRelatedMessage(message) {
-            // 检查是否是工具标签
+            // Check if it's a tool tag
             const toolMatch = detectToolMessage(message);
             if (toolMatch && ['tool_start', 'tool_end'].includes(toolMatch.type)) {
                 return true;
@@ -1959,20 +1966,20 @@
             
             if (!currentToolMessage || !currentToolMessage.isActive) return false;
             
-            // 检查是否是工具相关的各种消息类型
+            // Check if it's various types of tool-related messages
             if (toolMatch && ['tool_info', 'file_info', 'content_start', 'separator', 'tool_desc', 'structured_data', 'array_data', 'array_end', 'status', 'result_start', 'executing', 'detail', 'results_start', 'result_item'].includes(toolMatch.type)) {
                 return true;
             }
             
-            // 只有在工具活跃且运行中时，才考虑将普通文本消息添加到工具框
+            // Only consider adding plain text messages to tool box when tool is active and running
             if (currentToolMessage.status === 'running') {
-                // 检查是否是新的工具执行开始
+                // Check if it's a new tool execution start
                 const isNewTool = message.match(/^<tool_execute/) || message.match(/^-?\s*Executing tool \d+:/);
                 if (isNewTool) {
-                    return false; // 新工具开始，当前工具应该结束
+                    return false; // New tool start, current tool should end
                 }
                 
-                // 检查是否是明显的工具输出内容（更宽松的判断以包含文件内容）
+                // Check if it's obvious tool output content (more lenient judgment to include file content)
                 const isToolOutput = message.match(/^[📖🎯📂🔍✅📊📄🛠️]/) || 
                                    message.match(/^(path|directories|files|query|target_directories|explanation):\s*/) ||
                                    message.match(/^Status:\s*/) ||
@@ -1982,18 +1989,18 @@
                                    (message.trim().startsWith('[') && message.trim().endsWith(']')) ||
                                    (message.trim().startsWith('"') && message.trim().endsWith('"'));
                 
-                // 如果已经检测到"Content:"，那么后续的文本行也应该被认为是工具相关的
-                // 直到遇到新的工具开始或明确的结束标记
+                // If "Content:" has been detected, subsequent text lines should also be considered tool-related
+                // Until a new tool start or explicit end marker is encountered
                 if (!isToolOutput && toolMessageBuffer.length > 0) {
                     const hasContentStart = toolMessageBuffer.some(msg => msg === 'Content:');
                     if (hasContentStart) {
-                        // 检查是否是明显的非工具内容（如新的用户输入或系统消息）
+                        // Check if it's obviously non-tool content (like new user input or system messages)
                         const isNonToolContent = message.match(/^(用户|User|系统|System|🤖|📝|⚡|Task|Creating|Normal|Initialized|Starting|Received|🔧|Found|Execute|Auto-approving|Running|Working|Output|Command|📤|✅|❌|⚠️|🎉|📋|🚀|🛑|🔄|🔗|💾|📁|🔍|📊|🎯|📋)/) ||
                                                  message.match(/^(LLM|Model|API|Workspace|Language|Streaming|Cache|History|Subtask|Log|Detailed|Processing|Calling|Round|Warning|Expected|No tool|task completed|work is done|finished|完成了|任务完成)/) ||
                                                  message.match(/^(execution started|execution completed|execution rounds|directory|Workspace directory|Detailed summary)/) ||
-                                                 message.match(/^[A-Z][a-z]+ [a-z]+ [a-z]+:/) || // 英文句子模式
-                                                 message.match(/^[一-龟][一-龟]+[：:]/) || // 中文句子模式
-                                                 message.length > 200; // 很长的消息通常不是工具输出
+                                                 message.match(/^[A-Z][a-z]+ [a-z]+ [a-z]+:/) || // English sentence pattern
+                                                 message.match(/^[一-龟][一-龟]+[：:]/) || // Chinese sentence pattern
+                                                 message.length > 200; // Very long messages are usually not tool output
                         
                         return !isNonToolContent;
                     }
@@ -2007,10 +2014,10 @@
 
         function addFunctionCallMessage(toolMatch, shouldScroll) {
             if (toolMatch.type === 'function_calls_start') {
-                // 开始收集工具调用内容
+                // Start collecting function call content
                 insideFunctionCalls = true;
                 
-                // 如果有之前的工具调用，先完成它
+                // If there's a previous function call, complete it first
                 if (currentFunctionCall) {
                     finalizeFunctionCallMessage(shouldScroll);
                 }
@@ -2021,33 +2028,33 @@
                     element: null,
                     isActive: true
                 };
-                functionCallBuffer = []; // 不包含开始标签本身
+                functionCallBuffer = []; // Does not include the start tag itself
                 
-                // 清除消息引用，确保后续消息创建新的消息框
+                // Clear message references to ensure subsequent messages create new message boxes
                 lastMessageType = null;
                 lastMessageDiv = null;
                 
             } else if (toolMatch.type === 'function_calls_end') {
-                // 结束收集工具调用内容
+                // End collecting function call content
                 insideFunctionCalls = false;
                 
                 if (currentFunctionCall) {
                     currentFunctionCall.status = 'completed';
                     currentFunctionCall.isActive = false;
                     
-                    // 创建或更新UI
+                    // Create or update UI
                     if (!currentFunctionCall.element) {
                         createOrUpdateFunctionCallUI(shouldScroll);
                     } else {
-                        // 最终更新状态
+                        // Final status update
                         createOrUpdateFunctionCallUI(shouldScroll);
                     }
                     
-                    // 立即完成工具调用消息，不延迟
+                    // Complete function call message immediately, no delay
                     finalizeFunctionCallMessage(shouldScroll);
                 }
                 
-                // 清除消息引用，确保后续消息创建新的消息框
+                // Clear message references to ensure subsequent messages create new message boxes
                 lastMessageType = null;
                 lastMessageDiv = null;
             }
@@ -2055,9 +2062,9 @@
 
         function addToolMessage(toolMatch, shouldScroll) {
             if (toolMatch.type === 'tool_start') {
-                // 开始新的工具消息
+                // Start new tool message
                 if (currentToolMessage) {
-                    // 完成之前的工具消息
+                    // Complete previous tool message
                     finalizeToolMessage(shouldScroll);
                 }
                 
@@ -2068,52 +2075,52 @@
                     content: [],
                     status: 'running',
                     element: null,
-                    isActive: true  // 标记工具框是否还在接收消息
+                    isActive: true  // Mark whether tool box is still receiving messages
                 };
-                toolMessageBuffer = []; // 不包含标签本身
+                toolMessageBuffer = []; // Does not include the tag itself
                 
-                // 立即清除最后一个消息的引用，确保工具框创建后的新消息创建新的消息框
+                // Immediately clear last message reference to ensure new messages create new message boxes after tool box creation
                 lastMessageType = null;
                 lastMessageDiv = null;
                 
-                // 不立即创建UI，等待收集一些内容后再创建
+                // Don't create UI immediately, wait for some content to be collected first
                 
             } else if (toolMatch.type === 'tool_end' && currentToolMessage) {
-                // 工具执行结束，但延迟设置isActive为false，确保工具结果能被包含进来
+                // Tool execution ended, but delay setting isActive to false to ensure tool results can be included
                 currentToolMessage.status = 'completed';
                 
-                // 如果还没有创建UI，现在创建
+                // If UI hasn't been created yet, create it now
                 if (!currentToolMessage.element) {
                     createOrUpdateToolMessageUI(shouldScroll);
                 }
                 
-                // 延迟设置工具框为非活跃状态，给工具结果一些时间被包含进来
+                // Delay setting tool box to inactive state, give tool results some time to be included
                 setTimeout(() => {
                     if (currentToolMessage) {
                         currentToolMessage.isActive = false;
-                        // 清除最后一个消息的引用，确保后续消息创建新的消息框
+                        // Clear last message reference to ensure subsequent messages create new message boxes
                         lastMessageType = null;
                         lastMessageDiv = null;
                         
-                        // 完成工具消息
+                        // Complete tool message
                         finalizeToolMessage(shouldScroll);
                     }
-                }, 500); // 增加延迟时间到500ms，确保工具结果能被包含
+                }, 500); // Increase delay to 500ms to ensure tool results can be included
                 
             } else if (currentToolMessage && currentToolMessage.isActive) {
-                // 只有在工具框还在活跃状态时才添加内容到缓冲区
+                // Only add content to buffer when tool box is still in active state
                 if (toolMatch.type === 'executing') {
-                    // 添加执行信息（在tool_start之后）
+                    // Add execution info (after tool_start)
                     if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
                         toolMessageBuffer.push(toolMatch.fullMessage);
                     }
-                    // 第一次收到执行信息时创建UI
+                    // Create UI when receiving execution info for the first time
                     if (!currentToolMessage.element) {
                         createOrUpdateToolMessageUI(shouldScroll);
                     }
                     
                 } else if (toolMatch.type === 'detail') {
-                    // 添加参数信息
+                    // Add parameter info
                     currentToolMessage.params = toolMatch.params;
                     if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
                         toolMessageBuffer.push(toolMatch.fullMessage);
@@ -2125,7 +2132,7 @@
                     }
                     
                 } else if (toolMatch.type === 'result_start') {
-                    // 工具执行结果开始
+                    // Tool execution result start
                     if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
                         toolMessageBuffer.push(toolMatch.fullMessage);
                     }
@@ -2136,7 +2143,7 @@
                     }
                     
                 } else if (toolMatch.type === 'status') {
-                    // 更新状态
+                    // Update status
                     const newStatus = toolMatch.status === 'success' ? 'completed' : 'error';
                     if (currentToolMessage.status !== 'completed') {
                         currentToolMessage.status = newStatus;
@@ -2151,7 +2158,7 @@
                     }
                     
                 } else if (['tool_info', 'file_info', 'content_start', 'separator', 'tool_desc', 'structured_data', 'array_data', 'array_end', 'results_start', 'result_item'].includes(toolMatch.type)) {
-                    // 添加工具信息到缓冲区
+                    // Add tool info to buffer
                     if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
                         toolMessageBuffer.push(toolMatch.fullMessage);
                     }
@@ -2162,7 +2169,7 @@
                     }
                     
                 } else {
-                    // 其他类型的消息
+                    // Other types of messages
                     if (toolMatch.fullMessage.trim() !== '```' && toolMatch.fullMessage.trim() !== '```xml') {
                         toolMessageBuffer.push(toolMatch.fullMessage);
                     }
@@ -2173,11 +2180,11 @@
                     }
                 }
             }
-            // 如果工具框不再活跃（isActive为false），则不再向工具框添加任何内容
-            // 这些消息将作为普通消息显示在工具框之后
+            // If tool box is no longer active (isActive is false), no more content will be added to tool box
+            // These messages will be displayed as regular messages after the tool box
         }
 
-        // 工具名称的中英文映射
+        // Tool name mapping for Chinese and English
         const TOOL_DISPLAY_NAMES = {
             'read_file': {
                 'zh': '读取文件',
@@ -2233,14 +2240,14 @@
             }
         };
 
-        // 获取工具的显示名称
+        // Get tool display name
         function getToolDisplayName(toolName) {
             const lang = CURRENT_LANG || 'zh';
             const displayNames = TOOL_DISPLAY_NAMES[toolName];
             return displayNames ? displayNames[lang] : toolName;
         }
 
-        // 提取工具关键参数的统一函数
+        // Unified function to extract key parameters of tools
         function extractToolKeyInfo(toolName, content) {
             if (!content || !toolName) return '';
             
@@ -2250,7 +2257,7 @@
                 switch (toolName.toLowerCase()) {
                     case 'read_file':
                     case 'edit_file':
-                        // 提取文件路径
+                        // Extract file path
                         const fileMatch = contentStr.match(/<parameter name="target_file">\s*([^<]+)\s*<\/parameter>/i) ||
                                          contentStr.match(/target_file['":\s]*([^,}\n]+)/i) ||
                                          contentStr.match(/file_path['":\s]*([^,}\n]+)/i);
@@ -2262,7 +2269,7 @@
                         break;
                         
                     case 'codebase_search':
-                        // 提取搜索查询
+                        // Extract search query
                         const codeSearchMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
                                                contentStr.match(/query['":\s]*([^,}\n]+)/i);
                         if (codeSearchMatch) {
@@ -2272,7 +2279,7 @@
                         break;
                         
                     case 'web_search':
-                        // 提取搜索词
+                        // Extract search term
                         const webSearchMatch = contentStr.match(/<parameter name="search_term">\s*([^<]+)\s*<\/parameter>/i) ||
                                               contentStr.match(/search_term['":\s]*([^,}\n]+)/i);
                         if (webSearchMatch) {
@@ -2282,7 +2289,7 @@
                         break;
                         
                     case 'grep_search':
-                        // 提取搜索模式
+                        // Extract search pattern
                         const grepMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
                                          contentStr.match(/query['":\s]*([^,}\n]+)/i);
                         if (grepMatch) {
@@ -2292,7 +2299,7 @@
                         break;
                         
                     case 'file_search':
-                        // 提取文件搜索查询
+                        // Extract file search query
                         const fileSearchMatch = contentStr.match(/<parameter name="query">\s*([^<]+)\s*<\/parameter>/i) ||
                                                contentStr.match(/query['":\s]*([^,}\n]+)/i);
                         if (fileSearchMatch) {
@@ -2302,15 +2309,15 @@
                         break;
                         
                     case 'list_dir':
-                        // 提取目录路径
+                        // Extract directory path
                         const dirMatch = contentStr.match(/<parameter name="relative_workspace_path">\s*([^<]+)\s*<\/parameter>/i);
                         if (dirMatch) {
                             let dirPath = dirMatch[1].trim();
-                            // 清理引号和特殊字符
+                            // Clean quotes and special characters
                             dirPath = dirPath.replace(/^["']|["']$/g, '').replace(/[\[\]]/g, '');
                             return dirPath ? `: ${dirPath}` : ': .';
                         }
-                        // 如果XML格式没匹配到，尝试简单的键值对格式
+                        // If XML format doesn't match, try simple key-value pair format
                         const simpleMatch = contentStr.match(/relative_workspace_path.*?["']([^"']+)["']/i);
                         if (simpleMatch) {
                             return simpleMatch[1] ? `: ${simpleMatch[1]}` : ': .';
@@ -2318,12 +2325,12 @@
                         break;
                         
                     case 'run_terminal_cmd':
-                        // 提取命令
+                        // Extract command
                         const cmdMatch = contentStr.match(/<parameter name="command">\s*([^<]+)\s*<\/parameter>/i) ||
                                         contentStr.match(/command['":\s]*([^,}\n]+)/i);
                         if (cmdMatch) {
                             const command = cmdMatch[1].replace(/['"]/g, '').trim();
-                            // 只显示命令的前30个字符
+                            // Only show first 30 characters of command
                             const shortCmd = command.length > 30 ? command.substring(0, 30) + '...' : command;
                             return `: ${shortCmd}`;
                         }
@@ -2336,7 +2343,7 @@
             return '';
         }
 
-        // 为工具执行框生成优化的显示名称
+        // Generate optimized display name for tool execution box
         function getOptimizedToolName(toolName, params) {
             if (!toolName) return '';
             
@@ -2347,7 +2354,7 @@
             return `${prefix} ${displayName}${keyInfo}`;
         }
 
-        // 为工具调用框生成优化的显示名称
+        // Generate optimized display name for tool call box
         function getOptimizedFunctionCallName(toolNames, buffer) {
             const lang = CURRENT_LANG || 'zh';
             const prefix = lang === 'zh' ? '调用' : 'Calling';
@@ -2361,14 +2368,14 @@
                 const keyInfo = extractToolKeyInfo(toolNames[0], buffer);
                 return `${prefix} ${displayName}${keyInfo}`;
             } else {
-                // 多个工具时，尝试为每个工具提取关键信息
+                // For multiple tools, try to extract key information for each tool
                 const toolInfos = toolNames.map(toolName => {
                     const displayName = getToolDisplayName(toolName);
                     const keyInfo = extractToolKeyInfo(toolName, buffer);
                     return `${displayName}${keyInfo}`;
                 });
                 
-                // 如果总长度不超过50字符，显示所有工具信息
+                // If total length doesn't exceed 50 characters, show all tool information
                 const allInfo = toolInfos.join(', ');
                 if (allInfo.length <= 50) {
                     return `${prefix} ${allInfo}`;
@@ -2381,11 +2388,11 @@
 
         function createOrUpdateToolMessageUI(shouldScroll) {
             if (!currentToolMessage.element) {
-                // 创建工具消息元素
+                // Create tool message element
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message tool';
                 
-                // 创建头部
+                // Create header
                 const header = document.createElement('div');
                 header.className = 'tool-header';
                 header.onclick = () => toggleToolContent(messageDiv);
@@ -2399,7 +2406,7 @@
                 const toolName = document.createElement('span');
                 toolName.className = 'tool-name';
                 
-                // 使用优化的工具名称显示
+                // Use optimized tool name display
                 toolName.textContent = getOptimizedToolName(currentToolMessage.toolName, currentToolMessage.params);
                 
                 headerLeft.appendChild(icon);
@@ -2411,7 +2418,7 @@
                 header.appendChild(headerLeft);
                 header.appendChild(toggle);
                 
-                // 创建内容区域
+                // Create content area
                 const content = document.createElement('div');
                 content.className = 'tool-content';
                 
@@ -2427,27 +2434,27 @@
                 chatMessages.appendChild(messageDiv);
                 currentToolMessage.element = messageDiv;
                 
-                // 工具框创建后，立即清除消息引用，确保后续消息创建新的消息框
+                // After tool box creation, immediately clear message references to ensure subsequent messages create new message boxes
                 lastMessageType = null;
                 lastMessageDiv = null;
                 
             } else {
-                // 更新现有元素
+                // Update existing element
                 const contentInner = currentToolMessage.element.querySelector('.tool-content-inner');
                 if (contentInner) {
                     contentInner.textContent = toolMessageBuffer.join('\n');
                 }
                 
-                // 状态图标和参数信息已移除，不需要更新
+                // Status icons and parameter info have been removed, no need to update
                 
-                // 更新工具名称
+                // Update tool name
                 const toolNameElement = currentToolMessage.element.querySelector('.tool-name');
                 if (toolNameElement) {
                     toolNameElement.textContent = getOptimizedToolName(currentToolMessage.toolName, currentToolMessage.params);
                 }
             }
             
-            // 滚动处理
+            // Scroll handling
             if (shouldScroll) {
                 requestAnimationFrame(() => {
                     chatMessages.scrollTo({
@@ -2462,23 +2469,23 @@
 
         function finalizeToolMessage(shouldScroll) {
             if (currentToolMessage && currentToolMessage.element) {
-                // 最终更新工具消息
+                // Final update of tool message
                 createOrUpdateToolMessageUI(shouldScroll);
             }
             currentToolMessage = null;
             toolMessageBuffer = [];
-            // 清除最后一个消息的引用，确保工具完成后的新消息创建新的消息框
+            // Clear last message reference to ensure new messages after tool completion create new message boxes
             lastMessageType = null;
             lastMessageDiv = null;
         }
 
         function createOrUpdateFunctionCallUI(shouldScroll) {
             if (!currentFunctionCall.element) {
-                // 创建工具调用消息元素
+                // Create tool call message element
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message function-call';
                 
-                // 创建头部
+                // Create header
                 const header = document.createElement('div');
                 header.className = 'function-call-header';
                 header.onclick = () => toggleFunctionCallContent(messageDiv);
@@ -2492,7 +2499,7 @@
                 const toolName = document.createElement('span');
                 toolName.className = 'function-call-name';
                 
-                // 使用优化的工具调用名称显示
+                // Use optimized tool call name display
                 toolName.textContent = getOptimizedFunctionCallName(currentFunctionCall.toolNames, functionCallBuffer);
                 
                 const status = document.createElement('span');
@@ -2510,7 +2517,7 @@
                 header.appendChild(headerLeft);
                 header.appendChild(toggle);
                 
-                // 创建内容区域
+                // Create content area
                 const content = document.createElement('div');
                 content.className = 'function-call-content';
                 
@@ -2526,18 +2533,18 @@
                 chatMessages.appendChild(messageDiv);
                 currentFunctionCall.element = messageDiv;
                 
-                // 工具调用框创建后，立即清除消息引用，确保后续消息创建新的消息框
+                // After tool call box creation, immediately clear message references to ensure subsequent messages create new message boxes
                 lastMessageType = null;
                 lastMessageDiv = null;
                 
             } else {
-                // 更新现有元素
+                // Update existing element
                 const contentInner = currentFunctionCall.element.querySelector('.function-call-content-inner');
                 if (contentInner) {
                     contentInner.textContent = functionCallBuffer.join('\n');
                 }
                 
-                // 更新状态
+                // Update status
                 const status = currentFunctionCall.element.querySelector('.function-call-status');
                 if (status) {
                     const statusClass = currentFunctionCall.status === 'completed' ? 'success' : 'calling';
@@ -2545,14 +2552,14 @@
                     status.textContent = currentFunctionCall.status === 'completed' ? '📤' : '📝';
                 }
                 
-                // 更新工具名称
+                // Update tool name
                 const toolName = currentFunctionCall.element.querySelector('.function-call-name');
                 if (toolName) {
                     toolName.textContent = getOptimizedFunctionCallName(currentFunctionCall.toolNames, functionCallBuffer);
                 }
             }
             
-            // 滚动处理
+            // Scroll handling
             if (shouldScroll) {
                 requestAnimationFrame(() => {
                     chatMessages.scrollTo({
@@ -2567,16 +2574,16 @@
 
         function finalizeFunctionCallMessage(shouldScroll) {
             if (currentFunctionCall && currentFunctionCall.element) {
-                // 最终更新工具调用消息
+                // Final update of tool call message
                 createOrUpdateFunctionCallUI(shouldScroll);
             }
             
-            // 完全重置所有工具调用相关状态
+            // Completely reset all tool call related state
             currentFunctionCall = null;
             functionCallBuffer = [];
             insideFunctionCalls = false;
             
-            // 清除最后一个消息的引用，确保工具调用完成后的新消息创建新的消息框
+            // Clear last message reference to ensure new messages after tool call completion create new message boxes
             lastMessageType = null;
             lastMessageDiv = null;
         }
@@ -2607,7 +2614,7 @@
             }
         }
 
-        // 状态更新
+        // Status update
         function updateStatus(status) {
             const indicator = statusIndicator;
             indicator.className = 'status-indicator';
@@ -2640,18 +2647,18 @@
             }
         }
 
-        // 输入处理
+        // Input handling
         function sendMessage(planMode = false) {
             const message = userInput.value.trim();
             if (!message || isTaskRunning) return;
 
-            // 在新建模式下，提示用户先创建或选择目录
+            // In new mode, prompt user to create or select directory first
             if (taskMode === 'new') {
                 addMessage(I18N.create_or_select_directory, 'error');
                 return;
             }
 
-            // 显示执行模式信息
+            // Display execution mode information
             let modeInfo = '';
             if (planMode) {
                 modeInfo = I18N.plan_mode_suffix;
@@ -2707,7 +2714,7 @@
         }
 
         function selectDirectory(dirName) {
-            // 如果已经选择了相同的目录，不需要重复操作
+            // If the same directory is already selected, no need to repeat the operation
             if (selectedDirectory === dirName) {
                 console.log(`📌 Directory ${dirName} already selected`);
                 return;
@@ -2716,15 +2723,15 @@
             console.log(`🎯 Selecting directory: ${dirName}`);
             selectedDirectory = dirName;
             
-            // 切换到选择目录模式
+            // Switch to selected directory mode
             taskMode = 'selected';
             
-            // 只选择目录，不自动切换展开状态
+            // Only select directory, don't automatically switch expand state
             socket.emit('select_directory', {
                 dir_name: dirName
             });
             
-            // 更新UI显示选中状态，但不刷新整个列表
+            // Update UI to show selected state, but don't refresh entire list
             document.querySelectorAll('.directory-item').forEach(item => {
                 item.classList.remove('selected');
             });
@@ -2733,7 +2740,7 @@
                 selectedItem.classList.add('selected');
             }
             
-            // 更新任务模式信息
+            // Update task mode information
             updateTaskModeInfo();
             
             console.log(`✅ Directory selected: ${dirName}, mode: ${taskMode}`);
@@ -2765,7 +2772,7 @@
             userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
         }
 
-        // 事件监听
+        // Event listeners
         sendButton.addEventListener('click', () => sendMessage(false));
 
         planButton.addEventListener('click', () => sendMessage(true));
@@ -2785,30 +2792,30 @@
 
         userInput.addEventListener('input', resizeTextarea);
 
-        // 聊天滚动行为管理
+        // Chat scroll behavior management
         let scrollTimeout;
         let lastScrollTop = 0;
-        let scrollDirection = 'down'; // 'up' 或 'down'
+        let scrollDirection = 'down'; // 'up' or 'down'
         
         chatMessages.addEventListener('scroll', function() {
-            // 清除之前的超时
+            // Clear previous timeout
             clearTimeout(scrollTimeout);
             
-            // 检测滚动方向
+            // Detect scroll direction
             const currentScrollTop = chatMessages.scrollTop;
             scrollDirection = currentScrollTop > lastScrollTop ? 'down' : 'up';
             lastScrollTop = currentScrollTop;
             
-            // 标记用户正在滚动
+            // Mark user is scrolling
             isUserScrolling = true;
             
-            // 检查是否滚动到底部附近
+            // Check if scrolled near bottom
             const threshold = 20;
             const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - threshold;
             
-            // 智能自动滚动控制
+            // 智能自动滚动控制逻辑
             if (isNearBottom) {
-                // 用户滚动到底部附近，启用自动滚动
+                // 用户滚动到底部附近，自动启用自动滚动功能
                 if (!autoScrollEnabled) {
                     autoScrollEnabled = true;
                     updateAutoScrollIndicator();
@@ -2816,7 +2823,7 @@
                 }
                 hideScrollToBottomHint();
             } else {
-                // 用户明确向上滚动且距离底部较远时，禁用自动滚动
+                // 当用户主动向上滚动且距离底部较远时，禁用自动滚动
                 const farFromBottom = chatMessages.scrollTop + chatMessages.clientHeight < chatMessages.scrollHeight - 100;
                 if (autoScrollEnabled && scrollDirection === 'up' && farFromBottom) {
                     autoScrollEnabled = false;
@@ -2824,19 +2831,19 @@
                     console.log('⬆️ User scrolled up away from bottom, disabling auto-scroll');
                 }
                 
-                // 只有在不是自动滚动状态时才显示滚动提示
+                // 仅在非自动滚动状态下显示滚动提示
                 if (!autoScrollEnabled) {
                     showScrollToBottomHint();
                 }
             }
             
-            // 150ms后重置滚动状态（进一步减少延迟以提高自动滚动响应性）
+            // Reset scroll state after 150ms (further reduce delay to improve auto-scroll responsiveness)
             scrollTimeout = setTimeout(() => {
                 isUserScrolling = false;
             }, 150);
         });
 
-        // 滚动提示管理
+        // Scroll hint management
         function showScrollToBottomHint() {
             const scrollBtn = document.getElementById('scrollToBottomBtn');
             if (scrollBtn && !scrollBtn.classList.contains('show')) {
@@ -2849,7 +2856,7 @@
             if (scrollBtn && scrollBtn.classList.contains('show')) {
                 scrollBtn.classList.remove('show');
             }
-            hideNewMessageIndicator(); // 同时隐藏新消息提示
+            hideNewMessageIndicator(); // Also hide new message indicator
         }
 
         function showNewMessageIndicator() {
@@ -2872,7 +2879,11 @@
             }
         }
 
-        // 更新自动滚动状态指示器
+        /**
+         * 更新自动滚动状态指示器
+         * 根据当前自动滚动状态更新UI指示器的显示和样式
+         * @description 当自动滚动启用时显示向下箭头，禁用时显示暂停图标
+         */
         function updateAutoScrollIndicator() {
             if (autoScrollIndicator) {
                 if (autoScrollEnabled) {
@@ -2886,7 +2897,11 @@
             }
         }
 
-        // 滚动到底部功能
+        /**
+         * 滚动到聊天窗口底部
+         * @param {boolean} smooth - 是否使用平滑滚动动画，默认为true
+         * @description 执行滚动操作后会自动启用自动滚动功能并隐藏滚动提示
+         */
         function scrollToBottom(smooth = true) {
             if (smooth) {
                 chatMessages.scrollTo({
@@ -2901,19 +2916,29 @@
             hideScrollToBottomHint();
         }
 
-        // 绑定滚动到底部按钮事件
+        /**
+         * 绑定滚动到底部按钮的点击事件
+         * @description 用户点击滚动按钮时，平滑滚动到聊天窗口底部
+         */
         document.getElementById('scrollToBottomBtn').addEventListener('click', () => {
             scrollToBottom(true);
         });
 
-        // 绑定新消息提示点击事件
+        /**
+         * 绑定新消息提示的点击事件  
+         * @description 用户点击新消息提示时，平滑滚动到聊天窗口底部
+         */
         document.getElementById('newMessageIndicator').addEventListener('click', () => {
             scrollToBottom(true);
         });
 
-        // 目录管理
+        /**
+         * 目录管理 - 刷新目录列表
+         * @description 从后端获取最新的工作目录列表并更新UI显示
+         * 保持用户的展开/收起状态，显示加载状态，处理错误情况
+         */
         function refreshDirectories() {
-            // 保存当前展开状态
+            // 保存当前展开状态，避免刷新后用户展开的目录被重置
             const currentExpanded = new Set(expandedDirectories);
             
             sidebarLoading.classList.add('show');
@@ -2948,6 +2973,14 @@
                 });
         }
 
+        /**
+         * 渲染目录列表到UI
+         * @param {Array} directories - 目录数据数组
+         * @description 根据目录数据生成HTML结构，包括：
+         * - 目录状态标识（当前执行、已选择、上次使用）
+         * - 目录操作按钮（展开/收起、上传、下载、重命名、删除）
+         * - 文件树展开状态管理
+         */
         function renderDirectories(directories) {
             if (directories.length === 0) {
                 directoryList.innerHTML = `
@@ -2963,6 +2996,7 @@
                 let classes = ['directory-item'];
                 let statusText = '';
                 
+                // 根据目录状态添加相应的CSS类和状态文本
                 if (dir.is_current) {
                     classes.push('current');
                     statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(当前执行)</span>';
@@ -2976,7 +3010,7 @@
                     statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(上次使用)</span>';
                 }
                 
-                // 检查是否应该展开
+                // 检查该目录是否应该展开显示文件树
                 const isExpanded = expandedDirectories.has(dir.name);
                 if (isExpanded) {
                     classes.push('expanded');
@@ -4046,7 +4080,16 @@
             }
         });
 
-        // 初始化
+        /**
+         * 页面初始化函数
+         * @description 页面加载完成后执行的初始化操作：
+         * - 刷新目录列表
+         * - 设置输入框焦点
+         * - 更新任务模式信息
+         * - 初始化分隔条拖拽功能
+         * - 启动自动刷新定时器
+         * - 滚动到聊天窗口底部
+         */
         document.addEventListener('DOMContentLoaded', function() {
             refreshDirectories();
             userInput.focus();
@@ -4054,13 +4097,18 @@
             initResizer();
             startAutoRefresh();
             
-            // 初始化时滚动到底部
+            // 初始化时滚动到底部（延迟100ms确保DOM渲染完成）
             setTimeout(() => {
                 scrollToBottom(false);
             }, 100);
         });
 
-        // 自动刷新功能
+        /**
+         * 启动自动刷新功能
+         * @description 设置定时器自动刷新目录列表：
+         * - 任务运行时每30秒刷新一次（保证实时性）
+         * - 无论是否有任务运行，每5分钟刷新一次（保证数据同步）
+         */
         function startAutoRefresh() {
             // 每30秒自动刷新一次目录列表（仅在有任务运行时）
             setInterval(() => {

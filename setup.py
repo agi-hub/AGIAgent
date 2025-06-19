@@ -30,7 +30,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="agibot",
-    version="1.0.0",
+    version="0.1.0",
     author=f"{APP_NAME} Team",
     description="AI Code Auto-Generator - Intelligent code generation and task execution system based on Claude Sonnet",
     long_description=long_description,
@@ -63,13 +63,19 @@ setup(
         
         # Machine learning and text processing
         "scikit-learn>=0.22.0",
-        "jieba>=0.35.0",
+        "jieba>=0.35.0",  # Chinese text segmentation library
         
         # Web automation
         "playwright>=1.20.0",
         
         # Data processing and file operations
         "tqdm>=4.30.0",
+        "pandoc>=2.0.0",
+        
+        # GUI dependencies
+        "flask>=2.0.0",
+        "flask-socketio>=5.0.0",
+        "eventlet>=0.30.0",
     ],
     extras_require={
         "dev": [

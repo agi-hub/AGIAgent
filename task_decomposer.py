@@ -87,8 +87,8 @@ class TaskDecomposer:
                 {"role": "user", "content": user_prompt}
             ]
             
-            # Call large model API directly
-            print(f"🤖 Calling large model for task decomposition: {user_requirement[:get_history_truncation_length()]}...")
+            # Call LLM API directly
+            print(f"🤖 Calling LLM for task decomposition: {user_requirement[:get_history_truncation_length()]}...")
             
             if self.executor.is_claude:
                 # Use Anthropic Claude API - streaming call
@@ -155,10 +155,10 @@ class TaskDecomposer:
     
     def _extract_tasks_from_response(self, response_content: str) -> List[Dict[str, Any]]:
         """
-        Extract task list from large model response
+        Extract task list from LLM response
         
         Args:
-            response_content: Large model response content
+            response_content: LLM response content
             
         Returns:
             Task list
@@ -230,7 +230,7 @@ class TaskDecomposer:
         Generate default task list when structured tasks cannot be parsed
         
         Args:
-            response_content: Large model response content
+            response_content: LLM response content
             
         Returns:
             Default task list

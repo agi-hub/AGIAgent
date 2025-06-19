@@ -29,8 +29,96 @@ A complete automated task processing workflow:
 # Application name macro definition
 APP_NAME = "AGI Bot"
 
+def is_jupyter_environment():
+    """
+    Check if the code is running in a Jupyter environment
+    
+    Returns:
+        bool: True if running in Jupyter, False otherwise
+    """
+    try:
+        # Check if get_ipython function exists (available in IPython/Jupyter)
+        get_ipython
+        return True
+    except NameError:
+        pass
+    
+    try:
+        # Alternative check: look for IPython in modules
+        import sys
+        return 'IPython' in sys.modules
+    except:
+        pass
+    
+    # Check for Jupyter-specific environment variables
+    try:
+        import os
+        jupyter_env_vars = [
+            'JUPYTER_RUNTIME_DIR', 
+            'JUPYTER_CONFIG_DIR',
+            'JPY_SESSION_NAME',
+            'KERNEL_ID'
+        ]
+        if any(var in os.environ for var in jupyter_env_vars):
+            return True
+    except:
+        pass
+    
+    return False
+
+def is_library_mode():
+    """
+    Check if the code is being used as a library (not run directly)
+    
+    Returns:
+        bool: True if used as library, False if run directly
+    """
+    import inspect
+    
+    # Check if we're being called from main() function
+    # If main() is not in the call stack, it's likely library usage
+    frame = inspect.currentframe()
+    try:
+        while frame:
+            if frame.f_code.co_name == 'main' and frame.f_globals.get('__name__') == '__main__':
+                return False  # main() is being called directly
+            frame = frame.f_back
+        return True  # main() not found in stack, likely library usage
+    finally:
+        del frame
+
+def should_show_banner():
+    """
+    Determine whether to show the ASCII banner
+    
+    Returns:
+        bool: True if banner should be shown, False otherwise
+    """
+    # Don't show banner in Jupyter environments
+    if is_jupyter_environment():
+        return False
+    
+    # Check if we're running from command line (main script execution)
+    import inspect
+    frame = inspect.currentframe()
+    try:
+        # Look for main() function in call stack with __name__ == '__main__'
+        while frame:
+            if (frame.f_code.co_name == 'main' and 
+                frame.f_globals.get('__name__') == '__main__'):
+                return True  # Direct command line execution
+            frame = frame.f_back
+    finally:
+        del frame
+    
+    # If main() not found in call stack, it's likely library usage
+    return False
+
 def print_ascii_banner():
-    """Print ASCII art banner for AGI Bot"""
+    """Print ASCII art banner for AGI Bot (only if appropriate environment)"""
+    if not should_show_banner():
+        return
+    
     # ANSI color codes - Bright blue
     BRIGHT_BLUE = '\033[94m'
     RESET = '\033[0m'
@@ -134,9 +222,9 @@ class AGIBotMain:
         # Handle continue mode - load last output directory if requested
         if continue_mode:
             last_dir = load_last_output_dir()
-            # 如果传入了明确的out_dir且该目录存在，优先使用传入的目录
-            # 这主要是为了支持GUI模式下的目录选择
-            # 检查绝对路径或相对路径是否存在
+            # If an explicit out_dir is provided and the directory exists, prioritize using the provided directory
+            # This is mainly to support directory selection in GUI mode
+            # Check if absolute or relative path exists
             out_dir_abs = os.path.abspath(out_dir)
             if out_dir != "output" and (os.path.exists(out_dir) or os.path.exists(out_dir_abs)):
                 print(f"🔄 Continue mode: Using specified directory: {out_dir}")
@@ -204,9 +292,9 @@ class AGIBotMain:
         
         # Set paths
         self.todo_csv_path = os.path.join(out_dir, "todo.csv")
-        self.logs_dir = os.path.join(out_dir, "logs")
+        self.logs_dir = os.path.join(out_dir, "logs")  # Simplified: direct logs directory
         
-        # Ensure logs directory exists
+        # Ensure logs directory exists  
         os.makedirs(self.logs_dir, exist_ok=True)
         
         # Only create task decomposer in multi-task mode
@@ -925,7 +1013,7 @@ Please generate a markdown format detailed summary report, retaining all importa
                 for output in tool_outputs:
                     # Only add meaningful tool outputs
                     if len(output) > 50 and any(keyword in output for keyword in ['success', 'completed', 'created', 'modified', 'result', 'content']):
-                        # 使用配置的历史截断长度
+                        # Use configured history truncation length
                         history_truncation_length = get_history_truncation_length()
                         detailed_summary += f"```\n{output[:history_truncation_length]}...\n```\n\n"
             
@@ -984,7 +1072,7 @@ Please generate a markdown format detailed summary report, retaining all importa
             if not response:  # Empty response, use default
                 return default_yes
             
-            return response in ['y', 'yes', '是', '确定']
+            return response in ['y', 'yes', 'yes', 'confirm']
             
         except (KeyboardInterrupt, EOFError):
             print("\n❌ User cancelled operation")
@@ -1048,6 +1136,254 @@ Please generate a markdown format detailed summary report, retaining all importa
         return True
 
 
+class AGIBotClient:
+    """
+    AGI Bot Python Library Interface
+    
+    Provides OpenAI-like chat interface for programmatic access to AGI Bot functionality.
+    Does not rely on config.txt file - all configuration is passed during initialization.
+    
+    Example usage:
+        client = AGIBotClient(
+            api_key="your_api_key",
+            model="claude-3-sonnet-20240229"
+        )
+        
+        response = client.chat(
+            messages=[{"role": "user", "content": "Build a calculator app"}],
+            dir="my_project"
+        )
+        
+        if response["success"]:
+            print(f"Task completed! Output: {response['output_dir']}")
+        else:
+            print(f"Task failed: {response['message']}")
+    """
+    
+    def __init__(self, 
+                 api_key: str,
+                 model: str,
+                 api_base: str = None,
+                 debug_mode: bool = False,
+                 detailed_summary: bool = True,
+                 single_task_mode: bool = True,
+                 interactive_mode: bool = False):
+        """
+        Initialize AGI Bot Client
+        
+        Args:
+            api_key: API key for LLM service
+            model: Model name (e.g., 'gpt-4', 'claude-3-sonnet-20240229')
+            api_base: API base URL (optional)
+            debug_mode: Whether to enable DEBUG mode
+            detailed_summary: Whether to enable detailed summary mode
+            single_task_mode: Whether to use single task mode (default: True)
+            interactive_mode: Whether to enable interactive mode
+        """
+        if not api_key:
+            raise ValueError("api_key is required")
+        if not model:
+            raise ValueError("model is required")
+            
+        self.api_key = api_key
+        self.model = model
+        self.api_base = api_base
+        self.debug_mode = debug_mode
+        self.detailed_summary = detailed_summary
+        self.single_task_mode = single_task_mode
+        self.interactive_mode = interactive_mode
+        
+        print(f"🤖 AGI Bot Client initialized")
+        print(f"   Model: {model}")
+        if api_base:
+            print(f"   API Base: {api_base}")
+        print(f"   Mode: {'Single Task' if single_task_mode else 'Multi Task'}")
+    
+    def chat(self, 
+             messages: list,
+             dir: str = None,
+             loops: int = 25,
+             continue_mode: bool = False,
+             **kwargs) -> dict:
+        """
+        Chat interface similar to OpenAI's chat completions
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+                     Currently only supports single user message
+                     Example: [{"role": "user", "content": "Build a calculator app"}]
+            dir: Output directory for results (optional, will auto-generate if not provided)
+            loops: Maximum execution rounds per task (default: 25)
+            continue_mode: Whether to continue from previous execution (default: False)
+            **kwargs: Additional parameters (reserved for future use)
+            
+        Returns:
+            Dictionary containing:
+            - success: bool - Whether execution was successful
+            - message: str - Result message or error description
+            - output_dir: str - Path to output directory
+            - workspace_dir: str - Path to workspace directory
+            - execution_time: float - Execution time in seconds
+            - details: dict - Additional execution details
+        """
+        import time
+        from datetime import datetime
+        
+        start_time = time.time()
+        
+        # Validate messages format
+        if not isinstance(messages, list) or len(messages) == 0:
+            return {
+                "success": False,
+                "message": "messages must be a non-empty list",
+                "output_dir": None,
+                "workspace_dir": None,
+                "execution_time": 0,
+                "details": {"error": "Invalid messages format"}
+            }
+        
+        # Extract user requirement from messages
+        user_message = None
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                user_message = msg.get("content", "").strip()
+                break
+        
+        if not user_message:
+            return {
+                "success": False,
+                "message": "No user message found in messages",
+                "output_dir": None,
+                "workspace_dir": None,
+                "execution_time": 0,
+                "details": {"error": "No valid user message"}
+            }
+        
+        # Generate output directory if not provided
+        if dir is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            dir = f"agibot_output_{timestamp}"
+        
+        try:
+            # Create AGI Bot main instance
+            main_app = AGIBotMain(
+                out_dir=dir,
+                api_key=self.api_key,
+                model=self.model,
+                api_base=self.api_base,
+                debug_mode=self.debug_mode,
+                detailed_summary=self.detailed_summary,
+                single_task_mode=self.single_task_mode,
+                interactive_mode=self.interactive_mode,
+                continue_mode=continue_mode
+            )
+            
+            # Execute the task
+            print(f"🚀 Executing task: {user_message}")
+            success = main_app.run(
+                user_requirement=user_message,
+                loops=loops
+            )
+            
+            execution_time = time.time() - start_time
+            workspace_dir = os.path.join(dir, "workspace")
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": "Task completed successfully",
+                    "output_dir": os.path.abspath(dir),
+                    "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
+                    "execution_time": execution_time,
+                    "details": {
+                        "requirement": user_message,
+                        "loops": loops,
+                        "mode": "single_task" if self.single_task_mode else "multi_task",
+                        "model": self.model
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Task execution failed or incomplete",
+                    "output_dir": os.path.abspath(dir),
+                    "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
+                    "execution_time": execution_time,
+                    "details": {
+                        "requirement": user_message,
+                        "loops": loops,
+                        "mode": "single_task" if self.single_task_mode else "multi_task",
+                        "model": self.model,
+                        "error": "Execution failed"
+                    }
+                }
+                
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return {
+                "success": False,
+                "message": f"Execution error: {str(e)}",
+                "output_dir": os.path.abspath(dir) if os.path.exists(dir) else None,
+                "workspace_dir": None,
+                "execution_time": execution_time,
+                "details": {
+                    "requirement": user_message,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+            }
+    
+    def get_models(self) -> list:
+        """
+        Get list of supported models (placeholder for future implementation)
+        
+        Returns:
+            List of supported model names
+        """
+        return [
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307",
+            "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20241022"
+        ]
+    
+    def get_config(self) -> dict:
+        """
+        Get current client configuration
+        
+        Returns:
+            Dictionary containing current configuration
+        """
+        return {
+            "api_key": f"{self.api_key[:10]}...{self.api_key[-5:]}" if len(self.api_key) > 15 else self.api_key,
+            "model": self.model,
+            "api_base": self.api_base,
+            "debug_mode": self.debug_mode,
+            "detailed_summary": self.detailed_summary,
+            "single_task_mode": self.single_task_mode,
+            "interactive_mode": self.interactive_mode
+        }
+
+
+# Convenience function for quick usage
+def create_client(api_key: str, model: str, **kwargs) -> AGIBotClient:
+    """
+    Convenience function to create AGI Bot client
+    
+    Args:
+        api_key: API key for LLM service
+        model: Model name
+        **kwargs: Additional configuration parameters
+        
+    Returns:
+        AGIBotClient instance
+    """
+    return AGIBotClient(api_key=api_key, model=model, **kwargs)
+
+
 def main():
     """
     Main function - handle command line parameters
@@ -1076,7 +1412,7 @@ Usage Examples:
   python main.py --todo  # Multi-task mode
   
   # Specify output directory and execution rounds
-  python main.py --out-dir my_project --loops 5 --requirement "Requirement description"
+  python main.py --dir my_project --loops 5 --requirement "Requirement description"
   
   # Use custom model configuration
   python main.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1
@@ -1089,7 +1425,7 @@ Usage Examples:
     )
     
     parser.add_argument(
-        "--out-dir", "-o",
+        "--dir", "-d",
         default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         help="Output directory for storing todo.csv and logs (default: output_timestamp)"
     )
@@ -1157,7 +1493,7 @@ Usage Examples:
     parser.add_argument(
         "--version", "-v",
         action="version",
-        version=f"{APP_NAME} v1.0.0"
+        version=f"{APP_NAME} v0.1.0"
     )
     
     parser.add_argument(
@@ -1171,7 +1507,7 @@ Usage Examples:
         "--analyze-logs",
         action="store_true",
         default=False,
-        help="Analyze debug logs completeness and exit (requires --out-dir to specify log location)"
+        help="Analyze debug logs completeness and exit (requires --dir to specify log location)"
     )
     
     parser.add_argument(
@@ -1179,17 +1515,17 @@ Usage Examples:
         action="store_true",
         default=False,
         dest="continue_mode",
-        help="Continue from last output directory (ignores --out-dir if last directory exists)"
+        help="Continue from last output directory (ignores --dir if last directory exists)"
     )
     
     args = parser.parse_args()
     
-    # Check for conflicting parameters: --continue and --out-dir
-    user_specified_out_dir = '--out-dir' in sys.argv or '-o' in sys.argv
+    # Check for conflicting parameters: --continue and --dir
+    user_specified_out_dir = '--dir' in sys.argv or '-d' in sys.argv
     if args.continue_mode and user_specified_out_dir:
-        # User specified both --continue/-c and --out-dir
-        print("⚠️  Warning: Both --continue/-c and --out-dir parameters were specified.")
-        print("    The --continue/-c parameter takes priority and --out-dir will be ignored.")
+        # User specified both --continue/-c and --dir
+        print("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
+        print("    The --continue/-c parameter takes priority and --dir will be ignored.")
         print("    If you want to use a specific output directory, don't use --continue/-c.")
         print()
     
@@ -1200,13 +1536,13 @@ Usage Examples:
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
         #args.out_dir = "output_test"
-        args.loops = 10
+        args.loops = 25
         #args.model = "gpt-4.1"
         #args.base_url = "https://api.openai-proxy.org/v1"
         args.api_key = None
         args.model = "claude-3-7-sonnet-latest"
         args.api_base = None
-        print(f"📁 Output directory: {args.out_dir}")
+        print(f"📁 Output directory: {args.dir}")
         print(f"🔄 Execution rounds: {args.loops}")
         print(f"🤖 Model: {args.model}")
         print()
@@ -1222,30 +1558,30 @@ Usage Examples:
     
     # Create and run main program
     try:
-        # 如果用户选择分析日志，则执行日志分析并退出
+        # If user chooses to analyze logs, execute log analysis and exit
         if args.analyze_logs:
-            print("🔍 日志完整性分析模式")
-            print(f"📁 分析目录: {args.out_dir}")
+            print("🔍 Log completeness analysis mode")
+            print(f"📁 Analysis directory: {args.dir}")
             
-            # 创建 ToolExecutor 实例来使用日志分析功能
+            # Create ToolExecutor instance to use log analysis functionality
             from tool_executor import ToolExecutor
             
-            logs_dir = os.path.join(args.out_dir, "logs")
+            logs_dir = os.path.join(args.dir, "logs")
             if not os.path.exists(logs_dir):
-                print(f"❌ 日志目录不存在: {logs_dir}")
-                print("请确保已运行过任务并生成了调试日志")
+                print(f"❌ Log directory does not exist: {logs_dir}")
+                print("Please ensure tasks have been run and debug logs have been generated")
                 sys.exit(1)
             
-            # 查找最新的会话日志目录
+            # Find the latest session log directory
             session_dirs = [d for d in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, d))]
             if session_dirs:
                 latest_session = max(session_dirs)
                 session_logs_dir = os.path.join(logs_dir, latest_session)
-                print(f"📅 分析最新会话: {latest_session}")
-                print(f"📂 会话日志目录: {session_logs_dir}")
+                print(f"📅 Analyzing latest session: {latest_session}")
+                print(f"📂 Session log directory: {session_logs_dir}")
             else:
                 session_logs_dir = logs_dir
-                print(f"📂 使用根日志目录: {logs_dir}")
+                print(f"📂 Using root log directory: {logs_dir}")
             
             try:
                 executor = ToolExecutor(
@@ -1258,19 +1594,19 @@ Usage Examples:
                 analysis_result = executor.analyze_debug_logs_completeness(session_logs_dir)
                 
                 if "error" in analysis_result:
-                    print(f"❌ 分析失败: {analysis_result['error']}")
+                    print(f"❌ Analysis failed: {analysis_result['error']}")
                     sys.exit(1)
                 else:
-                    print("\n✅ 日志完整性分析完成")
-                    print("详细分析结果已显示在上方")
+                    print("\n✅ Log completeness analysis completed")
+                    print("Detailed analysis results are displayed above")
                     sys.exit(0)
                     
             except Exception as e:
-                print(f"❌ 日志分析过程中发生错误: {e}")
+                print(f"❌ Error occurred during log analysis: {e}")
                 sys.exit(1)
         
         main_app = AGIBotMain(
-            out_dir=args.out_dir,
+            out_dir=args.dir,
             api_key=api_key,
             model=args.model,
             api_base=args.api_base,

@@ -4,7 +4,7 @@
 
 **AGI Bot** is an AI-powered intelligent code generation and autonomous task execution system that automatically decomposes complex tasks and completes them through multi-round iterations with tool calls.
 
-AGI Bot takes user prompts and a working directory as input, and outputs an edited working directory where the LLM places code, documentation, and other output files in the workspace folder. AGI Bot operates in a multi-round iterative mode, where each round represents an interaction process between the LLM and tools. The system sends system prompts, user prompts, chat history, and previous tool execution results to the LLM, which then autonomously decides on the next round of tool calls (such as writing files, searching code repositories, executing terminal commands, etc.). These calls are described in XML format and then parsed and executed by the tool execution module. The execution results are passed to the LLM in the next round. When the LLM determines that the task is complete, it sends a task completion signal, and the program can optionally perform task summarization. All LLM editing operations are completed in the workspace directory under the user-defined working directory (out-dir). Additionally, to control context length, chat history summarization is triggered when the chat context threshold is exceeded. Web search results can optionally be summarized.
+AGI Bot takes user prompts and a working directory as input, and outputs an edited working directory where the LLM places code, documentation, and other output files in the workspace folder. AGI Bot operates in a multi-round iterative mode, where each round represents an interaction process between the LLM and tools. The system sends system prompts, user prompts, chat history, and previous tool execution results to the LLM, which then autonomously decides on the next round of tool calls (such as writing files, searching code repositories, executing terminal commands, etc.). These calls are described in XML format and then parsed and executed by the tool execution module. The execution results are passed to the LLM in the next round. When the LLM determines that the task is complete, it sends a task completion signal, and the program can optionally perform task summarization. All LLM editing operations are completed in the workspace directory under the user-defined working directory (--dir). Additionally, to control context length, chat history summarization is triggered when the chat context threshold is exceeded. Web search results can optionally be summarized.
 
 AGI Bot runs in the terminal by default. For users with GUI or web access needs, we also provide a Web GUI that includes all the functionality needed for task execution, plus file upload/download, file preview, and task execution monitoring features.
 
@@ -19,6 +19,14 @@ Since AGI Bot is positioned as a general-purpose task agent, it may call system 
 </div>
 
 <br/>
+
+## 🚀 Try it Now
+
+**Experience AGI Bot in Google Colab without any setup!**
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE/view?usp=sharing)
+
+*Click the badge above to launch AGI Bot directly in your browser and start experimenting with autonomous AI programming.*
 
 ## Quick Start
 
@@ -49,7 +57,7 @@ python main.py --interactive --todo
 Specify custom project output location. If not specified, the system automatically creates a timestamped `output_` directory.
 
 ```bash
-python main.py --out-dir "my_project"
+python main.py --dir "my_project"
 ```
 
 #### 🔄 Resume Task Execution
@@ -67,7 +75,7 @@ Control the maximum number of task execution rounds to prevent infinite loops.
 
 ```bash
 python main.py --loops 5 -r "Task description"
-python main.py -o "my_dir" -l 10 -r "Task description"
+python main.py -d "my_dir" -l 10 -r "Task description"
 ```
 
 > **Info**: Rounds don't equal model calls. Each round typically calls the LLM once, but additional calls may occur for history summarization when chat logs become too long, plus optional task summarization at completion.
@@ -290,13 +298,67 @@ auto_fix_interactive_commands=False
 gui_default_data_directory=~
 ```
 
-## 🔧 System Requirements
+## 🔧 System Requirements & Installation
 
+### Prerequisites
 - **Python 3.8+**
-- **Dependencies**: requests, openai, anthropic, colorama, pandoc
-- **Additional GUI Dependencies**: flask, flask-socketio (optional if GUI not needed)
-- **Optional Enhancements**: numpy, scikit-learn, playwright (auto-installed)
 - **Network Connection**: Required for API calls and web search functionality
+
+### Installation Steps
+
+#### Method 1: pip Installation (Recommended)
+
+AGI Bot can be installed directly as a Python package:
+
+```bash
+# Install from source
+pip install .
+
+# Or install from git repository (replace with actual repository URL)
+pip install git+https://github.com/agi-hub/AGIBot.git
+
+# If published to PyPI, install directly
+pip install agibot
+```
+
+After installation, you can use directly from command line:
+
+```bash
+agibot --requirement "Your task description"
+```
+
+Or use as a library in Python code:
+
+```python
+from agibot import AGIBotClient
+```
+
+#### Method 2: Manual Dependencies Installation
+
+1. **Install Python Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Install Core Dependencies** (if not using requirements.txt)
+   ```bash
+   pip install requests openai anthropic colorama pandoc
+   ```
+
+3. **Install GUI Dependencies** (optional, if you plan to use Web GUI)
+   ```bash
+   pip install flask flask-socketio
+   ```
+
+4. **Install Playwright for Web Automation** (required for certain web-related tasks)
+   ```bash
+   playwright install-deps
+   playwright install chromium
+   ```
+
+### Optional Enhancements
+- **Additional packages**: numpy, scikit-learn
+- **Note**: Some dependencies may be auto-installed when first used
 
 ## 🎯 Best Practices
 
@@ -325,5 +387,5 @@ gui_default_data_directory=~
 - **Simple Tasks**: 1-5 execution rounds (`--loops 5`)
 - **Complex Tasks**: 10-25 execution rounds (default)
 - **Debug Phase**: Use `--debug` mode to output llm_call_* files for viewing detailed LLM conversations
-- **Large Projects**: Use custom output directory (`--out-dir project_name`)
+- **Large Projects**: Use custom output directory (`--dir project_name`)
 

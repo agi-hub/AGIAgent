@@ -17,12 +17,10 @@ limitations under the License.
 """
 
 import os
-import shutil
 import subprocess
 import threading
 import time
 import queue
-from typing import List, Dict, Any, Optional
 
 from .code_repository_parser import CodeRepositoryParser
 

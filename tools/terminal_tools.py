@@ -76,7 +76,7 @@ class TerminalTools:
         
         return decoded_text
     
-    def _read_process_output_with_timeout(self, process, timeout_inactive=300, max_total_time=600):
+    def _read_process_output_with_timeout(self, process, timeout_inactive=180, max_total_time=300):
         """
         Asynchronously read process output with smart timeout, while displaying real-time output to user
         """
@@ -224,7 +224,7 @@ class TerminalTools:
         return '\n'.join(stdout_lines), '\n'.join(stderr_lines), return_code, timed_out
 
     def _detect_interactive_command(self, command: str) -> bool:
-        """检测命令是否可能需要交互式输入"""
+        """Detect if command might require interactive input"""
         interactive_patterns = [
             r'\bsudo\b(?!\s+(-n|--non-interactive))',  # sudo without -n flag
             r'\bapt\s+(?:install|upgrade|update)\b(?!.*-y)',  # apt without -y flag
@@ -240,65 +240,65 @@ class TerminalTools:
         return any(re.search(pattern, command, re.IGNORECASE) for pattern in interactive_patterns)
     
     def _make_command_non_interactive(self, command: str) -> str:
-        """将交互式命令转换为非交互式版本"""
+        """Convert interactive commands to non-interactive versions"""
         original_command = command
         
-        # sudo 命令添加 -n 标志（非交互式）
+        # Add -n flag to sudo commands (non-interactive)
         if re.search(r'\bsudo\b(?!\s+(-n|--non-interactive))', command, re.IGNORECASE):
             command = re.sub(r'\bsudo\b', 'sudo -n', command, flags=re.IGNORECASE)
         
-        # apt 命令添加 -y 标志
+        # Add -y flag to apt commands
         if re.search(r'\bapt\s+(?:install|upgrade|update)\b(?!.*-y)', command, re.IGNORECASE):
             command = re.sub(r'\b(apt\s+(?:install|upgrade|update))\b', r'\1 -y', command, flags=re.IGNORECASE)
         
-        # yum 命令添加 -y 标志
+        # Add -y flag to yum commands
         if re.search(r'\byum\s+(?:install|update)\b(?!.*-y)', command, re.IGNORECASE):
             command = re.sub(r'\b(yum\s+(?:install|update))\b', r'\1 -y', command, flags=re.IGNORECASE)
         
-        # dnf 命令添加 -y 标志
+        # Add -y flag to dnf commands
         if re.search(r'\bdnf\s+(?:install|update)\b(?!.*-y)', command, re.IGNORECASE):
             command = re.sub(r'\b(dnf\s+(?:install|update))\b', r'\1 -y', command, flags=re.IGNORECASE)
         
-        # pip 命令添加 --quiet 标志
+        # Add --quiet flag to pip commands
         if re.search(r'\bpip\s+install\b(?!.*--quiet)', command, re.IGNORECASE):
             command = re.sub(r'\b(pip\s+install)\b', r'\1 --quiet', command, flags=re.IGNORECASE)
         
         return command
     
     def _provide_command_suggestions(self, command: str) -> str:
-        """为交互式命令提供建议"""
+        """Provide suggestions for interactive commands"""
         suggestions = []
         
         if 'sudo' in command.lower() and '-n' not in command:
-            suggestions.append("💡 建议：使用 'sudo -n' 进行非交互式执行，或预先配置sudo免密")
+            suggestions.append("💡 Suggestion: Use 'sudo -n' for non-interactive execution, or configure passwordless sudo")
         
         if re.search(r'\bapt\s+(?:install|upgrade|update)\b', command, re.IGNORECASE) and '-y' not in command:
-            suggestions.append("💡 建议：使用 'apt -y' 自动确认安装")
+            suggestions.append("💡 Suggestion: Use 'apt -y' to automatically confirm installation")
         
         if 'git push' in command.lower() or 'git pull' in command.lower():
-            suggestions.append("💡 建议：配置SSH密钥或使用个人访问令牌避免密码输入")
+            suggestions.append("💡 Suggestion: Configure SSH keys or use personal access tokens to avoid password input")
         
         if 'ssh' in command.lower():
-            suggestions.append("💡 建议：使用SSH密钥认证避免密码输入")
+            suggestions.append("💡 Suggestion: Use SSH key authentication to avoid password input")
         
         return "\n".join(suggestions)
 
     def run_terminal_cmd(self, command: str, is_background: bool = False, 
-                        timeout_inactive: int = 300, max_total_time: int = 600, 
+                        timeout_inactive: int = 180, max_total_time: int = 300, 
                         auto_fix_interactive: bool = None, **kwargs) -> Dict[str, Any]:
         """
         Run a terminal command with smart timeout handling and interactive command detection.
         
         Args:
-            command: 要执行的命令
-            is_background: 是否后台执行
-            timeout_inactive: 无输出超时时间
-            max_total_time: 最大执行时间
-            auto_fix_interactive: 是否自动修复交互式命令（如果为None，从配置文件读取）
+            command: Command to execute
+            is_background: Whether to run in background
+            timeout_inactive: Timeout for no output
+            max_total_time: Maximum execution time
+            auto_fix_interactive: Whether to auto-fix interactive commands (if None, read from config file)
         """
         print("Running terminal command")
         
-        # 如果没有指定auto_fix_interactive参数，从配置文件读取
+        # If auto_fix_interactive parameter is not specified, read from config file
         if auto_fix_interactive is None:
             auto_fix_interactive = get_auto_fix_interactive_commands()
         
@@ -310,7 +310,7 @@ class TerminalTools:
         original_command = command
         command = self._fix_html_entities(command)
         
-        # 检测是否为交互式命令
+        # Detect if it's an interactive command
         is_interactive = self._detect_interactive_command(command)
         
         if is_interactive:
@@ -354,7 +354,7 @@ class TerminalTools:
                 if is_potentially_interactive:
                     timeout_inactive = min(timeout_inactive, 60)
                     max_total_time = min(max_total_time, 180)
-                    print(f"🖥️ 检测到可能的交互式/GUI程序，使用较短超时: {timeout_inactive}s无输出超时, {max_total_time}s最大执行时间")
+                    print(f"🖥️ Detected potential interactive/GUI program, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 long_running_indicators = [
                     'git clone', 'git fetch', 'git pull', 'git push',
@@ -370,14 +370,14 @@ class TerminalTools:
                 if is_potentially_long_running:
                     timeout_inactive = max(timeout_inactive, 600)
                     max_total_time = max(max_total_time, 1800)
-                    print(f"⏳ 检测到可能的长时间运行命令，使用更长超时: {timeout_inactive}s无输出超时, {max_total_time}s最大执行时间")
+                    print(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
-                # 对于交互式命令，使用特殊的环境变量
+                # For interactive commands, use special environment variables
                 env = None
                 if is_interactive:
                     env = os.environ.copy()
-                    env['DEBIAN_FRONTEND'] = 'noninteractive'  # 对于apt命令
-                    env['NEEDRESTART_MODE'] = 'a'  # 自动重启服务
+                    env['DEBIAN_FRONTEND'] = 'noninteractive'  # For apt commands
+                    env['NEEDRESTART_MODE'] = 'a'  # Auto restart services
                 
                 process = subprocess.Popen(
                     command,
@@ -417,7 +417,7 @@ class TerminalTools:
                 if timed_out:
                     result['timeout_reason'] = 'Process timed out due to inactivity or maximum time limit'
                 
-                # 如果是交互式命令且失败了，提供额外的帮助信息
+                # If it's an interactive command and it failed, provide additional help information
                 if is_interactive and return_code != 0:
                     suggestions = self._provide_command_suggestions(original_command)
                     if suggestions:

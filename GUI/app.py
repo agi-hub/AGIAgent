@@ -381,7 +381,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         # Set parameters based on mode
         if plan_mode:
             output_queue.put({'event': 'output', 'data': {'message': f"Plan mode enabled: Using task decomposition (--todo)", 'type': 'info'}})
-            single_task_mode = False  # plan模式使用任务分解
+            single_task_mode = False  # Plan mode uses task decomposition
         else:
             output_queue.put({'event': 'output', 'data': {'message': f"Normal mode: Direct execution (single task)", 'type': 'info'}})
             single_task_mode = True   # Default mode executes directly
@@ -411,7 +411,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
                     *lines, self.buffer = self.buffer.split('\n')
                     for line in lines:
                         if line.strip():
-                            # Check if it's warning info or progress info, if so display as normal info instead of error
+                            # Check if it's warning or progress info, if so display as normal info instead of error
                             line_lower = line.lower()
                             if ('warning' in line_lower or 
                                 'progress' in line_lower or 
@@ -430,7 +430,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             
             def final_flush(self):
                 if self.buffer.strip():
-                    # Check if it's warning info or progress info, if so display as normal info instead of error
+                    # Check if it's warning or progress info, if so display as normal info instead of error
                     buffer_lower = self.buffer.lower()
                     if ('warning' in buffer_lower or 
                         'progress' in buffer_lower or 
@@ -457,7 +457,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             
             success = agibot.run(user_requirement=user_requirement, loops=25)
             
-            # 确保重要的完成信息被显示
+            # Ensure important completion information is displayed
             workspace_dir = os.path.join(out_dir, "workspace")
             output_queue.put({'event': 'output', 'data': {'message': f"📁 All files saved at: {os.path.abspath(out_dir)}", 'type': 'success'}})
             
@@ -817,32 +817,32 @@ def get_file_content(file_path):
                 'size': gui_instance.format_size(file_size)
             })
         elif ext == '.csv':
-            # CSV文件表格预览
+            # CSV file table preview
             import csv
             import io
             
             try:
-                # 读取CSV文件
+                # Read CSV file
                 with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                 
-                # 解析CSV内容
+                # Parse CSV content
                 csv_reader = csv.reader(io.StringIO(content))
                 rows = list(csv_reader)
                 
                 if not rows:
-                    return jsonify({'success': False, 'error': 'CSV文件为空'})
+                    return jsonify({'success': False, 'error': 'CSV file is empty'})
                 
-                # 获取表头（第一行）
+                # Get header (first row)
                 headers = rows[0] if rows else []
                 data_rows = rows[1:] if len(rows) > 1 else []
                 
-                # 限制显示的行数，避免前端卡顿
+                # Limit displayed rows to avoid frontend lag
                 max_rows = 1000
                 if len(data_rows) > max_rows:
                     data_rows = data_rows[:max_rows]
                     truncated = True
-                    total_rows = len(rows) - 1  # 减去表头
+                    total_rows = len(rows) - 1  # Subtract header
                 else:
                     truncated = False
                     total_rows = len(data_rows)
@@ -859,7 +859,7 @@ def get_file_content(file_path):
                 })
                 
             except UnicodeDecodeError:
-                # 尝试其他编码
+                # Try other encodings
                 try:
                     with open(full_path, 'r', encoding='gbk', errors='ignore') as f:
                         content = f.read()
@@ -868,7 +868,7 @@ def get_file_content(file_path):
                     rows = list(csv_reader)
                     
                     if not rows:
-                        return jsonify({'success': False, 'error': 'CSV文件为空'})
+                        return jsonify({'success': False, 'error': 'CSV file is empty'})
                     
                     headers = rows[0] if rows else []
                     data_rows = rows[1:] if len(rows) > 1 else []
@@ -894,10 +894,10 @@ def get_file_content(file_path):
                         'size': gui_instance.format_size(file_size)
                     })
                 except Exception:
-                    return jsonify({'success': False, 'error': 'CSV文件编码不支持，请尝试UTF-8或GBK编码'})
+                    return jsonify({'success': False, 'error': 'CSV file encoding not supported, please try UTF-8 or GBK encoding'})
             
             except Exception as e:
-                return jsonify({'success': False, 'error': f'CSV文件解析失败: {str(e)}'})
+                return jsonify({'success': False, 'error': f'CSV file parsing failed: {str(e)}'})
         else:
             return jsonify({'success': False, 'error': 'File type not supported for preview'})
     
@@ -1313,26 +1313,26 @@ def upload_files(dir_name):
             'error': str(e)
         }), 500
 
-def sanitize_filename(filename):
+def sanitize_filename(filename, is_directory=False):
     """
-    自定义文件名清理函数，保留中文字符但移除危险字符
+    Custom filename sanitization function, preserve Chinese characters but remove dangerous characters
     """
     if not filename:
         return None
     
-    # 移除路径分隔符和其他危险字符，但保留中文字符
-    # 允许：字母、数字、中文字符、点号、下划线、连字符、空格、括号
+    # Remove path separators and other dangerous characters, but preserve Chinese characters
+    # Allow: letters, numbers, Chinese characters, dots, underscores, hyphens, spaces, parentheses
     filename = re.sub(r'[<>:"/\\|?*]', '', filename)
     
-    # 移除开头和结尾的空格和点号
+    # Remove leading and trailing spaces and dots
     filename = filename.strip(' .')
     
-    # 如果文件名为空，返回None
+    # If filename is empty, return None
     if not filename:
         return None
     
-    # 对于目录名，允许以点开头（如.git等）
-    # 限制文件名长度
+    # For directory names, allow starting with dots (like .git, etc.)
+    # Limit filename length
     if len(filename) > 255:
         filename = filename[:255]
     

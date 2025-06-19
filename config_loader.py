@@ -138,25 +138,48 @@ def get_model(config_file: str = "config.txt") -> Optional[str]:
 
 def get_max_tokens(config_file: str = "config.txt") -> Optional[int]:
     """
-    Get max_tokens from configuration file
+    Get max_tokens from configuration file with model-specific defaults
     
     Args:
         config_file: Path to the configuration file
         
     Returns:
-        Max tokens integer or None if not found or invalid
+        Max tokens integer with model-specific default if not manually set
     """
     config = load_config(config_file)
     max_tokens_str = config.get('max_tokens')
     
+    # If user manually set max_tokens, use their setting
     if max_tokens_str:
         try:
             return int(max_tokens_str)
         except ValueError:
             print(f"Warning: Invalid max_tokens value '{max_tokens_str}' in config file, must be an integer")
-            return None
+            # Fall through to model-specific defaults
     
-    return None
+    # If no manual setting, use model-specific defaults
+    model = get_model(config_file)
+    if model:
+        model_lower = model.lower()
+        
+        # DeepSeek and OpenAI models: 8192
+        if ('deepseek' in model_lower or 
+            'gpt-' in model_lower or 
+            'o1-' in model_lower or
+            'chatgpt' in model_lower):
+            return 8192
+            
+        # Anthropic Claude models: 16384
+        elif ('claude' in model_lower or 
+              'anthropic' in model_lower):
+            return 16384
+            
+        # Other models (Ollama, Qwen, Doubao, etc.): 4096
+        else:
+            return 4096
+    
+    # Fallback default if no model specified
+    return 4096
 
 def get_streaming(config_file: str = "config.txt") -> bool:
     """

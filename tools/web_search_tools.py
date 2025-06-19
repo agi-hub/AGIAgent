@@ -16,35 +16,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import json
 import re
 import time
 import requests
 import urllib.parse
-from urllib.parse import quote_plus, unquote, urljoin, urlparse
-from typing import List, Dict, Any, Optional, Tuple
-from bs4 import BeautifulSoup
-import random
+from typing import List, Dict, Any
 import os
-import io
-import asyncio
-import ssl
-import warnings
 import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
-import hashlib
 import datetime
 
 # 导入config_loader以获取截断长度配置
 import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config_loader import get_web_content_truncation_length, get_truncation_length, get_history_truncation_length
 
@@ -369,8 +353,6 @@ Cleaned Content Length: {len(cleaned_content)} characters
         
         print("🌐 Checking Google connectivity for the first time...")
         try:
-            import requests
-            
             # Try to download Google homepage with 3 second timeout
             response = requests.get('https://www.google.com', 
                                   timeout=3, 
@@ -2304,9 +2286,6 @@ Please provide the extracted relevant content:"""
         today_keywords = ['today', 'latest', 'current', 'recent', 'breaking']
         if any(keyword in optimized_term for keyword in today_keywords):
             date_str = current_date.strftime('%B %d %Y')
-            if 'june' in optimized_term and '2025' in optimized_term:
-                optimized_term = re.sub(r'june \d+ 2025', '', optimized_term, flags=re.IGNORECASE)
-                optimized_term = optimized_term.strip()
             
             if not re.search(r'\b\d{4}\b', optimized_term):
                 optimized_term = f"{optimized_term} {date_str}"

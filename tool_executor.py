@@ -238,16 +238,13 @@ class ToolExecutor:
             # print("🔌 Plugin tools registered: kb_search, kb_content, kb_body")
         
         # Log related settings
-        # Fix logs directory path construction - ensure it's relative to parent of workspace, not workspace itself
-        if workspace_dir and session_timestamp:
+        # Simplified logs directory path construction - always use simple "logs" structure
+        if workspace_dir:
             # Get the parent directory of workspace (typically the output directory)
             parent_dir = os.path.dirname(workspace_dir) if workspace_dir else os.getcwd()
-            self.logs_dir = os.path.join(parent_dir, logs_dir, session_timestamp)
-        elif workspace_dir:
-            parent_dir = os.path.dirname(workspace_dir) if workspace_dir else os.getcwd()
-            self.logs_dir = os.path.join(parent_dir, logs_dir)
+            self.logs_dir = os.path.join(parent_dir, "logs")  # Simplified: directly use "logs"
         else:
-            self.logs_dir = os.path.join(os.getcwd(), logs_dir, session_timestamp) if session_timestamp else os.path.join(os.getcwd(), logs_dir)
+            self.logs_dir = os.path.join(os.getcwd(), "logs")  # Simplified: directly use "logs"
         
         self.llm_logs_dir = self.logs_dir  # LLM call logs directory
         self.llm_call_counter = 0  # LLM call counter

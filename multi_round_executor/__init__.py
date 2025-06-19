@@ -30,7 +30,7 @@ from .debug_recorder import DebugRecorder
 from .task_checker import TaskChecker
 from .config import *
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 __all__ = [
     "MultiRoundTaskExecutor",
     "TaskLoader", 

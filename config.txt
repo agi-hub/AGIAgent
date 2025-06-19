@@ -3,14 +3,10 @@
 LANG=zh
 
 
-
-
 # OpenAI API configuration (commented out)
 # api_key=your key
 # api_base=https://api.openai-proxy.org/v1
 # model=gpt-4.1
-# max_tokens=8192
-
 
 
 # SiliconFlow API configuration (currently active)
@@ -19,24 +15,19 @@ LANG=zh
 # model=Qwen/Qwen3-32B
 # model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
-# max_tokens=4096
-
 
 
 # Anthropic models
-api_key=your key
-api_base=https://api.openai-proxy.org/anthropic
-model=claude-sonnet-4-0
+# api_key=your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
-max_tokens=16384
-
 
 
 # DeepSeek API configuration (alternative option)
-# api_key=your key
-# api_base=https://api.deepseek.com/v1
-# model=deepseek-chat
-
+api_key=sk-1e7d58ad85884fa1a77408ceb7e0174e
+api_base=https://api.deepseek.com/v1
+model=deepseek-chat
 
 
 # Volcengine Doubao API configuration (commented out)
@@ -49,7 +40,16 @@ max_tokens=16384
 # api_key=your key
 # api_base=http://localhost:11434/v1
 # model=qwen3:8b
-# max_tokens=4096
+
+
+# Max Tokens Configuration
+# AGI Bot automatically sets model-specific default max_tokens values:
+# - DeepSeek & OpenAI models (gpt-*, o1-*, deepseek-*): 8192 tokens
+# - Anthropic Claude models (claude-*): 16384 tokens  
+# - Other models (Qwen, Ollama, etc.): 4096 tokens
+# 
+# To override the automatic default, uncomment and set your preferred value:
+# max_tokens=8192
 
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True

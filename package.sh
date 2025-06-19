@@ -53,7 +53,9 @@ show_usage() {
     echo "  1. Clean all __pycache__ directories"
     echo "  2. Remove all .pyc and .pyo files"
     echo "  3. Clean API keys from config.txt"
-    echo "  4. Remove other temporary files"
+    echo "  4. Remove build and agibot.egg-info directories"
+    echo "  5. Remove .agibot_last_output.json file"
+    echo "  6. Remove other temporary files"
 }
 
 # Check parameters
@@ -111,6 +113,30 @@ fi
 
 # Delete other common temporary files and directories
 print_info "Cleaning other temporary files..."
+
+# Delete build directories
+if [ -d "build" ]; then
+    rm -rf build
+    print_success "Deleted build directory"
+else
+    print_info "No build directory found"
+fi
+
+# Delete agibot.egg-info directory
+if [ -d "agibot.egg-info" ]; then
+    rm -rf agibot.egg-info
+    print_success "Deleted agibot.egg-info directory"
+else
+    print_info "No agibot.egg-info directory found"
+fi
+
+# Delete .agibot_last_output.json file
+if [ -f ".agibot_last_output.json" ]; then
+    rm -f .agibot_last_output.json
+    print_success "Deleted .agibot_last_output.json file"
+else
+    print_info "No .agibot_last_output.json file found"
+fi
 
 # Delete .DS_Store files (macOS)
 find . -name ".DS_Store" -delete 2>/dev/null || true

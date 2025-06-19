@@ -239,6 +239,17 @@ class FileSystemTools:
             instructions: Optional instructions for the edit
             append_mode: If True, append content to the end of the file instead of replacing/editing
         """
+        # Check for dummy placeholder file created by hallucination detection
+        if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
+            print(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
+            return {
+                'file': target_file,
+                'status': 'skipped',
+                'error': 'Dummy placeholder file detected - hallucination prevention active',
+                'hallucination_prevention': True,
+                'append_mode': append_mode
+            }
+        
         print(f"Editing file: {target_file}")
         if instructions:
             print(f"Instructions: {instructions}")
