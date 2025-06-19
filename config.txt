@@ -17,10 +17,8 @@ LANG=zh
 api_key=your key
 api_base=https://api.siliconflow.cn/v1
 # model=Qwen/Qwen3-32B
-# model=Qwen/Qwen3-30B-A3B
+model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
-# model=Qwen/Qwen3-8B
-model=THUDM/glm-4-9b-chat
 max_tokens=4096
 
 
@@ -28,7 +26,7 @@ max_tokens=4096
 # Anthropic models
 # api_key=your key
 # api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
+#model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
 # max_tokens=16384
 
@@ -115,7 +113,7 @@ summary_max_length=5000
 # Recommended values: 15000-50000 characters
 # Lower values trigger summarization earlier, saving more context
 # Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=120000
+summary_trigger_length=30000
 
 # History summarization usage recommendations:
 # 1. Enable summary_history=True for long conversation sessions to control context length

@@ -558,15 +558,16 @@ class ToolExecutor:
             
             # Prepare messages for the LLM
             # For cache optimization, combine history with current prompt instead of using chat history
-            combined_user_prompt = self._build_combined_user_prompt(user_prompt, task_history)
+            # Now system prompt will be included in user message instead of system field
+            combined_user_prompt = self._build_combined_user_prompt(user_prompt, task_history, enhanced_system_prompt)
             
+            # Use minimal system message or empty user message structure
             messages = [
-                {"role": "system", "content": enhanced_system_prompt},
                 {"role": "user", "content": combined_user_prompt}
             ]
             
             # Generate cache key for potential cache hit identification
-            cache_key = self._generate_cache_key(enhanced_system_prompt, combined_user_prompt)
+            cache_key = self._generate_cache_key("", combined_user_prompt)  # Empty system prompt since it's now in user message
             print(f"🔑 Request cache key: {cache_key[:16]}... (for cache hit tracking)")
             
             # Mark this as cache optimized since we're using the combined prompt format for all rounds
@@ -605,15 +606,9 @@ class ToolExecutor:
                 
                 if self.is_claude:
                     # Use Anthropic Claude API
-                    # Claude needs to separate system and other messages
+                    # For Claude, we'll use an empty system message since everything is now in user message
                     system_message = ""
-                    claude_messages = []
-                    
-                    for msg in messages:
-                        if msg["role"] == "system":
-                            system_message = msg["content"]
-                        else:
-                            claude_messages.append(msg)
+                    claude_messages = messages  # Use messages directly since no system separation needed
                     
                     if self.streaming:
                         print("🔄 Starting streaming generation...")
@@ -964,7 +959,8 @@ class ToolExecutor:
                         tool_results_message = self._format_tool_results_for_llm(all_tool_results)
                         
                         # Rebuild the entire conversation history as a single user prompt for cache optimization
-                        conversation_history = self._build_conversation_history_for_cache(messages, content, tool_results_message)
+                        # Now includes system prompt in the conversation history
+                        conversation_history = self._build_conversation_history_for_cache(messages, content, tool_results_message, enhanced_system_prompt)
                         
                         # Add conflict warning if both tool calls and TASK_COMPLETED were detected
                         if conflict_detected:
@@ -978,9 +974,8 @@ class ToolExecutor:
                             conversation_history += user_guidance_msg
                             # print(f"📝 User guidance added to conversation context")
                         
-                        # Reset messages to cache-optimized format: system + combined_user_prompt
+                        # Reset messages to cache-optimized format: single user prompt with system prompt included
                         messages = [
-                            {"role": "system", "content": enhanced_system_prompt},
                             {"role": "user", "content": conversation_history}
                         ]
                         
@@ -1907,7 +1902,7 @@ class ToolExecutor:
         except Exception as e:
             return f"Failed to get usage example for '{tool_name}': {str(e)}"
 
-    def _build_combined_user_prompt(self, user_prompt: str, task_history: List[Dict[str, Any]] = None) -> str:
+    def _build_combined_user_prompt(self, user_prompt: str, task_history: List[Dict[str, Any]] = None, system_prompt: str = "") -> str:
         """
         Build a combined user prompt that includes task history for cache optimization.
         Instead of using chat history, we combine all context into a single user message.
@@ -1915,6 +1910,7 @@ class ToolExecutor:
         Args:
             user_prompt: Current user prompt
             task_history: Previous task execution history
+            system_prompt: System prompt to include in the user message
             
         Returns:
             Combined user prompt string
@@ -1958,6 +1954,14 @@ class ToolExecutor:
         # Add current user prompt
         prompt_parts.append(user_prompt)
         
+        # Add system prompt to the user message (after user requirements)
+        if system_prompt:
+            prompt_parts.append("")  # Empty line for separation
+            prompt_parts.append("---")  # Separator line
+            prompt_parts.append("")
+            prompt_parts.append("**System Instructions:**")
+            prompt_parts.append(system_prompt)
+        
         combined_prompt = "\n".join(prompt_parts)
         
         if self.debug_mode:
@@ -1966,25 +1970,28 @@ class ToolExecutor:
                 print(f"🔄 Combined {len(task_history)} historical records into current prompt")
             else:
                 print(f"🔄 No history, using direct prompt for optimal caching")
+            if system_prompt:
+                print(f"🔄 System prompt included in user message ({len(system_prompt)} characters)")
         
         return combined_prompt
 
-    def _build_conversation_history_for_cache(self, messages: List[Dict[str, Any]], assistant_response: str, tool_results: str) -> str:
+    def _build_conversation_history_for_cache(self, messages: List[Dict[str, Any]], assistant_response: str, tool_results: str, system_prompt: str) -> str:
         """
         Build conversation history for cache optimization by combining all context into a single user prompt.
         When summary_history is enabled, summarizes previous conversation history except the latest tool result.
         
         Args:
-            messages: Current message array (system + user + assistant)
+            messages: Current message array (user + assistant)
             assistant_response: Latest assistant response 
             tool_results: Tool execution results
+            system_prompt: System prompt to include in the conversation history
             
         Returns:
             Combined conversation history as user prompt
         """
         history_parts = []
         
-        # Extract the original user prompt from messages (skip system message)
+        # Extract the original user prompt from messages
         original_user_content = ""
         for msg in messages:
             if msg["role"] == "user":
@@ -2035,22 +2042,30 @@ class ToolExecutor:
                 except Exception as e:
                     print(f"⚠️ Failed to generate conversation summary: {e}, falling back to full history")
                     # Fall back to original behavior
-                    return self._build_full_conversation_history(original_user_content, assistant_response, tool_results)
+                    return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
             else:
                 print("📝 Conversation length below threshold, using full conversation history")
                 # Use full history when below threshold
-                return self._build_full_conversation_history(original_user_content, assistant_response, tool_results)
+                return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
         else:
             # Original behavior when history summarization is disabled
-            return self._build_full_conversation_history(original_user_content, assistant_response, tool_results)
+            return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
         
         # Add continuation prompt
         history_parts.append("## Current Request:")
         history_parts.append("Please continue processing based on the above context and tool execution results. Provide your next response or tool calls as needed.")
         
+        # Add system prompt at the end
+        if system_prompt:
+            history_parts.append("")  # Empty line for separation
+            history_parts.append("---")  # Separator line
+            history_parts.append("")
+            history_parts.append("**System Instructions:**")
+            history_parts.append(system_prompt)
+        
         return "\n\n".join(history_parts)
     
-    def _build_full_conversation_history(self, original_user_content: str, assistant_response: str, tool_results: str) -> str:
+    def _build_full_conversation_history(self, original_user_content: str, assistant_response: str, tool_results: str, system_prompt: str = "") -> str:
         """
         Build full conversation history without summarization (original behavior)
         
@@ -2058,6 +2073,7 @@ class ToolExecutor:
             original_user_content: Original user prompt content
             assistant_response: Latest assistant response
             tool_results: Tool execution results
+            system_prompt: System prompt to include in the conversation history
             
         Returns:
             Full conversation history as user prompt
@@ -2079,6 +2095,14 @@ class ToolExecutor:
         # Add continuation prompt
         history_parts.append("## Current Request:")
         history_parts.append("Please continue processing based on the above context and tool execution results. Provide your next response or tool calls as needed.")
+        
+        # Add system prompt at the end
+        if system_prompt:
+            history_parts.append("")  # Empty line for separation
+            history_parts.append("---")  # Separator line
+            history_parts.append("")
+            history_parts.append("**System Instructions:**")
+            history_parts.append(system_prompt)
         
         return "\n\n".join(history_parts)
 
