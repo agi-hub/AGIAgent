@@ -765,7 +765,12 @@ Please provide the extracted relevant content:"""
                                         # Extract title and URL based on engine type
                                         if engine['name'].startswith('Google'):
                                             # For Google results, handle different element types
-                                            if elem.tag_name.lower() == 'h3':
+                                            try:
+                                                tag_name = elem.evaluate('element => element.tagName.toLowerCase()')
+                                            except:
+                                                tag_name = 'unknown'
+                                            
+                                            if tag_name == 'h3':
                                                 title = elem.text_content().strip()
                                                 # Find parent link element
                                                 parent_link = elem.query_selector('xpath=ancestor::a[1]')

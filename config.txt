@@ -3,18 +3,26 @@
 LANG=zh
 
 
+
+
 # OpenAI API configuration (commented out)
 # api_key=your key
 # api_base=https://api.openai-proxy.org/v1
 # model=gpt-4.1
 
 
+
+
 # SiliconFlow API configuration (currently active)
-# api_key=your key
-# api_base=https://api.siliconflow.cn/v1
+api_key=your key
+api_base=https://api.siliconflow.cn/v1
 # model=Qwen/Qwen3-32B
 # model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
+# model=Qwen/Qwen3-8B
+model=THUDM/glm-4-9b-chat
+max_tokens=4096
+
 
 
 # Anthropic models
@@ -22,12 +30,15 @@ LANG=zh
 # api_base=https://api.openai-proxy.org/anthropic
 # model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
+# max_tokens=16384
+
 
 
 # DeepSeek API configuration (alternative option)
-api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
+
 
 
 # Volcengine Doubao API configuration (commented out)
@@ -40,16 +51,7 @@ model=deepseek-chat
 # api_key=your key
 # api_base=http://localhost:11434/v1
 # model=qwen3:8b
-
-
-# Max Tokens Configuration
-# AGI Bot automatically sets model-specific default max_tokens values:
-# - DeepSeek & OpenAI models (gpt-*, o1-*, deepseek-*): 8192 tokens
-# - Anthropic Claude models (claude-*): 16384 tokens  
-# - Other models (Qwen, Ollama, etc.): 4096 tokens
-# 
-# To override the automatic default, uncomment and set your preferred value:
-# max_tokens=8192
+# max_tokens=4096
 
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
@@ -110,10 +112,10 @@ summary_max_length=5000
 
 # Trigger length for conversation history summarization (in characters)
 # Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 50000-120000 characters
+# Recommended values: 15000-50000 characters
 # Lower values trigger summarization earlier, saving more context
 # Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=100000
+summary_trigger_length=120000
 
 # History summarization usage recommendations:
 # 1. Enable summary_history=True for long conversation sessions to control context length
@@ -142,12 +144,5 @@ summary_report=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=.
-
-# Interactive Command Auto-Fix Configuration
-# Controls whether to automatically fix interactive commands to non-interactive versions
-# When enabled, the system will automatically add flags like --quiet, -y, -n to commands
-# to prevent them from requiring user input during execution
-# Default: False (disabled)
-# Set to True to enable automatic modification of interactive commands
-auto_fix_interactive_commands=False
+# Examples:
+gui_default_data_directory=~
