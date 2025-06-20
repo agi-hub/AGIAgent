@@ -251,33 +251,34 @@ def get_truncation_length(config_file: str = "config.txt") -> int:
     
     return 10000  # Default truncation length
 
-def get_history_truncation_length(config_file: str = "config.txt") -> int:
-    """
-    Get history truncation length from configuration file
-    
-    Args:
-        config_file: Path to the configuration file
-        
-    Returns:
-        History truncation length integer (default: 1000)
-    """
-    config = load_config(config_file)
-    history_truncation_str = config.get('history_truncation_length')
-    
-    if history_truncation_str:
-        try:
-            truncation_length = int(history_truncation_str)
-            if truncation_length <= 0:
-                print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be positive integer, using default 1000")
-                return 1000
-            return truncation_length
-        except ValueError:
-            print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be an integer, using default 1000")
-            return 1000
-    
-    # 如果没有设置，则使用主截断长度的 1/10，但不少于1000
-    main_truncation = get_truncation_length(config_file)
-    return max(1000, main_truncation // 10)
+# def get_history_truncation_length(config_file: str = "config.txt") -> int:
+#     """
+#     Get history truncation length from configuration file
+#     DEPRECATED: This function is no longer used as we now use summarization instead of truncation
+#     
+#     Args:
+#         config_file: Path to the configuration file
+#         
+#     Returns:
+#         History truncation length integer (default: 1000)
+#     """
+#     config = load_config(config_file)
+#     history_truncation_str = config.get('history_truncation_length')
+#     
+#     if history_truncation_str:
+#         try:
+#             truncation_length = int(history_truncation_str)
+#             if truncation_length <= 0:
+#                 print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be positive integer, using default 1000")
+#                 return 1000
+#             return truncation_length
+#         except ValueError:
+#             print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be an integer, using default 1000")
+#             return 1000
+#     
+#     # 如果没有设置，则使用主截断长度的 1/10，但不少于1000
+#     main_truncation = get_truncation_length(config_file)
+#     return max(1000, main_truncation // 10)
 
 def get_web_content_truncation_length(config_file: str = "config.txt") -> int:
     """

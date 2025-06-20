@@ -616,8 +616,15 @@ def queue_reader_thread():
             if message.get('event') in ['task_completed', 'error']:
                 if gui_instance.current_output_dir:
                     gui_instance.last_output_dir = gui_instance.current_output_dir
+                    # If current directory is the selected directory, keep the selection
+                    # This ensures user can continue in the same directory
+                    if gui_instance.selected_output_dir == gui_instance.current_output_dir:
+                        print(f"🔄 Keeping selected directory: {gui_instance.selected_output_dir}")
+                    else:
+                        # If different directories, clear selection to avoid confusion
+                        print(f"🔄 Clearing selected directory (was {gui_instance.selected_output_dir}, current {gui_instance.current_output_dir})")
+                        gui_instance.selected_output_dir = None
                 gui_instance.current_output_dir = None
-                gui_instance.selected_output_dir = None  # Clear selected directory
             
             socketio.emit(message['event'], message.get('data', {}))
         except queue.Empty:
@@ -1138,20 +1145,34 @@ def handle_execute_task(data):
     
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
     plan_mode = data.get('plan_mode', False)  # Whether to use plan mode (task decomposition)
+    selected_directory = data.get('selected_directory')  # Directory name from frontend
+    
+    # Debug logging
+    print(f"🔍 Execute task debug info:")
+    print(f"   Task type: {task_type}")
+    print(f"   Plan mode: {plan_mode}")
+    print(f"   Frontend selected_directory: {selected_directory}")
+    print(f"   Backend gui_instance.selected_output_dir: {gui_instance.selected_output_dir}")
+    print(f"   Backend gui_instance.last_output_dir: {gui_instance.last_output_dir}")
     
     if task_type == 'new':
         # New task: create new output directory
         out_dir = None
         continue_mode = False
     elif task_type == 'selected':
-        # Use selected directory - convert to absolute path
-        if gui_instance.selected_output_dir:
-            out_dir = os.path.join(gui_instance.output_dir, gui_instance.selected_output_dir)
+        # Use selected directory - prioritize frontend passed directory name
+        target_dir_name = selected_directory or gui_instance.selected_output_dir
+        if target_dir_name:
+            out_dir = os.path.join(gui_instance.output_dir, target_dir_name)
+            # Update backend state to match frontend
+            gui_instance.selected_output_dir = target_dir_name
+            print(f"🎯 Using selected directory: {target_dir_name} (from {'frontend' if selected_directory else 'backend state'})")
         else:
             out_dir = None
+            print("⚠️ Selected task type but no directory specified")
         # Check if selected directory is newly created (not in last_output_dir)
         # If it's a new directory, should use continue_mode=False
-        if gui_instance.selected_output_dir != gui_instance.last_output_dir:
+        if target_dir_name != gui_instance.last_output_dir:
             continue_mode = False  # New directory, don't continue previous work
         else:
             continue_mode = True   # Existing directory, continue previous work
@@ -1466,6 +1487,8 @@ def delete_directory(dir_name):
     except Exception as e:
         print(f"Error deleting directory {dir_name}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

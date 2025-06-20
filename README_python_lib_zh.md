@@ -23,8 +23,6 @@ AGI Bot可以作为Python包直接安装：
 # 从源码安装
 pip install .
 
-# 或者从git仓库安装
-pip install git+https://github.com/agi-hub/AGIBot.git
 
 ```
 

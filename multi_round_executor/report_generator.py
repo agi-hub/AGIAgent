@@ -32,7 +32,7 @@ from typing import Dict, Any, List
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from config_loader import get_truncation_length, get_history_truncation_length, get_summary_report
+from config_loader import get_truncation_length, get_summary_report
 
 from .config import REPORT_TIMESTAMP_FORMAT, DATETIME_FORMAT, read_language_config
 
@@ -255,7 +255,7 @@ Task execution summary:
                 # Add user prompt (simplified display)
                 if prompt:
                     # 使用配置的历史截断长度
-                    history_truncation_length = get_history_truncation_length()
+                    history_truncation_length = get_truncation_length()
                     content += f"**Task Requirements**: {prompt[:history_truncation_length]}...\n\n"
                 
                 # Parse result content

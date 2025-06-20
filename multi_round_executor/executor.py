@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_history_truncation_length, get_summary_history
+from config_loader import get_model, get_truncation_length, get_summary_history
 from .config import (
     DEFAULT_SUBTASK_LOOPS, DEFAULT_LOGS_DIR, DEFAULT_MODEL,
     DEFAULT_DETAILED_SUMMARY, extract_session_timestamp
@@ -239,27 +239,29 @@ class MultiRoundTaskExecutor:
         """
         base_prompt = f"Task description: {task_desc}"
         max_rounds = self.subtask_loops
-        round_num = 1
+        task_round = 1  # Renamed from round_num to task_round for clarity
         task_completed = False
         
-        while round_num <= max_rounds and not task_completed:
-            print(f"\n🔄 --- Round {round_num}/{max_rounds} execution ---")
+        while task_round <= max_rounds and not task_completed:
+            #print(f"\n🔄 --- Task Round {task_round}/{max_rounds} execution ---")
             
-            # Construct current round prompt
-            current_prompt = self._build_round_prompt(base_prompt, round_num)
+            # Use base prompt directly - round info will be handled by _build_new_user_message
+            current_prompt = base_prompt
             
             try:
-                print(f"⏳ Starting round {round_num} execution...")
+                print(f"⏳ Starting task round {task_round} execution...")
                 
                 # Prepare history for LLM
                 history_for_llm = [record for record in task_history 
                                  if "prompt" in record and "result" in record and not record.get("error")]
                 
-                # Execute task
+                # Execute task - this will handle internal tool calling rounds
+                # The tool executor's internal rounds are separate from task rounds
                 result = self.executor.execute_subtask(
                     current_prompt, 
                     "prompts.txt",
-                    task_history=history_for_llm
+                    task_history=history_for_llm,
+                    execution_round=task_round
                 )
                 
                 # Check if user interrupted execution
@@ -267,7 +269,7 @@ class MultiRoundTaskExecutor:
                     print(f"🛑 User interrupted execution: {result}")
                     # Record the interruption
                     round_record = {
-                        "round": round_num,
+                        "task_round": task_round, 
                         "prompt": current_prompt,
                         "result": result,
                         "task_completed": False,
@@ -275,18 +277,18 @@ class MultiRoundTaskExecutor:
                         "timestamp": datetime.now().isoformat()
                     }
                     task_history.append(round_record)
-                    print(f"🛑 Task execution stopped by user at round {round_num}")
+                    print(f"🛑 Task execution stopped by user at task round {task_round}")
                     break
                 
                 # Check task completion
                 task_completed = self.task_checker.check_task_completion(result)
                 
                 # Record debug information
-                self._record_debug_info(task_id, task_name, round_num, current_prompt, result, task_completed, len(task_history))
+                self._record_debug_info(task_id, task_name, task_round, current_prompt, result, task_completed, len(task_history))
                 
                 # Record round results
                 round_record = {
-                    "round": round_num,
+                    "task_round": task_round, 
                     "prompt": current_prompt,
                     "result": result,
                     "task_completed": task_completed,
@@ -294,7 +296,7 @@ class MultiRoundTaskExecutor:
                 }
                 task_history.append(round_record)
                 
-                print(f"✅ Round {round_num} execution completed")
+                print(f"✅ Task round {task_round} execution completed")
                 
                 # Update codebase
                 try:
@@ -303,14 +305,14 @@ class MultiRoundTaskExecutor:
                     print(f"⚠️ Codebase incremental update failed: {e}")
                 
                 # Display execution summary
-                self._display_round_summary(round_num, result)
+                self._display_round_summary(task_round, result)
                 
                 # Check if task is completed
                 if task_completed:
-                    print(f"🎉 Large model determined task is completed, ending iteration early!")
+                    print(f"🎉 Large model determined task is completed, ending task iteration early!")
                     break
                 else:
-                    round_num += 1
+                    task_round += 1
                 
             except Exception as e:
                 error_msg = str(e)
@@ -319,7 +321,7 @@ class MultiRoundTaskExecutor:
                 self.debug_recorder.record_llm_call(
                     task_id=task_id,
                     task_name=task_name,
-                    round_num=round_num,
+                    round_num=task_round,  # Keep as round_num for debug recorder compatibility
                     prompt=current_prompt,
                     llm_output="",
                     tool_name="",
@@ -331,27 +333,19 @@ class MultiRoundTaskExecutor:
                 )
                 
                 error_record = {
-                    "round": round_num,
+                    "task_round": task_round,  # Changed from "round" to "task_round"
                     "prompt": current_prompt,
                     "error": error_msg,
                     "task_completed": False,
                     "timestamp": datetime.now().isoformat()
                 }
                 task_history.append(error_record)
-                print(f"❌ Round {round_num} execution error: {e}")
-                round_num += 1
+                print(f"❌ Task round {task_round} execution error: {e}")
+                task_round += 1
         
         return task_history
     
-    def _build_round_prompt(self, base_prompt: str, round_num: int) -> str:
-        """Build prompt for specific round"""
-        if round_num == 1:
-            return base_prompt
-        else:
-            return f"""
-Continue executing the task, this is round {round_num} execution. Please continue to improve or optimize task execution based on the results of previous rounds. Please carefully confirm whether the task is completed. If not completed, please do not end the iteration prematurely. If code has been edited, please check for correctness and fix errors.
-{base_prompt}
-"""
+
     
     def _record_debug_info(self, task_id: str, task_name: str, round_num: int, 
                           current_prompt: str, result: str, task_completed: bool, 
@@ -396,8 +390,8 @@ Continue executing the task, this is round {round_num} execution. Please continu
             history_length=history_length
         )
     
-    def _display_round_summary(self, round_num: int, result: str):
-        """Display round execution summary"""
+    def _display_round_summary(self, task_round: int, result: str):
+        """Display task round execution summary"""
         if "--- Tool Execution Result ---" in result or "--- 工具执行结果 ---" in result:
             # Separate LLM response and tool execution results
             separator = "--- Tool Execution Result ---" if "--- Tool Execution Result ---" in result else "--- 工具执行结果 ---"
@@ -405,10 +399,10 @@ Continue executing the task, this is round {round_num} execution. Please continu
             llm_response = parts[0].strip()
             tool_results = parts[1].strip() if len(parts) > 1 else ""
             
-            print(f"\n📝 Round {round_num} response summary:")
+            print(f"\n📝 Task Round {task_round} response summary:")
             # 使用配置的历史截断长度
-            history_truncation_length = get_history_truncation_length()
-            print(f"   LLM analysis: {llm_response[:history_truncation_length]}{'...' if len(llm_response) > history_truncation_length else ''}")
+            truncation_length = get_truncation_length()
+            print(f"   LLM analysis: {llm_response[:truncation_length]}{'...' if len(llm_response) > truncation_length else ''}")
             
             if tool_results:
                 print(f"   🛠️ Tool call executed, detailed results displayed above")
@@ -418,15 +412,21 @@ Continue executing the task, this is round {round_num} execution. Please continu
             if "TASK_COMPLETED:" in result:
                 task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', result)
                 completion_msg = task_completed_match.group(1).strip() if task_completed_match else "Task marked as completed"
-                print(f"\n📝 Round {round_num} response summary: ✅ {completion_msg}")
+                print(f"\n📝 Task Round {task_round} response summary: ✅ {completion_msg}")
             else:
                 # For non-completion responses, show a brief summary
                 lines = result.strip().split('\n')
                 first_meaningful_line = next((line.strip() for line in lines if line.strip() and not line.strip().startswith('🤖')), '')
-                # 使用配置的历史截断长度的 3/4
-                summary_length = get_history_truncation_length() * 3 // 4
-                summary = first_meaningful_line[:summary_length] if first_meaningful_line else result[:summary_length]
-                print(f"\n📝 Round {round_num} response summary: {summary}{'...' if len(summary) >= summary_length else ''}")
+                
+                if first_meaningful_line:
+                    # 使用配置的历史截断长度
+                    truncation_length = get_truncation_length()
+                    summary_text = first_meaningful_line[:truncation_length]
+                    if len(first_meaningful_line) > truncation_length:
+                        summary_text += "..."
+                    print(f"\n📝 Task Round {task_round} response summary: {summary_text}")
+                else:
+                    print(f"\n📝 Task Round {task_round} response summary: [Response content displayed above]")
     
     def execute_all_tasks(self, csv_file: str) -> Dict[str, Any]:
         """
@@ -532,14 +532,14 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
             
             task_history = report.get("task_history", [])
             if task_history:
-                rounds_completed = len([h for h in task_history if isinstance(h, dict) and "round" in h])
+                rounds_completed = len([h for h in task_history if isinstance(h, dict) and "task_round" in h])
                 print(f"\n📊 Execution details:")
                 print(f"  Completed rounds: {rounds_completed}")
                 
                 # Check if there are task completion flags
                 completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
                 if completed_rounds:
-                    print(f"  Early completion: Task completion detected in round {completed_rounds[0].get('round', '?')}")
+                    print(f"  Early completion: Task completion detected in round {completed_rounds[0].get('task_round', '?')}")
                     
         else:
             # Legacy mode: compatibility support

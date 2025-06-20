@@ -45,15 +45,14 @@ def get_debug_truncation_config():
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        from config_loader import get_history_truncation_length, get_truncation_length
+        from config_loader import get_truncation_length
         
-        history_truncation = get_history_truncation_length()
-        main_truncation = get_truncation_length()
+        truncation = get_truncation_length()
         
         return {
-            'DEBUG_PROMPT_LIMIT': history_truncation,
-            'DEBUG_OUTPUT_LIMIT': min(main_truncation, 2000),  # 限制输出不超过2000或主截断长度
-            'DEBUG_RESULT_LIMIT': history_truncation
+            'DEBUG_PROMPT_LIMIT': truncation,
+            'DEBUG_OUTPUT_LIMIT': min(truncation, 2000),  # 限制输出不超过2000或主截断长度
+            'DEBUG_RESULT_LIMIT': truncation
         }
     except Exception:
         # 如果读取配置失败，使用默认值

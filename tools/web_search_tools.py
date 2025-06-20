@@ -30,7 +30,7 @@ import datetime
 # 导入config_loader以获取截断长度配置
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from config_loader import get_web_content_truncation_length, get_truncation_length, get_history_truncation_length
+from config_loader import get_web_content_truncation_length, get_truncation_length
 
 
 class TimeoutError(Exception):
@@ -810,7 +810,7 @@ Please provide the extracted relevant content:"""
                                         if title and len(title) > 5:
                                             results.append({
                                                 'title': title,
-                                                'snippet': snippet[:get_history_truncation_length()] if snippet else f'Search result from {engine["name"]}',
+                                                'snippet': snippet[:get_truncation_length()] if snippet else f'Search result from {engine["name"]}',
                                                 'source': engine['name'],
                                                 'content': '',
                                                 '_internal_url': url  # Keep URL internally for content fetching
@@ -905,7 +905,7 @@ Please provide the extracted relevant content:"""
                 for result in results:
                     if result.get('content') and len(result['content'].strip()) > 100:
                         content = result['content']
-                        summary_truncation_length = get_history_truncation_length() // 5  # 使用历史截断长度的1/5
+                        summary_truncation_length = get_truncation_length() // 5  # 使用截断长度的1/5
                         content_summary = content[:summary_truncation_length] + "..." if len(content) > summary_truncation_length else content
                         
                         optimized_result = {

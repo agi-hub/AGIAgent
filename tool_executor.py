@@ -30,7 +30,7 @@ import requests
 import hashlib
 from openai import OpenAI
 from tools import Tools
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_history_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output
+from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output
 
 # Check if the model is a Claude model
 def is_claude_model(model: str) -> bool:
@@ -199,6 +199,8 @@ class ToolExecutor:
             out_dir=out_dir
         )
         
+
+        
         # Initialize summary generator for conversation history summarization
         if self.summary_history:
             try:
@@ -360,121 +362,134 @@ class ToolExecutor:
     
     def load_system_prompt(self, prompt_file: str = "prompts.txt") -> str:
         """
-        Load the system prompt from modular files or single file.
+        Load only the core system prompt (system_prompt.txt).
+        Other prompt files are loaded separately for user message construction.
         
         Args:
             prompt_file: Path to the prompt file (legacy support)
             
         Returns:
-            The system prompt text
+            The core system prompt text from system_prompt.txt
         """
         try:
-            # Try to load from modular files first
-            # Core files that must exist for modular loading
-            core_files = ["prompts/system_prompt.txt", "prompts/rules_prompt.txt", "prompts/tool_prompt.txt"]
-            # Optional files that will be included if they exist
-            optional_files = ["prompts/user_rules.txt", "prompts/plugin_tool_prompts.txt"]
+            # Try to load system_prompt.txt first
+            system_prompt_file = "prompts/system_prompt.txt"
             
-            system_prompt = ""
-            
-            # Check if all core modular files exist
-            all_core_files_exist = all(os.path.exists(f) for f in core_files)
-            
-            if all_core_files_exist:
-                # Load and combine modular prompt files
-                loaded_files = []
-                
-                # Load core files first
-                for file_path in core_files:
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read().strip()
-                            if content:
-                                system_prompt += content + "\n\n"
-                                loaded_files.append(file_path)
-                    except Exception as e:
-                        print(f"Warning: Could not load core file {file_path}: {e}")
-                        # Fall back to single file if any core file fails
-                        all_core_files_exist = False
-                        break
-                
-                # Load optional files if core files loaded successfully
-                if all_core_files_exist:
-                    for file_path in optional_files:
-                        if os.path.exists(file_path):
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    content = f.read().strip()
-                                    if content:
-                                        system_prompt += content + "\n\n"
-                                        loaded_files.append(file_path)
-                            except Exception as e:
-                                print(f"Warning: Could not load optional file {file_path}: {e}")
-                                # Continue loading other files, don't fail completely
-                    
-                    print("✅ Loaded modular system prompts from: " + ", ".join(loaded_files))
-                else:
-                    # Fall back to single file
-                    with open(prompt_file, 'r', encoding='utf-8') as f:
-                        system_prompt = f.read()
-                    print(f"⚠️ Fallback to single prompt file: {prompt_file}")
+            if os.path.exists(system_prompt_file):
+                with open(system_prompt_file, 'r', encoding='utf-8') as f:
+                    system_prompt = f.read().strip()
+                print(f"✅ Loaded system prompt from: {system_prompt_file}")
+                return system_prompt
             else:
                 # Fall back to single file approach
                 with open(prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read()
                 print(f"📄 Loaded single prompt file: {prompt_file}")
+                return system_prompt
+                
+        except Exception as e:
+            print(f"Error loading system prompt: {e}")
+            return "You are a helpful AI assistant that can use tools to accomplish tasks."
+    
+    def load_user_prompt_components(self) -> Dict[str, str]:
+        """
+        Load all prompt components that go into the user message.
+        
+        Returns:
+            Dictionary containing different prompt components
+        """
+        components = {
+            'rules_and_tools': '',
+            'system_environment': '',
+            'workspace_info': '',
+        }
+        
+        try:
+            # Load rules and tools prompts
+            rules_tool_files = [
+                "prompts/tool_prompt.txt",
+                "prompts/rules_prompt.txt", 
+                "prompts/plugin_tool_prompts.txt",
+                "prompts/user_rules.txt"
+            ]
             
-            # Add operating system information
-            try:
-                system_name = platform.system()
-                system_release = platform.release()
-                
-                # Get Python version
-                python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-                
-                # Check if pip is available
-                pip_available = "Available" if self._check_command_available("pip") else "Not Available"
-                
-                os_instruction = f"""
-
-**Operating System Information**:
+            rules_parts = []
+            loaded_files = []
+            
+            for file_path in rules_tool_files:
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                            if content:
+                                rules_parts.append(content)
+                                loaded_files.append(file_path)
+                    except Exception as e:
+                        print(f"Warning: Could not load file {file_path}: {e}")
+            
+            if rules_parts:
+                components['rules_and_tools'] = "\n\n".join(rules_parts)
+                print(f"✅ Loaded rules and tools prompts from: {', '.join(loaded_files)}")
+            
+            # Load system environment information
+            components['system_environment'] = self._get_system_environment_info()
+            
+            # Load workspace information
+            components['workspace_info'] = self._get_workspace_info()
+            
+        except Exception as e:
+            print(f"Warning: Error loading user prompt components: {e}")
+        
+        return components
+    
+    def _get_system_environment_info(self) -> str:
+        """
+        Get system environment information.
+        
+        Returns:
+            Formatted system environment information
+        """
+        try:
+            system_name = platform.system()
+            system_release = platform.release()
+            
+            # Get Python version
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            
+            # Check if pip is available
+            pip_available = "Available" if self._check_command_available("pip") else "Not Available"
+            
+            os_instruction = f"""**Operating System Information**:
 - Operating System: {system_name} {system_release}
 - Python Version: {python_version}
-- pip: {pip_available}
-"""
+- pip: {pip_available}"""
+            
+            # Add system-specific information
+            if system_name.lower() == "linux":
+                # For Linux: check gdb and shell type
+                gdb_available = "Available" if self._check_command_available("gdb") else "Not Available"
+                shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
                 
-                # Add system-specific information
-                if system_name.lower() == "linux":
-                    # For Linux: check gdb and shell type
-                    gdb_available = "Available" if self._check_command_available("gdb") else "Not Available"
-                    shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
-                    
-                    os_instruction += f"""- gdb: {gdb_available}
+                os_instruction += f"""
+- gdb: {gdb_available}
 - Shell Type: {shell_type}
-- Please use Linux-compatible commands and forward slashes for paths
-"""
+- Please use Linux-compatible commands and forward slashes for paths"""
+            
+            elif system_name.lower() == "windows":
+                # For Windows: check PowerShell
+                powershell_available = "Available" if self._check_command_available("powershell") else "Not Available"
                 
-                elif system_name.lower() == "windows":
-                    # For Windows: check PowerShell
-                    powershell_available = "Available" if self._check_command_available("powershell") else "Not Available"
-                    
-                    os_instruction += f"""- PowerShell: {powershell_available}
-- Please use Windows-compatible commands and backslashes for paths
-"""
+                os_instruction += f"""
+- PowerShell: {powershell_available}
+- Please use Windows-compatible commands and backslashes for paths"""
+            
+            elif system_name.lower() == "darwin":  # macOS
+                # For macOS: check shell type
+                shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
                 
-                elif system_name.lower() == "darwin":  # macOS
-                    # For macOS: check shell type
-                    shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
-                    
-                    os_instruction += f"""- Shell Type: {shell_type}
-- Please use macOS-compatible commands and forward slashes for paths
-"""
-                
-                os_instruction += "\n"
-                
-            except Exception as e:
-                print(f"Warning: Could not retrieve OS information: {e}")
-                os_instruction = ""
+                os_instruction += f"""
+- Shell Type: {shell_type}
+- Please use macOS-compatible commands and forward slashes for paths"""
             
             # Add language instruction based on configuration
             if self.language == 'zh':
@@ -485,18 +500,14 @@ class ToolExecutor:
 - 当生成分析报告、总结文档或其他输出文件时，请使用中文
 - 代码注释和说明文档也请尽量使用中文
 - 只有在涉及英文专业术语或代码本身时才使用英语
-- 报告标题、章节名称等都应使用中文
-
-"""
+- 报告标题、章节名称等都应使用中文"""
             else:
                 language_instruction = """
 
 **Language Configuration**:
 - System language is set to English
 - Please respond and generate reports in English
-- Code comments and documentation should be in English
-
-"""
+- Code comments and documentation should be in English"""
             
             # Add current date information
             current_date = datetime.datetime.now()
@@ -504,9 +515,7 @@ class ToolExecutor:
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
-
-"""
+- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}"""
             
             # Add IP geolocation information
             location_info = get_ip_location_info()
@@ -514,589 +523,562 @@ class ToolExecutor:
 
 **Location Information**:
 - City: {location_info['city']}
-- Country: {location_info['country']}
-
-"""
+- Country: {location_info['country']}"""
             
-            return system_prompt + os_instruction + language_instruction + date_instruction + location_instruction
+            return os_instruction + language_instruction + date_instruction + location_instruction
+            
         except Exception as e:
-            print(f"Error loading system prompt: {e}")
-            return "You are a helpful AI assistant that can use tools to accomplish tasks."
+            print(f"Warning: Could not retrieve system environment information: {e}")
+            return ""
     
-    def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None) -> str:
+    def _get_workspace_info(self) -> str:
+        """
+        Get workspace directory and context information.
+        
+        Returns:
+            Formatted workspace information
+        """
+        workspace_instruction = f"""**Important Workspace Information**:
+- Workspace Directory: {self.workspace_dir}
+- Please save all created code files and project files in this directory
+- When creating or editing files, please use filenames directly, do not add "workspace/" prefix to paths
+- The system has automatically set the correct working directory, you only need to use relative filenames"""
+        
+        # Get existing code context from workspace
+        workspace_context = self._get_workspace_context()
+        
+        return workspace_instruction + "\n\n" + workspace_context
+    
+    def _build_new_user_message(self, user_prompt: str, task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
+        """
+        Build user message with new architecture:
+        1. Pure user requirement (first)
+        2. Rules and tools prompts
+        3. System environment info
+        4. Workspace info
+        5. History context
+        6. Execution instructions (last)
+        
+        Args:
+            user_prompt: Current user prompt (pure requirement)
+            task_history: Previous task execution history
+            execution_round: Current execution round number
+            
+        Returns:
+            Structured user message string
+        """
+        message_parts = []
+        
+        # 1. Pure user requirement (first)
+        message_parts.append(user_prompt)
+        message_parts.append("")  # Empty line for separation
+        
+        # 2. Load and add rules and tools prompts
+        prompt_components = self.load_user_prompt_components()
+        
+        if prompt_components['rules_and_tools']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['rules_and_tools'])
+            message_parts.append("")
+        
+        # 3. System environment information
+        if prompt_components['system_environment']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['system_environment'])
+            message_parts.append("")
+        
+        # 4. Workspace information
+        if prompt_components['workspace_info']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['workspace_info'])
+            message_parts.append("")
+        
+        # 5. Add task history context if provided
+        if task_history:
+            message_parts.append("---")
+            message_parts.append("")
+            
+            # Calculate total history length
+            total_history_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in task_history)
+            
+            # Check if we need to summarize the history
+            if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
+                print(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
+                print("🧠 Generating conversation history summary...")
+                
+                # Convert task history to conversation format for summarizer
+                conversation_records = []
+                latest_tool_result = None
+                
+                for record in task_history:
+                    if record.get("role") == "user":
+                        conversation_records.append({
+                            "role": "user",
+                            "content": record.get("content", "")
+                        })
+                    elif record.get("role") == "assistant":
+                        conversation_records.append({
+                            "role": "assistant", 
+                            "content": record.get("content", "")
+                        })
+                        latest_tool_result = record.get("content", "")
+                    elif "prompt" in record and "result" in record:
+                        conversation_records.append({
+                            "role": "user",
+                            "content": record["prompt"]
+                        })
+                        conversation_records.append({
+                            "role": "assistant",
+                            "content": record["result"]
+                        })
+                        latest_tool_result = record["result"]
+                
+                # Generate summary using the conversation summarizer
+                if hasattr(self, 'conversation_summarizer') and self.conversation_summarizer:
+                    try:
+                        history_summary = self.conversation_summarizer.generate_conversation_history_summary(
+                            conversation_records, 
+                            latest_tool_result
+                        )
+                        
+                        message_parts.append("## Previous Task Context (Summarized):")
+                        message_parts.append(history_summary)
+                        message_parts.append("")
+                        
+                        print(f"✅ History summarized: {total_history_length} → {len(history_summary)} characters")
+                        
+                    except Exception as e:
+                        print(f"⚠️ Failed to generate history summary: {e}")
+                        print("📋 Using full history without summarization")
+                        
+                        # Fallback to full history
+                        self._add_full_history_to_message(message_parts, task_history)
+                else:
+                    print("⚠️ Conversation summarizer not available, using full history")
+                    self._add_full_history_to_message(message_parts, task_history)
+            else:
+                # History is short enough, use full history
+                self._add_full_history_to_message(message_parts, task_history)
+        
+        # 6. Execution instructions (last)
+        message_parts.append("---")
+        message_parts.append("")
+        message_parts.append("## Execution Instructions:")
+        message_parts.append(f"This is round {execution_round} of task execution. Please continue with the task based on the above context and requirements.")
+        
+        combined_message = "\n".join(message_parts)
+        
+        if self.debug_mode:
+            print(f"🔄 New architecture: User message length: {len(combined_message)} characters")
+            if task_history:
+                print(f"🔄 Included {len(task_history)} historical records")
+            print(f"🔄 Execution round: {execution_round}")
+        
+        return combined_message
+    
+    def _add_full_history_to_message(self, message_parts: List[str], task_history: List[Dict[str, Any]]) -> None:
+        """
+        Add full task history to message parts.
+        
+        Args:
+            message_parts: List to append history content to
+            task_history: Previous task execution history
+        """
+        message_parts.append("## Previous Round Context:")
+        message_parts.append("Below is the context from previous tasks in this session:")
+        message_parts.append("")
+        
+        for i, record in enumerate(task_history, 1):
+            if record.get("role") == "system":
+                continue
+            elif "prompt" in record and "result" in record:
+                message_parts.append(f"### Previous round {i}:")
+                message_parts.append(f"**User Request:** {record['prompt']}")
+                message_parts.append(f"**Assistant Response:** {record['result']}")
+                message_parts.append("")
+            #elif record.get("role") == "user":
+            #    message_parts.append(f"### Previous User Request {i}:")
+            #    message_parts.append(record.get("content", ""))
+            #    message_parts.append("")
+            #elif record.get("role") == "assistant":
+            #    message_parts.append(f"### Previous Assistant Response {i}:")
+            #    message_parts.append(record.get("content", ""))
+            #    message_parts.append("")
+    
+    def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
         """
         Execute a single subtask using an LLM with tool capabilities.
+        Simplified to single LLM call + tool execution (no internal rounds).
         
         Args:
             user_prompt: The prompt for the subtask
             system_prompt_file: Path to the system prompt file
             task_history: Previous task execution history for multi-round continuity
+            execution_round: Current execution round number
             
         Returns:
             Text result from executing the subtask
         """
         try:
-            # Load system prompt
+            # Load system prompt (only core system_prompt.txt content)
             system_prompt = self.load_system_prompt(system_prompt_file)
             
-            # Add workspace directory information to the system prompt
-            workspace_instruction = f"""
-
-**Important Workspace Information**:
-- Workspace Directory: {self.workspace_dir}
-- Please save all created code files and project files in this directory
-- When creating or editing files, please use filenames directly, do not add "workspace/" prefix to paths
-- The system has automatically set the correct working directory, you only need to use relative filenames
-
-"""
+            # Build user message with new architecture
+            user_message = self._build_new_user_message(user_prompt, task_history, execution_round)
             
-            # Get existing code context from workspace
-            workspace_context = self._get_workspace_context()
-            
-            # Combine prompts with workspace context
-            enhanced_system_prompt = system_prompt + workspace_instruction + workspace_context
-            
-            # Prepare messages for the LLM
-            # For cache optimization, combine history with current prompt instead of using chat history
-            # Now system prompt will be included in user message instead of system field
-            combined_user_prompt = self._build_combined_user_prompt(user_prompt, task_history, enhanced_system_prompt)
-            
-            # Use minimal system message or empty user message structure
+            # Prepare messages for the LLM with proper system/user separation
             messages = [
-                {"role": "user", "content": combined_user_prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
             ]
             
             # Generate cache key for potential cache hit identification
-            cache_key = self._generate_cache_key("", combined_user_prompt)  # Empty system prompt since it's now in user message
+            cache_key = self._generate_cache_key(system_prompt, user_message)
             print(f"🔑 Request cache key: {cache_key[:16]}... (for cache hit tracking)")
             
-            # Mark this as cache optimized since we're using the combined prompt format for all rounds
+            # Mark this as cache optimized since we're using the new structured format
             is_cache_optimized_format = True
             
-            # Start tool calling loop, support multiple rounds of tool calls
-            max_tool_rounds = 5  # Maximum tool calling rounds to prevent infinite loops
-            current_round = 0
-            final_response = ""
+            # Call the LLM (single call, no internal rounds)
+            print(f"🤖 Calling LLM: {user_prompt}")
             
-            # Initialize current round tool tracking for edit_file hallucination detection
-            current_round_tools = []
+            # Save debug log for this call's input (before LLM call)
+            if self.debug_mode:
+                try:
+                    initial_call_info = {
+                        "is_single_call": True,
+                        "call_type": "simplified_execution",
+                        "user_prompt": user_prompt
+                    }
+                except Exception as e:
+                    print(f"⚠️ Debug preparation failed: {e}")
             
-            while current_round < max_tool_rounds:
-                current_round += 1
+            # Execute LLM call
+            content = ""
+            if self.is_claude:
+                # Use Anthropic Claude API
+                system_message = system_prompt
+                claude_messages = [{"role": "user", "content": user_message}]  # Claude API expects only user messages
                 
-                # Reset current round tool tracking for new round
-                current_round_tools = []
-                
-                # Call the LLM
-                print(f"🤖 Calling LLM (Round {current_round}): {user_prompt if current_round == 1 else 'Processing tool call results'}")
-                
-                # Save debug log for this round's input (before LLM call)
-                if self.debug_mode and current_round == 1:
-                    try:
-                        initial_tool_calls_info = {
-                            "is_initial_call": True,
-                            "round_type": "initial_user_prompt",
-                            "user_prompt": user_prompt
-                        }
-                        
-                        # Don't call _save_llm_call_debug_log here yet, as we don't have the response
-                        # This will be handled after we get the LLM response
-                    except Exception as e:
-                        print(f"⚠️ Initial debug preparation failed: {e}")
-                
-                if self.is_claude:
-                    # Use Anthropic Claude API
-                    # For Claude, we'll use an empty system message since everything is now in user message
-                    system_message = ""
-                    claude_messages = messages  # Use messages directly since no system separation needed
-                    
-                    if self.streaming:
-                        print("🔄 Starting streaming generation...")
-                    else:
-                        print("🔄 Starting batch generation...")
-                    
-                    # Add retry mechanism
-                    max_retries = 3
-                    for retry_count in range(max_retries):
-                        try:
-                            if self.streaming:
-                                # Streaming mode with hallucination detection
-                                with self.client.messages.stream(
-                                    model=self.model,
-                                    max_tokens=self._get_max_tokens_for_model(self.model),
-                                    system=system_message,
-                                    messages=claude_messages,
-                                    temperature=0.7
-                                ) as stream:
-                                    content = ""
-                                    
-                                    # Get hallucination detection configuration
-                                    hallucination_config = self._get_hallucination_detection_config(current_round_tools)
-                                    detection_buffer = ""
-                                    generation_stopped = False
-                                    
-                                    # Calculate buffer size based on longest trigger
-                                    if hallucination_config.get("enabled", True):
-                                        max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
-                                        buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
-                                    else:
-                                        buffer_size = 0
-                                    
-                                    for text in stream.text_stream:
-                                        # Add current text to detection buffer BEFORE printing
-                                        if hallucination_config.get("enabled", True):
-                                            detection_buffer += text
-                                            
-                                            # Keep buffer size manageable
-                                            if len(detection_buffer) > buffer_size:
-                                                # Remove excess from beginning
-                                                detection_buffer = detection_buffer[-buffer_size:]
-                                            
-                                            # Update current round tools tracking FIRST (before hallucination detection)
-                                            self._update_current_round_tools(detection_buffer, current_round_tools)
-                                            
-                                            # Get updated hallucination detection configuration with current tools
-                                            updated_config = self._get_hallucination_detection_config(current_round_tools)
-                                            
-                                            # Then check for hallucination triggers BEFORE printing
-                                            detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, updated_config)
-                                            if detected:
-                                                generation_stopped = True
-                                                
-                                                # Remove the hallucination content from already accumulated content
-                                                original_content = content
-                                                content = self._remove_hallucination_from_content(content, trigger_found, updated_config)
-                                                
-                                                # Print the completion part to terminal if content was extended
-                                                if len(content) > len(original_content):
-                                                    completion_part = content[len(original_content):]
-                                                    print(completion_part, end="", flush=True)
-                                                
-                                                break
-                                        
-                                        # Only print and accumulate content if no hallucination detected
-                                        print(text, end="", flush=True)
-                                        content += text
-                                    
-                                    if generation_stopped:
-                                        pass  # Generation was stopped due to hallucination detection
-                                    else:
-                                        print("\n✅ Streaming completed")
-                            else:
-                                # Batch mode (original implementation)
-                                response = self.client.messages.create(
-                                    model=self.model,
-                                    max_tokens=self._get_max_tokens_for_model(self.model),
-                                    system=system_message,
-                                    messages=claude_messages,
-                                    temperature=0.7
-                                )
-                                
-                                # Get complete response content
-                                content = response.content[0].text
-                                print("\n🤖 LLM response:")
-                                print("✅ Generation completed")
-                            
-                            # If content generated successfully, break out of retry loop
-                            break
-                            
-                        except Exception as api_error:
-                            print(f"\n⚠️ Claude API call failed (attempt {retry_count + 1}/{max_retries}): {api_error}")
-                            
-                            # If it's the last retry, raise exception
-                            if retry_count == max_retries - 1:
-                                print(f"❌ Claude API call finally failed, please check:")
-                                print(f"   1. API key validity")
-                                print(f"   2. Network connection")
-                                print(f"   3. Claude service availability")
-                                print(f"   4. Message content compliance with API requirements")
-                                raise api_error
-                            else:
-                                print(f"🔄 Waiting {2 ** retry_count} seconds before retry...")
-                                import time
-                                time.sleep(2 ** retry_count)  # Exponential backoff
-                                continue
-                
+                if self.streaming:
+                    print("🔄 Starting streaming generation...")
                 else:
-                    # Use OpenAI API
-                    if self.streaming:
-                        print("🔄 Starting streaming generation...")
-                        # Streaming mode with hallucination detection
-                        response = self.client.chat.completions.create(
-                            model=self.model,
-                            messages=messages,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            temperature=0.7,
-                            top_p=0.8,
-                            stream=True
-                        )
-                        
-                        content = ""
-                        
-                        # Get hallucination detection configuration
-                        hallucination_config = self._get_hallucination_detection_config(current_round_tools)
-                        detection_buffer = ""
-                        generation_stopped = False
-                        
-                        # Calculate buffer size based on longest trigger
-                        if hallucination_config.get("enabled", True):
-                            max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
-                            buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
-                        else:
-                            buffer_size = 0
-                        
-                        for chunk in response:
-                            if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content is not None:
-                                chunk_content = chunk.choices[0].delta.content
+                    print("🔄 Starting batch generation...")
+                
+                # Add retry mechanism
+                max_retries = 3
+                for retry_count in range(max_retries):
+                    try:
+                        if self.streaming:
+                            # Streaming mode with hallucination detection
+                            with self.client.messages.stream(
+                                model=self.model,
+                                max_tokens=self._get_max_tokens_for_model(self.model),
+                                system=system_message,
+                                messages=claude_messages,
+                                temperature=0.7
+                            ) as stream:
+                                content = ""
                                 
-                                # Add current chunk to detection buffer BEFORE printing
+                                # Get hallucination detection configuration
+                                hallucination_config = self._get_hallucination_detection_config([])
+                                detection_buffer = ""
+                                generation_stopped = False
+                                
+                                # Calculate buffer size based on longest trigger
                                 if hallucination_config.get("enabled", True):
-                                    detection_buffer += chunk_content
-                                    
-                                    # Keep buffer size manageable
-                                    if len(detection_buffer) > buffer_size:
-                                        # Remove excess from beginning
-                                        detection_buffer = detection_buffer[-buffer_size:]
-                                    
-                                    # Update current round tools tracking FIRST (before hallucination detection)
-                                    self._update_current_round_tools(detection_buffer, current_round_tools)
-                                    
-                                    # Get updated hallucination detection configuration with current tools
-                                    updated_config = self._get_hallucination_detection_config(current_round_tools)
-                                    
-                                    # Then check for hallucination triggers BEFORE printing
-                                    detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, updated_config)
-                                    if detected:
-                                        generation_stopped = True
-                                        
-                                        # Remove the hallucination content from already accumulated content
-                                        original_content = content
-                                        content = self._remove_hallucination_from_content(content, trigger_found, updated_config)
-                                        
-                                        # Print the completion part to terminal if content was extended
-                                        if len(content) > len(original_content):
-                                            completion_part = content[len(original_content):]
-                                            print(completion_part, end="", flush=True)
-                                        
-                                        break
+                                    max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
+                                    buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
+                                else:
+                                    buffer_size = 0
                                 
-                                # Only print and accumulate content if no hallucination detected
-                                print(chunk_content, end="", flush=True)
-                                content += chunk_content
-                        
-                        if generation_stopped:
-                            pass  # Generation was stopped due to hallucination detection
+                                for text in stream.text_stream:
+                                    # Add current text to detection buffer BEFORE printing
+                                    if hallucination_config.get("enabled", True):
+                                        detection_buffer += text
+                                        
+                                        # Keep buffer size manageable
+                                        if len(detection_buffer) > buffer_size:
+                                            # Remove excess from beginning
+                                            detection_buffer = detection_buffer[-buffer_size:]
+                                        
+                                        # Check for hallucination triggers BEFORE printing
+                                        detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, hallucination_config)
+                                        if detected:
+                                            generation_stopped = True
+                                            
+                                            # Remove the hallucination content from already accumulated content
+                                            original_content = content
+                                            content = self._remove_hallucination_from_content(content, trigger_found, hallucination_config)
+                                            
+                                            # Print the completion part to terminal if content was extended
+                                            if len(content) > len(original_content):
+                                                completion_part = content[len(original_content):]
+                                                print(completion_part, end="", flush=True)
+                                            
+                                            break
+                                    
+                                    # Only print and accumulate content if no hallucination detected
+                                    print(text, end="", flush=True)
+                                    content += text
+                                
+                                if generation_stopped:
+                                    pass  # Generation was stopped due to hallucination detection
+                                else:
+                                    print("\n✅ Streaming completed")
                         else:
-                            print("\n✅ Streaming completed")
+                            # Batch mode (original implementation)
+                            response = self.client.messages.create(
+                                model=self.model,
+                                max_tokens=self._get_max_tokens_for_model(self.model),
+                                system=system_message,
+                                messages=claude_messages,
+                                temperature=0.7
+                            )
+                            
+                            # Get complete response content
+                            content = response.content[0].text
+                            print("\n🤖 LLM response:")
+                            print("✅ Generation completed")
+                        
+                        # If content generated successfully, break out of retry loop
+                        break
+                        
+                    except Exception as api_error:
+                        print(f"\n⚠️ Claude API call failed (attempt {retry_count + 1}/{max_retries}): {api_error}")
+                        
+                        # If it's the last retry, raise exception
+                        if retry_count == max_retries - 1:
+                            print(f"❌ Claude API call finally failed, please check:")
+                            print(f"   1. API key validity")
+                            print(f"   2. Network connection")
+                            print(f"   3. Claude service availability")
+                            print(f"   4. Message content compliance with API requirements")
+                            raise api_error
+                        else:
+                            print(f"🔄 Waiting {2 ** retry_count} seconds before retry...")
+                            import time
+                            time.sleep(2 ** retry_count)  # Exponential backoff
+                            continue
+            
+            else:
+                # Use OpenAI API
+                if self.streaming:
+                    print("🔄 Starting streaming generation...")
+                    # Streaming mode with hallucination detection
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        temperature=0.7,
+                        top_p=0.8,
+                        stream=True
+                    )
+                    
+                    content = ""
+                    
+                    # Get hallucination detection configuration
+                    hallucination_config = self._get_hallucination_detection_config([])
+                    detection_buffer = ""
+                    generation_stopped = False
+                    
+                    # Calculate buffer size based on longest trigger
+                    if hallucination_config.get("enabled", True):
+                        max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
+                        buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
                     else:
-                        # Batch mode (original implementation)
-                        print("🔄 Starting batch generation...")
-                        response = self.client.chat.completions.create(
-                            model=self.model,
-                            messages=messages,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            temperature=0.7,
-                            top_p=0.8
-                        )
-                        
-                        # Get complete response content
-                        if response.choices and len(response.choices) > 0:
-                            content = response.choices[0].message.content
-                        else:
-                            content = ""
-                            print("⚠️ Warning: OpenAI API returned empty choices list")
-                        print("\n🤖 LLM response:")
-                        print("✅ Generation completed")
+                        buffer_size = 0
+                    
+                    for chunk in response:
+                        if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content is not None:
+                            chunk_content = chunk.choices[0].delta.content
+                            
+                            # Add current chunk to detection buffer BEFORE printing
+                            if hallucination_config.get("enabled", True):
+                                detection_buffer += chunk_content
+                                
+                                # Keep buffer size manageable
+                                if len(detection_buffer) > buffer_size:
+                                    # Remove excess from beginning
+                                    detection_buffer = detection_buffer[-buffer_size:]
+                                
+                                # Check for hallucination triggers BEFORE printing
+                                detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, hallucination_config)
+                                if detected:
+                                    generation_stopped = True
+                                    
+                                    # Remove the hallucination content from already accumulated content
+                                    original_content = content
+                                    content = self._remove_hallucination_from_content(content, trigger_found, hallucination_config)
+                                    
+                                    # Print the completion part to terminal if content was extended
+                                    if len(content) > len(original_content):
+                                        completion_part = content[len(original_content):]
+                                        print(completion_part, end="", flush=True)
+                                    
+                                    break
+                            
+                            # Only print and accumulate content if no hallucination detected
+                            print(chunk_content, end="", flush=True)
+                            content += chunk_content
+                    
+                    if generation_stopped:
+                        pass  # Generation was stopped due to hallucination detection
+                    else:
+                        print("\n✅ Streaming completed")
+                else:
+                    # Batch mode (original implementation)
+                    print("🔄 Starting batch generation...")
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        temperature=0.7,
+                        top_p=0.8
+                    )
+                    
+                    # Get complete response content
+                    if response.choices and len(response.choices) > 0:
+                        content = response.choices[0].message.content
+                    else:
+                        content = ""
+                        print("⚠️ Warning: OpenAI API returned empty choices list")
+                    print("\n🤖 LLM response:")
+                    print("✅ Generation completed")
+            
+            print(f"\n📝 Response content length: {len(content)} characters")
+            
+            # Parse the content for tool calls
+            tool_calls = self.parse_tool_calls(content)
+            
+            # Check for TASK_COMPLETED flag and detect conflicts
+            has_task_completed = "TASK_COMPLETED:" in content
+            has_tool_calls = len(tool_calls) > 0
+            
+            # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
+            conflict_detected = has_tool_calls and has_task_completed
+            if conflict_detected:
+                print(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found!")
+                print(f"🔧 Prioritizing tool execution, TASK_COMPLETED signal will be ignored.")
+            
+            # If TASK_COMPLETED but no tool calls, complete the task
+            if has_task_completed and not has_tool_calls:
+                print(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                # Extract the completion message
+                task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                if task_completed_match:
+                    completion_message = task_completed_match.group(1).strip()
+                    print(f"🎉 Task completion flag detected: {completion_message}")
                 
-                print(f"\n📝 Response content length: {len(content)} characters")
-                
-                # Add LLM response to conversation history
-                messages.append({"role": "assistant", "content": content})
-                
-                # 为当前轮次保存调试日志（在解析工具调用之前）
+                # Save final debug log
                 if self.debug_mode:
                     try:
-                        current_round_info = {
-                            "round_type": "llm_response",
-                            "response_length": len(content),
-                            "round_summary": f"Round {current_round} LLM response received"
+                        completion_info = {
+                            "has_tool_calls": False,
+                            "task_completed": True,
+                            "completion_detected": True,
+                            "execution_result": "task_completed_flag"
                         }
                         
-                        # 如果是第一轮，添加初始调用信息
-                        if current_round == 1:
-                            current_round_info.update({
-                                "is_initial_call": True,
-                                "user_prompt": user_prompt
-                            })
+                        self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
+                    except Exception as log_error:
+                        print(f"❌ Completion debug log save failed: {log_error}")
+                
+                return content
+            
+            # Execute tools if present
+            if tool_calls:
+                print(f"🔧 Found {len(tool_calls)} tool calls, starting execution...")
+                
+                # Execute all tool calls and collect results
+                all_tool_results = []
+                successful_executions = 0
+                
+                for i, tool_call in enumerate(tool_calls, 1):
+                    # Print tool execution start tag BEFORE any other output
+                    print(f"<tool_execute tool_name=\"{tool_call['name']}\" tool_number=\"{i}\">")
+                    
+                    print(f"   - Executing tool {i}: {tool_call['name']}")
+                    print(f"Executing tool: {tool_call['name']} with params: {list(tool_call['arguments'].keys())}")
+                    
+                    try:
+                        tool_result = self.execute_tool(tool_call)
                         
-                        # 暂时保存，稍后根据是否有工具调用来决定如何完善这个信息
-                        temp_tool_calls_info = current_round_info
-                    except Exception as e:
-                        print(f"⚠️ Response logging preparation failed: {e}")
-                        temp_tool_calls_info = {}
-                
-                # Parse the content for tool calls first - tool calls have priority
-                tool_calls = self.parse_tool_calls(content)
-                
-                # Check for TASK_COMPLETED flag and detect conflicts
-                has_task_completed = "TASK_COMPLETED:" in content
-                has_tool_calls = len(tool_calls) > 0
-                
-                # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
-                conflict_detected = has_tool_calls and has_task_completed
-                if conflict_detected:
-                    print(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found!")
-                    print(f"🔧 Prioritizing tool execution, TASK_COMPLETED signal will be ignored.")
-                    # We'll add a warning message in the next round
-                
-                # If TASK_COMPLETED but no tool calls, complete the task
-                if has_task_completed and not has_tool_calls:
-                    print(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
-                    # Extract the completion message
-                    task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
-                    if task_completed_match:
-                        completion_message = task_completed_match.group(1).strip()
-                        print(f"🎉 Task completion flag detected: {completion_message}")
-                    
-                    # Save final debug log
-                    if self.debug_mode:
-                        # 为任务完成的情况保存调试日志
-                        try:
-                            completion_round_info = temp_tool_calls_info.copy() if 'temp_tool_calls_info' in locals() else {}
-                            completion_round_info.update({
-                                "has_tool_calls": False,
-                                "task_completed": True,
-                                "completion_detected": True,
-                                "round_result": "task_completed_flag"
-                            })
-                            
-                            self._save_llm_call_debug_log(messages, f"Round {current_round}: Task completed with TASK_COMPLETED flag", current_round, completion_round_info)
-                        except Exception as log_error:
-                            print(f"❌ Completion debug log save failed: {log_error}")
-                            # 降级处理：使用基本信息保存
-                            self._save_llm_call_debug_log(messages, f"Round {current_round}: Task completed with TASK_COMPLETED flag", current_round)
-                    
-                    return content
-                
-                if tool_calls:
-                    print(f"🔧 Found {len(tool_calls)} tool calls, starting execution...")
-                    
-                    # Debug: print tool call details
-                    if self.debug_mode:
-                        for i, call in enumerate(tool_calls, 1):
-                            print(f"   Parameters: {call['arguments']}")
-                    
-                    # Execute all tool calls and collect results
-                    all_tool_results = []
-                    successful_executions = 0
-                    
-                    for i, tool_call in enumerate(tool_calls, 1):
-                        # Print tool execution start tag BEFORE any other output
-                        print(f"<tool_execute tool_name=\"{tool_call['name']}\" tool_number=\"{i}\">")
+                        all_tool_results.append({
+                            'tool_name': tool_call['name'],
+                            'tool_params': tool_call['arguments'],
+                            'tool_result': tool_result
+                        })
+                        successful_executions += 1
                         
-                        print(f"   - Executing tool {i}: {tool_call['name']}")
-                        
-                        try:
-                            tool_result = self.execute_tool(tool_call)
-                            all_tool_results.append({
-                                'tool_name': tool_call['name'],
-                                'tool_params': tool_call['arguments'],  # 恢复工具参数记录
-                                'tool_result': tool_result
-                            })
-                            successful_executions += 1
-                            
-                            # Real-time print of each tool's execution result
-                            # print(f"🛠️ Tool {i} execution result ({tool_call['name']}):")
-
-                            
-                            if isinstance(tool_result, dict):
-                                # Use simplified formatting for search tools if enabled in config
-                                if (self.simplified_search_output and 
-                                    tool_call['name'] in ['codebase_search', 'web_search']):
-                                    formatted_result = self._format_search_result_for_terminal(tool_result, tool_call['name'])
-                                else:
-                                    formatted_result = self._format_dict_as_text(tool_result)
-                                print(formatted_result)
+                        # Real-time print of each tool's execution result (within tool boundaries)
+                        if isinstance(tool_result, dict):
+                            # Use simplified formatting for search tools if enabled in config
+                            if (self.simplified_search_output and 
+                                tool_call['name'] in ['codebase_search', 'web_search']):
+                                formatted_result = self._format_search_result_for_terminal(tool_result, tool_call['name'])
                             else:
-                                print(str(tool_result))
-                            
-                            # print(f"   ✅ Tool execution completed: {tool_call['name']}")
-                            # print()
-                            
-                        except Exception as e:
-                            error_msg = f"Tool {tool_call['name']} execution failed: {str(e)}"
-                            print(f"❌ {error_msg}")
-                            all_tool_results.append({
-                                'tool_name': tool_call['name'],
-                                'tool_params': tool_call['arguments'],
-                                'tool_result': f"Error: {error_msg}"
-                            })
-                        
-                        # Print tool execution end tag - moved to after all output is complete
-                        print(f"</tool_execute>")
-                    
-                    # Validate tool execution results
-                    if not all_tool_results:
-                        print("❌ Warning: No tool execution results, there may be tool call parsing or execution issues")
-                    else:
-                        # print(f"✅ Successfully executed {successful_executions}/{len(tool_calls)} tools")
-                        pass
-                    
-                    # Perform incremental codebase update
-                    try:
-                        self.tools.perform_incremental_update()
-                    except Exception as e:
-                        print(f"⚠️ Codebase incremental update failed: {e}")
-                    
-                    # Interactive mode: Ask user confirmation after tool execution
-                    continue_execution, user_input = self.ask_user_confirmation("Tool execution completed. Continue to next round?")
-                    if not continue_execution:
-                        print("❌ User chose to stop execution after tool execution")
-                        return "USER_INTERRUPTED: User chose to stop execution after tool execution"
-                    
-                    # For cache optimization: rebuild messages with combined context instead of traditional chat history
-                    try:
-                        tool_results_message = self._format_tool_results_for_llm(all_tool_results)
-                        
-                        # Rebuild the entire conversation history as a single user prompt for cache optimization
-                        # Now includes system prompt in the conversation history
-                        conversation_history = self._build_conversation_history_for_cache(messages, content, tool_results_message, enhanced_system_prompt)
-                        
-                        # Add conflict warning if both tool calls and TASK_COMPLETED were detected
-                        if conflict_detected:
-                            conflict_warning = self._generate_conflict_warning()
-                            conversation_history += "\n\n" + conflict_warning
-                            print(f"⚠️ Added conflict warning to next round conversation")
-                        
-                        # If user provided custom input, add it to the conversation history
-                        if user_input:
-                            user_guidance_msg = f"\n\nThe information from user in interactive mode (important): {user_input}"
-                            conversation_history += user_guidance_msg
-                            # print(f"📝 User guidance added to conversation context")
-                        
-                        # Reset messages to cache-optimized format: single user prompt with system prompt included
-                        messages = [
-                            {"role": "user", "content": conversation_history}
-                        ]
-                        
-                        # print(f"📤 Rebuilt conversation with cache optimization for round {current_round + 1}")
-                        
-                        # Force save debug log - ensure tool results are recorded
-                        if self.debug_mode:
-                            try:
-                                # 构建完整的工具调用信息用于日志记录
-                                tool_calls_info = {
-                                    "parsed_tool_calls": tool_calls,
-                                    "tool_results": all_tool_results,
-                                    "formatted_tool_results": tool_results_message,
-                                    "conversation_history": conversation_history,
-                                    "successful_executions": successful_executions,
-                                    "total_tool_calls": len(tool_calls),
-                                    "conflict_detected": conflict_detected,
-                                    "user_input": user_input if user_input else None
-                                }
-                                
-                                self._save_llm_call_debug_log(messages, f"Round {current_round}: Cache-optimized rebuild after tool execution", current_round, tool_calls_info)
-                            except Exception as log_error:
-                                print(f"❌ Debug log save failed: {log_error}")
-                        
-                    except Exception as tool_result_error:
-                        error_msg = f"Tool result processing failed: {str(tool_result_error)}"
-                        print(f"❌ {error_msg}")
-                        
-                        # Even if error occurs, save log to record the problem
-                        if self.debug_mode:
-                            try:
-                                messages.append({"role": "user", "content": f"Tool execution error: {error_msg}"})
-                                
-                                # 即使出错也要记录工具调用信息
-                                error_tool_calls_info = {
-                                    "parsed_tool_calls": tool_calls,
-                                    "tool_results": all_tool_results,
-                                    "error": error_msg,
-                                    "processing_failed": True
-                                }
-                                
-                                self._save_llm_call_debug_log(messages, f"Round {current_round}: Tool execution error - {error_msg}", current_round, error_tool_calls_info)
-                            except Exception as error_log_error:
-                                print(f"❌ Error log save also failed: {error_log_error}")
-                        
-                        # Try to continue even with error
-                        print("⚠️ Attempting to continue to next round...")
-                        
-                        # If user provided custom input but cache optimization failed, add it directly
-                        if user_input:
-                            user_guidance_msg = f"The information from user in interactive mode (important): {user_input}"
-                            messages.append({"role": "user", "content": user_guidance_msg})
-                            # print(f"📝 User guidance added to conversation (fallback mode)")
-                    
-                    # Continue to next round, let LLM see tool results
-                    continue
-                else:
-                    # No tool calls found, check if this might be an error or intended completion
-                    should_have_tools = self._should_expect_tool_calls(content, current_round, user_prompt)
-                    
-                    if should_have_tools and current_round < max_tool_rounds:
-                        # Generate warning message for the LLM about missing tool calls
-                        warning_message = self._generate_tool_call_warning(content)
-                        print(f"⚠️ Expected tool calls but none found, sending warning to LLM (Round {current_round})")
-                        
-                        # Add warning message to conversation history
-                        messages.append({"role": "user", "content": warning_message})
-                        
-                        # 为工具调用警告情况保存调试日志
-                        if self.debug_mode:
-                            try:
-                                warning_round_info = temp_tool_calls_info.copy() if 'temp_tool_calls_info' in locals() else {}
-                                # 使用历史截断长度限制警告消息的长度
-                                warning_truncation_length = get_history_truncation_length()
-                                warning_round_info.update({
-                                    "has_tool_calls": False,
-                                    "should_have_tools": True,
-                                    "warning_sent": True,
-                                    "warning_message": warning_message[:warning_truncation_length] + "..." if len(warning_message) > warning_truncation_length else warning_message,
-                                    "round_result": "tool_call_warning_sent"
-                                })
-                                
-                                self._save_llm_call_debug_log(messages, f"Round {current_round}: Tool call warning sent", current_round, warning_round_info)
-                            except Exception as log_error:
-                                print(f"❌ Warning debug log save failed: {log_error}")
-                        
-                        # Continue to next round with the warning
-                        continue
-                    else:
-                        # No tool calls expected or max rounds reached, save final response and exit loop
-                        final_response = content
-                        if should_have_tools and current_round >= max_tool_rounds:
-                            print(f"⚠️ Expected tool calls but reached max rounds ({max_tool_rounds}), completing task")
+                                formatted_result = self._format_dict_as_text(tool_result)
+                            print(formatted_result)
                         else:
-                            print("📝 No tool calls expected, task completed")
+                            print(str(tool_result))
                         
-                        # Save final debug log
-                        if self.debug_mode:
-                            # 为没有工具调用的情况保存调试日志
-                            try:
-                                final_round_info = temp_tool_calls_info.copy() if 'temp_tool_calls_info' in locals() else {}
-                                final_round_info.update({
-                                    "has_tool_calls": False,
-                                    "task_completed": has_task_completed,
-                                    "should_have_tools": should_have_tools,
-                                    "round_result": "final_response_no_tools"
-                                })
-                                
-                                self._save_llm_call_debug_log(messages, f"Round {current_round}: Final response, no tool calls", current_round, final_round_info)
-                            except Exception as log_error:
-                                print(f"❌ Final debug log save failed: {log_error}")
-                                # 降级处理：使用基本信息保存
-                                self._save_llm_call_debug_log(messages, f"Round {current_round}: Final response, no tool calls", current_round)
-                        break
+                    except Exception as e:
+                        error_msg = f"Tool {tool_call['name']} execution failed: {str(e)}"
+                        print(f"❌ {error_msg}")
+                        all_tool_results.append({
+                            'tool_name': tool_call['name'],
+                            'tool_params': tool_call['arguments'],
+                            'tool_result': f"Error: {error_msg}"
+                        })
+                    
+                    # Print tool execution end tag
+                    print(f"</tool_execute>")
+                
+                # Format tool results for response
+                tool_results_message = self._format_tool_results_for_llm(all_tool_results)
+                
+                # Save debug log with tool execution info
+                if self.debug_mode:
+                    try:
+                        tool_execution_info = {
+                            "has_tool_calls": True,
+                            "parsed_tool_calls": tool_calls,
+                            "tool_results": all_tool_results,
+                            "formatted_tool_results": tool_results_message,
+                            "successful_executions": successful_executions,
+                            "total_tool_calls": len(tool_calls),
+                            "conflict_detected": conflict_detected
+                        }
+                        
+                        self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
+                    except Exception as log_error:
+                        print(f"❌ Debug log save failed: {log_error}")
+                
+                # Return combined response and tool results
+                return content + "\n\n--- Tool Execution Results ---\n" + tool_results_message
             
-            # If maximum rounds limit reached
-            if current_round >= max_tool_rounds:
-                print(f"⚠️ Reached maximum tool call rounds limit ({max_tool_rounds}), ending task")
-                final_response = content
-            
-            return final_response
+            else:
+                # No tool calls, return LLM response directly
+                print("📝 No tool calls found, returning LLM response")
+                
+                # Save debug log for response without tools
+                if self.debug_mode:
+                    try:
+                        no_tools_info = {
+                            "has_tool_calls": False,
+                            "task_completed": has_task_completed,
+                            "execution_result": "llm_response_only"
+                        }
+                        
+                        self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
+                    except Exception as log_error:
+                        print(f"❌ Final debug log save failed: {log_error}")
+                
+                return content
             
         except Exception as e:
             error_msg = f"❌ Error executing subtask: {str(e)}"
@@ -1525,8 +1507,6 @@ class ToolExecutor:
         tool_name = tool_call["name"]
         params = tool_call["arguments"]
         
-        print(f"Executing tool: {tool_name} with params: {list(params.keys())}")
-        
         if tool_name in self.tool_map:
             tool_func = self.tool_map[tool_name]
             try:
@@ -1759,10 +1739,12 @@ class ToolExecutor:
         if 'output' in data:
             lines.append(f"Output:\n{data['output']}")
         
-        if 'stdout' in data:
+        # For terminal commands, skip displaying stdout/stderr again as they're already shown in real-time
+        # Only show them if there's an error and no real-time output was captured
+        if 'stdout' in data and not ('command' in data and 'working_directory' in data):
             lines.append(f"Output:\n{data['stdout']}")
         
-        if 'stderr' in data and data['stderr']:
+        if 'stderr' in data and data['stderr'] and not ('command' in data and 'working_directory' in data):
             lines.append(f"Error Output:\n{data['stderr']}")
         
         # If no specific formatting applied, show all key-value pairs
@@ -1906,6 +1888,7 @@ class ToolExecutor:
         """
         Build a combined user prompt that includes task history for cache optimization.
         Instead of using chat history, we combine all context into a single user message.
+        Uses summarization instead of truncation for long history.
         
         Args:
             user_prompt: Current user prompt
@@ -1919,34 +1902,126 @@ class ToolExecutor:
         
         # Add task history context if provided
         if task_history:
-            prompt_parts.append("## Previous Task Context:")
-            prompt_parts.append("Below is the context from previous tasks in this session:\n")
+            # Calculate total history length
+            total_history_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in task_history)
             
-            # 从配置文件读取历史记录截断长度
-            history_truncation_length = get_history_truncation_length()
-            
-            for i, record in enumerate(task_history, 1):
-                if record.get("role") == "system":
-                    # Skip system messages as they're already in system prompt
-                    continue
-                elif "prompt" in record and "result" in record:
-                    # Convert task history record to context
-                    prompt_parts.append(f"### Previous Task {i}:")
-                    prompt_parts.append(f"**User Request:** {record['prompt']}")
-                    prompt_parts.append(f"**Assistant Response:** {record['result'][:history_truncation_length]}..." if len(record['result']) > history_truncation_length else f"**Assistant Response:** {record['result']}")
-                    prompt_parts.append("")  # Empty line for separation
-                elif record.get("role") == "user":
-                    prompt_parts.append(f"### Previous User Request {i}:")
-                    prompt_parts.append(record.get("content", ""))
-                    prompt_parts.append("")
-                elif record.get("role") == "assistant":
-                    prompt_parts.append(f"### Previous Assistant Response {i}:")
-                    content = record.get("content", "")
-                    # Truncate very long assistant responses for cache efficiency
-                    if len(content) > history_truncation_length:
-                        content = content[:history_truncation_length] + "... [truncated for cache optimization]"
-                    prompt_parts.append(content)
-                    prompt_parts.append("")
+            # Check if we need to summarize the history
+            if self.summary_history and total_history_length > self.summary_trigger_length:
+                print(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
+                print("🧠 Generating conversation history summary...")
+                
+                # Convert task history to conversation format for summarizer
+                conversation_records = []
+                latest_tool_result = None
+                
+                for record in task_history:
+                    if record.get("role") == "user":
+                        conversation_records.append({
+                            "role": "user",
+                            "content": record.get("content", "")
+                        })
+                    elif record.get("role") == "assistant":
+                        conversation_records.append({
+                            "role": "assistant", 
+                            "content": record.get("content", "")
+                        })
+                        # Keep track of the latest tool result
+                        latest_tool_result = record.get("content", "")
+                    elif "prompt" in record and "result" in record:
+                        # Convert task history record to conversation format
+                        conversation_records.append({
+                            "role": "user",
+                            "content": record["prompt"]
+                        })
+                        conversation_records.append({
+                            "role": "assistant",
+                            "content": record["result"]
+                        })
+                        # Keep track of the latest tool result
+                        latest_tool_result = record["result"]
+                
+                # Generate summary using the conversation summarizer
+                if self.conversation_summarizer:
+                    try:
+                        history_summary = self.conversation_summarizer.generate_conversation_history_summary(
+                            conversation_records, 
+                            latest_tool_result
+                        )
+                        
+                        prompt_parts.append("## Previous Task Context (Summarized):")
+                        prompt_parts.append(history_summary)
+                        prompt_parts.append("")
+                        
+                        print(f"✅ History summarized: {total_history_length} → {len(history_summary)} characters")
+                        
+                    except Exception as e:
+                        print(f"⚠️ Failed to generate history summary: {e}")
+                        print("📋 Using full history without summarization")
+                        
+                        # Fallback to full history without truncation
+                        prompt_parts.append("## Previous Task Context:")
+                        prompt_parts.append("Below is the context from previous tasks in this session:\n")
+                        
+                        for i, record in enumerate(task_history, 1):
+                            if record.get("role") == "system":
+                                continue
+                            elif "prompt" in record and "result" in record:
+                                prompt_parts.append(f"### Previous Task {i}:")
+                                prompt_parts.append(f"**User Request:** {record['prompt']}")
+                                prompt_parts.append(f"**Assistant Response:** {record['result']}")
+                                prompt_parts.append("")
+                            elif record.get("role") == "user":
+                                prompt_parts.append(f"### Previous User Request {i}:")
+                                prompt_parts.append(record.get("content", ""))
+                                prompt_parts.append("")
+                            elif record.get("role") == "assistant":
+                                prompt_parts.append(f"### Previous Assistant Response {i}:")
+                                prompt_parts.append(record.get("content", ""))
+                                prompt_parts.append("")
+                else:
+                    print("⚠️ Conversation summarizer not available, using full history")
+                    
+                    # Fallback to full history without truncation
+                    prompt_parts.append("## Previous Task Context:")
+                    prompt_parts.append("Below is the context from previous tasks in this session:\n")
+                    
+                    for i, record in enumerate(task_history, 1):
+                        if record.get("role") == "system":
+                            continue
+                        elif "prompt" in record and "result" in record:
+                            prompt_parts.append(f"### Previous Task {i}:")
+                            prompt_parts.append(f"**User Request:** {record['prompt']}")
+                            prompt_parts.append(f"**Assistant Response:** {record['result']}")
+                            prompt_parts.append("")
+                        elif record.get("role") == "user":
+                            prompt_parts.append(f"### Previous User Request {i}:")
+                            prompt_parts.append(record.get("content", ""))
+                            prompt_parts.append("")
+                        elif record.get("role") == "assistant":
+                            prompt_parts.append(f"### Previous Assistant Response {i}:")
+                            prompt_parts.append(record.get("content", ""))
+                            prompt_parts.append("")
+            else:
+                # History is short enough, use full history without summarization
+                prompt_parts.append("## Previous Task Context:")
+                prompt_parts.append("Below is the context from previous tasks in this session:\n")
+                
+                for i, record in enumerate(task_history, 1):
+                    if record.get("role") == "system":
+                        continue
+                    elif "prompt" in record and "result" in record:
+                        prompt_parts.append(f"### Previous Task {i}:")
+                        prompt_parts.append(f"**User Request:** {record['prompt']}")
+                        prompt_parts.append(f"**Assistant Response:** {record['result']}")
+                        prompt_parts.append("")
+                    elif record.get("role") == "user":
+                        prompt_parts.append(f"### Previous User Request {i}:")
+                        prompt_parts.append(record.get("content", ""))
+                        prompt_parts.append("")
+                    elif record.get("role") == "assistant":
+                        prompt_parts.append(f"### Previous Assistant Response {i}:")
+                        prompt_parts.append(record.get("content", ""))
+                        prompt_parts.append("")
             
             prompt_parts.append("## Current Task:")
             prompt_parts.append("Based on the above context, please handle the following current request:\n")
@@ -1975,136 +2050,9 @@ class ToolExecutor:
         
         return combined_prompt
 
-    def _build_conversation_history_for_cache(self, messages: List[Dict[str, Any]], assistant_response: str, tool_results: str, system_prompt: str) -> str:
-        """
-        Build conversation history for cache optimization by combining all context into a single user prompt.
-        When summary_history is enabled, summarizes previous conversation history except the latest tool result.
-        
-        Args:
-            messages: Current message array (user + assistant)
-            assistant_response: Latest assistant response 
-            tool_results: Tool execution results
-            system_prompt: System prompt to include in the conversation history
-            
-        Returns:
-            Combined conversation history as user prompt
-        """
-        history_parts = []
-        
-        # Extract the original user prompt from messages
-        original_user_content = ""
-        for msg in messages:
-            if msg["role"] == "user":
-                original_user_content = msg["content"]
-                break
-        
-        # Check if we should use history summarization
-        if self.summary_history and self.conversation_summarizer and len(messages) > 2:
-            # Calculate total conversation history length to decide if summarization is needed
-            total_conversation_length = 0
-            conversation_history = []
-            for msg in messages:
-                if msg["role"] in ["user", "assistant"]:
-                    content = msg.get("content", "")
-                    total_conversation_length += len(content)
-                    conversation_history.append(msg)
-            
-            # Also add assistant response and tool results to total length calculation
-            total_conversation_length += len(assistant_response) + len(tool_results)
-            
-            print(f"📊 Total conversation length: {total_conversation_length} chars (trigger threshold: {self.summary_trigger_length} chars)")
-            
-            # Only summarize if total length exceeds trigger threshold
-            if total_conversation_length > self.summary_trigger_length:
-                print("📋 Conversation length exceeds threshold, using history summarization for context control...")
-                
-                # Generate summary of previous conversation (excluding latest tool results)
-                try:
-                    conversation_summary = self.conversation_summarizer.generate_conversation_history_summary(
-                        conversation_history, 
-                        latest_tool_result=tool_results
-                    )
-                    
-                    # Add summarized context
-                    history_parts.append("## Previous Conversation Summary:")
-                    history_parts.append(conversation_summary)
-                    
-                    # Add latest assistant response
-                    history_parts.append("## Latest Assistant Response:")
-                    history_parts.append(assistant_response)
-                    
-                    # Add latest tool execution results (full text)
-                    history_parts.append("## Latest Tool Execution Results:")
-                    history_parts.append(tool_results)
-                    
-                    print(f"✅ Using summarized context ({len(conversation_summary)} chars) + latest tool results ({len(tool_results)} chars)")
-                    
-                except Exception as e:
-                    print(f"⚠️ Failed to generate conversation summary: {e}, falling back to full history")
-                    # Fall back to original behavior
-                    return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
-            else:
-                print("📝 Conversation length below threshold, using full conversation history")
-                # Use full history when below threshold
-                return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
-        else:
-            # Original behavior when history summarization is disabled
-            return self._build_full_conversation_history(original_user_content, assistant_response, tool_results, system_prompt)
-        
-        # Add continuation prompt
-        history_parts.append("## Current Request:")
-        history_parts.append("Please continue processing based on the above context and tool execution results. Provide your next response or tool calls as needed.")
-        
-        # Add system prompt at the end
-        if system_prompt:
-            history_parts.append("")  # Empty line for separation
-            history_parts.append("---")  # Separator line
-            history_parts.append("")
-            history_parts.append("**System Instructions:**")
-            history_parts.append(system_prompt)
-        
-        return "\n\n".join(history_parts)
+
     
-    def _build_full_conversation_history(self, original_user_content: str, assistant_response: str, tool_results: str, system_prompt: str = "") -> str:
-        """
-        Build full conversation history without summarization (original behavior)
-        
-        Args:
-            original_user_content: Original user prompt content
-            assistant_response: Latest assistant response
-            tool_results: Tool execution results
-            system_prompt: System prompt to include in the conversation history
-            
-        Returns:
-            Full conversation history as user prompt
-        """
-        history_parts = []
-        
-        # Add original context
-        history_parts.append("## Previous Conversation Context:")
-        history_parts.append(original_user_content)
-        
-        # Add assistant response
-        history_parts.append("## Assistant Response:")
-        history_parts.append(assistant_response)
-        
-        # Add tool execution results
-        history_parts.append("## Tool Execution Results:")
-        history_parts.append(tool_results)
-        
-        # Add continuation prompt
-        history_parts.append("## Current Request:")
-        history_parts.append("Please continue processing based on the above context and tool execution results. Provide your next response or tool calls as needed.")
-        
-        # Add system prompt at the end
-        if system_prompt:
-            history_parts.append("")  # Empty line for separation
-            history_parts.append("---")  # Separator line
-            history_parts.append("")
-            history_parts.append("**System Instructions:**")
-            history_parts.append(system_prompt)
-        
-        return "\n\n".join(history_parts)
+
 
     def _generate_cache_key(self, system_prompt: str, user_prompt: str) -> str:
         """
@@ -2329,14 +2277,14 @@ class ToolExecutor:
         
         return language_map.get(ext, 'text')
 
-    def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, current_round: int = 0, tool_calls_info: Dict[str, Any] = None) -> None:
+    def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, tool_call_round: int = 0, tool_calls_info: Dict[str, Any] = None) -> None:
         """
         Save detailed debug log for LLM call.
         
         Args:
             messages: Complete messages sent to LLM
             content: LLM response content
-            current_round: Current round number
+            tool_call_round: Current tool call round number
             tool_calls_info: Additional tool call information for better logging
         """
         try:
@@ -2368,8 +2316,8 @@ class ToolExecutor:
                     "timestamp": datetime.datetime.now().isoformat(),
                     "model": self.model,
                     "cache_key": call_cache_key,
-                    "cache_optimized": is_cache_optimized,  # True for initial cache-optimized requests
-                    "round": current_round  # Track which round this is
+                                    "cache_optimized": is_cache_optimized,  # True for initial cache-optimized requests
+                "tool_call_round": tool_call_round  # Track which tool call round this is
                 },
                 "messages": messages,
                 "response_content": content
@@ -2499,206 +2447,11 @@ class ToolExecutor:
         
         return '\n'.join(message_parts)
 
-    def _should_expect_tool_calls(self, content: str, current_round: int, user_prompt: str) -> bool:
-        """
-        Determine if we should expect tool calls based on the content and context.
-        
-        Args:
-            content: LLM response content
-            current_round: Current conversation round
-            user_prompt: Original user prompt
-            
-        Returns:
-            True if tool calls should be expected, False otherwise
-        """
-        # PRIORITY CHECK: Don't expect tools if TASK_COMPLETED flag is present
-        if "TASK_COMPLETED:" in content:
-            print(f"🎉 TASK_COMPLETED flag detected in content, no further tool calls expected")
-            return False
-        
-        # Don't expect tools if this is clearly a final response
-        final_response_indicators = [
-            "task completed", "work is done", "finished", "完成了", "任务完成",
-            "here's the summary", "in conclusion", "to summarize", "总结一下",
-            "no further action needed", "all set", "done!", "finished!",
-            "以上就是", "这样就完成了", "任务执行完毕"
-        ]
-        
-        content_lower = content.lower()
-        for indicator in final_response_indicators:
-            if indicator in content_lower:
-                return False
-        
-        # STRICT CHECK: For analysis/report tasks, if no tool calls in first round, it's likely hallucination
-        analysis_keywords = [
-            "analyze", "analysis", "report", "summary", "examine", "inspect",
-            "review", "evaluate", "assess", "parse", "investigate",
-            "分析", "报告", "总结", "检查", "评估", "解析", "调查"
-        ]
-        
-        user_wants_analysis = any(keyword in user_prompt.lower() for keyword in analysis_keywords)
-        if user_wants_analysis and current_round == 1:
-            # Check if content contains detailed analysis without tool calls
-            analysis_content_indicators = [
-                "function", "class", "method", "variable", "import", "def ",
-                "code structure", "implementation", "algorithm", "logic",
-                "技术栈", "代码结构", "实现", "算法", "逻辑", "函数", "类", "方法"
-            ]
-            
-            has_detailed_analysis = any(indicator in content_lower for indicator in analysis_content_indicators)
-            if has_detailed_analysis:
-                print(f"⚠️ Analysis content detected without tool calls - likely hallucination")
-                return True
-        
-        # Check if the content mentions tools or actions that typically require tools
-        tool_action_keywords = [
-            # File operations
-            "create file", "read file", "edit file", "modify file", "write to file",
-            "check file", "look at file", "examine file", "analyze file",
-            "创建文件", "读取文件", "编辑文件", "修改文件", "写入文件", "查看文件",
-            
-            # Search operations  
-            "search for", "find", "look for", "grep", "search in", "查找", "搜索",
-            
-            # Terminal operations
-            "run command", "execute", "install", "npm", "pip", "bash", "shell",
-            "运行命令", "执行", "安装",
-            
-            # Directory operations
-            "list directory", "check directory", "explore", "ls", "dir",
-            "列出目录", "查看目录", "浏览",
-            
-            # Analysis operations
-            "analyze code", "examine", "investigate", "debug", "trace",
-            "分析代码", "检查", "调试",
-            
-            # Web operations
-            "search web", "look up", "find information", "research",
-            "网络搜索", "查找信息", "研究"
-        ]
-        
-        for keyword in tool_action_keywords:
-            if keyword in content_lower:
-                return True
-        
-        # Check if user prompt suggests tool usage is needed
-        user_prompt_lower = user_prompt.lower()
-        user_tool_indicators = [
-            "create", "build", "implement", "code", "file", "script", "program",
-            "search", "find", "analyze", "check", "debug", "fix", "modify",
-            "install", "setup", "configure", "run", "execute", "test",
-            "write", "generate", "develop", "make", "add", "edit",
-            "创建", "构建", "实现", "编程", "文件", "脚本", "程序", 
-            "搜索", "查找", "分析", "检查", "调试", "修复", "修改",
-            "安装", "设置", "配置", "运行", "执行", "测试",
-            "写", "生成", "开发", "制作", "添加", "编辑"
-        ]
-        
-        for indicator in user_tool_indicators:
-            if indicator in user_prompt_lower:
-                return True
-        
-        # For first round responses that are very short, likely missing tool calls
-        if current_round == 1 and len(content.strip()) < 200:
-            # But exclude obvious conversational responses
-            conversational_patterns = [
-                "hello", "hi", "thanks", "thank you", "sorry", "please", "yes", "no",
-                "你好", "谢谢", "对不起", "请", "是的", "不是",
-                "i understand", "i see", "got it", "okay", "sure",
-                "我明白", "我知道", "好的", "确定", "当然"
-            ]
-            
-            is_conversational = any(pattern in content_lower for pattern in conversational_patterns)
-            if not is_conversational:
-                return True
-        
-        return False
-    
-    def _generate_conflict_warning(self) -> str:
-        """
-        Generate a warning message for the LLM about tool call and TASK_COMPLETED conflict.
-        
-        Returns:
-            Warning message string to send to the LLM
-        """
-        warning_parts = []
-        
-        warning_parts.append("⚠️ **CONFLICT DETECTED - IMPORTANT NOTICE** ⚠️")
-        warning_parts.append("")
-        warning_parts.append("Your previous response contained both tool calls and a TASK_COMPLETED signal.")
-        warning_parts.append("- Use tools first, then in a SEPARATE response, send TASK_COMPLETED if the task is truly finished")
 
-        
-        return "\n".join(warning_parts)
     
-    def _generate_tool_call_warning(self, content: str) -> str:
-        """
-        Generate a warning message for the LLM about missing tool calls.
-        
-        Args:
-            content: LLM response content that didn't contain tool calls
-            
-        Returns:
-            Warning message string to send back to the LLM
-        """
-        warning_parts = []
-        
-        warning_parts.append("🚨 **CRITICAL ERROR: HALLUCINATION DETECTED** 🚨")
-        warning_parts.append("")
-        warning_parts.append("Your previous response appears to contain fabricated or assumed information without using tools to gather actual data.")
-        warning_parts.append("")
-        warning_parts.append("**CRITICAL ISSUES DETECTED:**")
-        warning_parts.append("1. You provided analysis or content without reading actual files")
-        warning_parts.append("2. You made assumptions about code structure, functions, or file contents")
-        warning_parts.append("3. You generated reports based on file names or guesses rather than actual data")
-        warning_parts.append("")
-        warning_parts.append("**MANDATORY CORRECTION REQUIRED:**")
-        warning_parts.append("1. You MUST use tools to gather ACTUAL information before responding")
-        warning_parts.append("2. NEVER assume file contents, directory structure, or code functionality")
-        warning_parts.append("3. Always read files using read_file tool before making any claims about their contents")
-        warning_parts.append("4. Use list_dir to explore directories before making assumptions")
-        warning_parts.append("5. Use codebase_search to find specific code patterns")
-        warning_parts.append("")
-        warning_parts.append("**Correct Tool Call Formats:**")
-        warning_parts.append("")
-        warning_parts.append("**Format 1 - XML Function Calls (Recommended):**")
-        warning_parts.append("```")
-        warning_parts.append("<function_calls>")
-        warning_parts.append('<invoke name="tool_name">')
-        warning_parts.append('<parameter name="param1">value1</parameter>')
-        warning_parts.append('<parameter name="param2">value2</parameter>')
-        warning_parts.append('</invoke>')
-        warning_parts.append("</function_calls>")
-        warning_parts.append("```")
-        warning_parts.append("")
-        warning_parts.append("**Format 2 - Direct XML Tags:**")
-        warning_parts.append("```")
-        warning_parts.append("<function_calls>")
-        warning_parts.append('<invoke name="tool_name">')
-        warning_parts.append('<param1>value1</param1>')
-        warning_parts.append('<param2>value2</param2>')
-        warning_parts.append('</invoke>')
-        warning_parts.append("</function_calls>")
-        warning_parts.append("```")
-        warning_parts.append("")
-        warning_parts.append("**Available Tools:**")
-        available_tools = list(self.tool_map.keys())
-        for tool in available_tools:
-            warning_parts.append(f"- {tool}")
-        warning_parts.append("")
-        warning_parts.append("**Your previous response was:**")
-        warning_parts.append(f"```")
-        # Truncate very long responses for readability
-        history_truncation_length = get_history_truncation_length()
-        if len(content) > history_truncation_length:
-            warning_parts.append(f"{content[:history_truncation_length]}... [truncated]")
-        else:
-            warning_parts.append(content)
-        warning_parts.append("```")
-        warning_parts.append("")
-        warning_parts.append("Please respond again with the proper tool calls to complete the task. Do not just describe what you would do - actually make the tool calls!")
-        
-        return "\n".join(warning_parts)
+
+    
+
 
     def test_api_connection(self) -> bool:
         """
@@ -2752,46 +2505,7 @@ class ToolExecutor:
             print(f"   4. API quota")
             return False
 
-    def ask_user_confirmation(self, message: str, default_yes: bool = True) -> tuple:
-        """
-        Ask user for confirmation in interactive mode
-        
-        Args:
-            message: Confirmation message to display
-            default_yes: Whether to default to 'yes' if user just presses Enter
-            
-        Returns:
-            Tuple of (continue: bool, user_input: str or None)
-            - continue: True if user confirms, False otherwise
-            - user_input: User's custom input if provided, None otherwise
-        """
-        if not self.interactive_mode:
-            return True, None  # In non-interactive mode, always continue with no user input
-        
-        try:
-            default_hint = "(Y/n/custom)" if default_yes else "(y/N/custom)"
-            print(f"\n🤝 {message} {default_hint}")
-            print("💡 You can type 'y' for yes, 'n' for no, or provide your own instructions to guide the next step:")
-            response = input(">>> ").strip()
-            
-            if not response:  # Empty response, use default
-                return default_yes, None
-            
-            response_lower = response.lower()
-            
-            # Check for explicit yes/no responses
-            if response_lower in ['y', 'yes', '是', '确定']:
-                return True, None
-            elif response_lower in ['n', 'no', '否', '取消']:
-                return False, None
-            else:
-                # User provided custom input
-                print(f"📝 Custom instruction received: {response}")
-                return True, response
-            
-        except (KeyboardInterrupt, EOFError):
-            print("\n❌ User cancelled operation")
-            return False, None
+
 
     def analyze_debug_logs_completeness(self, logs_dir: str = None) -> Dict[str, Any]:
         """

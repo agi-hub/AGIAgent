@@ -9,24 +9,24 @@ LANG=zh
 # api_key=your key
 # api_base=https://api.openai-proxy.org/v1
 # model=gpt-4.1
-
+# max_tokens=8192
 
 
 
 # SiliconFlow API configuration (currently active)
-api_key=your key
-api_base=https://api.siliconflow.cn/v1
+# api_key=your key
+# api_base=https://api.siliconflow.cn/v1
 # model=Qwen/Qwen3-32B
-model=Qwen/Qwen3-30B-A3B
+# model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
-max_tokens=4096
+# max_tokens=4096
 
 
 
 # Anthropic models
 # api_key=your key
 # api_base=https://api.openai-proxy.org/anthropic
-#model=claude-sonnet-4-0
+# model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
 # max_tokens=16384
 
@@ -70,16 +70,6 @@ streaming=True
 # - Output limits in debug logs
 truncation_length=10000
 
-# History record truncation length, default 10000 if not set
-# Used for truncating conversation history, warning messages, etc.
-# Recommended values: 500-2000
-# Affects:
-# - Conversation history records
-# - Tool call warning messages
-# - Task execution log summaries
-# - Prompt information limits in debug logs
-history_truncation_length=10000
-
 # Web content truncation length, default 50000 characters, uses 5x truncation_length if not set
 # Used for truncating large-capacity content like web search results
 # Recommended values: 10000-100000
@@ -97,8 +87,8 @@ web_content_truncation_length=50000
 
 # History Summarization Configuration
 # Controls whether to use AI to summarize conversation history to reduce context length
-# When enabled, only the latest tool execution result is kept in full, while previous conversation 
-# history is summarized using the large model to maintain important context
+# When enabled, conversation history is summarized using the large model when it exceeds trigger length
+# This replaces truncation with intelligent summarization to maintain important context
 summary_history=True
 
 # Maximum length for conversation history summary (in characters)
@@ -110,14 +100,14 @@ summary_max_length=5000
 
 # Trigger length for conversation history summarization (in characters)
 # Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 15000-50000 characters
+# Recommended values: 50000-120000 characters
 # Lower values trigger summarization earlier, saving more context
 # Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=30000
+summary_trigger_length=100000
 
 # History summarization usage recommendations:
 # 1. Enable summary_history=True for long conversation sessions to control context length
-# 2. Adjust summary_trigger_length based on when you want summarization to start (20000 is good for most cases)
+# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
 # 3. Adjust summary_max_length based on your model's context window and task complexity
 # 4. For critical tasks requiring full context, keep summary_history=False
 # 5. When enabled, the latest tool result is always preserved in full text
@@ -142,5 +132,12 @@ summary_report=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-# Examples:
-gui_default_data_directory=~
+gui_default_data_directory=.
+
+# Interactive Command Auto-Fix Configuration
+# Controls whether to automatically fix interactive commands to non-interactive versions
+# When enabled, the system will automatically add flags like --quiet, -y, -n to commands
+# to prevent them from requiring user input during execution
+# Default: False (disabled)
+# Set to True to enable automatic modification of interactive commands
+auto_fix_interactive_commands=False

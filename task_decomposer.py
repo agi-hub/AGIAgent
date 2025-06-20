@@ -27,7 +27,7 @@ import csv
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from tool_executor import ToolExecutor
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_history_truncation_length, get_truncation_length
+from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length
 
 class TaskDecomposer:
     def __init__(self, api_key: str = None, 
@@ -88,7 +88,7 @@ class TaskDecomposer:
             ]
             
             # Call LLM API directly
-            print(f"🤖 Calling LLM for task decomposition: {user_requirement[:get_history_truncation_length()]}...")
+            print(f"🤖 Calling LLM for task decomposition: {user_requirement[:get_truncation_length()]}...")
             
             if self.executor.is_claude:
                 # Use Anthropic Claude API - streaming call

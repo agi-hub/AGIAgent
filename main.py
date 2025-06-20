@@ -146,7 +146,7 @@ from datetime import datetime
 from task_decomposer import TaskDecomposer
 from multi_round_executor import MultiRoundTaskExecutor
 from typing import Dict, Any
-from config_loader import get_api_key, get_api_base, get_model, get_history_truncation_length, get_summary_report
+from config_loader import get_api_key, get_api_base, get_model, get_truncation_length, get_summary_report
 
 # Configuration file to store last output directory
 LAST_OUTPUT_CONFIG_FILE = ".agibot_last_output.json"
@@ -1014,7 +1014,7 @@ Please generate a markdown format detailed summary report, retaining all importa
                     # Only add meaningful tool outputs
                     if len(output) > 50 and any(keyword in output for keyword in ['success', 'completed', 'created', 'modified', 'result', 'content']):
                         # Use configured history truncation length
-                        history_truncation_length = get_history_truncation_length()
+                        history_truncation_length = get_truncation_length()
                         detailed_summary += f"```\n{output[:history_truncation_length]}...\n```\n\n"
             
             # Add final result

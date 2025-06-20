@@ -31,6 +31,7 @@ from config_loader import get_auto_fix_interactive_commands
 class TerminalTools:
     def __init__(self, workspace_root: str = None):
         self.workspace_root = workspace_root or "."
+        print(f"🔧 DEBUG: TerminalTools initialized with workspace_root: {self.workspace_root}")
     
     def _fix_html_entities(self, text: str) -> str:
         """
@@ -76,7 +77,7 @@ class TerminalTools:
         
         return decoded_text
     
-    def _read_process_output_with_timeout(self, process, timeout_inactive=180, max_total_time=300):
+    def _read_process_output_with_timeout_and_input(self, process, timeout_inactive=180, max_total_time=300):
         """
         Asynchronously read process output with smart timeout, while displaying real-time output to user
         """
@@ -124,6 +125,8 @@ class TerminalTools:
                 current_time = time.time()
                 
                 got_output = False
+                
+                # No GUI input handling in terminal mode
                 
                 try:
                     while True:
@@ -296,8 +299,6 @@ class TerminalTools:
             max_total_time: Maximum execution time
             auto_fix_interactive: Whether to auto-fix interactive commands (if None, read from config file)
         """
-        print("Running terminal command")
-        
         # If auto_fix_interactive parameter is not specified, read from config file
         if auto_fix_interactive is None:
             auto_fix_interactive = get_auto_fix_interactive_commands()
@@ -321,7 +322,6 @@ class TerminalTools:
                 if suggestions:
                     print(suggestions)
         
-        print(f"Command: {command}")
         print(f"Working directory: {self.workspace_root}")
         print(f"Absolute working directory: {os.path.abspath(self.workspace_root)}")
         
@@ -375,15 +375,18 @@ class TerminalTools:
                 # For interactive commands, use special environment variables
                 env = None
                 if is_interactive:
+                    # Always set noninteractive mode for automated execution
                     env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'  # For apt commands
                     env['NEEDRESTART_MODE'] = 'a'  # Auto restart services
+                    print("🔧 DEBUG: Set noninteractive environment for interactive command")
                 
                 process = subprocess.Popen(
                     command,
                     shell=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    stdin=subprocess.PIPE,  # Enable stdin for interactive input
                     text=True,
                     bufsize=0,
                     universal_newlines=True,
@@ -391,7 +394,7 @@ class TerminalTools:
                     env=env
                 )
                 
-                stdout, stderr, return_code, timed_out = self._read_process_output_with_timeout(
+                stdout, stderr, return_code, timed_out = self._read_process_output_with_timeout_and_input(
                     process, timeout_inactive, max_total_time
                 )
                 
