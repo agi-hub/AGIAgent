@@ -50,44 +50,15 @@ if PLUGIN_TOOLS_AVAILABLE:
         HelpTools,
         PluginTools
     ):
-        def __init__(self, workspace_root: str = None, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, out_dir: str = None):
+        def __init__(self, workspace_root: str = None, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None):
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root)
             CodeSearchTools.__init__(self)
             FileSystemTools.__init__(self)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
-            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, out_dir)
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
             PluginTools.__init__(self, workspace_root)
-        
-        def diff_history(self, **kwargs) -> Dict[str, Any]:
-            """
-            Retrieve the history of recent changes made to files in the workspace.
-            """
-            
-            # Ignore additional parameters
-            if kwargs:
-                print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
-            
-            return {
-                'changes': [
-                    {
-                        'file': 'example_file.py',
-                        'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat(),
-                        'lines_added': 10,
-                        'lines_removed': 5,
-                        'author': 'user'
-                    },
-                    {
-                        'file': 'another_file.js',
-                        'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
-                        'lines_added': 20,
-                        'lines_removed': 15,
-                        'author': 'user'
-                    }
-                ],
-                'timestamp': datetime.datetime.now().isoformat()
-            }
 else:
     class Tools(
         BaseTools,
@@ -97,72 +68,14 @@ else:
         WebSearchTools,
         HelpTools
     ):
-        def __init__(self, workspace_root: str = None, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, out_dir: str = None):
+        def __init__(self, workspace_root: str = None, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None):
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root)
             CodeSearchTools.__init__(self)
             FileSystemTools.__init__(self)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
-            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, out_dir)
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
-        
-        def diff_history(self, **kwargs) -> Dict[str, Any]:
-            """
-            Retrieve the history of recent changes made to files in the workspace.
-            """
-            
-            # Ignore additional parameters
-            if kwargs:
-                print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
-            
-            return {
-                'changes': [
-                    {
-                        'file': 'example_file.py',
-                        'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat(),
-                        'lines_added': 10,
-                        'lines_removed': 5,
-                        'author': 'user'
-                    },
-                    {
-                        'file': 'another_file.js',
-                        'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
-                        'lines_added': 20,
-                        'lines_removed': 15,
-                        'author': 'user'
-                    }
-                ],
-                'timestamp': datetime.datetime.now().isoformat()
-            }
-
-    def diff_history(self, **kwargs) -> Dict[str, Any]:
-        """
-        Retrieve the history of recent changes made to files in the workspace.
-        """
-        
-        # Ignore additional parameters
-        if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
-        
-        return {
-            'changes': [
-                {
-                    'file': 'example_file.py',
-                    'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat(),
-                    'lines_added': 10,
-                    'lines_removed': 5,
-                    'author': 'user'
-                },
-                {
-                    'file': 'another_file.js',
-                    'timestamp': (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
-                    'lines_added': 20,
-                    'lines_removed': 15,
-                    'author': 'user'
-                }
-            ],
-            'timestamp': datetime.datetime.now().isoformat()
-        }
 
 
 

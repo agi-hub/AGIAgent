@@ -23,6 +23,7 @@ import urllib.parse
 from typing import List, Dict, Any
 import os
 import signal
+import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
 import datetime
@@ -43,6 +44,11 @@ def timeout_handler(signum, frame):
     raise TimeoutError("Operation timed out")
 
 
+def is_windows():
+    """Check if running on Windows"""
+    return platform.system().lower() == 'windows'
+
+
 # Check if the model is a Claude model
 def is_claude_model(model: str) -> bool:
     """Check if the model name is a Claude model"""
@@ -61,12 +67,13 @@ def get_anthropic_client():
 
 
 class WebSearchTools:
-    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, out_dir: str = None):
+    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None):
         self._google_connectivity_checked = False
         self._google_available = True
         
-        # LLM configuration for content filtering
+        # LLM configuration for content filtering and summarization
         self.enable_llm_filtering = enable_llm_filtering
+        self.enable_summary = enable_summary
         self.llm_client = None
         self.llm_model = llm_model
         self.is_claude = False
@@ -79,18 +86,25 @@ class WebSearchTools:
             self.web_result_dir = os.path.join("workspace", "web_search_result")
         self._ensure_result_directory()
         
-        if enable_llm_filtering and llm_api_key and llm_model and llm_api_base:
+        if (enable_llm_filtering or enable_summary) and llm_api_key and llm_model and llm_api_base:
             try:
                 self._setup_llm_client(llm_api_key, llm_model, llm_api_base)
-                print(f"🤖 LLM content filtering enabled with model: {llm_model}")
+                features = []
+                if enable_llm_filtering:
+                    features.append("content filtering")
+                if enable_summary:
+                    features.append("search results summarization")
+                print(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
             except Exception as e:
-                print(f"⚠️ Failed to setup LLM client, disabling content filtering: {e}")
+                print(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
                 self.enable_llm_filtering = False
-        elif enable_llm_filtering:
-            print("⚠️ LLM content filtering requested but missing configuration, disabling")
+                self.enable_summary = False
+        elif enable_llm_filtering or enable_summary:
+            print("⚠️ LLM features requested but missing configuration, disabling")
             self.enable_llm_filtering = False
+            self.enable_summary = False
         else:
-            print("📝 LLM content filtering disabled")
+            print("📝 LLM features disabled")
     
     def _ensure_result_directory(self):
         """Ensure the web search result directory exists"""
@@ -491,6 +505,138 @@ Please provide the extracted relevant content:"""
             print(f"❌ LLM content filtering failed: {e}")
             return content
 
+    def _summarize_search_results_with_llm(self, results: List[Dict], search_term: str) -> str:
+        """
+        Use LLM to summarize all search results
+        
+        Args:
+            results: List of search results with content
+            search_term: Original search term
+            
+        Returns:
+            Comprehensive summary of all search results
+        """
+        if not self.enable_summary or not self.llm_client or not results:
+            return ""
+        
+        # Filter results with meaningful content
+        valid_results = []
+        for result in results:
+            content = result.get('content', '')
+            if content and len(content.strip()) > 100:
+                # Skip error messages and non-content
+                if not any(error_phrase in content.lower() for error_phrase in [
+                    'content fetch error', 'processing error', 'timeout', 
+                    'video or social media link', 'non-webpage link',
+                    '当前环境异常', '正文为嵌入式文档', '结果无可用数据'
+                ]):
+                    valid_results.append(result)
+        
+        if not valid_results:
+            print("⚠️ No valid content found for summarization")
+            return ""
+        
+        print(f"📝 Using LLM to summarize {len(valid_results)} search results for: {search_term}")
+        
+        try:
+            # Construct system prompt for summarization
+            system_prompt = """You are an expert at synthesizing information from multiple web sources. Your task is to create a comprehensive, detailed summary. Follow these guidelines:
+
+CONTENT REQUIREMENTS:
+1. Analyze all provided search results and extract key information related to the search query
+2. Create a thorough, well-structured summary that combines insights from all sources
+3. Include specific facts, data, dates, names, numbers, and concrete details when available
+4. Maintain objectivity and cite different perspectives if they exist
+5. Focus on answering what the user was likely looking for with their search query
+6. Use the original language of the content (Chinese/English) as appropriate
+7. Provide substantial depth rather than superficial coverage
+
+STRUCTURE REQUIREMENTS:
+- Detailed overview/introduction with context
+- Key findings organized by topic, importance, or chronology
+- Specific details, statistics, quotes, and examples
+- Multiple perspectives when available
+- Implications, analysis, or future outlook if relevant
+- Clear section headings for organization
+
+TECHNICAL NOTE:
+Always end your summary with this important notice:
+"📁 **Original Content Storage**: Complete HTML source files and plain text versions of all webpages have been automatically saved to the `web_search_result` folder. For more detailed original content or in-depth analysis, you can use the `read_file` tool to directly access these files, or use the `codebase_search` tool to search for specific information within the folder. File names include search keywords, webpage titles, and timestamps for easy identification and retrieval."
+
+Create a detailed, informative summary that provides substantial value to the user."""
+
+            # Prepare content from results
+            results_content = []
+            for i, result in enumerate(valid_results[:10], 1):  # Limit to top 10 results to avoid token limits
+                title = result.get('title', f'Result {i}')
+                content = result.get('content', '')[:3000]  # Limit individual content length
+                source = result.get('source', 'Unknown')
+                
+                results_content.append(f"=== Source {i}: {title} (from {source}) ===\n{content}\n")
+            
+            combined_content = "\n".join(results_content)
+            
+            # Construct user prompt
+            user_prompt = f"""Search Query: "{search_term}"
+
+Please provide a comprehensive, detailed summary of the following search results. Create an in-depth analysis that:
+- Synthesizes information from all sources into a cohesive narrative
+- Includes specific details, statistics, names, dates, and concrete facts
+- Organizes information logically with clear section headings
+- Provides substantial depth and insight beyond basic facts
+- Maintains the original language (Chinese/English) of the content
+
+Search Results Content:
+{combined_content}
+
+Create a thorough, informative summary that provides comprehensive coverage of the topic:"""
+
+            # Call LLM based on type
+            if self.is_claude:
+                # Claude API call
+                response = self.llm_client.messages.create(
+                    model=self.llm_model,
+                    max_tokens=4000,  # Generous limit for comprehensive summary
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_prompt}],
+                    temperature=0.3  # Slightly higher for more natural summary
+                )
+                
+                if hasattr(response, 'content') and response.content:
+                    summary = response.content[0].text if response.content else ""
+                else:
+                    print("⚠️ Claude API response format unexpected")
+                    return ""
+            else:
+                # OpenAI API call
+                response = self.llm_client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=4000,  # Generous limit for comprehensive summary
+                    temperature=0.3  # Slightly higher for more natural summary
+                )
+                
+                if response.choices and response.choices[0].message:
+                    summary = response.choices[0].message.content
+                else:
+                    print("⚠️ OpenAI API response format unexpected")
+                    return ""
+            
+            # Validate summary
+            if summary and summary.strip() and len(summary.strip()) > 100:
+                print(f"✅ Search results summarization completed: {len(summary)} characters")
+                return summary.strip()
+            else:
+                print("⚠️ LLM produced insufficient summary")
+                return ""
+                
+        except Exception as e:
+            print(f"❌ Search results summarization failed: {e}")
+            return ""
+
     def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 30, **kwargs) -> Dict[str, Any]:
         """
         Search the web for real-time information using Playwright.
@@ -510,8 +656,10 @@ Please provide the extracted relevant content:"""
             print(f"📝 Only get search result summaries, not webpage content")
         
         # Set global timeout of 30 seconds for the entire search operation
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(30)
+        old_handler = None
+        if not is_windows():
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)
         
         browser = None
         try:
@@ -940,6 +1088,11 @@ Please provide the extracted relevant content:"""
             saved_html_count = len([r for r in results if r.get('saved_html_path')])
             saved_txt_count = len([r for r in results if r.get('saved_txt_path')])
             
+            # Generate summary if enabled and content was fetched
+            summary = ""
+            if fetch_content and self.enable_summary and results:
+                summary = self._summarize_search_results_with_llm(results, search_term)
+            
             result_data = {
                 'search_term': search_term,
                 'results': results,
@@ -951,7 +1104,39 @@ Please provide the extracted relevant content:"""
                 'saved_txt_files': saved_txt_count
             }
             
-            # Add helpful message about saved files
+            # Add summary to result data if available
+            if summary:
+                result_data['summary'] = summary
+                result_data['summary_available'] = True
+                
+                # Replace detailed results with simplified summary-focused results for LLM
+                simplified_results = []
+                for i, result in enumerate(results[:5], 1):  # Keep only top 5 for reference
+                    simplified_result = {
+                        'title': result.get('title', f'Result {i}'),
+                        'source': result.get('source', 'Unknown'),
+                        'content_available': bool(result.get('content') and len(result.get('content', '').strip()) > 50)
+                    }
+                    simplified_results.append(simplified_result)
+                
+                # Replace the detailed results with simplified ones for LLM
+                result_data['detailed_results_replaced_with_summary'] = True
+                result_data['simplified_results'] = simplified_results
+                result_data['total_results_processed'] = len(results)
+                
+                # Remove the detailed results array to avoid overwhelming LLM
+                del result_data['results']
+                
+                print(f"📋 Generated comprehensive summary ({len(summary)} characters)")
+                print(f"\n🎯 Final Summary for Search Term: '{search_term}'")
+                print(f"{'='*60}")
+                print(summary)
+                print(f"{'='*60}\n")
+            else:
+                result_data['summary_available'] = False
+            
+            # Add helpful message about saved files and original content access
+            file_notice_parts = []
             if saved_html_count > 0 or saved_txt_count > 0:
                 files_info = []
                 if saved_html_count > 0:
@@ -960,9 +1145,19 @@ Please provide the extracted relevant content:"""
                     files_info.append(f"{saved_txt_count} text files")
                 
                 files_str = " and ".join(files_info)
-                result_data['files_notice'] = f"📁 {files_str} saved to folder: {self.web_result_dir}/\n💡 You can use codebase_search or grep_search tools to search within these files"
+                file_notice_parts.append(f"📁 {files_str} saved to folder: {self.web_result_dir}/")
+                file_notice_parts.append("💡 You can use codebase_search or grep_search tools to search within these files")
+                
                 print(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
                 print(f"💡 You can use codebase_search or grep_search tools to search within these files")
+            
+            # Always add notice about original content access
+            if summary:
+                file_notice_parts.append("📄 Complete original webpage content is stored in the saved files above")
+                file_notice_parts.append("🔍 Use the saved files to access full details beyond this summary")
+            
+            if file_notice_parts:
+                result_data['files_notice'] = "\n".join(file_notice_parts)
             
             return result_data
             
@@ -1057,8 +1252,9 @@ Please provide the extracted relevant content:"""
         
         finally:
             # Reset the alarm and restore the original signal handler
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+            if not is_windows() and old_handler is not None:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
             
             # Emergency browser cleanup
             if browser:
@@ -2063,8 +2259,10 @@ Please provide the extracted relevant content:"""
         print(f"Fetching content from: {url}")
         
         # Set timeout for this operation
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(30)  # 30 second timeout
+        old_handler = None
+        if not is_windows():
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)  # 30 second timeout
         
         try:
             from playwright.sync_api import sync_playwright
@@ -2205,8 +2403,9 @@ Please provide the extracted relevant content:"""
         
         finally:
             # Reset the alarm and restore the original signal handler
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+            if not is_windows() and old_handler is not None:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
 
     def _decode_baidu_redirect_url(self, baidu_url: str) -> str:
         """

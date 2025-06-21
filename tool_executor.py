@@ -196,6 +196,7 @@ class ToolExecutor:
             llm_model=self.model,
             llm_api_base=self.api_base,
             enable_llm_filtering=False,  # Disable LLM filtering by default for faster responses
+            enable_summary=True,  # Enable LLM summarization by default for better user experience
             out_dir=out_dir
         )
         
@@ -226,7 +227,6 @@ class ToolExecutor:
             "delete_file": self.tools.delete_file,
             "reapply": self.tools.reapply,
             "web_search": self.tools.web_search,
-            "diff_history": self.tools.diff_history,
             "tool_help": self.tools.tool_help
         }
         
@@ -509,13 +509,13 @@ class ToolExecutor:
 - Please respond and generate reports in English
 - Code comments and documentation should be in English"""
             
-            # Add current date information
+            # Add current date information (standardized for cache consistency)
             current_date = datetime.datetime.now()
             date_instruction = f"""
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}"""
+- Current Time: [STANDARDIZED_FOR_CACHE]"""
             
             # Add IP geolocation information
             location_info = get_ip_location_info()
@@ -681,7 +681,7 @@ class ToolExecutor:
     
     def _add_full_history_to_message(self, message_parts: List[str], task_history: List[Dict[str, Any]]) -> None:
         """
-        Add full task history to message parts.
+        Add full task history to message parts with standardized formatting for better cache hits.
         
         Args:
             message_parts: List to append history content to
@@ -695,18 +695,97 @@ class ToolExecutor:
             if record.get("role") == "system":
                 continue
             elif "prompt" in record and "result" in record:
+                # Add clear separator line for each round
+                message_parts.append("=" * 60)
                 message_parts.append(f"### Previous round {i}:")
-                message_parts.append(f"**User Request:** {record['prompt']}")
-                message_parts.append(f"**Assistant Response:** {record['result']}")
                 message_parts.append("")
-            #elif record.get("role") == "user":
-            #    message_parts.append(f"### Previous User Request {i}:")
-            #    message_parts.append(record.get("content", ""))
-            #    message_parts.append("")
-            #elif record.get("role") == "assistant":
-            #    message_parts.append(f"### Previous Assistant Response {i}:")
-            #    message_parts.append(record.get("content", ""))
-            #    message_parts.append("")
+                
+                # Format user request with consistent line breaks
+                user_request = record['prompt'].strip()
+                message_parts.append(f"**User Request:**")
+                message_parts.append(user_request)
+                message_parts.append("")
+                
+                # Format assistant response with consistent line breaks and standardized tool result formatting
+                assistant_response = record['result'].strip()
+                
+                # Check if response contains tool execution results
+                if "--- Tool Execution Results ---" in assistant_response:
+                    # Split response into main content and tool results
+                    parts = assistant_response.split("--- Tool Execution Results ---", 1)
+                    main_response = parts[0].strip()
+                    tool_results = parts[1].strip() if len(parts) > 1 else ""
+                    
+                    message_parts.append(f"**Assistant Response:**")
+                    message_parts.append(main_response)
+                    message_parts.append("")
+                    
+                    if tool_results:
+                        message_parts.append("**Tool Execution Results:**")
+                        # Standardize tool results format for better cache consistency
+                        tool_results = self._standardize_tool_results_format(tool_results)
+                        message_parts.append(tool_results)
+                        message_parts.append("")
+                else:
+                    message_parts.append(f"**Assistant Response:**")
+                    message_parts.append(assistant_response)
+                    message_parts.append("")
+                
+                message_parts.append("=" * 60)
+                message_parts.append("")  # Extra space after separator
+    
+    def _standardize_tool_results_format(self, tool_results: str) -> str:
+        """
+        Standardize tool results format for better cache consistency.
+        
+        Args:
+            tool_results: Raw tool results string
+            
+        Returns:
+            Standardized tool results string
+        """
+        lines = tool_results.split('\n')
+        standardized_lines = []
+        
+        for line in lines:
+            # Remove trailing whitespace from each line
+            line = line.rstrip()
+            
+            # Skip empty lines at the beginning
+            if not standardized_lines and not line:
+                continue
+                
+            # Standardize tool execution markers
+            if line.startswith('<tool_execute'):
+                # Extract tool name and number, standardize format
+                import re
+                match = re.search(r'tool_name="([^"]+)".*tool_number="(\d+)"', line)
+                if match:
+                    tool_name, tool_number = match.groups()
+                    standardized_lines.append(f'<tool_execute tool_name="{tool_name}" tool_number="{tool_number}">')
+                else:
+                    standardized_lines.append(line)
+            elif line.startswith('</tool_execute>'):
+                standardized_lines.append('</tool_execute>')
+            elif line.startswith('Executing tool:'):
+                # Standardize executing tool message format
+                parts = line.split(' with params: ')
+                if len(parts) == 2:
+                    tool_info = parts[0].replace('Executing tool: ', '')
+                    params_info = parts[1]
+                    standardized_lines.append(f'Executing tool: {tool_info} with params: {params_info}')
+                else:
+                    standardized_lines.append(line)
+            else:
+                standardized_lines.append(line)
+        
+        # Join lines and ensure consistent line ending
+        result = '\n'.join(standardized_lines)
+        
+        # Remove trailing newlines and add a single one
+        result = result.rstrip() + '\n' if result.strip() else ''
+        
+        return result
     
     def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
         """
@@ -735,9 +814,7 @@ class ToolExecutor:
                 {"role": "user", "content": user_message}
             ]
             
-            # Generate cache key for potential cache hit identification
-            cache_key = self._generate_cache_key(system_prompt, user_message)
-            print(f"🔑 Request cache key: {cache_key[:16]}... (for cache hit tracking)")
+
             
             # Mark this as cache optimized since we're using the new structured format
             is_cache_optimized_format = True
@@ -950,6 +1027,9 @@ class ToolExecutor:
                     print("✅ Generation completed")
             
             print(f"\n📝 Response content length: {len(content)} characters")
+            
+            # Calculate and display token and character statistics
+            self._display_llm_statistics(messages, content)
             
             # Parse the content for tool calls
             tool_calls = self.parse_tool_calls(content)
@@ -2054,110 +2134,9 @@ class ToolExecutor:
     
 
 
-    def _generate_cache_key(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        Generate a cache key for the current LLM request to help identify potential cache hits.
-        
-        Args:
-            system_prompt: System prompt content
-            user_prompt: User prompt content
-            
-        Returns:
-            Cache key string (hash of the prompt content)
-        """
-        import hashlib
-        
-        # Combine system and user prompts
-        combined_content = f"SYSTEM:{system_prompt}\nUSER:{user_prompt}\nMODEL:{self.model}"
-        
-        # Generate MD5 hash for cache key
-        cache_key = hashlib.md5(combined_content.encode('utf-8')).hexdigest()
-        
-        if self.debug_mode:
-            print(f"🔑 Cache key generated: {cache_key}")
-            print(f"🔑 Content hash based on: system({len(system_prompt)} chars) + user({len(user_prompt)} chars) + model({self.model})")
-        
-        return cache_key
 
-    def analyze_cache_potential(self, logs_dir: str = None) -> Dict[str, Any]:
-        """
-        Analyze cache potential by examining LLM call logs.
-        
-        Args:
-            logs_dir: Directory containing LLM call logs
-            
-        Returns:
-            Dictionary with cache analysis results
-        """
-        if logs_dir is None:
-            logs_dir = self.llm_logs_dir
-        
-        print(f"🔍 Analyzing cache potential in: {logs_dir}")
-        
-        cache_keys = {}
-        total_calls = 0
-        cache_optimized_calls = 0
-        
-        try:
-            for filename in os.listdir(logs_dir):
-                if filename.startswith('llm_call_') and filename.endswith('.json'):
-                    file_path = os.path.join(logs_dir, filename)
-                    
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            log_data = json.load(f)
-                        
-                        call_info = log_data.get('call_info', {})
-                        cache_key = call_info.get('cache_key', 'unknown')
-                        is_cache_optimized = call_info.get('cache_optimized', False)
-                        
-                        total_calls += 1
-                        if is_cache_optimized:
-                            cache_optimized_calls += 1
-                        
-                        if cache_key in cache_keys:
-                            cache_keys[cache_key]['count'] += 1
-                            cache_keys[cache_key]['files'].append(filename)
-                        else:
-                            cache_keys[cache_key] = {
-                                'count': 1,
-                                'files': [filename],
-                                'cache_optimized': is_cache_optimized
-                            }
-                    except Exception as e:
-                        print(f"⚠️ Error reading log file {filename}: {e}")
-                        continue
-            
-            # Calculate potential savings
-            potential_cache_hits = sum(1 for key_data in cache_keys.values() if key_data['count'] > 1)
-            total_repeated_calls = sum(max(0, key_data['count'] - 1) for key_data in cache_keys.values())
-            
-            analysis = {
-                'total_calls': total_calls,
-                'cache_optimized_calls': cache_optimized_calls,
-                'unique_cache_keys': len(cache_keys),
-                'potential_cache_hits': total_repeated_calls,
-                'cache_hit_rate': (total_repeated_calls / total_calls * 100) if total_calls > 0 else 0,
-                'repeated_requests': {k: v for k, v in cache_keys.items() if v['count'] > 1}
-            }
-            
-            print(f"📊 Cache Analysis Results:")
-            print(f"   Total LLM calls: {total_calls}")
-            print(f"   Cache-optimized calls: {cache_optimized_calls}")
-            print(f"   Unique cache keys: {len(cache_keys)}")
-            print(f"   Potential cache hits: {total_repeated_calls}")
-            print(f"   Potential cache hit rate: {analysis['cache_hit_rate']:.1f}%")
-            
-            if analysis['repeated_requests']:
-                print(f"🔄 Repeated requests (potential cache hits):")
-                for cache_key, data in analysis['repeated_requests'].items():
-                    print(f"   Cache key {cache_key[:16]}...: {data['count']} calls")
-            
-            return analysis
-            
-        except Exception as e:
-            print(f"❌ Cache analysis failed: {e}")
-            return {'error': str(e)}
+
+
 
     def _get_workspace_context(self) -> str:
         """
@@ -2298,26 +2277,13 @@ class ToolExecutor:
             log_filename = f"llm_call_{self.llm_call_counter:03d}_{timestamp}.json"
             log_path = os.path.join(self.llm_logs_dir, log_filename)
             
-            # Generate cache key for this call
-            if len(messages) >= 2:
-                system_content = messages[0].get('content', '') if messages[0].get('role') == 'system' else ''
-                user_content = messages[1].get('content', '') if messages[1].get('role') == 'user' else ''
-                call_cache_key = self._generate_cache_key(system_content, user_content)
-            else:
-                call_cache_key = "unknown"
-            
             # Prepare debug data - including detailed tool call information
-            # All rounds use cache optimization format (system + combined_user_prompt)
-            is_cache_optimized = True
-            
             debug_data = {
                 "call_info": {
                     "call_number": self.llm_call_counter,
                     "timestamp": datetime.datetime.now().isoformat(),
                     "model": self.model,
-                    "cache_key": call_cache_key,
-                                    "cache_optimized": is_cache_optimized,  # True for initial cache-optimized requests
-                "tool_call_round": tool_call_round  # Track which tool call round this is
+                    "tool_call_round": tool_call_round  # Track which tool call round this is
                 },
                 "messages": messages,
                 "response_content": content
@@ -2346,6 +2312,190 @@ class ToolExecutor:
             
         except Exception as e:
             print(f"⚠️ Debug log save failed: {e}")
+
+    def _display_llm_statistics(self, messages: List[Dict[str, Any]], response_content: str) -> None:
+        """
+        Display LLM input/output statistics including token count and character count.
+        
+        Args:
+            messages: Input messages sent to LLM
+            response_content: Response content from LLM
+        """
+        try:
+            # Calculate input statistics
+            input_text = ""
+            for message in messages:
+                role = message.get("role", "")
+                content = message.get("content", "")
+                input_text += f"[{role}] {content}\n"
+            
+            # Estimate token counts
+            input_tokens_est = self._estimate_token_count(input_text)
+            output_tokens_est = self._estimate_token_count(response_content)
+            
+            # Calculate cache-related statistics
+            cache_stats = self._analyze_cache_potential(messages)
+            
+            # Display simplified statistics in one line
+            if cache_stats['has_history'] and cache_stats['estimated_cache_tokens'] > 0:
+                cached_tokens = cache_stats['estimated_cache_tokens']
+                new_input_tokens = cache_stats['new_tokens']
+                print(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {output_tokens_est:,}")
+            else:
+                print(f"📊 Input history (cached) tokens: 0, Input new tokens: {input_tokens_est:,}, Output tokens: {output_tokens_est:,}")
+            
+        except Exception as e:
+            print(f"⚠️ Statistics calculation failed: {e}")
+    
+    def _analyze_cache_potential(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analyze cache potential for the current request.
+        
+        Args:
+            messages: Input messages sent to LLM
+            
+        Returns:
+            Dictionary containing cache analysis results
+        """
+        try:
+            total_content = ""
+            history_content = ""
+            new_content = ""
+            
+            for message in messages:
+                content = message.get("content", "")
+                total_content += content
+                
+                # Detect history sections (marked by separators)
+                if "=" * 60 in content:  # Our history separator
+                    # Split by history separator
+                    parts = content.split("=" * 60)
+                    if len(parts) > 1:
+                        # Everything before the last separator is likely history
+                        history_content += "=" * 60 + ("=" * 60).join(parts[:-1])
+                        new_content += parts[-1]
+                    else:
+                        new_content += content
+                else:
+                    new_content += content
+            
+            # Calculate token estimates
+            total_tokens = self._estimate_token_count(total_content)
+            history_tokens = self._estimate_token_count(history_content)
+            new_tokens = self._estimate_token_count(new_content)
+            
+            # Estimate cache hit potential based on history ratio
+            cache_hit_potential = history_tokens / total_tokens if total_tokens > 0 else 0
+            
+            # Estimate how many tokens might be cached
+            # Assume cache hit if history ratio is high and content is standardized
+            estimated_cache_tokens = 0
+            if cache_hit_potential > 0.5:  # More than 50% is history
+                # Estimate cache efficiency based on content standardization
+                cache_efficiency = self._estimate_cache_efficiency(history_content)
+                estimated_cache_tokens = int(history_tokens * cache_efficiency)
+            
+            return {
+                'has_history': history_tokens > 0,
+                'total_tokens': total_tokens,
+                'history_tokens': history_tokens,
+                'new_tokens': new_tokens,
+                'cache_hit_potential': cache_hit_potential,
+                'estimated_cache_tokens': estimated_cache_tokens,
+                'cache_efficiency': cache_efficiency if 'cache_efficiency' in locals() else 0
+            }
+            
+        except Exception as e:
+            print(f"⚠️ Cache analysis failed: {e}")
+            return {
+                'has_history': False,
+                'total_tokens': 0,
+                'history_tokens': 0,
+                'new_tokens': 0,
+                'cache_hit_potential': 0,
+                'estimated_cache_tokens': 0,
+                'cache_efficiency': 0
+            }
+    
+    def _estimate_cache_efficiency(self, content: str) -> float:
+        """
+        Estimate cache efficiency based on content standardization.
+        
+        Args:
+            content: Content to analyze for cache efficiency
+            
+        Returns:
+            Cache efficiency ratio (0.0 to 1.0)
+        """
+        if not content:
+            return 0.0
+        
+        efficiency_score = 0.0
+        
+        # Check for standardized timestamps
+        if "[STANDARDIZED_FOR_CACHE]" in content:
+            efficiency_score += 0.3
+        
+        # Check for standardized tool execution markers
+        if "Tool execution results:" in content:
+            efficiency_score += 0.2
+        
+        # Check for consistent formatting (separators)
+        separator_count = content.count("=" * 60)
+        if separator_count > 0:
+            efficiency_score += 0.2
+        
+        # Check for standardized tool result formatting
+        if "## Tool" in content and "**Parameters:**" in content:
+            efficiency_score += 0.2
+        
+        # Check for minimal dynamic content
+        dynamic_indicators = ["timestamp", "time:", "date:", "ms", "seconds"]
+        dynamic_count = sum(1 for indicator in dynamic_indicators if indicator.lower() in content.lower())
+        if dynamic_count == 0:
+            efficiency_score += 0.1
+        
+        return min(1.0, efficiency_score)
+    
+
+    
+    def _estimate_token_count(self, text: str) -> int:
+        """
+        Estimate token count for given text.
+        This is a rough approximation based on character count and common tokenization patterns.
+        
+        Args:
+            text: Input text to estimate tokens for
+            
+        Returns:
+            Estimated token count
+        """
+        if not text:
+            return 0
+        
+        # Basic estimation rules:
+        # - English: ~4 characters per token
+        # - Chinese: ~1.5 characters per token (since Chinese characters are more dense)
+        # - Code: ~3.5 characters per token (due to symbols and keywords)
+        
+        # Detect text type
+        chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
+        total_chars = len(text)
+        
+        if chinese_chars > total_chars * 0.3:  # More than 30% Chinese characters
+            # Primarily Chinese text
+            estimated_tokens = int(total_chars / 1.5)
+        elif any(keyword in text.lower() for keyword in ['def ', 'class ', 'import ', 'function', '{', '}', '()', '=>']):
+            # Likely contains code
+            estimated_tokens = int(total_chars / 3.5)
+        else:
+            # Primarily English/Latin text
+            estimated_tokens = int(total_chars / 4)
+        
+        # Ensure minimum of 1 token for non-empty text
+        return max(1, estimated_tokens)
+    
+
 
     def _format_tool_results_for_llm(self, tool_results: List[Dict[str, Any]]) -> str:
         """
@@ -2748,7 +2898,7 @@ class ToolExecutor:
         known_tools = [
             'read_file', 'edit_file', 'list_dir', 'codebase_search', 'grep_search',
             'run_terminal_cmd', 'web_search', 'file_search', 'delete_file', 'reapply',
-            'diff_history', 'tool_help', 'kb_search', 'kb_content', 'kb_body'
+            'tool_help', 'kb_search', 'kb_content', 'kb_body'
         ]
         
         for pattern in tool_patterns:
@@ -3176,95 +3326,182 @@ class ToolExecutor:
 
 
 def test_search_result_formatting():
-    """Test the new search result formatting functionality"""
-    print("=== Testing Search Result Formatting ===")
+    """Test search result formatting functionality"""
+    print("🧪 Testing search result formatting...")
+    
+    # Test codebase search result
+    codebase_result = {
+        'results': [
+            {
+                'file_path': 'test.py',
+                'line_number': 10,
+                'content': 'def example_function():',
+                'score': 0.95
+            }
+        ]
+    }
+    
+    executor = ToolExecutor()
+    formatted = executor._format_search_result_for_terminal(codebase_result, 'codebase_search')
+    print("Codebase search result formatting:")
+    print(formatted)
+    print()
+    
+    # Test web search result
+    web_result = {
+        'results': [
+            {
+                'title': 'Example Title',
+                'url': 'https://example.com',
+                'snippet': 'This is an example snippet',
+                'score': 0.9
+            }
+        ]
+    }
+    
+    formatted = executor._format_search_result_for_terminal(web_result, 'web_search')
+    print("Web search result formatting:")
+    print(formatted)
+
+def test_llm_statistics():
+    """Test LLM statistics calculation functionality"""
+    print("🧪 Testing LLM statistics calculation...")
+    
+    executor = ToolExecutor()
+    
+    # Test messages
+    test_messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "请帮我写一个Python函数来计算斐波那契数列。"},
+        {"role": "assistant", "content": "当然！我来帮你写一个计算斐波那契数列的Python函数。"}
+    ]
+    
+    # Test response content
+    test_response = """这是一个计算斐波那契数列的函数：
+
+```python
+def fibonacci(n):
+    if n <= 1:
+        return n
+    else:
+        return fibonacci(n-1) + fibonacci(n-2)
+
+# 测试函数
+for i in range(10):
+    print(f"fibonacci({i}) = {fibonacci(i)}")
+```
+
+这个函数使用递归方法计算斐波那契数列。"""
+    
+    print("Testing statistics display:")
+    executor._display_llm_statistics(test_messages, test_response)
+    
+    print("\nTesting token estimation for different text types:")
+    
+    # Test English text
+    english_text = "This is a sample English text for testing token estimation."
+    english_tokens = executor._estimate_token_count(english_text)
+    print(f"English text ({len(english_text)} chars): {english_tokens} tokens")
+    
+    # Test Chinese text
+    chinese_text = "这是一段用于测试token估算的中文文本。"
+    chinese_tokens = executor._estimate_token_count(chinese_text)
+    print(f"Chinese text ({len(chinese_text)} chars): {chinese_tokens} tokens")
+    
+    # Test code text
+    code_text = """def example_function():
+    return {"key": "value"}"""
+    code_tokens = executor._estimate_token_count(code_text)
+    print(f"Code text ({len(code_text)} chars): {code_tokens} tokens")
+    
+    print("\nTesting cache analysis:")
+    
+    # Test messages with history
+    cache_test_messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": """Current request: Write a function
+
+============================================================
+Previous execution history:
+============================================================
+
+Round 1:
+User: Create a class
+Assistant: I'll create a class for you.
+
+Tool execution results:
+## Tool 1: edit_file
+**Parameters:** target_file=test.py
+**Result:**
+✅ Completed
+- content: class Example: pass
+
+============================================================
+Current request: Write a function"""}
+    ]
+    
+    cache_stats = executor._analyze_cache_potential(cache_test_messages)
+    print(f"Cache analysis results:")
+    print(f"  Has history: {cache_stats['has_history']}")
+    print(f"  Total tokens: {cache_stats['total_tokens']}")
+    print(f"  History tokens: {cache_stats['history_tokens']}")
+    print(f"  New tokens: {cache_stats['new_tokens']}")
+    print(f"  Cache hit potential: {cache_stats['cache_hit_potential']:.1%}")
+    print(f"  Estimated cache tokens: {cache_stats['estimated_cache_tokens']}")
+
+def test_cache_mechanisms():
+    """Test the enhanced cache mechanisms"""
+    print("=== Testing Cache-Friendly Text Formatting ===")
     
     # Create a mock ToolExecutor instance for testing
-    executor = ToolExecutor(
-        api_key="test_key",
-        model="test_model", 
-        api_base="test_base"
-    )
-    
-    # Test codebase_search result formatting
-    print("\n1. Testing codebase_search formatting:")
-    codebase_result = {
-        'query': 'function definition',
-        'results': [
+    try:
+        executor = ToolExecutor(
+            api_key="test_key",
+            model="test_model", 
+            api_base="test_base",
+            debug_mode=True
+        )
+        
+        print("\n1. Testing tool results standardization:")
+        
+        raw_tool_results = """<tool_execute tool_name="read_file" tool_number="1">
+   - Executing tool 1: read_file
+Executing tool: read_file with params: ['target_file', 'start_line_one_indexed']
+File content here...
+</tool_execute>
+
+<tool_execute tool_name="edit_file" tool_number="2">
+   - Executing tool 2: edit_file  
+Executing tool: edit_file with params: ['target_file', 'instructions']
+Edit completed successfully
+</tool_execute>"""
+        
+        standardized = executor._standardize_tool_results_format(raw_tool_results)
+        print("Standardized tool results:")
+        print(standardized)
+        
+        print("\n2. Testing history formatting:")
+        
+        # Test history formatting with standardized separators
+        test_history = [
             {
-                'file': 'src/main.py',
-                'snippet': 'def process_data(input_data):\n    """Process input data and return results"""\n    # Implementation here\n    return processed_data',
-                'start_line': 15,
-                'end_line': 20,
-                'score': 0.95,
-                'search_type': 'hybrid'
-            },
-            {
-                'file': 'utils/helpers.py', 
-                'snippet': 'def validate_input(data):\n    if not data:\n        raise ValueError("Data cannot be empty")\n    return True',
-                'start_line': 5,
-                'end_line': 8,
-                'score': 0.87,
-                'search_type': 'vector'
-            },
-            {
-                'file': 'config/settings.py',
-                'snippet': 'def load_config():\n    with open("config.json") as f:\n        return json.load(f)',
-                'start_line': 12,
-                'end_line': 15,
-                'score': 0.75,
-                'search_type': 'keyword'
+                "prompt": "Create a Python function",
+                "result": "I'll create a Python function for you.\n\n--- Tool Execution Results ---\nFunction created successfully."
             }
-        ],
-        'total_results': 3,
-        'repository_stats': {
-            'total_files': 25,
-            'total_segments': 150
-        },
-        'search_method': 'hybrid_vector_keyword'
-    }
-    
-    formatted_codebase = executor._format_search_result_for_terminal(codebase_result, 'codebase_search')
-    print("Formatted codebase_search result:")
-    print(formatted_codebase)
-    
-    # Test web_search result formatting
-    print("\n2. Testing web_search formatting:")
-    web_result = {
-        'search_term': 'Python best practices',
-        'results': [
-            {
-                'title': 'Python Best Practices: A Complete Guide for Developers',
-                'snippet': 'Learn the essential Python best practices that every developer should know. This comprehensive guide covers coding standards, performance optimization, and more.',
-                'content': 'Python is a powerful programming language that offers many features for developers. Following best practices ensures your code is maintainable, readable, and efficient...',
-                'source': 'developer.com'
-            },
-            {
-                'title': 'Top 10 Python Coding Standards You Should Follow',
-                'snippet': 'Discover the most important Python coding standards and conventions that will make your code more professional and easier to maintain.',
-                'content': 'Writing clean, readable Python code is essential for any developer. Here are the top 10 coding standards you should follow...',
-                'source': 'python.org'
-            }
-        ],
-        'timestamp': '2024-01-15T10:30:00',
-        'content_fetched': 2,
-        'total_results': 2
-    }
-    
-    formatted_web = executor._format_search_result_for_terminal(web_result, 'web_search')
-    print("Formatted web_search result:")
-    print(formatted_web)
-    
-    # Test with many results to show truncation
-    print("\n3. Testing with many results (truncation):")
-    many_results = codebase_result.copy()
-    many_results['results'] = codebase_result['results'] * 3  # 9 results total
-    
-    formatted_many = executor._format_search_result_for_terminal(many_results, 'codebase_search')
-    print("Formatted result with many items:")
-    print(formatted_many)
-    
-    print("\n=== Test Complete ===")
+        ]
+        
+        message_parts = []
+        executor._add_full_history_to_message(message_parts, test_history)
+        
+        print("Formatted history:")
+        print('\n'.join(message_parts))
+        
+        print("\n=== Cache-Friendly Formatting Tests Complete ===")
+        
+    except Exception as e:
+        print(f"Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def main():
@@ -3280,6 +3517,8 @@ def main():
     parser.add_argument('--streaming', action='store_true', help='Enable streaming output mode')
     parser.add_argument('--no-streaming', action='store_true', help='Disable streaming output mode (force batch)')
     parser.add_argument('--test-edit-hallucination', action='store_true', help='Test edit_file hallucination detection')
+    parser.add_argument('--test-cache', action='store_true', help='Test enhanced cache mechanisms')
+    parser.add_argument('--test-stats', action='store_true', help='Test LLM statistics calculation')
     
     args = parser.parse_args()
     
@@ -3293,6 +3532,35 @@ def main():
         streaming = False
     # If neither specified, streaming=None will use config.txt value
     
+    # Handle test modes
+    if args.test_cache:
+        print("🧪 Running enhanced cache mechanism tests...")
+        test_cache_mechanisms()
+        return
+        
+    if args.test_stats:
+        print("🧪 Running LLM statistics calculation tests...")
+        test_llm_statistics()
+        return
+        
+    if args.test_edit_hallucination:
+        print("🧪 Running edit_file hallucination detection tests...")
+        # Create executor for testing
+        executor = ToolExecutor(
+            api_key=args.api_key, 
+            model=args.model,
+            workspace_dir=args.workspace_dir,
+            debug_mode=args.debug,
+            logs_dir=args.logs_dir,
+            streaming=streaming
+        )
+        test_results = executor.test_edit_file_hallucination_detection()
+        return
+    
+    # Check if prompt is provided for normal execution
+    if not args.prompt:
+        parser.error("prompt is required unless using test options")
+    
     # Create executor
     executor = ToolExecutor(
         api_key=args.api_key, 
@@ -3302,16 +3570,6 @@ def main():
         logs_dir=args.logs_dir,
         streaming=streaming
     )
-    
-    # Handle test mode
-    if args.test_edit_hallucination:
-        print("🧪 Running edit_file hallucination detection tests...")
-        test_results = executor.test_edit_file_hallucination_detection()
-        return
-    
-    # Check if prompt is provided for normal execution
-    if not args.prompt:
-        parser.error("prompt is required unless using --test-edit-hallucination")
     
     # Execute subtask
     result = executor.execute_subtask(args.prompt, args.system_prompt)

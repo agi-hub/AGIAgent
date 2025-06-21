@@ -85,15 +85,33 @@ class FileSystemTools:
             print(f"📊 Total lines in file: {total_lines}")
             
             if should_read_entire_file:
-                content = ''.join(all_lines)
-                print(f"📄 Read entire file, content length: {len(content)} characters")
-                return {
-                    'file': target_file,
-                    'content': content,
-                    'total_lines': total_lines,
-                    'resolved_path': file_path,
-                    'status': 'success'
-                }
+                max_entire_lines = 500
+                if total_lines <= max_entire_lines:
+                    content = ''.join(all_lines)
+                    print(f"📄 Read entire file, content length: {len(content)} characters")
+                    return {
+                        'file': target_file,
+                        'content': content,
+                        'total_lines': total_lines,
+                        'resolved_path': file_path,
+                        'status': 'success'
+                    }
+                else:
+                    # File too large, truncate to max_entire_lines
+                    content_lines = all_lines[:max_entire_lines]
+                    content = ''.join(content_lines)
+                    after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
+                    print(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
+                    return {
+                        'file': target_file,
+                        'content': content,
+                        'after_summary': after_summary,
+                        'total_lines': total_lines,
+                        'lines_shown': max_entire_lines,
+                        'truncated': True,
+                        'resolved_path': file_path,
+                        'status': 'success'
+                    }
             else:
                 if start_line_one_indexed is None:
                     start_line_one_indexed = 1
