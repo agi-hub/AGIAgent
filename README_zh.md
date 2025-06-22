@@ -22,9 +22,11 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 
 ## 🎬 演示视频
 
-观看 AGI Bot 实际运行效果：
+<div align="center">
+  <iframe width="700" height="394" src="https://www.youtube.com/embed/7kW_mH18YFM" frameborder="0" allowfullscreen></iframe>
+</div>
 
-[![观看演示视频](https://img.youtube.com/vi/7kW_mH18YFM/0.jpg)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+> 如果无法直接播放，请[点击这里观看演示视频](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 ## 🚀 立即体验
 
