@@ -1042,7 +1042,10 @@ class ToolExecutor:
             conflict_detected = has_tool_calls and has_task_completed
             if conflict_detected:
                 print(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found!")
-                print(f"🔧 Prioritizing tool execution, TASK_COMPLETED signal will be ignored.")
+                print(f"🔧 Prioritizing tool execution. Removing TASK_COMPLETED flag to continue operation.")
+                # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                has_task_completed = False # Ensure the flag is updated after removal
             
             # If TASK_COMPLETED but no tool calls, complete the task
             if has_task_completed and not has_tool_calls:

@@ -53,6 +53,7 @@ For web search usage:
 - Wait for search results in the next round before outputting information
 - Direct URL Access: When user provides specific URLs (http:// or https://), use web_search with the exact URL as search_term
 - Consecutive search limitation: Limit to 2 consecutive web search rounds per session. After 2 searches, synthesize available information or ask for more specific guidance
+- For non-research tasks, try to avoid using the `web_search` tool.
 </web_search>
 
 <task_completion>
@@ -60,6 +61,7 @@ Task Completion Signal:
 When you've fully completed a task and believe no further iterations are needed, you MUST send this singal to exit the task execution:
 TASK_COMPLETED: [Brief description of what was accomplished]
 Note: Don't send TASK_COMPLETED signal if you calls tools in the current round, you should wait and check the tool executing result  in the next round and then send this signal.
+Before sending TASK_COMPLETED, you must double check the execution results to ensure that the task has been completed correctly.
 </task_completion>
 
 <reports>
@@ -106,4 +108,4 @@ Comprehensive testing approach:
    - Every piece of code should be tested before considering the task complete
    - Testing is an important part of code development
    - Code should execute correctly and produce expected results
-</code_testing_and_validation> 
+</code_testing_and_validation>
