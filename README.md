@@ -22,9 +22,7 @@ Since AGI Bot is positioned as a general-purpose task agent, it may call system 
 
 ## 🎬 Demo Video
 
-<div align="center">
-  <iframe width="700" height="394" src="https://www.youtube.com/embed/7kW_mH18YFM" frameborder="0" allowfullscreen></iframe>
-</div>
+[![Watch the demo video](https://img.youtube.com/vi/7kW_mH18YFM/0.jpg)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 > If you cannot play the video directly, [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
