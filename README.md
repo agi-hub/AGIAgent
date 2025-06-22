@@ -20,11 +20,17 @@ Since AGI Bot is positioned as a general-purpose task agent, it may call system 
 
 <br/>
 
+## 🎬 Demo Video
+
+Watch the AGI Bot in action:
+
+[![Watch the demo video](https://img.youtube.com/vi/7kW_mH18YFM/0.jpg)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+
 ## 🚀 Try it Now
 
 **Experience AGI Bot in Google Colab without any setup!**
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE/view?usp=sharing)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
 *Click the badge above to launch AGI Bot directly in your browser and start experimenting with autonomous AI programming.*
 
