@@ -251,9 +251,70 @@ class MultiRoundTaskExecutor:
             try:
                 print(f"⏳ Starting task round {task_round} execution...")
                 
-                # Prepare history for LLM
+                # Prepare history for LLM - filter out error records
                 history_for_llm = [record for record in task_history 
                                  if "prompt" in record and "result" in record and not record.get("error")]
+                
+                # Check if we need to summarize history to keep it manageable
+                total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
+                                         for record in history_for_llm)
+                
+                # If history is too long, try to summarize it before passing to execute_subtask
+                if hasattr(self.executor, 'summary_history') and self.executor.summary_history and \
+                   hasattr(self.executor, 'summary_trigger_length') and \
+                   total_history_length > self.executor.summary_trigger_length and \
+                   len(history_for_llm) > 1:  # Only summarize if we have multiple records
+                    
+                    print(f"📊 History length ({total_history_length} chars) exceeds trigger, attempting to summarize...")
+                    
+                    # Check if we can use executor's summarization capability
+                    if hasattr(self.executor, 'conversation_summarizer') and self.executor.conversation_summarizer:
+                        try:
+                            # Convert to conversation format
+                            conversation_records = []
+                            for record in history_for_llm:
+                                conversation_records.append({
+                                    "role": "user",
+                                    "content": record["prompt"]
+                                })
+                                conversation_records.append({
+                                    "role": "assistant", 
+                                    "content": record["result"]
+                                })
+                            
+                            # Generate summary
+                            latest_result = history_for_llm[-1]["result"] if history_for_llm else ""
+                            history_summary = self.executor.conversation_summarizer.generate_conversation_history_summary(
+                                conversation_records, 
+                                latest_result
+                            )
+                            
+                            # Replace history with summary record
+                            summary_record = {
+                                "prompt": "Previous task execution summary",
+                                "result": f"## Task History Summary\n\n{history_summary}",
+                                "task_completed": False,
+                                "timestamp": datetime.now().isoformat(),
+                                "is_summary": True  # Mark as summary record
+                            }
+                            
+                            # Keep only the summary and recent records (last 2 rounds)
+                            recent_records = history_for_llm[-2:] if len(history_for_llm) > 2 else []
+                            history_for_llm = [summary_record] + recent_records
+                            
+                            # Update the main task_history to prevent future growth
+                            # Keep non-LLM records (system messages, etc.) and replace LLM history
+                            non_llm_records = [record for record in task_history 
+                                             if not ("prompt" in record and "result" in record) or record.get("error")]
+                            task_history = non_llm_records + history_for_llm
+                            
+                            print(f"✅ History summarized and replaced: {total_history_length} → {len(history_summary)} chars")
+                            
+                        except Exception as e:
+                            print(f"⚠️ History summarization failed: {e}")
+                            # Keep recent history only as fallback
+                            history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
+                            print(f"📋 Using recent history subset: {len(history_for_llm)} records")
                 
                 # Execute task - this will handle internal tool calling rounds
                 # The tool executor's internal rounds are separate from task rounds
@@ -286,7 +347,7 @@ class MultiRoundTaskExecutor:
                 # Record debug information
                 self._record_debug_info(task_id, task_name, task_round, current_prompt, result, task_completed, len(task_history))
                 
-                # Record round results
+                # Record round results - but be careful not to make history too long again
                 round_record = {
                     "task_round": task_round, 
                     "prompt": current_prompt,
@@ -295,6 +356,8 @@ class MultiRoundTaskExecutor:
                     "timestamp": datetime.now().isoformat()
                 }
                 task_history.append(round_record)
+                
+
                 
                 print(f"✅ Task round {task_round} execution completed")
                 
