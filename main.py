@@ -64,6 +64,37 @@ def is_jupyter_environment():
     except:
         pass
     
+    # Check for Google Colab environment
+    try:
+        import os
+        # Colab-specific environment variables and paths
+        colab_indicators = [
+            'COLAB_GPU',  # Colab GPU environment variable
+            'COLAB_TPU_ADDR',  # Colab TPU environment variable
+            '/opt/bin/nvidia-smi',  # Colab GPU path
+            '/content'  # Colab default working directory
+        ]
+        
+        # Check environment variables
+        if any(var in os.environ for var in ['COLAB_GPU', 'COLAB_TPU_ADDR']):
+            return True
+        
+        # Check if we're in /content directory (Colab default)
+        if os.getcwd().startswith('/content'):
+            return True
+        
+        # Check for Colab-specific paths
+        if os.path.exists('/opt/bin/nvidia-smi'):
+            return True
+        
+        # Check for google.colab module availability
+        try:
+            import google.colab
+            return True
+        except ImportError:
+            pass
+    except:
+        pass
     return False
 
 def is_library_mode():

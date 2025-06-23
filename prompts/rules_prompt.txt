@@ -1,14 +1,15 @@
 <execution_rules>
 Important execution guidelines to follow:
 
-1. Avoid generating content based on assumptions, guesses, or file names
-2. Use tools to gather actual information before responding
-3. Wait for real tool results - avoid fabricating or imagining results
-4. If you need file contents, use read_file tool first
-5. If you need directory structure, use list_dir tool first
-6. If you need to search code, use codebase_search tool first
-7. For analysis/reports tasks, read actual files before creating anything
-8. Avoid outputting system formats: Don't output "## Tool Execution Results:", "Tool result:"
+1. Tool usage limitation: Only call ONE tool per round/response. Do not make multiple tool calls in a single response.
+2. Avoid generating content based on assumptions, guesses, or file names
+3. Use tools to gather actual information before responding
+4. Wait for real tool results - avoid fabricating or imagining results
+5. If you need file contents, use read_file tool first
+6. If you need directory structure, use list_dir tool first
+7. If you need to search code, use codebase_search tool first
+8. For analysis/reports tasks, read actual files before creating anything
+9. Avoid outputting system formats: Don't output "## Tool Execution Results:", "Tool result:"
 
 Following these guidelines helps ensure accurate and reliable responses.
 </execution_rules>
@@ -39,6 +40,9 @@ To ensure generated code runs immediately:
 6. Fix linter errors if clear how to, but don't loop more than 3 times on the same file
 7. Chinese font configuration: For matplotlib/pygame with Chinese text, configure fonts properly using 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', with 'DejaVu Sans' fallback
 8. Chinese character preservation: Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
+9. Interactive input prohibition: Do not generate programs that require user terminal input (like input(), raw_input(), or interactive prompts). Programs should run automatically without user interaction.
+10. Background execution for GUI/web apps: When launching GUI applications, web servers, or any programs with interfaces, always use run_terminal_cmd with is_background=True to prevent blocking and allow proper execution.
+11. Background process cleanup: After confirming successful startup of background programs, wait a few seconds then use run_terminal_cmd to find and terminate the program (e.g., using ps, pkill, or kill commands) to avoid leaving orphaned processes running.
 </making_code_changes>
 
 <searching_and_reading>
