@@ -5,7 +5,7 @@ This document showcases the capabilities of AGI Bot across various task scenario
 all the examples can be found at: 
 https://drive.google.com/drive/folders/14SwKNCCUYWODzxjb-DdCzeHo0VdYTSt9?usp=sharing
 
-## English Examples
+## Examples
 
 | Case Name | Description | Output Files |
 |-----------|-------------|--------------|
