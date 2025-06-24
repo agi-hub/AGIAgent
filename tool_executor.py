@@ -3167,7 +3167,19 @@ class ToolExecutor:
         elif tool_name == 'web_search':
             search_term = data.get('search_term', 'unknown')
             results = data.get('results', [])
-            total_results = len(results)
+            
+            # Get total results count from various possible fields
+            total_results = data.get('total_results')  # First try the direct field
+            if total_results is None:
+                # Handle cases where results were replaced with summary
+                if data.get('detailed_results_replaced_with_summary'):
+                    total_results = data.get('total_results_processed', 0)
+                    simplified_results = data.get('simplified_results', [])
+                    # Use simplified results for display if original results were removed
+                    if not results and simplified_results:
+                        results = simplified_results
+                else:
+                    total_results = len(results)
             
             lines.append(f"🌐 Web search for '{search_term}': Found {total_results} results")
             

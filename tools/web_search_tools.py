@@ -679,7 +679,7 @@ Please create a detailed, structured analysis that preserves important informati
             print(f"❌ Search results summarization failed: {e}")
             return ""
 
-    def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 30, **kwargs) -> Dict[str, Any]:
+    def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 5, **kwargs) -> Dict[str, Any]:
         """
         Search the web for real-time information using Playwright.
         """
@@ -1020,7 +1020,7 @@ Please create a detailed, structured analysis that preserves important informati
                             if result_elements:
                                 print(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
                                 
-                                for i, elem in enumerate(result_elements[:30]):  # Top 30 results
+                                for i, elem in enumerate(result_elements[:5]):  # Top 5 results
                                     try:
                                         title = ""
                                         url = ""
