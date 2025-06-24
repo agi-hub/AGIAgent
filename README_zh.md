@@ -26,6 +26,10 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 
 > 如果无法直接播放，请[点击这里观看演示视频](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
+## 📋 演示案例
+
+想要了解 AGI Bot 在各种场景下的综合能力展示，请查看我们的[演示案例](md/DEMO_zh.md)。这包括真实的使用案例、输出文件和 AGI Bot 能够完成的详细示例。
+
 ## 🚀 立即体验
 
 **在Google Colab中免费体验AGI Bot，无需任何配置！**

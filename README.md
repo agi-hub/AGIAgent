@@ -26,6 +26,10 @@ Since AGI Bot is positioned as a general-purpose task agent, it may call system 
 
 > If you cannot play the video directly, [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
+## 📋 Demo Cases
+
+For comprehensive examples showcasing AGI Bot's capabilities across various scenarios, see our [Demo Cases](md/DEMO.md). This includes real-world use cases, output files, and detailed examples of what AGI Bot can accomplish.
+
 ## 🚀 Try it Now
 
 **Experience AGI Bot in Google Colab without any setup!**
