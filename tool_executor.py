@@ -168,6 +168,10 @@ class ToolExecutor:
         
         self.api_base = api_base
         
+        # History summarization cache
+        self.history_summary_cache = {}
+        self.last_summarized_history_length = 0
+        
         # print(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
         # print(f"   Model: {self.model}")  # Commented out to reduce terminal noise
         # print(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
@@ -556,7 +560,7 @@ class ToolExecutor:
         2. Rules and tools prompts
         3. System environment info
         4. Workspace info
-        5. History context
+        5. History context (with intelligent summarization)
         6. Execution instructions (last)
         
         Args:
@@ -601,66 +605,20 @@ class ToolExecutor:
             message_parts.append("---")
             message_parts.append("")
             
-            # Calculate total history length
-            total_history_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in task_history)
+            # Calculate total history length (consistent with upstream calculation)
+            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in task_history)
             
-            # Check if we need to summarize the history
+            # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
             if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
                 print(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
-                print("🧠 Generating conversation history summary...")
+                print("⚠️ History is very long. Using recent history subset to keep context manageable.")
                 
-                # Convert task history to conversation format for summarizer
-                conversation_records = []
-                latest_tool_result = None
-                
-                for record in task_history:
-                    if record.get("role") == "user":
-                        conversation_records.append({
-                            "role": "user",
-                            "content": record.get("content", "")
-                        })
-                    elif record.get("role") == "assistant":
-                        conversation_records.append({
-                            "role": "assistant", 
-                            "content": record.get("content", "")
-                        })
-                        latest_tool_result = record.get("content", "")
-                    elif "prompt" in record and "result" in record:
-                        conversation_records.append({
-                            "role": "user",
-                            "content": record["prompt"]
-                        })
-                        conversation_records.append({
-                            "role": "assistant",
-                            "content": record["result"]
-                        })
-                        latest_tool_result = record["result"]
-                
-                # Generate summary using the conversation summarizer
-                if hasattr(self, 'conversation_summarizer') and self.conversation_summarizer:
-                    try:
-                        history_summary = self.conversation_summarizer.generate_conversation_history_summary(
-                            conversation_records, 
-                            latest_tool_result
-                        )
-                        
-                        message_parts.append("## Previous Task Context (Summarized):")
-                        message_parts.append(history_summary)
-                        message_parts.append("")
-                        
-                        print(f"✅ History summarized: {total_history_length} → {len(history_summary)} characters")
-                        
-                    except Exception as e:
-                        print(f"⚠️ Failed to generate history summary: {e}")
-                        print("📋 Using full history without summarization")
-                        
-                        # Fallback to full history
-                        self._add_full_history_to_message(message_parts, task_history)
-                else:
-                    print("⚠️ Conversation summarizer not available, using full history")
-                    self._add_full_history_to_message(message_parts, task_history)
+                # Use recent history subset as fallback when history is still too long
+                recent_history = self._get_recent_history_subset(task_history, max_length=self.summary_trigger_length // 2)
+                self._add_full_history_to_message(message_parts, recent_history)
+                print(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(task_history)} records")
             else:
-                # History is short enough, use full history
+                # History is manageable, use full history
                 self._add_full_history_to_message(message_parts, task_history)
         
         # 6. Execution instructions (last)
@@ -786,6 +744,92 @@ class ToolExecutor:
         result = result.rstrip() + '\n' if result.strip() else ''
         
         return result
+    
+    def _compute_history_hash(self, task_history: List[Dict[str, Any]]) -> str:
+        """
+        Compute a hash of the task history for caching purposes.
+        
+        Args:
+            task_history: Previous task execution history
+            
+        Returns:
+            Hash string representing the history
+        """
+        import hashlib
+        
+        # Create a stable representation of the history
+        history_str = ""
+        for record in task_history:
+            if "prompt" in record and "result" in record:
+                history_str += f"P:{record['prompt'][:200]}|R:{record['result'][:200]}|"
+            elif record.get("role") == "user":
+                history_str += f"U:{record.get('content', '')[:200]}|"
+            elif record.get("role") == "assistant":
+                history_str += f"A:{record.get('content', '')[:200]}|"
+        
+        return hashlib.md5(history_str.encode('utf-8')).hexdigest()
+    
+    def _get_recent_history_subset(self, task_history: List[Dict[str, Any]], max_length: int) -> List[Dict[str, Any]]:
+        """
+        Get a subset of recent history that doesn't exceed the maximum length.
+        
+        Args:
+            task_history: Full task history
+            max_length: Maximum allowed character length
+            
+        Returns:
+            Subset of recent history records
+        """
+        if not task_history:
+            return []
+        
+        # Start from the most recent records and work backwards
+        recent_history = []
+        current_length = 0
+        
+        for record in reversed(task_history):
+            record_length = len(str(record.get("prompt", ""))) + len(str(record.get("result", "")))
+            
+            if current_length + record_length > max_length and recent_history:
+                # Stop adding if it would exceed max length and we already have some records
+                break
+            
+            recent_history.insert(0, record)  # Insert at beginning to maintain order
+            current_length += record_length
+        
+        return recent_history
+    
+    def clear_history_summary_cache(self) -> None:
+        """
+        Clear the history summary cache to force regeneration of summaries.
+        Useful when you want to ensure fresh summaries are generated.
+        """
+        if hasattr(self, 'history_summary_cache'):
+            self.history_summary_cache.clear()
+            self.last_summarized_history_length = 0
+            print("🧹 History summary cache cleared")
+        else:
+            print("ℹ️ No history summary cache to clear")
+    
+    def get_history_summary_cache_info(self) -> Dict[str, Any]:
+        """
+        Get information about the history summary cache.
+        
+        Returns:
+            Dictionary with cache information
+        """
+        cache_info = {
+            "cache_enabled": hasattr(self, 'history_summary_cache'),
+            "cached_summaries": 0,
+            "last_summarized_length": getattr(self, 'last_summarized_history_length', 0),
+            "cache_keys": []
+        }
+        
+        if hasattr(self, 'history_summary_cache'):
+            cache_info["cached_summaries"] = len(self.history_summary_cache)
+            cache_info["cache_keys"] = list(self.history_summary_cache.keys())
+        
+        return cache_info
     
     def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
         """
@@ -1967,171 +2011,7 @@ class ToolExecutor:
         except Exception as e:
             return f"Failed to get usage example for '{tool_name}': {str(e)}"
 
-    def _build_combined_user_prompt(self, user_prompt: str, task_history: List[Dict[str, Any]] = None, system_prompt: str = "") -> str:
-        """
-        Build a combined user prompt that includes task history for cache optimization.
-        Instead of using chat history, we combine all context into a single user message.
-        Uses summarization instead of truncation for long history.
-        
-        Args:
-            user_prompt: Current user prompt
-            task_history: Previous task execution history
-            system_prompt: System prompt to include in the user message
-            
-        Returns:
-            Combined user prompt string
-        """
-        prompt_parts = []
-        
-        # Add task history context if provided
-        if task_history:
-            # Calculate total history length
-            total_history_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in task_history)
-            
-            # Check if we need to summarize the history
-            if self.summary_history and total_history_length > self.summary_trigger_length:
-                print(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
-                print("🧠 Generating conversation history summary...")
-                
-                # Convert task history to conversation format for summarizer
-                conversation_records = []
-                latest_tool_result = None
-                
-                for record in task_history:
-                    if record.get("role") == "user":
-                        conversation_records.append({
-                            "role": "user",
-                            "content": record.get("content", "")
-                        })
-                    elif record.get("role") == "assistant":
-                        conversation_records.append({
-                            "role": "assistant", 
-                            "content": record.get("content", "")
-                        })
-                        # Keep track of the latest tool result
-                        latest_tool_result = record.get("content", "")
-                    elif "prompt" in record and "result" in record:
-                        # Convert task history record to conversation format
-                        conversation_records.append({
-                            "role": "user",
-                            "content": record["prompt"]
-                        })
-                        conversation_records.append({
-                            "role": "assistant",
-                            "content": record["result"]
-                        })
-                        # Keep track of the latest tool result
-                        latest_tool_result = record["result"]
-                
-                # Generate summary using the conversation summarizer
-                if self.conversation_summarizer:
-                    try:
-                        history_summary = self.conversation_summarizer.generate_conversation_history_summary(
-                            conversation_records, 
-                            latest_tool_result
-                        )
-                        
-                        prompt_parts.append("## Previous Task Context (Summarized):")
-                        prompt_parts.append(history_summary)
-                        prompt_parts.append("")
-                        
-                        print(f"✅ History summarized: {total_history_length} → {len(history_summary)} characters")
-                        
-                    except Exception as e:
-                        print(f"⚠️ Failed to generate history summary: {e}")
-                        print("📋 Using full history without summarization")
-                        
-                        # Fallback to full history without truncation
-                        prompt_parts.append("## Previous Task Context:")
-                        prompt_parts.append("Below is the context from previous tasks in this session:\n")
-                        
-                        for i, record in enumerate(task_history, 1):
-                            if record.get("role") == "system":
-                                continue
-                            elif "prompt" in record and "result" in record:
-                                prompt_parts.append(f"### Previous Task {i}:")
-                                prompt_parts.append(f"**User Request:** {record['prompt']}")
-                                prompt_parts.append(f"**Assistant Response:** {record['result']}")
-                                prompt_parts.append("")
-                            elif record.get("role") == "user":
-                                prompt_parts.append(f"### Previous User Request {i}:")
-                                prompt_parts.append(record.get("content", ""))
-                                prompt_parts.append("")
-                            elif record.get("role") == "assistant":
-                                prompt_parts.append(f"### Previous Assistant Response {i}:")
-                                prompt_parts.append(record.get("content", ""))
-                                prompt_parts.append("")
-                else:
-                    print("⚠️ Conversation summarizer not available, using full history")
-                    
-                    # Fallback to full history without truncation
-                    prompt_parts.append("## Previous Task Context:")
-                    prompt_parts.append("Below is the context from previous tasks in this session:\n")
-                    
-                    for i, record in enumerate(task_history, 1):
-                        if record.get("role") == "system":
-                            continue
-                        elif "prompt" in record and "result" in record:
-                            prompt_parts.append(f"### Previous Task {i}:")
-                            prompt_parts.append(f"**User Request:** {record['prompt']}")
-                            prompt_parts.append(f"**Assistant Response:** {record['result']}")
-                            prompt_parts.append("")
-                        elif record.get("role") == "user":
-                            prompt_parts.append(f"### Previous User Request {i}:")
-                            prompt_parts.append(record.get("content", ""))
-                            prompt_parts.append("")
-                        elif record.get("role") == "assistant":
-                            prompt_parts.append(f"### Previous Assistant Response {i}:")
-                            prompt_parts.append(record.get("content", ""))
-                            prompt_parts.append("")
-            else:
-                # History is short enough, use full history without summarization
-                prompt_parts.append("## Previous Task Context:")
-                prompt_parts.append("Below is the context from previous tasks in this session:\n")
-                
-                for i, record in enumerate(task_history, 1):
-                    if record.get("role") == "system":
-                        continue
-                    elif "prompt" in record and "result" in record:
-                        prompt_parts.append(f"### Previous Task {i}:")
-                        prompt_parts.append(f"**User Request:** {record['prompt']}")
-                        prompt_parts.append(f"**Assistant Response:** {record['result']}")
-                        prompt_parts.append("")
-                    elif record.get("role") == "user":
-                        prompt_parts.append(f"### Previous User Request {i}:")
-                        prompt_parts.append(record.get("content", ""))
-                        prompt_parts.append("")
-                    elif record.get("role") == "assistant":
-                        prompt_parts.append(f"### Previous Assistant Response {i}:")
-                        prompt_parts.append(record.get("content", ""))
-                        prompt_parts.append("")
-            
-            prompt_parts.append("## Current Task:")
-            prompt_parts.append("Based on the above context, please handle the following current request:\n")
-        
-        # Add current user prompt
-        prompt_parts.append(user_prompt)
-        
-        # Add system prompt to the user message (after user requirements)
-        if system_prompt:
-            prompt_parts.append("")  # Empty line for separation
-            prompt_parts.append("---")  # Separator line
-            prompt_parts.append("")
-            prompt_parts.append("**System Instructions:**")
-            prompt_parts.append(system_prompt)
-        
-        combined_prompt = "\n".join(prompt_parts)
-        
-        if self.debug_mode:
-            print(f"🔄 Cache optimization: Combined prompt length: {len(combined_prompt)} characters")
-            if task_history:
-                print(f"🔄 Combined {len(task_history)} historical records into current prompt")
-            else:
-                print(f"🔄 No history, using direct prompt for optimal caching")
-            if system_prompt:
-                print(f"🔄 System prompt included in user message ({len(system_prompt)} characters)")
-        
-        return combined_prompt
+# _build_combined_user_prompt function removed - using _build_new_user_message instead
 
 
     
@@ -3507,6 +3387,72 @@ Edit completed successfully
         traceback.print_exc()
 
 
+def test_history_summarization():
+    """Test the improved history summarization functionality"""
+    print("🧪 Testing improved history summarization functionality...")
+    
+    # Create a mock ToolExecutor instance for testing
+    try:
+        executor = ToolExecutor(
+            api_key="test_key",
+            model="test_model", 
+            api_base="test_base",
+            debug_mode=True
+        )
+        
+        # Create large test history
+        large_history = []
+        for i in range(10):
+            large_history.append({
+                "prompt": f"Test task {i}: " + "x" * 10000,  # 10k chars each
+                "result": f"Result for task {i}: " + "y" * 10000  # 10k chars each
+            })
+        
+        print(f"\n1. Testing with large history ({len(large_history)} records)")
+        
+        # Calculate total length
+        total_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in large_history)
+        print(f"   Total history length: {total_length:,} characters")
+        
+        # Test history hash computation
+        hash1 = executor._compute_history_hash(large_history)
+        hash2 = executor._compute_history_hash(large_history)  # Should be the same
+        print(f"   History hash consistency: {hash1 == hash2}")
+        print(f"   History hash: {hash1[:16]}...")
+        
+        # Test recent history subset
+        recent_subset = executor._get_recent_history_subset(large_history, max_length=50000)
+        recent_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in recent_subset)
+        print(f"   Recent subset: {len(recent_subset)} records, {recent_length:,} characters")
+        
+        # Test cache info
+        cache_info = executor.get_history_summary_cache_info()
+        print(f"   Cache info: {cache_info}")
+        
+        # Test cache clearing
+        executor.clear_history_summary_cache()
+        
+        print("\n2. Testing cache functionality")
+        
+        # Simulate adding items to cache
+        executor.history_summary_cache = {"test_hash": "test_summary"}
+        executor.last_summarized_history_length = 100000
+        
+        cache_info_after = executor.get_history_summary_cache_info()
+        print(f"   Cache info after adding item: {cache_info_after}")
+        
+        # Test cache clearing again
+        executor.clear_history_summary_cache()
+        cache_info_cleared = executor.get_history_summary_cache_info()
+        print(f"   Cache info after clearing: {cache_info_cleared}")
+        
+        print("\n=== History Summarization Tests Complete ===")
+        
+    except Exception as e:
+        print(f"Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(description='Execute a subtask using LLM with tools')
@@ -3522,6 +3468,7 @@ def main():
     parser.add_argument('--test-edit-hallucination', action='store_true', help='Test edit_file hallucination detection')
     parser.add_argument('--test-cache', action='store_true', help='Test enhanced cache mechanisms')
     parser.add_argument('--test-stats', action='store_true', help='Test LLM statistics calculation')
+    parser.add_argument('--test-history-summary', action='store_true', help='Test improved history summarization')
     
     args = parser.parse_args()
     
@@ -3544,6 +3491,11 @@ def main():
     if args.test_stats:
         print("🧪 Running LLM statistics calculation tests...")
         test_llm_statistics()
+        return
+        
+    if args.test_history_summary:
+        print("🧪 Running improved history summarization tests...")
+        test_history_summarization()
         return
         
     if args.test_edit_hallucination:

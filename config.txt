@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-#LANG=en
-LANG=zh
+LANG=en
+#LANG=zh
 
 # OpenAI API configuration 
 #api_key=your key
@@ -19,9 +19,9 @@ LANG=zh
 
 
 # Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
+api_key=your key
+api_base=https://api.openai-proxy.org/anthropic
+model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
 # max_tokens=16384
 
