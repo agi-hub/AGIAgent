@@ -172,7 +172,7 @@ class WebSearchTools:
             
             # Remove double underscores and ensure filename is not empty
             filename = re.sub(r'_+', '_', filename).strip('_')
-            if not filename or filename == '.html':
+            if not filename or filename == '.html' or len(filename) < 8:  # .html is 5 chars, so minimum valid name is 3+ chars
                 filename = f"webpage_{timestamp}.html"
             
             filepath = os.path.join(self.web_result_dir, filename)
@@ -229,6 +229,10 @@ class WebSearchTools:
             if not base_filename:
                 base_filename = f"webpage_{timestamp}"
             
+            # Ensure base_filename is not empty and has valid characters
+            if len(base_filename) < 3:
+                base_filename = f"webpage_{timestamp}"
+            
             # Save HTML content (but check for special pages first)
             try:
                 html_content = page.content()
@@ -251,10 +255,12 @@ class WebSearchTools:
                         print("⚠️ Skipping HTML save for Baidu Scholar search page")
                 
                 if not should_skip_html:
-                    html_filepath = os.path.join(self.web_result_dir, f"{base_filename}.html")
+                    # Ensure the HTML file has .html extension
+                    html_filename = f"{base_filename}.html"
+                    html_filepath = os.path.join(self.web_result_dir, html_filename)
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
-                    print(f"💾 Saved webpage HTML: {base_filename}.html ({len(html_content)} bytes)")
+                    print(f"💾 Saved webpage HTML: {html_filename} ({len(html_content)} bytes)")
                 else:
                     print(f"⏭️ Skipped HTML save for special page: {title[:50]}...")
                     
@@ -268,7 +274,9 @@ class WebSearchTools:
                     cleaned_content = self._clean_text_for_saving(content)
                     
                     if cleaned_content and len(cleaned_content.strip()) > 50:
-                        txt_filepath = os.path.join(self.web_result_dir, f"{base_filename}.txt")
+                        # Ensure the txt file has .txt extension
+                        txt_filename = f"{base_filename}.txt"
+                        txt_filepath = os.path.join(self.web_result_dir, txt_filename)
                         
                         # Create a formatted text file with metadata
                         # Special handling for verification page and DocIn embedded documents
@@ -319,7 +327,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         
                         with open(txt_filepath, 'w', encoding='utf-8') as f:
                             f.write(formatted_content)
-                        print(f"📝 Saved cleaned text: {base_filename}.txt ({len(cleaned_content)} characters, cleaned from {len(content)})")
+                        print(f"📝 Saved cleaned text: {txt_filename} ({len(cleaned_content)} characters, cleaned from {len(content)})")
                     else:
                         print(f"⚠️ Content too short or low quality after cleaning for: {title}")
                 else:
@@ -508,21 +516,21 @@ Please provide the extracted relevant content:"""
 
     def _summarize_search_results_with_llm(self, results: List[Dict], search_term: str) -> str:
         """
-        Use LLM to summarize all search results
+        Use LLM to summarize all search results with detailed individual analysis
         
         Args:
             results: List of search results with content
             search_term: Original search term
             
         Returns:
-            Comprehensive summary of all search results
+            Comprehensive summary with individual webpage analysis
         """
         if not self.enable_summary or not self.llm_client or not results:
             return ""
         
-        # Filter results with meaningful content
+        # Filter results with meaningful content and prepare individual result details
         valid_results = []
-        for result in results:
+        for i, result in enumerate(results):
             content = result.get('content', '')
             if content and len(content.strip()) > 100:
                 # Skip error messages and non-content
@@ -531,7 +539,10 @@ Please provide the extracted relevant content:"""
                     'video or social media link', 'non-webpage link',
                     '当前环境异常', '正文为嵌入式文档', '结果无可用数据'
                 ]):
-                    valid_results.append(result)
+                    # Add file path information to the result
+                    result_with_files = result.copy()
+                    result_with_files['result_index'] = i + 1
+                    valid_results.append(result_with_files)
         
         if not valid_results:
             print("⚠️ No valid content found for summarization")
@@ -540,67 +551,97 @@ Please provide the extracted relevant content:"""
         print(f"📝 Using LLM to summarize {len(valid_results)} search results for: {search_term}")
         
         try:
-            # Construct system prompt for summarization
-            system_prompt = """You are an expert at synthesizing information from multiple web sources. Your task is to create a comprehensive, detailed summary. Follow these guidelines:
+            # Construct system prompt for detailed individual analysis
+            system_prompt = """You are an expert at analyzing and summarizing web search results. Your task is to create a comprehensive summary that processes each webpage result individually while maintaining focus on the search query. Follow these guidelines:
 
 CONTENT REQUIREMENTS:
-1. Analyze all provided search results and extract key information related to the search query
-2. Create a thorough, well-structured summary that combines insights from all sources
-3. Include specific facts, data, dates, names, numbers, and concrete details when available
-4. Maintain objectivity and cite different perspectives if they exist
-5. Focus on answering what the user was likely looking for with their search query
-6. Use the original language of the content (Chinese/English) as appropriate
-7. Provide substantial depth rather than superficial coverage
+1. Focus specifically on information related to the search query: "{search_term}"
+2. Process each webpage result individually with detailed analysis
+3. Extract key information, facts, data, dates, names, numbers, and concrete details from each source
+4. Maintain objectivity and note different perspectives when they exist
+5. Use the original language of the content (Chinese/English) as appropriate
+6. Preserve important details rather than providing superficial summaries
 
 STRUCTURE REQUIREMENTS:
-- Detailed overview/introduction with context
-- Key findings organized by topic, importance, or chronology
-- Specific details, statistics, quotes, and examples
-- Multiple perspectives when available
-- Implications, analysis, or future outlook if relevant
-- Clear section headings for organization
+- Start with a brief overview of the search topic
+- Analyze each webpage result individually in separate sections
+- For each webpage, include:
+  * Title and main findings
+  * Key facts, data, and specific details
+  * Relevant quotes or important information
+  * How it relates to the search query
+  * The corresponding saved HTML file location (if available)
+- End with a synthesis of key findings across all sources
+
+INDIVIDUAL RESULT ANALYSIS:
+For each webpage result, provide:
+- Clear section heading with the webpage title
+- Detailed extraction of relevant information
+- Specific facts, statistics, quotes, and examples
+- Analysis of how the content answers the search query
+- File location information for reference
 
 TECHNICAL NOTE:
 Always end your summary with this important notice:
 "📁 **Original Content Storage**: Complete HTML source files and plain text versions of all webpages have been automatically saved to the `web_search_result` folder. For more detailed original content or in-depth analysis, you can use the `read_file` tool to directly access these files, or use the `codebase_search` tool to search for specific information within the folder. File names include search keywords, webpage titles, and timestamps for easy identification and retrieval."
 
-Create a detailed, informative summary that provides substantial value to the user."""
+Create a detailed, informative summary that provides substantial value by analyzing each webpage individually."""
 
-            # Prepare content from results
+            # Prepare content from results with file information
             results_content = []
             for i, result in enumerate(valid_results[:10], 1):  # Limit to top 10 results to avoid token limits
                 title = result.get('title', f'Result {i}')
-                content = result.get('content', '')[:3000]  # Limit individual content length
+                content = result.get('content', '')[:4000]  # Increased limit for more detailed analysis
                 source = result.get('source', 'Unknown')
                 
-                results_content.append(f"=== Source {i}: {title} (from {source}) ===\n{content}\n")
+                # Get file path information
+                html_file = result.get('saved_html_path', '')
+                txt_file = result.get('saved_txt_path', '')
+                
+                file_info = ""
+                if html_file:
+                    file_info += f"HTML File: {os.path.basename(html_file)}\n"
+                if txt_file:
+                    file_info += f"Text File: {os.path.basename(txt_file)}\n"
+                
+                result_section = f"=== Webpage {i}: {title} (Source: {source}) ===\n"
+                if file_info:
+                    result_section += f"Saved Files:\n{file_info}\n"
+                result_section += f"Content:\n{content}\n"
+                
+                results_content.append(result_section)
             
             combined_content = "\n".join(results_content)
             
-            # Construct user prompt
+            # Construct user prompt with focus on individual analysis
             user_prompt = f"""Search Query: "{search_term}"
 
-Please provide a comprehensive, detailed summary of the following search results. Create an in-depth analysis that:
-- Synthesizes information from all sources into a cohesive narrative
-- Includes specific details, statistics, names, dates, and concrete facts
-- Organizes information logically with clear section headings
-- Provides substantial depth and insight beyond basic facts
-- Maintains the original language (Chinese/English) of the content
+Please provide a comprehensive analysis of the following search results. Focus on extracting information specifically related to the search query "{search_term}". 
 
-Search Results Content:
+Analyze each webpage result individually and provide:
+1. A brief overview of the search topic
+2. Individual analysis of each webpage result with:
+   - Title and main findings related to the search query
+   - Key facts, data, statistics, and specific details
+   - Important quotes or information
+   - How the content answers or relates to the search query
+   - Reference to the saved HTML file location
+3. A synthesis of key findings across all sources
+
+Search Results to Analyze:
 {combined_content}
 
-Create a thorough, informative summary that provides comprehensive coverage of the topic:"""
+Please create a detailed, structured analysis that preserves important information from each webpage while focusing on the search query."""
 
             # Call LLM based on type
             if self.is_claude:
                 # Claude API call
                 response = self.llm_client.messages.create(
                     model=self.llm_model,
-                    max_tokens=4000,  # Generous limit for comprehensive summary
-                    system=system_prompt,
+                    max_tokens=6000,  # Increased limit for detailed individual analysis
+                    system=system_prompt.format(search_term=search_term),
                     messages=[{"role": "user", "content": user_prompt}],
-                    temperature=0.3  # Slightly higher for more natural summary
+                    temperature=0.2  # Lower temperature for more structured analysis
                 )
                 
                 if hasattr(response, 'content') and response.content:
@@ -613,11 +654,11 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                 response = self.llm_client.chat.completions.create(
                     model=self.llm_model,
                     messages=[
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": system_prompt.format(search_term=search_term)},
                         {"role": "user", "content": user_prompt}
                     ],
-                    max_tokens=4000,  # Generous limit for comprehensive summary
-                    temperature=0.3  # Slightly higher for more natural summary
+                    max_tokens=6000,  # Increased limit for detailed individual analysis
+                    temperature=0.2  # Lower temperature for more structured analysis
                 )
                 
                 if response.choices and response.choices[0].message:
@@ -628,7 +669,7 @@ Create a thorough, informative summary that provides comprehensive coverage of t
             
             # Validate summary
             if summary and summary.strip() and len(summary.strip()) > 100:
-                print(f"✅ Search results summarization completed: {len(summary)} characters")
+                print(f"✅ Search results detailed analysis completed: {len(summary)} characters")
                 return summary.strip()
             else:
                 print("⚠️ LLM produced insufficient summary")

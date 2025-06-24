@@ -78,14 +78,20 @@ For Report Generation Tasks:
 
 3. Writing style: When writing report content, use coherent and continuous sentences that explain the cause and effect relationships clearly. Focus on articulating your points with logical flow and reasoning, rather than simply listing core viewpoints. Each paragraph should connect ideas smoothly and provide clear explanations of how conclusions are reached.
 
-4. Output format: Generate reports in Markdown format and then convert to HTML format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
+4. If user not specified, longer reports are perferred, you can:
+   - Create an outline first, then generate content section by section. Do not generate all content at once.
+   - Generate one section of the outline at a time and write each section to a separate file.
+   - Organize content within each file in paragraph form. Avoid excessive bullet points or enumeration. Each paragraph must contain more than one sentence.
+   - After writing all sections to separate files, merge them together to create a single final report file.
 
-5. Use pandoc to convert markdown to HTML, Word, or PDF formats:
+5. Output format: Generate reports in Markdown format and then convert to HTML format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
+
+6. Use pandoc to convert markdown to HTML, Word, or PDF formats:
    - HTML: `pandoc report.md -o report.html --standalone --css=style.css --toc --toc-depth=3`
    - Word: `pandoc report.md -o report.docx --reference-doc=template.docx`
    - PDF: `pandoc report.md -o report.pdf --pdf-engine=wkhtmltopdf --css=style.css`
 
-6. PowerPoint Generation with python-pptx:
+7. PowerPoint Generation with python-pptx:
    - Create professional presentations with maximum 10 lines per slide for readability
    - Use consistent layouts, professional colors, and clear hierarchy
    - Add charts/graphs when appropriate; use consistent slide layouts
