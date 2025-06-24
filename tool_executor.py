@@ -30,7 +30,7 @@ import requests
 import hashlib
 from openai import OpenAI
 from tools import Tools
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output
+from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary
 
 # Check if the model is a Claude model
 def is_claude_model(model: str) -> bool:
@@ -200,7 +200,7 @@ class ToolExecutor:
             llm_model=self.model,
             llm_api_base=self.api_base,
             enable_llm_filtering=False,  # Disable LLM filtering by default for faster responses
-            enable_summary=True,  # Enable LLM summarization by default for better user experience
+            enable_summary=get_web_search_summary(),  # Load web search summary setting from config
             out_dir=out_dir
         )
         

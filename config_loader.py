@@ -477,3 +477,25 @@ def get_auto_fix_interactive_commands(config_file: str = "config.txt") -> bool:
     else:
         print(f"Warning: Invalid auto_fix_interactive_commands value '{auto_fix_str}' in config file, using default False")
         return False
+
+def get_web_search_summary(config_file: str = "config.txt") -> bool:
+    """
+    Get web search summary configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to enable AI summarization of web search results (default: True)
+    """
+    config = load_config(config_file)
+    web_summary_str = config.get('web_search_summary', 'True').lower()
+    
+    # Convert string to boolean
+    if web_summary_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif web_summary_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        print(f"Warning: Invalid web_search_summary value '{web_summary_str}' in config file, using default True")
+        return True

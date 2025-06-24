@@ -122,6 +122,21 @@ simplified_search_output=True
 # - Summary markdown file output
 summary_report=False
 
+# Web Search Summary Configuration
+# Controls whether to use AI to generate comprehensive summaries of web search results
+# When enabled, the search results will be analyzed and summarized by the large model
+# providing detailed individual webpage analysis and synthesis across all sources
+# Default: True (enabled for better user experience)
+web_search_summary=True
+
+# Web search summary usage recommendations:
+# 1. Enable web_search_summary=True for comprehensive analysis of search results
+# 2. Disable web_search_summary=False to get only individual webpage content without AI summary
+# 3. When enabled, requires valid API configuration and LLM model for summarization
+# 4. Summarization focuses on extracting information relevant to the search query
+# 5. Each webpage result is analyzed individually with file location references
+# 6. Changes to this setting take effect immediately for new searches
+
 # GUI Default User Data Directory Configuration
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
