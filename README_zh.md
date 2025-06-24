@@ -30,7 +30,7 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 
 **在Google Colab中免费体验AGI Bot，无需任何配置！**
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc/view?usp=sharing)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc)
 
 *点击上方徽章，直接在浏览器中启动AGI Bot并开始体验自主AI编程。*
 

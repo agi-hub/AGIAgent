@@ -70,6 +70,7 @@ class WebSearchTools:
     def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None):
         self._google_connectivity_checked = False
         self._google_available = True
+        self._last_google_request = 0  # Track last Google request time for rate limiting
         
         # LLM configuration for content filtering and summarization
         self.enable_llm_filtering = enable_llm_filtering
@@ -719,13 +720,19 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                             '--disable-background-mode',
                             '--disable-features=TranslateUI',
                             '--force-color-profile=srgb',
-                            '--disable-ipc-flooding-protection'
+                            '--disable-ipc-flooding-protection',
+                            '--disable-blink-features=AutomationControlled',
+                            '--exclude-switches=enable-automation',
+                            '--disable-plugins-discovery',
+                            '--allow-running-insecure-content',
+                            '--disable-web-security',
+                            '--disable-features=VizDisplayCompositor'
                         ]
                     )
                     
                     # Create context with more realistic configuration to avoid bot detection
                     context = browser.new_context(
-                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                         viewport={'width': 1366, 'height': 768},
                         ignore_https_errors=True,
                         java_script_enabled=True,
@@ -733,12 +740,19 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                         locale='en-US',
                         timezone_id='America/New_York',
                         extra_http_headers={
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                             'Accept-Language': 'en-US,en;q=0.9',
                             'Accept-Encoding': 'gzip, deflate, br',
                             'DNT': '1',
                             'Connection': 'keep-alive',
-                            'Upgrade-Insecure-Requests': '1'
+                            'Upgrade-Insecure-Requests': '1',
+                            'Sec-Fetch-Dest': 'document',
+                            'Sec-Fetch-Mode': 'navigate',
+                            'Sec-Fetch-Site': 'none',
+                            'Sec-Fetch-User': '?1',
+                            'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                            'sec-ch-ua-mobile': '?0',
+                            'sec-ch-ua-platform': '"Windows"'
                         }
                     )
                 finally:
@@ -750,6 +764,37 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                 # Set shorter page timeout to prevent hanging
                 page.set_default_timeout(8000)  # 8 seconds
                 page.set_default_navigation_timeout(12000)  # 12 seconds
+                
+                # Add stealth script to avoid detection
+                page.add_init_script("""
+                    // Pass the Webdriver Test
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                    
+                    // Pass the Chrome Test
+                    window.chrome = {
+                        runtime: {},
+                    };
+                    
+                    // Pass the Permissions Test
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                    
+                    // Pass the Plugins Length Test
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+                    
+                    // Pass the Languages Test
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en'],
+                    });
+                """)
                 
                 if search_term.startswith(('http://', 'https://')):
                     print(f"🔗 Direct URL detected, attempting to access: {search_term}")
@@ -831,22 +876,22 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                         # Primary Google search
                         search_engines.append({
                             'name': 'Google',
-                            'url': 'https://www.google.com/search?q={}',
-                            'result_selector': 'h3 a, h1 a, .g a h3, .yuRUbf a h3, .LC20lb, .DKV0Md',
-                            'container_selector': '.g, .tF2Cxc',
-                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe'],
-                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha']
+                            'url': 'https://www.google.com/search?q={}&gl=us&hl=en&safe=off',
+                            'result_selector': 'h3 a, h1 a, .g a h3, .yuRUbf a h3, .LC20lb, .DKV0Md, [data-ved] h3',
+                            'container_selector': '.g, .tF2Cxc, [data-ved]',
+                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
+                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
                         print("🔍 Google search engine added as primary option (connectivity confirmed)")
                         
                         # Add backup Google search with different approach
                         search_engines.append({
                             'name': 'Google_Backup',
-                            'url': 'https://www.google.com/search?q={}&num=20&hl=en',
-                            'result_selector': 'h3, .LC20lb, .DKV0Md, [data-ved] h3',
-                            'container_selector': '.g, .tF2Cxc, [data-ved]',
-                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
-                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha']
+                            'url': 'https://www.google.com/search?q={}&num=20&hl=en&lr=lang_en&cr=countryUS&safe=off&tbs=lr:lang_1en',
+                            'result_selector': 'h3, .LC20lb, .DKV0Md, [data-ved] h3, .yuRUbf h3',
+                            'container_selector': '.g, .tF2Cxc, [data-ved], .yuRUbf',
+                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf', '[data-sncf]'],
+                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
                         print("🔍 Google backup search engine added")
                     else:
@@ -861,6 +906,16 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                         'snippet_selectors': ['.c-abstract', '.c-span9', 'span', 'div']
                     })
                     print("🔍 Baidu search engine added to available options")
+                    
+                    # Add DuckDuckGo as additional fallback
+                    search_engines.append({
+                        'name': 'DuckDuckGo',
+                        'url': 'https://duckduckgo.com/?q={}',
+                        'result_selector': '[data-testid="result-title-a"], .result__title a, h2.result__title a',
+                        'container_selector': '[data-testid="result"], .result, .web-result',
+                        'snippet_selectors': ['.result__snippet', '[data-testid="result-snippet"]', '.result-snippet']
+                    })
+                    print("🔍 DuckDuckGo search engine added as additional fallback")
                     
                     if not search_engines:
                         print("❌ No search engines available")
@@ -883,12 +938,32 @@ Create a thorough, informative summary that provides comprehensive coverage of t
                         try:
                             print(f"🔍 Trying to search with {engine['name']}...")
                             
+                            # Add rate limiting for Google to avoid being blocked
+                            if engine['name'].startswith('Google'):
+                                current_time = time.time()
+                                time_since_last_request = current_time - self._last_google_request
+                                if time_since_last_request < 3:  # Wait at least 3 seconds between Google requests
+                                    wait_time = 3 - time_since_last_request
+                                    print(f"⏱️ Rate limiting: waiting {wait_time:.1f} seconds before Google request")
+                                    time.sleep(wait_time)
+                                self._last_google_request = time.time()
+                            
                             search_url = engine['url'].format(encoded_term)
                             
                             # Use very short timeout for search engines
                             page.goto(search_url, timeout=6000, wait_until='domcontentloaded')
                             
-                            page.wait_for_timeout(500)  # Minimal wait time
+                            # Add random delay to mimic human behavior (500-1500ms)
+                            import random
+                            human_delay = random.randint(500, 1500)
+                            page.wait_for_timeout(human_delay)
+                            
+                            # Add some mouse movement to mimic human behavior
+                            try:
+                                page.mouse.move(random.randint(100, 500), random.randint(100, 400))
+                                page.wait_for_timeout(random.randint(100, 300))
+                            except:
+                                pass
                             
                             # Check for anti-bot mechanisms (especially for Google)
                             if engine['name'] == 'Google' and 'anti_bot_indicators' in engine:

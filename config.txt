@@ -2,25 +2,20 @@
 #LANG=en
 LANG=zh
 
+# OpenAI API configuration 
+#api_key=your key
+#api_base=https://api.openai-proxy.org/v1
+#model=gpt-4.1
+#max_tokens=8192
 
 
-
-# OpenAI API configuration (commented out)
-# api_key=your key
-# api_base=https://api.openai-proxy.org/v1
-# model=gpt-4.1
-# max_tokens=8192
-
-
-
-# SiliconFlow API configuration (currently active)
+# SiliconFlow API configuration 
 # api_key=your key
 # api_base=https://api.siliconflow.cn/v1
 # model=Qwen/Qwen3-32B
 # model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
 # max_tokens=4096
-
 
 
 # Anthropic models
@@ -31,15 +26,14 @@ LANG=zh
 # max_tokens=16384
 
 
-
-DeepSeek API configuration (alternative option)
+# DeepSeek API configuration
 api_key=your key
 api_base=https://api.deepseek.com/v1
 model=deepseek-chat
 
 
 
-# Volcengine Doubao API configuration (commented out)
+# Volcengine Doubao API configuration
 # api_key=your key
 # api_base=https://ark.cn-beijing.volces.com/api/v3
 # model=doubao-1-5-pro-32k-250115

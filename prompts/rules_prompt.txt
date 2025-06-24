@@ -66,6 +66,7 @@ When you've fully completed a task and believe no further iterations are needed,
 TASK_COMPLETED: [Brief description of what was accomplished]
 Note: Don't send TASK_COMPLETED signal if you calls tools in the current round, you should wait and check the tool executing result  in the next round and then send this signal.
 Before sending TASK_COMPLETED, you must double check the execution results to ensure that the task has been completed correctly.
+Do not send TASK_COMPLETED if you called any tools within a round, you can send in the next round.
 </task_completion>
 
 <reports>
@@ -73,28 +74,18 @@ For Report Generation Tasks:
 
 1. Information gathering: Use tools to read actual file contents, conduct web searches, and gather data before generating reports. Avoid creating reports based only on assumptions or file names.
 
-2. Generate detailed reports: Create comprehensive, in-depth analysis with:
-   - Extensive background and context
-   - Detailed findings with specific examples and evidence
-   - Multiple perspectives and comparative analysis
-   - Technical depth with implementation considerations
-   - Case studies and real-world examples
-   - Quantitative data and expert opinions
+2. Generate detailed reports: Create comprehensive, in-depth analysis like published scholar papers.
 
-3. Report structure: Include Executive Summary, Introduction, Methodology, Main Analysis, Comparative Analysis, Implementation Considerations, Future Outlook, Conclusion, and References.
+3. Writing style: When writing report content, use coherent and continuous sentences that explain the cause and effect relationships clearly. Focus on articulating your points with logical flow and reasoning, rather than simply listing core viewpoints. Each paragraph should connect ideas smoothly and provide clear explanations of how conclusions are reached.
 
-4. Quality standards: Provide thorough investigation, deep insights over superficial coverage, evidence-based content, critical analysis, and practical recommendations.
+4. Output format: Generate reports in Markdown format and then convert to HTML format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
 
-5. Writing style: When writing report content, use coherent and continuous sentences that explain the cause and effect relationships clearly. Focus on articulating your points with logical flow and reasoning, rather than simply listing core viewpoints. Each paragraph should connect ideas smoothly and provide clear explanations of how conclusions are reached.
-
-6. Output format: Generate reports in Markdown format and then convert to HTML format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
-
-7. Use pandoc to convert markdown to HTML, Word, or PDF formats:
+5. Use pandoc to convert markdown to HTML, Word, or PDF formats:
    - HTML: `pandoc report.md -o report.html --standalone --css=style.css --toc --toc-depth=3`
    - Word: `pandoc report.md -o report.docx --reference-doc=template.docx`
    - PDF: `pandoc report.md -o report.pdf --pdf-engine=wkhtmltopdf --css=style.css`
 
-8. PowerPoint Generation with python-pptx:
+6. PowerPoint Generation with python-pptx:
    - Create professional presentations with maximum 10 lines per slide for readability
    - Use consistent layouts, professional colors, and clear hierarchy
    - Add charts/graphs when appropriate; use consistent slide layouts
