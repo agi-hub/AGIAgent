@@ -1,12 +1,12 @@
 # Language setting: en for English, zh for Chinese
-LANG=en
-# LANG=zh
+# LANG=en
+LANG=zh
 
 # OpenAI API configuration 
-# api_key=your key
-# api_base=https://api.openai-proxy.org/v1
-# model=gpt-4.1
-# max_tokens=8192
+api_key=your key
+api_base=https://api.openai-proxy.org/v1
+model=gpt-4.1
+max_tokens=8192
 
 
 # SiliconFlow API configuration 
@@ -27,9 +27,9 @@ LANG=en
 
 
 # DeepSeek API configuration
-api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
 
 
 
