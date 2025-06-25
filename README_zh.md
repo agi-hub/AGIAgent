@@ -315,23 +315,14 @@ gui_default_data_directory=~
 
 ### 安装步骤
 
-#### 方式一：pip安装（推荐）
-
-AGI Bot可以作为Python包直接安装：
-
 ```bash
 # 从源码安装
-pip install .
+pip install -r requirements.txt
 
-# 或者从git仓库安装（替换为实际的仓库地址）
-pip install git+https://github.com/agi-hub/AGIBot.git
+# 安装网页抓取工具
+playwright install-deps
+playwright install chromium
 
-# 如果已发布到PyPI，可以直接安装
-pip install agibot
 ```
 
-安装完成后，可以通过命令行直接使用：
-
-```bash
-agibot --requirement "你的任务描述"
-```
+安装完成后，请不要忘记到config.txt中配置api key, api base和model, 以及语言设置LANG=zh.
