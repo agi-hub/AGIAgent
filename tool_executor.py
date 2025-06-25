@@ -2731,7 +2731,7 @@ class ToolExecutor:
             
             if trigger_to_check in content_to_check:
                 if config.get("log_detection", True):
-                    print(f"🚨 HALLUCINATION DETECTED: Found '{trigger}' in output!")
+                    print(f" ...hallucination detected, stop generation")
                 return True, trigger
         
         # Check for edit_file hallucination (edit_file called after other tools in same round)

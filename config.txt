@@ -12,24 +12,24 @@ LANG=en
 # SiliconFlow API configuration 
 # api_key=your key
 # api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-32B
+# model=Qwen/Qwen2.5-72B-Instruct-128K
 # model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
 # max_tokens=4096
 
 
 # Anthropic models
-api_key=your key
-api_base=https://api.openai-proxy.org/anthropic
-model=claude-sonnet-4-0
+# api_key= your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
 # max_tokens=16384
 
 
 # DeepSeek API configuration
-api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
 
 
 

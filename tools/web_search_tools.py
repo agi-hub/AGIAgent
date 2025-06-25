@@ -67,10 +67,11 @@ def get_anthropic_client():
 
 
 class WebSearchTools:
-    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None):
+    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None, verbose: bool = True):
         self._google_connectivity_checked = False
         self._google_available = True
         self._last_google_request = 0  # Track last Google request time for rate limiting
+        self.verbose = verbose  # Control verbose debug output
         
         # LLM configuration for content filtering and summarization
         self.enable_llm_filtering = enable_llm_filtering
@@ -105,7 +106,13 @@ class WebSearchTools:
             self.enable_llm_filtering = False
             self.enable_summary = False
         else:
-            print("📝 LLM features disabled")
+            if self.verbose:
+                print("📝 LLM features disabled")
+    
+    def _verbose_print(self, message: str):
+        """Print message only if verbose mode is enabled"""
+        if self.verbose:
+            print(message)
     
     def _ensure_result_directory(self):
         """Ensure the web search result directory exists"""
@@ -985,7 +992,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 time_since_last_request = current_time - self._last_google_request
                                 if time_since_last_request < 3:  # Wait at least 3 seconds between Google requests
                                     wait_time = 3 - time_since_last_request
-                                    print(f"⏱️ Rate limiting: waiting {wait_time:.1f} seconds before Google request")
+                                    self._verbose_print(f"⏱️ Rate limiting: waiting {wait_time:.1f} seconds before Google request")
                                     time.sleep(wait_time)
                                 self._last_google_request = time.time()
                             
@@ -1011,8 +1018,8 @@ Please create a detailed, structured analysis that preserves important informati
                                 page_content = page.content()
                                 for indicator in engine['anti_bot_indicators']:
                                     if indicator.lower() in page_content.lower():
-                                        print(f"⚠️ {engine['name']} detected anti-bot mechanism: {indicator}")
-                                        print(f"🔄 Skipping {engine['name']} due to anti-bot protection")
+                                        self._verbose_print(f"⚠️ {engine['name']} detected anti-bot mechanism: {indicator}")
+                                        self._verbose_print(f"🔄 Skipping {engine['name']} due to anti-bot protection")
                                         raise Exception(f"Anti-bot protection detected: {indicator}")
                             
                             result_elements = page.query_selector_all(engine['result_selector'])

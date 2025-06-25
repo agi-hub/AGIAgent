@@ -7,9 +7,6 @@ This file demonstrates how to use AGI Bot as a Python library instead of
 command-line tool. The library provides an OpenAI-like chat interface.
 """
 
-import os
-import sys
-
 # Import the AGI Bot client
 from main import AGIBotClient, create_client
 
@@ -21,7 +18,6 @@ def example_basic_usage():
     client = AGIBotClient(
         api_key="your_api_key_here",  # Replace with your actual API key
         model="claude-sonnet-4-0",  # or "gpt-4", "gpt-3.5-turbo", etc.
-        api_base="https://api.openai-proxy.org/anthropic",  # Optional: API base URL
         debug_mode=False,  # Enable debug logging
         single_task_mode=True  # Use single task mode (recommended)
     )
@@ -84,30 +80,6 @@ def example_with_continue_mode():
     else:
         print(f"❌ Failed to create basic app: {response1['message']}")
 
-def example_multi_task_mode():
-    """Example using multi-task mode for complex projects"""
-    print("\n=== Multi-Task Mode Example ===")
-    
-    client = AGIBotClient(
-        api_key="your_api_key_here",
-        model="gpt-4",
-        single_task_mode=False  # Enable multi-task mode
-    )
-    
-    response = client.chat(
-        messages=[
-            {"role": "user", "content": "Create a complete e-commerce website with user authentication, product catalog, shopping cart, and payment integration"}
-        ],
-        dir="ecommerce_project",
-        loops=15
-    )
-    
-    if response["success"]:
-        print("✅ E-commerce project completed!")
-        print(f"📁 Project files: {response['output_dir']}")
-    else:
-        print(f"❌ Project failed: {response['message']}")
-
 def example_with_custom_config():
     """Example with custom configuration"""
     print("\n=== Custom Configuration Example ===")
@@ -139,33 +111,6 @@ def example_with_custom_config():
     
     print(f"Task result: {'Success' if response['success'] else 'Failed'}")
 
-def example_error_handling():
-    """Example demonstrating error handling"""
-    print("\n=== Error Handling Example ===")
-    
-    try:
-        # This will raise an error due to missing API key
-        client = AGIBotClient(
-            api_key="",  # Empty API key
-            model="gpt-4"
-        )
-    except ValueError as e:
-        print(f"✅ Caught expected error: {e}")
-    
-    # Valid client but invalid messages
-    client = AGIBotClient(
-        api_key="test_key",
-        model="gpt-4"
-    )
-    
-    # Test with invalid messages format
-    response = client.chat(messages=[])  # Empty messages
-    print(f"Empty messages result: {response['message']}")
-    
-    # Test with missing user message
-    response = client.chat(messages=[{"role": "system", "content": "You are helpful"}])
-    print(f"No user message result: {response['message']}")
-
 def example_batch_processing():
     """Example of processing multiple tasks in batch"""
     print("\n=== Batch Processing Example ===")
@@ -177,9 +122,7 @@ def example_batch_processing():
     
     tasks = [
         "Create a Python TODO list application",
-        "Write a simple weather app using an API",
-        "Build a password generator with GUI",
-        "Create a file backup utility script"
+        "Write a simple weather app using an API"
     ]
     
     results = []
@@ -224,10 +167,8 @@ if __name__ == "__main__":
     # Uncomment the examples you want to run:
     
     example_basic_usage()
-    # example_with_continue_mode()
-    # example_multi_task_mode()
-    # example_with_custom_config()
-    # example_error_handling()
-    # example_batch_processing()
+    example_with_continue_mode()
+    example_with_custom_config()
+    example_batch_processing()
     
     print("Examples ready to run! Uncomment the function calls above to test.") 
