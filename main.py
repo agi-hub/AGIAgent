@@ -1540,11 +1540,11 @@ Usage Examples:
         #args.model = "gpt-4.1"
         #args.base_url = "https://api.openai-proxy.org/v1"
         args.api_key = None
-        args.model = "claude-3-7-sonnet-latest"
+        args.model = None  # Let it load from config.txt
         args.api_base = None
         print(f"📁 Output directory: {args.dir}")
         print(f"🔄 Execution rounds: {args.loops}")
-        print(f"🤖 Model: {args.model}")
+        print(f"🤖 Model: Will load from config.txt")
         print()
     
     # Get API key
