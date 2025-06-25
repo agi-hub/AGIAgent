@@ -98,7 +98,7 @@ For Report Generation Tasks:
    - Structure logically: title, agenda, content, conclusion
    - CRITICAL: Write plain text without bullet points (•) or dashes (-) - let templates handle formatting
 
-8. Markdown file formatting: All generated Markdown (.md) files MUST end with a blank line. This ensures proper file formatting and prevents potential parsing issues.
+8. All generated Markdown files MUST end with a blank line. 
 
 Aim to produce comprehensive, detailed, and insightful analysis with substantial depth rather than superficial summaries.
 </reports>
