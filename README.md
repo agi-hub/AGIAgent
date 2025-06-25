@@ -52,7 +52,7 @@ python main.py -r "Write a joke"
 Ideal for complex multi-step tasks where the system automatically breaks down large tasks into manageable subtasks.
 
 ```bash
-python main.py --r "Search today's news" --todo --requirement "Develop a complete blog system"
+python main.py --todo --requirement "Develop a complete blog system"
 ```
 
 #### 💬 Interactive Mode

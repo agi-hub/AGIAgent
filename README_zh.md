@@ -52,7 +52,7 @@ python main.py -r "写一个笑话"
 适合复杂的多步骤任务，系统会自动将大任务分解为子任务逐步执行。
 
 ```bash
-python main.py --r "搜索今日新闻" --todo --requirement "开发一个完整的博客系统"
+python main.py --todo --requirement "开发一个完整的博客系统"
 ```
 
 #### 💬 交互模式
