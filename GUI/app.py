@@ -455,7 +455,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             sys.stdout = stdout_handler
             sys.stderr = stderr_handler
             
-            success = agibot.run(user_requirement=user_requirement, loops=25)
+            success = agibot.run(user_requirement=user_requirement, loops=50)
             
             # Ensure important completion information is displayed
             workspace_dir = os.path.join(out_dir, "workspace")

@@ -21,54 +21,12 @@ from typing import Dict, Any
 
 class HelpTools:
     def __init__(self):
-        """Initialize help tools with predefined tool definitions."""
-        # Tool definitions from tool_prompts.txt
+        """Initialize help tools with current tool definitions."""
+        # Updated tool definitions matching current AGIBot tool structure
         self.tool_definitions = {
-            "codebase_search": {
-                "description": "Find snippets of code from the codebase most relevant to the search query.\nThis is a semantic search tool, so the query should ask for something semantically matching what is needed.\nIf it makes sense to only search in particular directories, please specify them in the target_directories field.",
-                "parameters": {
-                    "properties": {
-                        "query": {
-                            "description": "The search query to find relevant code. You should reuse the user's exact query/most recent message with their wording unless there is a clear reason not to.",
-                            "type": "string"
-                        },
-                        "target_directories": {
-                            "description": "Glob patterns for directories to search over",
-                            "items": {"type": "string"},
-                            "type": "array"
-                        }
-                    },
-                    "required": ["query"],
-                    "type": "object"
-                }
-            },
-            "read_file": {
-                "description": "Read the contents of a file. the output of this tool call will be the 1-indexed file contents from start_line_one_indexed to end_line_one_indexed_inclusive, together with a summary of the lines outside start_line_one_indexed and end_line_one_indexed_inclusive.\nNote that this call can view at most 250 lines at a time.",
-                "parameters": {
-                    "properties": {
-                        "end_line_one_indexed_inclusive": {
-                            "description": "The one-indexed line number to end reading at (inclusive).",
-                            "type": "integer"
-                        },
-                        "should_read_entire_file": {
-                            "description": "Whether to read the entire file. Defaults to false.",
-                            "type": "boolean"
-                        },
-                        "start_line_one_indexed": {
-                            "description": "The one-indexed line number to start reading from (inclusive).",
-                            "type": "integer"
-                        },
-                        "target_file": {
-                            "description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.",
-                            "type": "string"
-                        }
-                    },
-                    "required": ["target_file", "should_read_entire_file", "start_line_one_indexed", "end_line_one_indexed_inclusive"],
-                    "type": "object"
-                }
-            },
+            # Core Tools
             "run_terminal_cmd": {
-                "description": "PROPOSE a command to run on behalf of the user.\nIf you have this tool, note that you DO have the ability to run commands directly on the USER's system.",
+                "description": "Execute terminal commands directly on the system. Can run commands in background for GUI applications and web servers.",
                 "parameters": {
                     "properties": {
                         "command": {
@@ -76,20 +34,86 @@ class HelpTools:
                             "type": "string"
                         },
                         "is_background": {
-                            "description": "Whether the command should be run in the background",
+                            "description": "Whether to run in background (true/false). Use true for GUI apps and web servers.",
                             "type": "boolean"
                         }
                     },
                     "required": ["command", "is_background"],
                     "type": "object"
-                }
+                },
+                "notes": "Append '| cat' for interactive commands (git, less, more, etc.)"
+            },
+            "read_file": {
+                "description": "Read the contents of a file with specified line range or entire file. Returns file contents with line numbers and context.",
+                "parameters": {
+                    "properties": {
+                        "target_file": {
+                            "description": "File path to read (relative to workspace or absolute path)",
+                            "type": "string"
+                        },
+                        "start_line_one_indexed": {
+                            "description": "Starting line number (1-indexed, inclusive)",
+                            "type": "integer"
+                        },
+                        "end_line_one_indexed_inclusive": {
+                            "description": "Ending line number (1-indexed, inclusive)",
+                            "type": "integer"
+                        },
+                        "should_read_entire_file": {
+                            "description": "Whether to read entire file (true/false)",
+                            "type": "boolean"
+                        }
+                    },
+                    "required": ["target_file", "start_line_one_indexed", "end_line_one_indexed_inclusive", "should_read_entire_file"],
+                    "type": "object"
+                },
+                "notes": "Can view at most 250 lines at a time"
+            },
+            "edit_file": {
+                "description": "Edit an existing file or create a new file. Supports multiple editing modes including precise line-based editing. SAFETY: Always read file first before editing existing files.",
+                "parameters": {
+                    "properties": {
+                        "target_file": {
+                            "description": "File path to modify (relative to workspace or absolute path)",
+                            "type": "string"
+                        },
+                        "instructions": {
+                            "description": "Brief description of the edit being performed",
+                            "type": "string"
+                        },
+                        "code_edit": {
+                            "description": "Content to write, replace, insert, or append",
+                            "type": "string"
+                        },
+                        "edit_mode": {
+                            "description": "Editing mode: 'append' (SAFEST - add to end), 'replace_lines' (replace specific lines), 'insert_lines' (insert at position), 'auto' (USE WITH CAUTION - requires existing code markers), 'full_replace' (DANGEROUS - replace entire file)",
+                            "type": "string"
+                        },
+                        "start_line": {
+                            "description": "Starting line number for replace_lines mode (1-indexed, inclusive)",
+                            "type": "integer"
+                        },
+                        "end_line": {
+                            "description": "Ending line number for replace_lines mode (1-indexed, inclusive)",
+                            "type": "integer"
+                        },
+                        "insert_position": {
+                            "description": "Line number to insert before for insert_lines mode (1-indexed)",
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["target_file", "instructions", "code_edit"],
+                    "type": "object"
+                },
+                "notes": "SAFETY FIRST: Read file before editing. Use 'append' mode as default. Avoid 'auto' mode without existing code markers.",
+                "warning": "NEVER use auto mode on existing files without proper existing code markers (// ... existing code ...)"
             },
             "list_dir": {
-                "description": "List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like semantic search or file reading. Useful to try to understand the file structure before diving deeper into specific files. Can be used to explore the codebase.",
+                "description": "List contents of a directory. Useful for exploring file structure before using more targeted tools.",
                 "parameters": {
                     "properties": {
                         "relative_workspace_path": {
-                            "description": "Path to list contents of, relative to the workspace root.",
+                            "description": "Directory path to list (relative to workspace root)",
                             "type": "string"
                         }
                     },
@@ -97,58 +121,54 @@ class HelpTools:
                     "type": "object"
                 }
             },
-            "grep_search": {
-                "description": "Fast text-based regex search that finds exact pattern matches within files or directories, utilizing the ripgrep command for efficient searching.\nResults will be formatted in the style of ripgrep and can be configured to include line numbers and content.\nTo avoid overwhelming output, the results are capped at 50 matches.",
+            
+            # Search Tools
+            "codebase_search": {
+                "description": "Semantic search to find relevant code snippets from the codebase. Uses AI-powered understanding to match query intent.",
                 "parameters": {
                     "properties": {
-                        "case_sensitive": {
-                            "description": "Whether the search should be case sensitive",
-                            "type": "boolean"
-                        },
-                        "exclude_pattern": {
-                            "description": "Glob pattern for files to exclude",
-                            "type": "string"
-                        },
-                        "include_pattern": {
-                            "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
-                            "type": "string"
-                        },
                         "query": {
-                            "description": "The regex pattern to search for",
+                            "description": "Search query for semantic code search",
                             "type": "string"
+                        },
+                        "target_directories": {
+                            "description": "Array of directory patterns to search (optional)",
+                            "type": "array",
+                            "items": {"type": "string"}
                         }
                     },
                     "required": ["query"],
                     "type": "object"
                 }
             },
-            "edit_file": {
-                "description": "Use this tool to propose an edit to an existing file or append content to the end of a file.\nYou should make it clear what the edit is, while also minimizing the unchanged code you write.\nSet append_mode=true to safely add content to the end of a file without risk of overwriting existing content.",
+            "grep_search": {
+                "description": "Fast regex-based text search using ripgrep engine. Finds exact pattern matches in files.",
                 "parameters": {
                     "properties": {
-                        "code_edit": {
-                            "description": "Specify ONLY the precise lines of code that you wish to edit. **NEVER specify or write out unchanged code**. Instead, represent all unchanged code using the comment of the language you're editing in - example: `// ... existing code ...`. In append mode, this will be the content added to the end of the file.",
+                        "query": {
+                            "description": "Regex pattern to search for",
                             "type": "string"
                         },
-                        "instructions": {
-                            "description": "Optional: A single sentence instruction describing what you are going to do for the sketched edit. This is used to assist the less intelligent model in applying the edit. Please use the first person to describe what you are going to do. Dont repeat what you have said previously in normal messages. And use it to disambiguate uncertainty in the edit.",
+                        "include_pattern": {
+                            "description": "File pattern to include (e.g., '*.py') - optional",
                             "type": "string"
                         },
-                        "target_file": {
-                            "description": "The target file to modify. Always specify the target file as the first argument. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.",
+                        "exclude_pattern": {
+                            "description": "File pattern to exclude - optional",
                             "type": "string"
                         },
-                        "append_mode": {
-                            "description": "If true, append the code_edit content to the end of the file instead of performing complex edit operations. This is safer when you want to add new content without risk of overwriting existing content.",
+                        "case_sensitive": {
+                            "description": "Whether search is case sensitive - optional",
                             "type": "boolean"
                         }
                     },
-                    "required": ["target_file", "code_edit"],
+                    "required": ["query"],
                     "type": "object"
-                }
+                },
+                "notes": "Results capped at 50 matches to avoid overwhelming output"
             },
             "file_search": {
-                "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly. Response will be capped to 10 results. Make your query more specific if need to filter results further.",
+                "description": "Fuzzy search for filenames. Use when you know part of a filename but not its exact location.",
                 "parameters": {
                     "properties": {
                         "query": {
@@ -158,32 +178,70 @@ class HelpTools:
                     },
                     "required": ["query"],
                     "type": "object"
-                }
+                },
+                "notes": "Results capped to 10 matches. Make query more specific if needed."
             },
             "web_search": {
-                "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data, or when you need to verify current facts. The search results will include relevant snippets and URLs from web pages. This is particularly useful for questions about current events, technology updates, or any topic that requires recent information.",
+                "description": "Search the web for real-time information. Useful for current events, technology updates, or recent information.",
                 "parameters": {
                     "properties": {
                         "search_term": {
-                            "description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant.",
+                            "description": "Search term for web search. Be specific and include relevant keywords.",
                             "type": "string"
                         }
                     },
                     "required": ["search_term"],
                     "type": "object"
-                }
+                },
+                "notes": "Include version numbers or dates for technical queries"
+            },
+            
+            # Utility Tools
+            "tool_help": {
+                "description": "Get detailed usage information for any available tool. Essential for self-diagnosis and learning.",
+                "parameters": {
+                    "properties": {
+                        "tool_name": {
+                            "description": "Name of the tool to get help for",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["tool_name"],
+                    "type": "object"
+                },
+                "notes": "Returns detailed parameters, examples, and usage guidelines"
+            },
+            
+            # Extended Web Tools
+            "fetch_webpage_content": {
+                "description": "Fetch content from a specific URL. Use for direct access to user-provided links or detailed webpage analysis.",
+                "parameters": {
+                    "properties": {
+                        "url": {
+                            "description": "URL to fetch content from",
+                            "type": "string"
+                        },
+                        "search_term": {
+                            "description": "Search term to highlight in content - optional",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["url"],
+                    "type": "object"
+                },
+                "notes": "Returns webpage content with metadata"
             }
         }
 
     def tool_help(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
-        Provides details of format to call a function.
+        Provides detailed usage information for a specific tool.
         
         Args:
             tool_name: The tool name to get help for
             
         Returns:
-            Dictionary containing tool usage information
+            Dictionary containing comprehensive tool usage information
         """
         # Ignore additional parameters
         if kwargs:
@@ -194,22 +252,31 @@ class HelpTools:
             return {
                 "error": f"Tool '{tool_name}' not found",
                 "available_tools": available_tools,
-                "message": f"Available tools are: {', '.join(available_tools)}"
+                "message": f"Available tools are: {', '.join(available_tools)}",
+                "suggestion": "Use list_available_tools() to see all available tools with descriptions"
             }
         
         tool_def = self.tool_definitions[tool_name]
         
-        # Format the help information
+        # Format the comprehensive help information
         help_info = {
             "tool_name": tool_name,
             "description": tool_def["description"],
-            "parameters": tool_def["parameters"]
+            "parameters": tool_def["parameters"],
+            "usage_example": self._generate_usage_example(tool_name),
+            "parameter_template": self._generate_parameter_template(tool_def["parameters"])
         }
+        
+        # Add additional information if available
+        if "notes" in tool_def:
+            help_info["notes"] = tool_def["notes"]
+        if "warning" in tool_def:
+            help_info["warning"] = tool_def["warning"]
         
         return help_info
     
     def _generate_parameter_template(self, parameters: Dict[str, Any]) -> str:
-        """Generate parameter template for the tool."""
+        """Generate a parameter template showing how to call the tool."""
         template_lines = []
         properties = parameters.get("properties", {})
         required_params = parameters.get("required", [])
@@ -219,6 +286,7 @@ class HelpTools:
             description = param_info.get("description", "")
             is_required = param_name in required_params
             
+            # Generate appropriate example values
             if param_type == "array":
                 example_value = '["example1", "example2"]'
             elif param_type == "boolean":
@@ -226,35 +294,75 @@ class HelpTools:
             elif param_type == "integer":
                 example_value = "1"
             else:
-                example_value = "your_value_here"
+                if "path" in param_name.lower() or "file" in param_name.lower():
+                    example_value = "path/to/file.py"
+                elif "command" in param_name.lower():
+                    example_value = "ls -la"
+                elif "query" in param_name.lower() or "search" in param_name.lower():
+                    example_value = "search query"
+                elif "url" in param_name.lower():
+                    example_value = "https://example.com"
+                elif "edit_mode" in param_name.lower():
+                    example_value = '"replace_lines"'
+                elif "line" in param_name.lower() and "position" not in param_name.lower():
+                    example_value = "10"
+                elif "position" in param_name.lower():
+                    example_value = "15"
+                else:
+                    example_value = "value"
             
             required_marker = " (REQUIRED)" if is_required else " (OPTIONAL)"
-            template_lines.append(f'<parameter name="{param_name}">{example_value}</parameter>  <!-- {description}{required_marker} -->')
+            template_lines.append(f'"{param_name}": {example_value}  // {description}{required_marker}')
         
-        return "\n".join(template_lines)
+        return "{\n  " + ",\n  ".join(template_lines) + "\n}"
     
     def _generate_usage_example(self, tool_name: str) -> str:
-        """Generate a usage example for the tool."""
+        """Generate a practical usage example for the tool."""
         examples = {
-            "edit_file": '<function_calls>\n<invoke name="edit_file">\n<parameter name="target_file">src/config.py</parameter>\n<parameter name="instructions">I will add a new configuration variable for database timeout</parameter>\n<parameter name="code_edit"># ... existing code ...\nDATABASE_TIMEOUT = 30\n# ... existing code ...</parameter>\n<parameter name="append_mode">false</parameter>\n</invoke>\n</function_calls>\n\n<!-- Example for append mode -->\n<function_calls>\n<invoke name="edit_file">\n<parameter name="target_file">src/utils.py</parameter>\n<parameter name="instructions">I will append a new utility function to the end of the file</parameter>\n<parameter name="code_edit">def new_helper_function():\n    """A new helper function.\"\"\"\n    pass</parameter>\n<parameter name="append_mode">true</parameter>\n</invoke>\n</function_calls>',
+            "run_terminal_cmd": '{\n  "name": "run_terminal_cmd",\n  "arguments": {\n    "command": "python script.py",\n    "is_background": false\n  }\n}',
+            "read_file": '{\n  "name": "read_file",\n  "arguments": {\n    "target_file": "src/main.py",\n    "start_line_one_indexed": 1,\n    "end_line_one_indexed_inclusive": 50,\n    "should_read_entire_file": false\n  }\n}',
+            "edit_file": '// ALWAYS save content to files, NEVER output to chat!\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "data_analysis.py",\n    "instructions": "Create data analysis script",\n    "code_edit": "import pandas as pd\\nimport matplotlib.pyplot as plt\\n\\ndef analyze_data(filename):\\n    df = pd.read_csv(filename)\\n    return df.describe()",\n    "edit_mode": "append"\n  }\n}\n\n// Example: Creating a report file instead of chat output\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "project_report.md",\n    "instructions": "Create comprehensive project analysis report",\n    "code_edit": "# Project Analysis Report\\n\\n## Executive Summary\\n\\nThis report analyzes...",\n    "edit_mode": "full_replace"\n  }\n}',
+            "list_dir": '{\n  "name": "list_dir",\n  "arguments": {\n    "relative_workspace_path": "src"\n  }\n}',
+            "codebase_search": '{\n  "name": "codebase_search",\n  "arguments": {\n    "query": "function that handles user authentication",\n    "target_directories": ["src", "lib"]\n  }\n}',
+            "grep_search": '{\n  "name": "grep_search",\n  "arguments": {\n    "query": "def.*authenticate",\n    "include_pattern": "*.py",\n    "case_sensitive": false\n  }\n}',
+            "file_search": '{\n  "name": "file_search",\n  "arguments": {\n    "query": "config.py"\n  }\n}',
+            "web_search": '{\n  "name": "web_search",\n  "arguments": {\n    "search_term": "Python asyncio best practices 2024"\n  }\n}',
+            "tool_help": '{\n  "name": "tool_help",\n  "arguments": {\n    "tool_name": "edit_file"\n  }\n}',
+            "fetch_webpage_content": '{\n  "name": "fetch_webpage_content",\n  "arguments": {\n    "url": "https://example.com/article",\n    "search_term": "important topic"\n  }\n}'
         }
         
-        return examples.get(tool_name, f"<function_calls>\n<invoke name=\"{tool_name}\">\n<!-- See parameters section for details -->\n</invoke>\n</function_calls>")
+        return examples.get(tool_name, f'{{\n  "name": "{tool_name}",\n  "arguments": {{\n    // See parameter template above\n  }}\n}}')
     
     def list_available_tools(self, **kwargs) -> Dict[str, Any]:
-        """List all available tools with brief descriptions."""
+        """List all available tools with brief descriptions and categories."""
         # Ignore additional parameters
         if kwargs:
             print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        tools_summary = {}
-        for tool_name, tool_def in self.tool_definitions.items():
-            # Get the first sentence of the description
-            description = tool_def["description"].split("\n")[0][:100] + "..." if len(tool_def["description"]) > 100 else tool_def["description"].split("\n")[0]
-            tools_summary[tool_name] = description
+        # Organize tools by category
+        categories = {
+            "Core Tools": ["run_terminal_cmd", "read_file", "edit_file", "list_dir"],
+            "Search Tools": ["codebase_search", "grep_search", "file_search", "web_search"],
+            "Utility Tools": ["tool_help"],
+            "Extended Web Tools": ["fetch_webpage_content"]
+        }
+        
+        tools_by_category = {}
+        for category, tool_names in categories.items():
+            tools_by_category[category] = {}
+            for tool_name in tool_names:
+                if tool_name in self.tool_definitions:
+                    # Get the first sentence of the description
+                    description = self.tool_definitions[tool_name]["description"]
+                    first_sentence = description.split(".")[0] + "." if "." in description else description
+                    if len(first_sentence) > 100:
+                        first_sentence = first_sentence[:97] + "..."
+                    tools_by_category[category][tool_name] = first_sentence
         
         return {
-            "available_tools": tools_summary,
+            "tools_by_category": tools_by_category,
             "total_count": len(self.tool_definitions),
-            "message": "Use tool_help('<tool_name>') to get detailed information about any specific tool"
+            "available_tools": list(self.tool_definitions.keys()),
+            "message": "Use tool_help('<tool_name>') to get detailed information about any specific tool",
+            "categories": list(categories.keys())
         }

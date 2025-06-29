@@ -29,7 +29,7 @@ class BaseTools:
     def __init__(self, workspace_root: str = None):
         """Initialize tools with a workspace root directory."""
         self.workspace_root = workspace_root or os.getcwd()
-        self.last_edit = None  # Store the last edit for reapply
+        self.last_edit = None  # Store last edit info (used for debugging and context)
 
         # Initialize code repository parser
         self.code_parser = None

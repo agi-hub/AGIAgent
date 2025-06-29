@@ -1,0 +1,149 @@
+# Chat-Based Tool Usage Guidelines
+
+## Available Tools
+
+You have access to the following tools. To use a tool, respond with XML format:
+
+```xml
+<function_calls>
+<invoke name="tool_name">
+<parameter name="param_name">value</parameter>
+</invoke>
+</function_calls>
+```
+
+### Core Tools
+
+**codebase_search**
+- `query` (required): The search query to find relevant code using semantic search
+- `target_directories` (optional): Array of directory glob patterns to search over
+- Description: Find snippets of code from the codebase most relevant to the search query. This is a semantic search tool.
+
+**read_file**
+- `target_file` (required): The path of the file to read
+- `should_read_entire_file` (required): Whether to read the entire file (true/false)
+- `start_line_one_indexed` (required): The one-indexed line number to start reading from
+- `end_line_one_indexed_inclusive` (required): The one-indexed line number to end reading at
+- Description: Read the contents of a file. The output will be the 1-indexed file contents from start_line to end_line.
+
+**edit_file**
+- `target_file` (required): The target file to modify
+- `instructions` (required): Brief description of what you are doing
+- `code_edit` (required): The content to write. Use '// ... existing code ...' to represent unchanged code
+- `edit_mode` (required): Editing mode - "replace_lines", "insert_lines", "append", "full_replace"
+- Description: Create a new file or edit an existing file. Use this to make changes to code files.
+
+**run_terminal_cmd**
+- `command` (required): The terminal command to execute
+- `is_background` (required): Whether the command should be run in the background (true/false)
+- Description: Execute a terminal command. For commands that use a pager or require user interaction, append ` | cat`. For long-running commands, set is_background=true.
+
+**list_dir**
+- `relative_workspace_path` (required): Path to list contents of, relative to the workspace root
+- Description: List the contents of a directory. Quick tool for discovery before using more targeted tools.
+
+### Search Tools
+
+**grep_search**
+- `query` (required): The regex pattern to search for
+- `case_sensitive` (optional): Whether the search should be case sensitive (true/false)
+- `exclude_pattern` (optional): Glob pattern for files to exclude
+- `include_pattern` (optional): Glob pattern for files to include (e.g. '*.py')
+- Description: Fast text-based regex search that finds exact pattern matches within files using ripgrep.
+
+**file_search**
+- `query` (required): Fuzzy filename to search for
+- Description: Fast file search based on fuzzy matching against file paths. Use when you know part of the file path.
+
+**web_search**
+- `search_term` (required): The search term to look up on the web
+- Description: Search the web for real-time information. Use when you need up-to-date information.
+
+### Utility Tools
+
+**tool_help**
+- `tool_name` (required): The name of the tool to get help for
+- Description: Get detailed help information for a specific tool, including parameters and usage examples.
+
+## XML Format Examples
+
+### Single Tool Call
+```xml
+<function_calls>
+<invoke name="read_file">
+<parameter name="target_file">src/main.py</parameter>
+<parameter name="should_read_entire_file">false</parameter>
+<parameter name="start_line_one_indexed">1</parameter>
+<parameter name="end_line_one_indexed_inclusive">50</parameter>
+</invoke>
+</function_calls>
+```
+
+### Multiple Tool Calls
+```xml
+<function_calls>
+<invoke name="list_dir">
+<parameter name="relative_workspace_path">src</parameter>
+</invoke>
+<invoke name="codebase_search">
+<parameter name="query">function definition</parameter>
+<parameter name="target_directories">["src/*"]</parameter>
+</invoke>
+</function_calls>
+```
+
+### Alternative Direct XML Format
+```xml
+<function_calls>
+<invoke name="edit_file">
+<target_file>test.py</target_file>
+<instructions>Create a simple test function</instructions>
+<code_edit>def test_function():
+    return "Hello World"</code_edit>
+<edit_mode>full_replace</edit_mode>
+</invoke>
+</function_calls>
+```
+
+### Search with Optional Parameters
+```xml
+<function_calls>
+<invoke name="grep_search">
+<parameter name="query">class\s+\w+</parameter>
+<parameter name="case_sensitive">true</parameter>
+<parameter name="include_pattern">*.py</parameter>
+</invoke>
+</function_calls>
+```
+
+## Important Usage Notes
+
+1. **Parameter Accuracy**: Use exact parameter names as specified above
+2. **Required vs Optional**: Always provide required parameters
+3. **Information First**: Use read_file and list_dir to understand existing code before making edits
+4. **Background Execution**: Use `is_background=true` for GUI apps and web servers
+5. **Error Handling**: Handle tool failures gracefully
+6. **Self-Diagnosis**: Use `tool_help` when uncertain about tool usage
+7. **File Operations**: Always read files before editing to understand existing content
+8. **Search Strategy**: Use codebase_search for semantic search, grep_search for exact patterns
+9. **Directory Exploration**: Use list_dir to explore directory structure before file operations
+10. **XML Format**: Always use the exact XML format shown above - parameter names must match exactly
+
+## XML Formatting Rules
+
+- **Parameter Tags**: Use `<parameter name="param_name">value</parameter>` format
+- **Direct Tags**: Alternative format using `<param_name>value</param_name>`
+- **Boolean Values**: Use "true" or "false" (lowercase strings)
+- **Arrays**: Use JSON-style arrays `["item1", "item2"]` or multiple tags
+- **Special Characters**: Be careful with XML escaping for special characters
+- **Nested Content**: For multi-line content, place directly between tags
+
+## Common Patterns
+
+- **File Analysis**: list_dir → read_file → edit_file
+- **Code Search**: codebase_search → read_file → analysis
+- **Pattern Search**: grep_search → read_file → verification
+- **Web Research**: web_search → analysis → documentation
+- **Command Execution**: run_terminal_cmd with proper flags and background settings
+
+Remember: All tool calls must use the XML format exactly as shown. Parameter names are case-sensitive and must match the specifications above. 

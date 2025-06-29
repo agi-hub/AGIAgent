@@ -1,39 +1,73 @@
-<tool_calling>
-You have tools at your disposal to solve the coding task. Follow these rules regarding tool calls:
-1. It is recommended to use linux terminal commands "run_terminal_cmd" to create/edit/delete files, or to find contents using 'grep' / 'find', listing directory using 'ls' etc. You can run python programs using this function as well, you can also install python modules using pip. 
+# Tool Usage Guidelines
 
-<function>{"name": "run_terminal_cmd", "parameters": {"properties": {"command": {"description": "The terminal command to execute", "type": "string"}, "is_background": {"description": "Whether the command should be run in the background", "type": "boolean"}}, "required": ["command", "is_background"], "type": "object"}, "description": "PROPOSE a command to run on behalf of the user.\n For ANY commands that would use a pager or require user interaction, you should append ` | cat` to the command (or whatever is appropriate). Otherwise, the command will break. You MUST do this for: git, less, head, tail, more, etc.\n For commands that are long running/expected to run indefinitely until interruption, please run them in the background. To run jobs in the background, set `is_background` to true rather than changing the details of the command.\n6. Dont include any newlines in the command."}</function>
+## Available Tools and Parameters
 
-2. In this environment, you can also use some built-in tools such as:
-'web_search', 'codebase_search', 'edit_file', 'read_file',  'list_dir', 'grep_search', 'file_search'. 
+### Core Tools
+**run_terminal_cmd**
+- `command` (required): The terminal command to execute
+- `is_background` (required): Whether to run in background (true/false)
+- Note: Append `| cat` for interactive commands (git, less, more, etc.)
 
-3. Please follow the format of these tools:
+**read_file**
+- `target_file` (required): File path to read
+- `start_line_one_indexed` (required): Starting line number
+- `end_line_one_indexed_inclusive` (required): Ending line number
+- `should_read_entire_file` (required): Whether to read entire file (true/false)
 
-<functions>
-<function>{"description": "Find snippets of code from the codebase most relevant to the search query.\nThis is a semantic search tool, so the query should ask for something semantically matching what is needed.\nIf it makes sense to only search in particular directories, please specify them in the target_directories field.\nUnless there is a clear reason to use your own search query, please just reuse the user's exact query with their wording.\nTheir exact wording/phrasing can often be helpful for the semantic search query. Keeping the same exact question format can also be helpful.", "name": "codebase_search", "parameters": {"properties": {"query": {"description": "The search query to find relevant code. You should reuse the user's exact query/most recent message with their wording unless there is a clear reason not to.", "type": "string"}, "target_directories": {"description": "Glob patterns for directories to search over", "items": {"type": "string"}, "type": "array"}}, "required": ["query"], "type": "object"}}</function>
-<function>{"description": "Read the contents of a file. the output of this tool call will be the 1-indexed file contents from start_line_one_indexed to end_line_one_indexed_inclusive, together with a summary of the lines outside start_line_one_indexed and end_line_one_indexed_inclusive.\nNote that this call can view at most 250 lines at a time.\n\nWhen using this tool to gather information, it's your responsibility to ensure you have the COMPLETE context. Specifically, each time you call this command you should:\n1) Assess if the contents you viewed are sufficient to proceed with your task.\n2) Take note of where there are lines not shown.\n3) If the file contents you have viewed are insufficient, and you suspect they may be in lines not shown, proactively call the tool again to view those lines.\n4) When in doubt, call this tool again to gather more information. Remember that partial file views may miss critical dependencies, imports, or functionality.\n\nIn some cases, if reading a range of lines is not enough, you may choose to read the entire file.\nReading entire files is often wasteful and slow, especially for large files (i.e. more than a few hundred lines). So you should use this option sparingly.\nReading the entire file is not allowed in most cases. You are only allowed to read the entire file if it has been edited or manually attached to the conversation by the user.", "name": "read_file", "parameters": {"properties": {"end_line_one_indexed_inclusive": {"description": "The one-indexed line number to end reading at (inclusive).", "type": "integer"}, "should_read_entire_file": {"description": "Whether to read the entire file. Defaults to false.", "type": "boolean"}, "start_line_one_indexed": {"description": "The one-indexed line number to start reading from (inclusive).", "type": "integer"}, "target_file": {"description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.", "type": "string"}}, "required": ["target_file", "should_read_entire_file", "start_line_one_indexed", "end_line_one_indexed_inclusive"], "type": "object"}}</function>
-<function>{"description": "List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like semantic search or file reading. Useful to try to understand the file structure before diving deeper into specific files. Can be used to explore the codebase.", "name": "list_dir", "parameters": {"properties": {"relative_workspace_path": {"description": "Path to list contents of, relative to the workspace root.", "type": "string"}}, "required": ["relative_workspace_path"], "type": "object"}}</function>
-<function>{"description": "Fast text-based regex search that finds exact pattern matches within files or directories, utilizing the ripgrep command for efficient searching.\nResults will be formatted in the style of ripgrep and can be configured to include line numbers and content.\nTo avoid overwhelming output, the results are capped at 50 matches.\nUse the include or exclude patterns to filter the search scope by file type or specific paths.\n\nThis is best for finding exact text matches or regex patterns.\nMore precise than semantic search for finding specific strings or patterns.\nThis is preferred over semantic search when we know the exact symbol/function name/etc. to search in some set of directories/file types.", "name": "grep_search", "parameters": {"properties": {"case_sensitive": {"description": "Whether the search should be case sensitive", "type": "boolean"}, "exclude_pattern": {"description": "Glob pattern for files to exclude", "type": "string"}, "include_pattern": {"description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)", "type": "string"}, "query": {"description": "The regex pattern to search for", "type": "string"}}, "required": ["query"], "type": "object"}}</function>
-<function>{"description": "Use this tool to propose an overwriting to an existing file or append content to the end of a file.\n\n For safer content addition, use append_mode=true to add content to the end of the file without risk of overwriting existing content.\n\nYou should specify the following arguments before the others: [target_file]", "name": "edit_file", "parameters": {"properties": {"code_edit": {"description": "The code that you wish to overwrite to the file. In append mode, this will be the content added to the end of the file.", "type": "string"}, "instructions": {"description": "A single sentence instruction describing what you are going to do for the sketched edit.", "type": "string"}, "target_file": {"description": "The target file to modify. Always specify the target file as the first argument. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.", "type": "string"}, "append_mode": {"description": "If true, append the code_edit content to the end of the file. Default is false.", "type": "boolean"}}, "required": ["target_file", "instructions", "code_edit", "append_mode"], "type": "object"}}</function>
-<function>{"description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly. Response will be capped to 10 results. Make your query more specific if need to filter results further.", "name": "file_search", "parameters": {"properties": {"query": {"description": "Fuzzy filename to search for", "type": "string"}}, "required": ["query"], "type": "object"}}</function>
-<function>{"description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data, or when you need to verify current facts. The search results will include relevant snippets and URLs from web pages. This is particularly useful for questions about current events, technology updates, or any topic that requires recent information.", "name": "web_search", "parameters": {"properties": {"search_term": {"description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant.", "type": "string"}}, "required": ["search_term"], "type": "object"}}</function>
-</functions>
+**edit_file**
+- `target_file` (required): File path to modify
+- `instructions` (required): Brief description of the edit
+- `code_edit` (required): Content to write, replace, insert, or append
+- `edit_mode` (required): Editing mode - "replace_lines", "insert_lines", "append", "full_replace"
+- `start_line` (optional): Starting line number for replace_lines mode (1-indexed)
+- `end_line` (optional): Ending line number for replace_lines mode (1-indexed)
+- `insert_position` (optional): Line number to insert before for insert_lines mode (1-indexed)
 
-We recommend you use web_search for searching websites, or codebase_search for code searching under current workspace. 
 
-4. Information gathering is recommended: Before creating any content, analysis, or conclusions, it's helpful to use appropriate tools to gather actual information.
-5. Please follow the tool call schema exactly as specified and make sure to provide all necessary parameters.
+## Edit Modes Guide:
+- **replace_lines**: Precisely replace lines X to Y with new content
+- **insert_lines**: Insert new content at specific line position
+- **append**: Add content to end of file (SAFEST for adding content)
+- **full_replace**: Replace entire file content (DANGEROUS - use with caution)
+- **Use read_file first** to understand existing content before any modification
+- **All content creation MUST use edit_file! Never output code, reports, or data directly to chat.
 
-Tool call format: When you need to use a tool, use the following XML format:
-   <function_calls>
-   <invoke name="tool_name">
-   <parameter name="param1">value1</parameter>
-   <parameter name="param2">value2</parameter>
-   </invoke>
-   </function_calls>
+**list_dir**
+- `relative_workspace_path` (required): Directory path to list
 
-6. Parameter names should be exact: Use the exact parameter names from the tool schema (e.g., use 'relative_workspace_path' not 'path' for list_dir).
-7. Use XML format: Always use the XML format above, not Python function call syntax.
-8. Wait for tool results: After calling any information-gathering tool, please wait for the actual results before proceeding.
-9. Tool result formatting: The system will automatically format tool results, so you don't need to output formatting markers.
-</tool_calling> 
+### Search Tools
+**codebase_search**
+- `query` (required): Search query for semantic code search
+- `target_directories` (optional): Array of directory patterns to search
+
+**grep_search**
+- `query` (required): Regex pattern to search for
+- `include_pattern` (optional): File pattern to include (e.g., '*.py')
+- `exclude_pattern` (optional): File pattern to exclude
+- `case_sensitive` (optional): Whether search is case sensitive
+
+**file_search**
+- `query` (required): Fuzzy filename to search for
+
+**web_search**
+- `search_term` (required): Search term for web search
+
+### Utility Tools
+**tool_help**
+- `tool_name` (required): Name of the tool to get help for
+- Returns: Detailed usage information, parameters, and examples
+
+### Extended Web Tools
+**fetch_webpage_content**
+- `url` (required): URL to fetch content from
+- `search_term` (optional): Search term to highlight in content
+- Returns: Webpage content with metadata
+
+## Usage Principles
+1. **Parameter Accuracy**: Use exact parameter names as specified above
+2. **Required vs Optional**: Always provide required parameters
+3. **Information First**: Gather information before making changes
+4. **Background Execution**: Use `is_background=true` for GUI apps and web servers
+5. **Error Handling**: Handle tool failures gracefully
+6. **Self-Diagnosis**: Use `tool_help` when uncertain about tool usage
+

@@ -1202,7 +1202,7 @@ class AGIBotClient:
     def chat(self, 
              messages: list,
              dir: str = None,
-             loops: int = 25,
+             loops: int = 50,
              continue_mode: bool = False,
              **kwargs) -> dict:
         """
@@ -1213,7 +1213,7 @@ class AGIBotClient:
                      Currently only supports single user message
                      Example: [{"role": "user", "content": "Build a calculator app"}]
             dir: Output directory for results (optional, will auto-generate if not provided)
-            loops: Maximum execution rounds per task (default: 25)
+            loops: Maximum execution rounds per task (default: 50)
             continue_mode: Whether to continue from previous execution (default: False)
             **kwargs: Additional parameters (reserved for future use)
             
@@ -1433,8 +1433,8 @@ Usage Examples:
     parser.add_argument(
         "--loops", "-l",
         type=int,
-        default=25,
-        help="Execution rounds for each subtask (default: 25)"
+        default=50,
+        help="Execution rounds for each subtask (default: 50)"
     )
     
     parser.add_argument(
@@ -1536,7 +1536,7 @@ Usage Examples:
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
         #args.out_dir = "output_test"
-        args.loops = 25
+        args.loops = 50
         #args.model = "gpt-4.1"
         #args.base_url = "https://api.openai-proxy.org/v1"
         args.api_key = None

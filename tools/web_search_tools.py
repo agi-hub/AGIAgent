@@ -2445,6 +2445,9 @@ Please create a detailed, structured analysis that preserves important informati
                 # Use optimized timeout for faster processing
                 final_timeout = 10000
                 
+                # Check if this is a Baidu redirect URL
+                is_baidu_redirect = 'baidu.com/link?url=' in url
+                
                 if is_baidu_redirect:
                     print(f"🔄 Detected Baidu redirect URL, using extended timeout")
                     # Try to decode first

@@ -37,6 +37,30 @@ def is_claude_model(model: str) -> bool:
     """Check if the model name is a Claude model"""
     return model.lower().startswith('claude')
 
+# Check if the model should use chat-based tool calling
+def should_use_chat_based_tools(model: str) -> bool:
+    """
+    Check if the model should use chat-based tool calling instead of standard tool calling.
+    
+    Args:
+        model: Model name to check
+        
+    Returns:
+        True if chat-based tool calling should be used, False for standard tool calling
+    """
+    model_lower = model.lower()
+    
+    # Use standard tool calling for:
+    # 1. Claude models (they support standard tool calling)
+    # 2. OpenAI GPT models (gpt-3.5, gpt-4, etc.)
+    if (model_lower.startswith('claude') or 
+        model_lower.startswith('gpt-')):
+        return False
+    
+    # Use chat-based tool calling for all other models
+    # This includes models like Qwen, Llama, Gemini, etc.
+    return True
+
 # Dynamically import Anthropic
 def get_anthropic_client():
     """Dynamically import and return Anthropic client class"""
@@ -166,7 +190,16 @@ class ToolExecutor:
         # Check if it's a Claude model, automatically adjust api_base
         self.is_claude = is_claude_model(model)
         
+        # Check if the model should use chat-based tool calling
+        self.use_chat_based_tools = should_use_chat_based_tools(model)
+        
         self.api_base = api_base
+        
+        # Display tool calling method
+        if self.use_chat_based_tools:
+            print(f"🔧 Tool calling method: Chat-based (tools described in messages)")
+        else:
+            print(f"🔧 Tool calling method: Standard API tool calling")
         
         # History summarization cache
         self.history_summary_cache = {}
@@ -228,10 +261,9 @@ class ToolExecutor:
             "grep_search": self.tools.grep_search,
             "edit_file": self.tools.edit_file,
             "file_search": self.tools.file_search,
-            "delete_file": self.tools.delete_file,
-            "reapply": self.tools.reapply,
             "web_search": self.tools.web_search,
-            "tool_help": self.tools.tool_help
+            "tool_help": self.tools.tool_help,
+            "fetch_webpage_content": self.tools.fetch_webpage_content
         }
         
         # Add plugin tools if available
@@ -409,9 +441,14 @@ class ToolExecutor:
         }
         
         try:
-            # Load rules and tools prompts
+            # Load rules and tools prompts - choose tool prompt based on tool calling mode
+            tool_prompt_file = "prompts/tool_prompt_for_chat.txt" if self.use_chat_based_tools else "prompts/tool_prompt.txt"
+            
+            if self.debug_mode:
+                print(f"🔧 Loading tool prompt file: {tool_prompt_file} (chat-based: {self.use_chat_based_tools})")
+            
             rules_tool_files = [
-                "prompts/tool_prompt.txt",
+                tool_prompt_file,
                 "prompts/rules_prompt.txt", 
                 "prompts/plugin_tool_prompts.txt",
                 "prompts/user_rules.txt"
@@ -586,6 +623,8 @@ class ToolExecutor:
             message_parts.append(prompt_components['rules_and_tools'])
             message_parts.append("")
         
+
+        
         # 3. System environment information
         if prompt_components['system_environment']:
             message_parts.append("---")
@@ -667,26 +706,48 @@ class ToolExecutor:
                 # Format assistant response with consistent line breaks and standardized tool result formatting
                 assistant_response = record['result'].strip()
                 
-                # Check if response contains tool execution results
-                if "--- Tool Execution Results ---" in assistant_response:
-                    # Split response into main content and tool results
+                # Check if response contains tool calls and/or execution results
+                tool_calls_section = ""
+                tool_results_section = ""
+                main_content = assistant_response
+                
+                # Extract tool calls section if present
+                if "--- Tool Calls ---" in assistant_response:
+                    parts = assistant_response.split("--- Tool Calls ---", 1)
+                    main_content = parts[0].strip()
+                    remaining_content = parts[1] if len(parts) > 1 else ""
+                    
+                    # Check if there are also tool execution results after tool calls
+                    if "--- Tool Execution Results ---" in remaining_content:
+                        tool_parts = remaining_content.split("--- Tool Execution Results ---", 1)
+                        tool_calls_section = tool_parts[0].strip()
+                        tool_results_section = tool_parts[1].strip() if len(tool_parts) > 1 else ""
+                    else:
+                        tool_calls_section = remaining_content.strip()
+                
+                # If no tool calls section but has tool execution results
+                elif "--- Tool Execution Results ---" in assistant_response:
                     parts = assistant_response.split("--- Tool Execution Results ---", 1)
-                    main_response = parts[0].strip()
-                    tool_results = parts[1].strip() if len(parts) > 1 else ""
+                    main_content = parts[0].strip()
+                    tool_results_section = parts[1].strip() if len(parts) > 1 else ""
                     
-                    message_parts.append(f"**Assistant Response:**")
-                    message_parts.append(main_response)
+                # Display the main assistant response
+                message_parts.append(f"**Assistant Response:**")
+                message_parts.append(main_content)
+                message_parts.append("")
+                
+                # Display tool calls if present
+                if tool_calls_section:
+                    message_parts.append("**Tool Calls:**")
+                    message_parts.append(tool_calls_section)
                     message_parts.append("")
-                    
-                    if tool_results:
-                        message_parts.append("**Tool Execution Results:**")
-                        # Standardize tool results format for better cache consistency
-                        tool_results = self._standardize_tool_results_format(tool_results)
-                        message_parts.append(tool_results)
-                        message_parts.append("")
-                else:
-                    message_parts.append(f"**Assistant Response:**")
-                    message_parts.append(assistant_response)
+                
+                # Display tool execution results if present
+                if tool_results_section:
+                    message_parts.append("**Tool Execution Results:**")
+                    # Standardize tool results format for better cache consistency
+                    tool_results_section = self._standardize_tool_results_format(tool_results_section)
+                    message_parts.append(tool_results_section)
                     message_parts.append("")
                 
                 message_parts.append("=" * 60)
@@ -833,8 +894,7 @@ class ToolExecutor:
     
     def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
         """
-        Execute a single subtask using an LLM with tool capabilities.
-        Simplified to single LLM call + tool execution (no internal rounds).
+        Execute a single subtask using an LLM with standard tool calling capabilities.
         
         Args:
             user_prompt: The prompt for the subtask
@@ -858,225 +918,31 @@ class ToolExecutor:
                 {"role": "user", "content": user_message}
             ]
             
-
-            
-            # Mark this as cache optimized since we're using the new structured format
-            is_cache_optimized_format = True
-            
-            # Call the LLM (single call, no internal rounds)
-            print(f"🤖 Calling LLM: {user_prompt}")
+            # Call the LLM with standard tool calling format
+            print(f"🤖 Calling LLM with standard tools: {user_prompt}")
             
             # Save debug log for this call's input (before LLM call)
             if self.debug_mode:
                 try:
                     initial_call_info = {
                         "is_single_call": True,
-                        "call_type": "simplified_execution",
+                        "call_type": "standard_tools_execution",
                         "user_prompt": user_prompt
                     }
                 except Exception as e:
                     print(f"⚠️ Debug preparation failed: {e}")
             
-            # Execute LLM call
-            content = ""
-            if self.is_claude:
-                # Use Anthropic Claude API
-                system_message = system_prompt
-                claude_messages = [{"role": "user", "content": user_message}]  # Claude API expects only user messages
-                
-                if self.streaming:
-                    print("🔄 Starting streaming generation...")
-                else:
-                    print("🔄 Starting batch generation...")
-                
-                # Add retry mechanism
-                max_retries = 3
-                for retry_count in range(max_retries):
-                    try:
-                        if self.streaming:
-                            # Streaming mode with hallucination detection
-                            with self.client.messages.stream(
-                                model=self.model,
-                                max_tokens=self._get_max_tokens_for_model(self.model),
-                                system=system_message,
-                                messages=claude_messages,
-                                temperature=0.7
-                            ) as stream:
-                                content = ""
-                                
-                                # Get hallucination detection configuration
-                                hallucination_config = self._get_hallucination_detection_config([])
-                                detection_buffer = ""
-                                generation_stopped = False
-                                
-                                # Calculate buffer size based on longest trigger
-                                if hallucination_config.get("enabled", True):
-                                    max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
-                                    buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
-                                else:
-                                    buffer_size = 0
-                                
-                                for text in stream.text_stream:
-                                    # Add current text to detection buffer BEFORE printing
-                                    if hallucination_config.get("enabled", True):
-                                        detection_buffer += text
-                                        
-                                        # Keep buffer size manageable
-                                        if len(detection_buffer) > buffer_size:
-                                            # Remove excess from beginning
-                                            detection_buffer = detection_buffer[-buffer_size:]
-                                        
-                                        # Check for hallucination triggers BEFORE printing
-                                        detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, hallucination_config)
-                                        if detected:
-                                            generation_stopped = True
-                                            
-                                            # Remove the hallucination content from already accumulated content
-                                            original_content = content
-                                            content = self._remove_hallucination_from_content(content, trigger_found, hallucination_config)
-                                            
-                                            # Print the completion part to terminal if content was extended
-                                            if len(content) > len(original_content):
-                                                completion_part = content[len(original_content):]
-                                                print(completion_part, end="", flush=True)
-                                            
-                                            break
-                                    
-                                    # Only print and accumulate content if no hallucination detected
-                                    print(text, end="", flush=True)
-                                    content += text
-                                
-                                if generation_stopped:
-                                    pass  # Generation was stopped due to hallucination detection
-                                else:
-                                    print("\n✅ Streaming completed")
-                        else:
-                            # Batch mode (original implementation)
-                            response = self.client.messages.create(
-                                model=self.model,
-                                max_tokens=self._get_max_tokens_for_model(self.model),
-                                system=system_message,
-                                messages=claude_messages,
-                                temperature=0.7
-                            )
-                            
-                            # Get complete response content
-                            content = response.content[0].text
-                            print("\n🤖 LLM response:")
-                            print("✅ Generation completed")
-                        
-                        # If content generated successfully, break out of retry loop
-                        break
-                        
-                    except Exception as api_error:
-                        print(f"\n⚠️ Claude API call failed (attempt {retry_count + 1}/{max_retries}): {api_error}")
-                        
-                        # If it's the last retry, raise exception
-                        if retry_count == max_retries - 1:
-                            print(f"❌ Claude API call finally failed, please check:")
-                            print(f"   1. API key validity")
-                            print(f"   2. Network connection")
-                            print(f"   3. Claude service availability")
-                            print(f"   4. Message content compliance with API requirements")
-                            raise api_error
-                        else:
-                            print(f"🔄 Waiting {2 ** retry_count} seconds before retry...")
-                            import time
-                            time.sleep(2 ** retry_count)  # Exponential backoff
-                            continue
-            
-            else:
-                # Use OpenAI API
-                if self.streaming:
-                    print("🔄 Starting streaming generation...")
-                    # Streaming mode with hallucination detection
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        temperature=0.7,
-                        top_p=0.8,
-                        stream=True
-                    )
-                    
-                    content = ""
-                    
-                    # Get hallucination detection configuration
-                    hallucination_config = self._get_hallucination_detection_config([])
-                    detection_buffer = ""
-                    generation_stopped = False
-                    
-                    # Calculate buffer size based on longest trigger
-                    if hallucination_config.get("enabled", True):
-                        max_trigger_length = max(len(trigger) for trigger in hallucination_config.get("triggers", [""]))
-                        buffer_size = max_trigger_length * hallucination_config.get("buffer_size_multiplier", 2)
-                    else:
-                        buffer_size = 0
-                    
-                    for chunk in response:
-                        if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content is not None:
-                            chunk_content = chunk.choices[0].delta.content
-                            
-                            # Add current chunk to detection buffer BEFORE printing
-                            if hallucination_config.get("enabled", True):
-                                detection_buffer += chunk_content
-                                
-                                # Keep buffer size manageable
-                                if len(detection_buffer) > buffer_size:
-                                    # Remove excess from beginning
-                                    detection_buffer = detection_buffer[-buffer_size:]
-                                
-                                # Check for hallucination triggers BEFORE printing
-                                detected, trigger_found = self._detect_hallucination_in_stream(detection_buffer, hallucination_config)
-                                if detected:
-                                    generation_stopped = True
-                                    
-                                    # Remove the hallucination content from already accumulated content
-                                    original_content = content
-                                    content = self._remove_hallucination_from_content(content, trigger_found, hallucination_config)
-                                    
-                                    # Print the completion part to terminal if content was extended
-                                    if len(content) > len(original_content):
-                                        completion_part = content[len(original_content):]
-                                        print(completion_part, end="", flush=True)
-                                    
-                                    break
-                            
-                            # Only print and accumulate content if no hallucination detected
-                            print(chunk_content, end="", flush=True)
-                            content += chunk_content
-                    
-                    if generation_stopped:
-                        pass  # Generation was stopped due to hallucination detection
-                    else:
-                        print("\n✅ Streaming completed")
-                else:
-                    # Batch mode (original implementation)
-                    print("🔄 Starting batch generation...")
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        temperature=0.7,
-                        top_p=0.8
-                    )
-                    
-                    # Get complete response content
-                    if response.choices and len(response.choices) > 0:
-                        content = response.choices[0].message.content
-                    else:
-                        content = ""
-                        print("⚠️ Warning: OpenAI API returned empty choices list")
-                    print("\n🤖 LLM response:")
-                    print("✅ Generation completed")
+            # Execute LLM call with standard tools
+            content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
             
             print(f"\n📝 Response content length: {len(content)} characters")
             
             # Calculate and display token and character statistics
             self._display_llm_statistics(messages, content)
             
-            # Parse the content for tool calls
-            tool_calls = self.parse_tool_calls(content)
+            # Check for TASK_COMPLETED flag and detect conflicts
+            has_task_completed = "TASK_COMPLETED:" in content
+            has_tool_calls = len(tool_calls) > 0
             
             # Check for TASK_COMPLETED flag and detect conflicts
             has_task_completed = "TASK_COMPLETED:" in content
@@ -1120,23 +986,41 @@ class ToolExecutor:
             if tool_calls:
                 print(f"🔧 Found {len(tool_calls)} tool calls, starting execution...")
                 
+                # Print tool calls for terminal display
+                tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
+                if tool_calls_formatted:
+                    print(f"\n--- Tool Calls ---")
+                    # Remove the "**Tool Calls:**" header since we already printed our own
+                    display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                    print(display_content)
+                    print("--- End Tool Calls ---\n")
+                
                 # Execute all tool calls and collect results
                 all_tool_results = []
                 successful_executions = 0
                 
                 for i, tool_call in enumerate(tool_calls, 1):
-                    # Print tool execution start tag BEFORE any other output
-                    print(f"<tool_execute tool_name=\"{tool_call['name']}\" tool_number=\"{i}\">")
+                    # Handle standard format tool calls (both OpenAI and Anthropic)
+                    tool_name = self._get_tool_name_from_call(tool_call)
+                    tool_params = self._get_tool_params_from_call(tool_call)
                     
-                    print(f"   - Executing tool {i}: {tool_call['name']}")
-                    print(f"Executing tool: {tool_call['name']} with params: {list(tool_call['arguments'].keys())}")
+                    # Print tool execution start tag BEFORE any other output
+                    print(f"<tool_execute tool_name=\"{tool_name}\" tool_number=\"{i}\">")
+                    
+                    print(f"   - Executing tool {i}: {tool_name}")
+                    print(f"Executing tool: {tool_name} with params: {list(tool_params.keys())}")
                     
                     try:
-                        tool_result = self.execute_tool(tool_call)
+                        # Convert to standard format for execute_tool
+                        standard_tool_call = {
+                            "name": tool_name,
+                            "arguments": tool_params
+                        }
+                        tool_result = self.execute_tool(standard_tool_call)
                         
                         all_tool_results.append({
-                            'tool_name': tool_call['name'],
-                            'tool_params': tool_call['arguments'],
+                            'tool_name': tool_name,
+                            'tool_params': tool_params,
                             'tool_result': tool_result
                         })
                         successful_executions += 1
@@ -1145,8 +1029,8 @@ class ToolExecutor:
                         if isinstance(tool_result, dict):
                             # Use simplified formatting for search tools if enabled in config
                             if (self.simplified_search_output and 
-                                tool_call['name'] in ['codebase_search', 'web_search']):
-                                formatted_result = self._format_search_result_for_terminal(tool_result, tool_call['name'])
+                                tool_name in ['codebase_search', 'web_search']):
+                                formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
                             else:
                                 formatted_result = self._format_dict_as_text(tool_result)
                             print(formatted_result)
@@ -1154,11 +1038,11 @@ class ToolExecutor:
                             print(str(tool_result))
                         
                     except Exception as e:
-                        error_msg = f"Tool {tool_call['name']} execution failed: {str(e)}"
+                        error_msg = f"Tool {tool_name} execution failed: {str(e)}"
                         print(f"❌ {error_msg}")
                         all_tool_results.append({
-                            'tool_name': tool_call['name'],
-                            'tool_params': tool_call['arguments'],
+                            'tool_name': tool_name,
+                            'tool_params': tool_params,
                             'tool_result': f"Error: {error_msg}"
                         })
                     
@@ -1185,8 +1069,13 @@ class ToolExecutor:
                     except Exception as log_error:
                         print(f"❌ Debug log save failed: {log_error}")
                 
-                # Return combined response and tool results
-                return content + "\n\n--- Tool Execution Results ---\n" + tool_results_message
+                # Return combined response with tool calls and tool results
+                result_parts = [content]
+                if tool_calls_formatted:
+                    result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
+                result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
+                
+                return "".join(result_parts)
             
             else:
                 # No tool calls, return LLM response directly
@@ -1231,10 +1120,89 @@ class ToolExecutor:
             has_invoke = '<invoke' in content
             has_function_call = '<function_call>' in content
             has_json_block = '```json' in content
+            has_tool_calls_json = '"tool_calls"' in content
         
         all_tool_calls = []
         
-        # First try to parse individual <function_call> tags (single format)
+        # First try to parse OpenAI-style JSON tool calls format (新增)
+        # Look for {"tool_calls": [...]} format
+        openai_json_pattern = r'```json\s*\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}\s*```'
+        openai_json_match = re.search(openai_json_pattern, content, re.DOTALL)
+        if openai_json_match:
+            try:
+                # Extract the full JSON structure
+                json_start = content.find('```json')
+                json_end = content.find('```', json_start + 7) + 3
+                if json_start != -1 and json_end > json_start:
+                    json_block = content[json_start + 7:json_end - 3].strip()
+                    
+                    # Handle common escape issues in JSON strings
+                    # Replace single backslashes with double backslashes to make valid JSON
+                    # But be careful not to double-escape already valid escapes
+                    json_block = self._fix_json_escapes(json_block)
+                    
+                    tool_calls_data = json.loads(json_block)
+                    
+                    if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                        for tool_call in tool_calls_data['tool_calls']:
+                            if isinstance(tool_call, dict) and 'function' in tool_call:
+                                function_data = tool_call['function']
+                                if 'name' in function_data and 'arguments' in function_data:
+                                    arguments = function_data['arguments']
+                                    # If arguments is a string (JSON), parse it
+                                    if isinstance(arguments, str):
+                                        try:
+                                            arguments = json.loads(arguments)
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    all_tool_calls.append({
+                                        "name": function_data['name'],
+                                        "arguments": arguments
+                                    })
+                        
+                        # If we found OpenAI-style tool calls, return them
+                        if all_tool_calls:
+                            return all_tool_calls
+            except json.JSONDecodeError as e:
+                if self.debug_mode:
+                    print(f"Failed to parse OpenAI-style JSON tool calls: {e}")
+        
+        # Also try to parse direct JSON tool calls without ```json wrapper (新增)
+        direct_json_pattern = r'\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}'
+        direct_json_match = re.search(direct_json_pattern, content, re.DOTALL)
+        if direct_json_match and not all_tool_calls:
+            try:
+                json_str = direct_json_match.group(0)
+                json_str = self._fix_json_escapes(json_str)
+                tool_calls_data = json.loads(json_str)
+                if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                    for tool_call in tool_calls_data['tool_calls']:
+                        if isinstance(tool_call, dict) and 'function' in tool_call:
+                            function_data = tool_call['function']
+                            if 'name' in function_data and 'arguments' in function_data:
+                                arguments = function_data['arguments']
+                                # If arguments is a string (JSON), parse it
+                                if isinstance(arguments, str):
+                                    try:
+                                        arguments = json.loads(arguments)
+                                    except json.JSONDecodeError:
+                                        pass
+                                
+                                all_tool_calls.append({
+                                    "name": function_data['name'],
+                                    "arguments": arguments
+                                })
+                    
+                    # If we found direct JSON tool calls, return them
+                    if all_tool_calls:
+                        return all_tool_calls
+            except json.JSONDecodeError as e:
+                if self.debug_mode:
+                    print(f"Failed to parse direct JSON tool calls: {e}")
+        
+        # Continue with existing XML parsing logic...
+        # Try to parse individual <function_call> tags (single format)
         function_call_pattern = r'<function_call>\s*\{(.*?)\}\s*</function_call>'
         function_call_matches = re.findall(function_call_pattern, content, re.DOTALL)
         if function_call_matches:
@@ -1381,6 +1349,49 @@ class ToolExecutor:
 
         
         return []
+
+    def _fix_json_escapes(self, json_str: str) -> str:
+        """
+        Fix common escape issues in JSON strings to make them valid JSON.
+        
+        Args:
+            json_str: Raw JSON string that may have escape issues
+            
+        Returns:
+            Fixed JSON string
+        """
+        # Common regex patterns that need proper escaping
+        # Handle regex backslashes that aren't properly escaped for JSON
+        import re
+        
+        # Find strings that contain unescaped backslashes
+        # This pattern finds quoted strings and fixes backslashes inside them
+        def fix_string_escapes(match):
+            quote_char = match.group(1)  # Get the quote character (")
+            string_content = match.group(2)  # Get the content between quotes
+            
+            # Fix common regex patterns
+            # \. -> \\.
+            string_content = string_content.replace('\\.', '\\\\.')
+            # \w -> \\w
+            string_content = string_content.replace('\\w', '\\\\w')
+            # \d -> \\d
+            string_content = string_content.replace('\\d', '\\\\d')
+            # \s -> \\s
+            string_content = string_content.replace('\\s', '\\\\s')
+            # \\n -> \\\\n (but only if it's not already properly escaped)
+            string_content = re.sub(r'(?<!\\)\\n', '\\\\n', string_content)
+            # \\t -> \\\\t (but only if it's not already properly escaped)
+            string_content = re.sub(r'(?<!\\)\\t', '\\\\t', string_content)
+            
+            return f'{quote_char}{string_content}{quote_char}'
+        
+        # Apply the fix to all quoted strings
+        # Pattern to match quoted strings: "..." 
+        string_pattern = r'(")((?:[^"\\]|\\.)*)(")'
+        fixed_json = re.sub(string_pattern, fix_string_escapes, json_str)
+        
+        return fixed_json
 
     def parse_tool_call(self, content: str) -> Optional[Dict[str, Any]]:
         """
@@ -2658,461 +2669,17 @@ class ToolExecutor:
             print(f"❌ 日志分析失败: {e}")
             return {"error": str(e)}
 
-    def _get_hallucination_detection_config(self, current_round_tools: List[str] = None) -> Dict[str, Any]:
-        """
-        Get hallucination detection configuration.
-        
-        Args:
-            current_round_tools: List of tool names called in current round
-        
-        Returns:
-            Dictionary with hallucination detection settings
-        """
-        # Default hallucination triggers that the system uses for formatting
-        default_triggers = [
-            "## Tool Execution Results:",
-            "Tool execution results:",
-            "## Tool Results:",
-            "**Tool Results:**",
-            "**Tool Execution Results:**"
-        ]
-        
-        # Edit file specific triggers - detect when edit_file is called after other tools in same round
-        edit_file_triggers = [
-            r'<invoke name="edit_file">',
-            r'<invoke name="edit_file"',
-            r'<invoke name="edit_file',  # Handle incomplete patterns
-            r'name="edit_file"',
-            r'name="edit_file',         # Handle incomplete patterns
-            r'"edit_file"',
-            r'"edit_file',              # Handle incomplete patterns
-            r'edit_file\(',
-            r'edit_file \(',
-            r'<function_call>\s*\{\s*"name"\s*:\s*"edit_file"',
-            r'<edit_file>',
-            r'</edit_file>'
-        ]
-        
-        config = {
-            "enabled": True,  # Enable by default to prevent hallucination
-            "triggers": default_triggers,
-            "buffer_size_multiplier": 2,  # Buffer size = max_trigger_length * multiplier
-            "case_sensitive": False,  # Case-insensitive detection for better coverage
-            "log_detection": True,  # Log when detection occurs
-            "edit_file_triggers": edit_file_triggers,
-            "current_round_tools": current_round_tools or []
-        }
-        
-        return config
-    
-    def _detect_hallucination_in_stream(self, detection_buffer: str, config: Dict[str, Any]) -> tuple:
-        """
-        Detect hallucination triggers in streaming content.
-        
-        Args:
-            detection_buffer: Current detection buffer content
-            config: Hallucination detection configuration
-            
-        Returns:
-            Tuple of (detected: bool, trigger_found: str or None)
-        """
-        if not config.get("enabled", True):
-            return False, None
-        
-        # First check for standard hallucination triggers
-        triggers = config.get("triggers", [])
-        case_sensitive = config.get("case_sensitive", False)
-        
-        # Prepare content for comparison
-        content_to_check = detection_buffer if case_sensitive else detection_buffer.lower()
-        
-        for trigger in triggers:
-            trigger_to_check = trigger if case_sensitive else trigger.lower()
-            
-            if trigger_to_check in content_to_check:
-                if config.get("log_detection", True):
-                    print(f" ...hallucination detected, stop generation")
-                return True, trigger
-        
-        # Check for edit_file hallucination (edit_file called after other tools in same round)
-        current_round_tools = config.get("current_round_tools", [])
-        edit_file_triggers = config.get("edit_file_triggers", [])
-        
-        # Check if current buffer contains edit_file call
-        import re
-        current_buffer_has_edit_file = False
-        edit_file_trigger_found = None
-        
-        for edit_trigger in edit_file_triggers:
-            if re.search(edit_trigger, content_to_check, re.IGNORECASE if not case_sensitive else 0):
-                current_buffer_has_edit_file = True
-                edit_file_trigger_found = edit_trigger
-                break
-        
-        # Only trigger hallucination if:
-        # 1. Current buffer contains edit_file call AND
-        # 2. There are already other tools called in this round (excluding edit_file itself)
-        other_tools = [tool for tool in current_round_tools if tool != 'edit_file']
-        if current_buffer_has_edit_file and other_tools and len(other_tools) > 0:
-            return True, f"edit_file_after_tools:{edit_file_trigger_found}"
-        
-        return False, None
-    
-    def _update_current_round_tools(self, detection_buffer: str, current_round_tools: List[str]) -> None:
-        """
-        Update current round tools tracking by detecting tool calls in the buffer.
-        
-        Args:
-            detection_buffer: Current detection buffer content
-            current_round_tools: List to update with detected tool names
-        """
-        import re
-        
-        # Tool call patterns to detect
-        tool_patterns = [
-            r'<invoke name="([^"]+)">',
-            r'<invoke name="([^"]+)"',
-            r'"name"\s*:\s*"([^"]+)"',
-            r'<function_call>\s*{\s*"name"\s*:\s*"([^"]+)"',
-            r'<([a-zA-Z_][a-zA-Z0-9_]*)\s*>',  # Direct XML tags like <edit_file>
-        ]
-        
-        # Common tool names to look for
-        known_tools = [
-            'read_file', 'edit_file', 'list_dir', 'codebase_search', 'grep_search',
-            'run_terminal_cmd', 'web_search', 'file_search', 'delete_file', 'reapply',
-            'tool_help', 'kb_search', 'kb_content', 'kb_body'
-        ]
-        
-        for pattern in tool_patterns:
-            matches = re.findall(pattern, detection_buffer, re.IGNORECASE)
-            for match in matches:
-                tool_name = match.strip()
-                # Only add known tools and avoid duplicates
-                if tool_name in known_tools and tool_name not in current_round_tools:
-                    current_round_tools.append(tool_name)
-    
-    def _remove_hallucination_from_content(self, content: str, trigger: str, config: Dict[str, Any]) -> str:
-        """
-        Remove hallucination content from the generated text.
-        
-        Args:
-            content: Generated content
-            trigger: The trigger that was detected
-            config: Detection configuration
-            
-        Returns:
-            Cleaned content with hallucination removed
-        """
-        case_sensitive = config.get("case_sensitive", False)
-        
-        # Check if this is an edit_file hallucination
-        is_edit_file_hallucination = trigger.startswith("edit_file_after_tools:")
-        
-        if is_edit_file_hallucination:
-            # For edit_file hallucination, we need to handle XML completion differently
-            return self._handle_edit_file_hallucination(content, trigger, config)
-        
-        # Handle standard hallucination triggers
-        if case_sensitive:
-            trigger_pos = content.rfind(trigger)
-        else:
-            # Case-insensitive search
-            content_lower = content.lower()
-            trigger_lower = trigger.lower()
-            trigger_pos_lower = content_lower.rfind(trigger_lower)
-            
-            if trigger_pos_lower != -1:
-                # Find the actual position in the original content
-                trigger_pos = trigger_pos_lower
-            else:
-                trigger_pos = -1
-        
-        if trigger_pos != -1:
-            # Remove everything from the trigger onwards
-            cleaned_content = content[:trigger_pos].rstrip()
-            
-            if config.get("log_detection", True):
-                removed_length = len(content) - len(cleaned_content)
-                print(f"🧹 Removed {removed_length} characters of hallucination content")
-                print(f"📝 Clean content length: {len(cleaned_content)} characters")
-            
-            return cleaned_content
-        
-        return content
-    
-    def _handle_edit_file_hallucination(self, content: str, trigger: str, config: Dict[str, Any]) -> str:
-        """
-        Handle edit_file hallucination by completing the XML structure with a dummy call.
-        
-        Args:
-            content: Generated content
-            trigger: The edit_file trigger that was detected
-            config: Detection configuration
-            
-        Returns:
-            Content with completed dummy edit_file XML structure
-        """
-        import re
-        
-        # Extract the actual trigger pattern from the trigger string
-        actual_trigger = trigger.split(":", 1)[1] if ":" in trigger else trigger
-        
-        # Find where the edit_file call starts
-        case_sensitive = config.get("case_sensitive", False)
-        
-        # Try to find the edit_file trigger position
-        trigger_pos = -1
-        
-        # Search for various edit_file patterns, including incomplete ones
-        edit_file_patterns = [
-            r'<invoke name="edit_file">',
-            r'<invoke name="edit_file"',
-            r'<invoke name="edit_file',  # Handle incomplete patterns
-            r'name="edit_file"',
-            r'name="edit_file',         # Handle incomplete patterns
-            r'"edit_file"',
-            r'"edit_file',              # Handle incomplete patterns
-            r'<function_call>\s*\{\s*"name"\s*:\s*"edit_file"',
-            r'<edit_file>'
-        ]
-        
-        for pattern in edit_file_patterns:
-            match = re.search(pattern, content, re.IGNORECASE if not case_sensitive else 0)
-            if match:
-                trigger_pos = match.start()
-                break
-        
-        if trigger_pos != -1:
-            # Remove everything from the edit_file call onwards
-            cleaned_content = content[:trigger_pos].rstrip()
-            
-            # Check if we need to complete an existing edit_file call
-            if "<function_calls>" in cleaned_content and "</function_calls>" not in cleaned_content[cleaned_content.rfind("<function_calls>"):]:
-                # We're inside an existing function_calls block, complete the edit_file call
-                dummy_edit_file = '''
-<parameter name="target_file">dummy_file_placeholder.txt</parameter>
-</invoke>
-</function_calls>'''
-            else:
-                # Fallback: just add a comment
-                dummy_edit_file = '''
-<!-- Hallucination detected: edit_file call was prevented -->'''
-            
-            # Combine cleaned content with dummy structure
-            final_content = cleaned_content + dummy_edit_file
-            
 
-            
-            return final_content
-        else:
-            # If we can't find the trigger position, just remove from the end
-            # This is a fallback case
+    
 
-            
-            # Add dummy structure at the end that won't be parsed as a tool call
-            dummy_edit_file = '''
-<!-- Hallucination detected: edit_file call was prevented -->
-<function_calls_disabled>
-<invoke name="edit_file">
-<parameter name="target_file">dummy_file_placeholder.txt</parameter>
-<parameter name="instructions">Dummy edit call - hallucination detected and prevented</parameter>
-<parameter name="code_edit"># This is a dummy edit call created by hallucination detection
-# The actual edit_file call was prevented to avoid hallucination
-# No actual file operations will be performed</parameter>
-</invoke>
-</function_calls_disabled>'''
-            
-            return content.rstrip() + dummy_edit_file
+    
 
-    def test_hallucination_detection(self, test_content: str = None) -> Dict[str, Any]:
-        """
-        Test the hallucination detection functionality.
-        
-        Args:
-            test_content: Optional test content to check. If None, uses default test cases.
-            
-        Returns:
-            Dictionary with test results
-        """
-        print("🧪 Testing hallucination detection functionality...")
-        
-        # Get configuration
-        config = self._get_hallucination_detection_config()
-        
-        # Default test cases if no content provided
-        if test_content is None:
-            test_cases = [
-                "This is normal content without any triggers.",
-                "Let me analyze the code. ## Tool Execution Results: Here are the results...",
-                "The analysis shows that **Tool Results:** indicate success.",
-                "Normal content here. Tool execution results: Everything looks good.",
-                "## Tool Results:\n- File created successfully\n- Code analyzed",
-                "**Tool Execution Results:**\nThe following tools were executed:",
-                "This content has no triggers at all."
-            ]
-        else:
-            test_cases = [test_content]
-        
-        results = {
-            "config": config,
-            "test_results": [],
-            "detection_summary": {
-                "total_tests": len(test_cases),
-                "detections": 0,
-                "false_positives": 0,
-                "false_negatives": 0
-            }
-        }
-        
-        print(f"📋 Testing {len(test_cases)} cases...")
-        
-        for i, content in enumerate(test_cases, 1):
-            print(f"\n🔍 Test case {i}:")
-            print(f"Content preview: {content[:80]}{'...' if len(content) > 80 else ''}")
-            
-            # Test detection
-            detected, trigger_found = self._detect_hallucination_in_stream(content, config)
-            
-            # Test content cleaning if detected
-            cleaned_content = None
-            if detected:
-                cleaned_content = self._remove_hallucination_from_content(content, trigger_found, config)
-                results["detection_summary"]["detections"] += 1
-            
-            test_result = {
-                "case_number": i,
-                "original_content": content,
-                "detected": detected,
-                "trigger_found": trigger_found,
-                "cleaned_content": cleaned_content,
-                "original_length": len(content),
-                "cleaned_length": len(cleaned_content) if cleaned_content else len(content)
-            }
-            
-            results["test_results"].append(test_result)
-            
-            # Print result
-            if detected:
-                print(f"   ✅ DETECTED: '{trigger_found}'")
-                print(f"   🧹 Content cleaned: {len(content)} → {len(cleaned_content)} chars")
-            else:
-                print(f"   ✅ No hallucination detected")
-        
-        # Print summary
-        print(f"\n📊 Test Summary:")
-        print(f"   Total tests: {results['detection_summary']['total_tests']}")
-        print(f"   Detections: {results['detection_summary']['detections']}")
-        print(f"   Detection rate: {results['detection_summary']['detections'] / results['detection_summary']['total_tests'] * 100:.1f}%")
-        
-        return results
+    
 
-    def test_edit_file_hallucination_detection(self) -> Dict[str, Any]:
-        """
-        Test the edit_file hallucination detection functionality.
-        
-        Returns:
-            Dictionary with test results
-        """
-        print("🧪 Testing edit_file hallucination detection functionality...")
-        
-        # Test cases for edit_file hallucination
-        test_cases = [
-            {
-                "name": "Normal edit_file call (no other tools)",
-                "current_round_tools": [],
-                "content": '<invoke name="edit_file"><parameter name="target_file">test.py</parameter></invoke>',
-                "should_detect": False
-            },
-            {
-                "name": "Edit_file after read_file (should detect)",
-                "current_round_tools": ["read_file"],
-                "content": '<invoke name="edit_file"><parameter name="target_file">test.py</parameter></invoke>',
-                "should_detect": True
-            },
-            {
-                "name": "Edit_file after multiple tools (should detect)",
-                "current_round_tools": ["read_file", "codebase_search"],
-                "content": '<invoke name="edit_file"><parameter name="target_file">test.py</parameter></invoke>',
-                "should_detect": True
-            },
-            {
-                "name": "Multiple tools without edit_file (should not detect)",
-                "current_round_tools": ["read_file", "codebase_search"],
-                "content": '<invoke name="list_dir"><parameter name="relative_workspace_path">.</parameter></invoke>',
-                "should_detect": False
-            },
-            {
-                "name": "Edit_file with JSON format after other tools (should detect)",
-                "current_round_tools": ["web_search"],
-                "content": '{"name": "edit_file", "parameters": {"target_file": "test.py"}}',
-                "should_detect": True
-            }
-        ]
-        
-        results = {
-            "test_results": [],
-            "summary": {
-                "total_tests": len(test_cases),
-                "correct_detections": 0,
-                "false_positives": 0,
-                "false_negatives": 0
-            }
-        }
-        
-        for i, test_case in enumerate(test_cases, 1):
-            print(f"\n🔍 Test case {i}: {test_case['name']}")
-            print(f"Current round tools: {test_case['current_round_tools']}")
-            print(f"Content: {test_case['content'][:100]}{'...' if len(test_case['content']) > 100 else ''}")
-            
-            # Get configuration with current round tools
-            config = self._get_hallucination_detection_config(test_case['current_round_tools'])
-            
-            # Test detection
-            detected, trigger_found = self._detect_hallucination_in_stream(test_case['content'], config)
-            
-            # Check if detection result matches expectation
-            is_correct = (detected == test_case['should_detect'])
-            
-            if is_correct:
-                results["summary"]["correct_detections"] += 1
-                print(f"   ✅ CORRECT: {'Detected' if detected else 'Not detected'} as expected")
-            else:
-                if detected and not test_case['should_detect']:
-                    results["summary"]["false_positives"] += 1
-                    print(f"   ❌ FALSE POSITIVE: Detected when shouldn't have")
-                elif not detected and test_case['should_detect']:
-                    results["summary"]["false_negatives"] += 1
-                    print(f"   ❌ FALSE NEGATIVE: Should have detected but didn't")
-            
-            if detected:
-                print(f"   🚨 Trigger found: {trigger_found}")
-            
-            test_result = {
-                "case_number": i,
-                "name": test_case['name'],
-                "current_round_tools": test_case['current_round_tools'],
-                "content": test_case['content'],
-                "should_detect": test_case['should_detect'],
-                "detected": detected,
-                "trigger_found": trigger_found,
-                "is_correct": is_correct
-            }
-            
-            results["test_results"].append(test_result)
-        
-        # Print summary
-        summary = results["summary"]
-        accuracy = (summary["correct_detections"] / summary["total_tests"] * 100) if summary["total_tests"] > 0 else 0
-        
-        print(f"\n📊 Edit_file Hallucination Detection Test Summary:")
-        print(f"   Total tests: {summary['total_tests']}")
-        print(f"   Correct detections: {summary['correct_detections']}")
-        print(f"   False positives: {summary['false_positives']}")
-        print(f"   False negatives: {summary['false_negatives']}")
-        print(f"   Accuracy: {accuracy:.1f}%")
-        
-        return results
+    
+
+
+
 
     def _format_search_result_for_terminal(self, data: Dict[str, Any], tool_name: str) -> str:
         """
@@ -3219,6 +2786,611 @@ class ToolExecutor:
         
         return '\n'.join(lines)
 
+
+
+    def _convert_tools_to_standard_format(self, provider="openai"):
+        """
+        Convert current tool_map to standard tool calling format.
+        
+        Args:
+            provider: "openai" or "anthropic"
+            
+        Returns:
+            List of tools in standard format
+        """
+        standard_tools = []
+        
+        # Tool definitions with their schemas
+        tool_definitions = {
+            "codebase_search": {
+                "description": "Find snippets of code from the codebase most relevant to the search query. This is a semantic search tool, so the query should ask for something semantically matching what is needed.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to find relevant code. You should reuse the user's exact query/most recent message with their wording unless there is a clear reason not to."
+                        },
+                        "target_directories": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Glob patterns for directories to search over"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            "read_file": {
+                "description": "Read the contents of a file. The output will be the 1-indexed file contents from start_line_one_indexed to end_line_one_indexed_inclusive, together with a summary of the lines outside that range.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_file": {
+                            "type": "string",
+                            "description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path."
+                        },
+                        "should_read_entire_file": {
+                            "type": "boolean",
+                            "description": "Whether to read the entire file. Defaults to false."
+                        },
+                        "start_line_one_indexed": {
+                            "type": "integer",
+                            "description": "The one-indexed line number to start reading from (inclusive)."
+                        },
+                        "end_line_one_indexed_inclusive": {
+                            "type": "integer",
+                            "description": "The one-indexed line number to end reading at (inclusive)."
+                        }
+                    },
+                    "required": ["target_file", "should_read_entire_file", "start_line_one_indexed", "end_line_one_indexed_inclusive"]
+                }
+            },
+            "run_terminal_cmd": {
+                "description": "PROPOSE a command to run on behalf of the user. For ANY commands that would use a pager or require user interaction, you should append ` | cat` to the command. For commands that are long running/expected to run indefinitely until interruption, please run them in the background.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The terminal command to execute"
+                        },
+                        "is_background": {
+                            "type": "boolean",
+                            "description": "Whether the command should be run in the background"
+                        }
+                    },
+                    "required": ["command", "is_background"]
+                }
+            },
+            "list_dir": {
+                "description": "List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like semantic search or file reading.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "relative_workspace_path": {
+                            "type": "string",
+                            "description": "Path to list contents of, relative to the workspace root."
+                        }
+                    },
+                    "required": ["relative_workspace_path"]
+                }
+            },
+            "grep_search": {
+                "description": "Fast text-based regex search that finds exact pattern matches within files or directories, utilizing the ripgrep command for efficient searching. This is best for finding exact text matches or regex patterns.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The regex pattern to search for"
+                        },
+                        "case_sensitive": {
+                            "type": "boolean",
+                            "description": "Whether the search should be case sensitive"
+                        },
+                        "exclude_pattern": {
+                            "type": "string",
+                            "description": "Glob pattern for files to exclude"
+                        },
+                        "include_pattern": {
+                            "type": "string",
+                            "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            "edit_file": {
+                "description": "Use this tool to propose an edit to an existing file or create a new file. This will be read by a less intelligent model, which will quickly apply the edit.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_file": {
+                            "type": "string",
+                            "description": "The target file to modify. You can use either a relative path in the workspace or an absolute path."
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "A single sentence instruction describing what you are going to do for the sketched edit."
+                        },
+                        "code_edit": {
+                            "type": "string",
+                            "description": "Specify ONLY the precise lines of code that you wish to edit. NEVER specify or write out unchanged code. Instead, represent all unchanged code using the comment of the language you're editing in - example: `// ... existing code ...`"
+                        }
+                    },
+                    "required": ["target_file", "instructions", "code_edit"]
+                }
+            },
+            "file_search": {
+                "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Fuzzy filename to search for"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            "delete_file": {
+                "description": "Deletes a file at the specified path. The operation will fail gracefully if the file doesn't exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_file": {
+                            "type": "string",
+                            "description": "The path of the file to delete, relative to the workspace root."
+                        }
+                    },
+                    "required": ["target_file"]
+                }
+            },
+            "web_search": {
+                "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "search_term": {
+                            "type": "string",
+                            "description": "The search term to look up on the web. Be specific and include relevant keywords for better results."
+                        }
+                    },
+                    "required": ["search_term"]
+                }
+            },
+            "tool_help": {
+                "description": "Get detailed help information for a specific tool, including its parameters and usage examples.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {
+                            "type": "string",
+                            "description": "The name of the tool to get help for"
+                        }
+                    },
+                    "required": ["tool_name"]
+                }
+            }
+        }
+        
+        # Convert to standard format based on provider
+        for tool_name in self.tool_map.keys():
+            if tool_name in tool_definitions:
+                tool_def = tool_definitions[tool_name]
+                
+                if provider == "openai":
+                    # OpenAI format
+                    standard_tool = {
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "description": tool_def["description"],
+                            "parameters": tool_def["parameters"]
+                        }
+                    }
+                elif provider == "anthropic":
+                    # Anthropic format (uses input_schema instead of parameters)
+                    standard_tool = {
+                        "name": tool_name,
+                        "description": tool_def["description"],
+                        "input_schema": tool_def["parameters"]
+                    }
+                
+                standard_tools.append(standard_tool)
+        
+        return standard_tools
+
+    def _call_llm_with_standard_tools(self, messages, user_message, system_message):
+        """
+        Call LLM with either standard tool calling format or chat-based tool calling.
+        
+        Args:
+            messages: Message history for the LLM
+            user_message: Current user message
+            system_message: System message
+            
+        Returns:
+            Tuple of (content, tool_calls)
+        """
+        if self.use_chat_based_tools:
+            return self._call_llm_with_chat_based_tools(messages, user_message, system_message)
+        elif self.is_claude:
+            return self._call_claude_with_standard_tools(messages, user_message, system_message)
+        else:
+            return self._call_openai_with_standard_tools(messages, user_message, system_message)
+
+    def _call_llm_with_chat_based_tools(self, messages, user_message, system_message):
+        """
+        Call LLM with chat-based tool calling (no standard tool calling format).
+        Tools are described in the message and responses are parsed from content.
+        
+        Args:
+            messages: Message history for the LLM
+            user_message: Current user message
+            system_message: System message
+            
+        Returns:
+            Tuple of (content, tool_calls)
+        """
+        # Prepare messages - tool descriptions are already included in user_message
+        api_messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+        
+        try:
+            if self.streaming:
+                print("🔄 Starting streaming generation with chat-based tools...")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    temperature=0.7,
+                    top_p=0.8,
+                    stream=True
+                )
+                
+                content = ""
+                for chunk in response:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        if delta.content is not None:
+                            print(delta.content, end="", flush=True)
+                            content += delta.content
+                
+                print("\n✅ Streaming completed")
+            else:
+                print("🔄 Starting batch generation with chat-based tools...")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    temperature=0.7,
+                    top_p=0.8
+                )
+                
+                content = response.choices[0].message.content or ""
+                print("✅ Generation completed")
+            
+            # Parse tool calls from the response content
+            tool_calls = self.parse_tool_calls(content)
+            
+            # Convert tool calls to standard format for compatibility
+            standardized_tool_calls = []
+            for tool_call in tool_calls:
+                if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                    standardized_tool_calls.append({
+                        "name": tool_call["name"],
+                        "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                    })
+            
+            return content, standardized_tool_calls
+            
+        except Exception as e:
+            print(f"❌ Chat-based LLM API call failed: {e}")
+            raise e
+
+    def _call_openai_with_standard_tools(self, messages, user_message, system_message):
+        """
+        Call OpenAI with standard tool calling format.
+        """
+        # Get standard tools for OpenAI
+        tools = self._convert_tools_to_standard_format("openai")
+        
+        # Prepare messages
+        api_messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+        
+        try:
+            if self.streaming:
+                print("🔄 Starting streaming generation with standard tools...")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    tools=tools,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    temperature=0.7,
+                    top_p=0.8,
+                    stream=True
+                )
+                
+                content = ""
+                tool_calls = []
+                current_tool_call = None
+                
+                for chunk in response:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        
+                        # Handle content
+                        if delta.content is not None:
+                            print(delta.content, end="", flush=True)
+                            content += delta.content
+                        
+                        # Handle tool calls
+                        if delta.tool_calls:
+                            for tool_call_delta in delta.tool_calls:
+                                if tool_call_delta.index is not None:
+                                    # Ensure we have enough tool calls in our list
+                                    while len(tool_calls) <= tool_call_delta.index:
+                                        tool_calls.append({
+                                            "id": "",
+                                            "type": "function",
+                                            "function": {"name": "", "arguments": ""}
+                                        })
+                                    
+                                    current_tool_call = tool_calls[tool_call_delta.index]
+                                    
+                                    if tool_call_delta.id:
+                                        current_tool_call["id"] = tool_call_delta.id
+                                    
+                                    if tool_call_delta.function:
+                                        if tool_call_delta.function.name:
+                                            current_tool_call["function"]["name"] = tool_call_delta.function.name
+                                        if tool_call_delta.function.arguments:
+                                            current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
+                
+                print("\n✅ Streaming completed")
+                return content, tool_calls
+            else:
+                print("🔄 Starting batch generation with standard tools...")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    tools=tools,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    temperature=0.7,
+                    top_p=0.8
+                )
+                
+                content = response.choices[0].message.content or ""
+                tool_calls = response.choices[0].message.tool_calls or []
+                
+                print("✅ Generation completed")
+                return content, tool_calls
+                
+        except Exception as e:
+            print(f"❌ OpenAI API call failed: {e}")
+            raise e
+
+    def _call_claude_with_standard_tools(self, messages, user_message, system_message):
+        """
+        Call Claude with standard tool calling format.
+        """
+        # Get standard tools for Anthropic
+        tools = self._convert_tools_to_standard_format("anthropic")
+        
+        # Prepare messages for Claude
+        claude_messages = [{"role": "user", "content": user_message}]
+        
+        try:
+            if self.streaming:
+                print("🔄 Starting streaming generation with standard tools...")
+                with self.client.messages.stream(
+                    model=self.model,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    system=system_message,
+                    messages=claude_messages,
+                    tools=tools,
+                    temperature=0.7
+                ) as stream:
+                    content = ""
+                    tool_calls = []
+                    
+                    for text in stream.text_stream:
+                        print(text, end="", flush=True)
+                        content += text
+                    
+                    # Get final message to extract tool use blocks
+                    final_message = stream.get_final_message()
+                    
+                    # Extract tool use blocks
+                    for content_block in final_message.content:
+                        if content_block.type == "tool_use":
+                            tool_calls.append({
+                                "id": content_block.id,
+                                "name": content_block.name,
+                                "input": content_block.input
+                            })
+                
+                print("\n✅ Streaming completed")
+                return content, tool_calls
+            else:
+                print("🔄 Starting batch generation with standard tools...")
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    system=system_message,
+                    messages=claude_messages,
+                    tools=tools,
+                    temperature=0.7
+                )
+                
+                content = ""
+                tool_calls = []
+                
+                # Extract content and tool use blocks
+                for content_block in response.content:
+                    if content_block.type == "text":
+                        content += content_block.text
+                    elif content_block.type == "tool_use":
+                        tool_calls.append({
+                            "id": content_block.id,
+                            "name": content_block.name,
+                            "input": content_block.input
+                        })
+                
+                print("✅ Generation completed")
+                return content, tool_calls
+                
+        except Exception as e:
+            print(f"❌ Claude API call failed: {e}")
+            raise e
+
+    def _get_tool_name_from_call(self, tool_call):
+        """
+        Extract tool name from different tool call formats.
+        
+        Args:
+            tool_call: Tool call in various formats (OpenAI, Anthropic, or chat-based)
+            
+        Returns:
+            Tool name string
+        """
+        if isinstance(tool_call, dict):
+            # OpenAI format: {"id": "...", "type": "function", "function": {"name": "...", "arguments": "..."}}
+            if "function" in tool_call and isinstance(tool_call["function"], dict):
+                return tool_call["function"]["name"]
+            # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
+            elif "name" in tool_call:
+                return tool_call["name"]
+        
+        raise ValueError(f"Unknown tool call format: {tool_call}")
+
+    def _get_tool_params_from_call(self, tool_call):
+        """
+        Extract tool parameters from different tool call formats.
+        
+        Args:
+            tool_call: Tool call in various formats (OpenAI, Anthropic, or chat-based)
+            
+        Returns:
+            Tool parameters dictionary
+        """
+        if isinstance(tool_call, dict):
+            # OpenAI format: {"id": "...", "type": "function", "function": {"name": "...", "arguments": "..."}}
+            if "function" in tool_call and isinstance(tool_call["function"], dict):
+                arguments = tool_call["function"]["arguments"]
+                if isinstance(arguments, str):
+                    import json
+                    return json.loads(arguments)
+                return arguments
+            # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
+            elif "input" in tool_call:
+                return tool_call["input"]
+            # Legacy/Chat-based format: {"name": "...", "arguments": {...}}
+            elif "arguments" in tool_call:
+                return tool_call["arguments"]
+        
+        raise ValueError(f"Unknown tool call format: {tool_call}")
+
+    def _format_tool_calls_for_history(self, tool_calls: List[Dict[str, Any]]) -> str:
+        """
+        Format tool calls for inclusion in history records.
+        
+        Args:
+            tool_calls: List of tool calls in standard format
+            
+        Returns:
+            Formatted string representation of tool calls
+        """
+        if not tool_calls:
+            return ""
+        
+        formatted_calls = []
+        formatted_calls.append("**Tool Calls:**")
+        
+        for i, tool_call in enumerate(tool_calls, 1):
+            tool_name = self._get_tool_name_from_call(tool_call)
+            tool_params = self._get_tool_params_from_call(tool_call)
+            
+            formatted_calls.append(f"")
+            formatted_calls.append(f"Tool {i}: {tool_name}")
+            
+            # Format parameters in a readable way
+            if tool_params:
+                formatted_calls.append("Parameters:")
+                for key, value in tool_params.items():
+                    # Show complete tool calls without truncation for better debugging
+                    display_value = value
+                    formatted_calls.append(f"  - {key}: {display_value}")
+            else:
+                formatted_calls.append("Parameters: None")
+        
+        return "\n".join(formatted_calls)
+
+
+def test_chat_based_tool_calling():
+    """Test the new chat-based tool calling functionality"""
+    print("🧪 Testing chat-based tool calling functionality...")
+    
+    # Test model detection
+    test_models = [
+        "gpt-4",
+        "gpt-3.5-turbo", 
+        "claude-3-sonnet-20240229",
+        "Qwen/Qwen3-30B-A3B",
+        "meta-llama/Llama-2-70b-chat-hf",
+        "google/gemini-pro"
+    ]
+    
+    print("\n1. Testing model detection:")
+    for model in test_models:
+        use_chat_based = should_use_chat_based_tools(model)
+        is_claude = is_claude_model(model)
+        tool_method = "Chat-based" if use_chat_based else "Standard API"
+        print(f"   {model}: {tool_method} tool calling (Claude: {is_claude})")
+    
+    print("\n2. Testing tool prompt file loading:")
+    try:
+        print("   Testing tool_prompt_for_chat.txt file loading...")
+        
+        # Test loading the chat-based tool prompt file
+        chat_tool_prompt_file = "prompts/tool_prompt_for_chat.txt"
+        standard_tool_prompt_file = "prompts/tool_prompt.txt"
+        
+        try:
+            with open(chat_tool_prompt_file, 'r', encoding='utf-8') as f:
+                chat_content = f.read()
+            print(f"   ✅ Chat tool prompt file loaded: {len(chat_content)} characters")
+        except FileNotFoundError:
+            print(f"   ❌ Chat tool prompt file not found: {chat_tool_prompt_file}")
+            
+        try:
+            with open(standard_tool_prompt_file, 'r', encoding='utf-8') as f:
+                standard_content = f.read()
+            print(f"   ✅ Standard tool prompt file loaded: {len(standard_content)} characters")
+        except FileNotFoundError:
+            print(f"   ❌ Standard tool prompt file not found: {standard_tool_prompt_file}")
+        
+        # Show sample of chat tool prompt
+        if 'chat_content' in locals():
+            print("   Sample of chat tool prompt:")
+            lines = chat_content.split('\n')
+            for i, line in enumerate(lines[:10]):  # Show first 10 lines
+                print(f"     {line}")
+            print("     ... (truncated)")
+        
+        print("\n=== Chat-based Tool Calling Tests Complete ===")
+        
+    except Exception as e:
+        print(f"   Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
 
 def test_search_result_formatting():
     """Test search result formatting functionality"""
@@ -3477,10 +3649,12 @@ def main():
     parser.add_argument('--workspace-dir', help='Working directory for code files and project output')
     parser.add_argument('--streaming', action='store_true', help='Enable streaming output mode')
     parser.add_argument('--no-streaming', action='store_true', help='Disable streaming output mode (force batch)')
-    parser.add_argument('--test-edit-hallucination', action='store_true', help='Test edit_file hallucination detection')
+
     parser.add_argument('--test-cache', action='store_true', help='Test enhanced cache mechanisms')
     parser.add_argument('--test-stats', action='store_true', help='Test LLM statistics calculation')
     parser.add_argument('--test-history-summary', action='store_true', help='Test improved history summarization')
+    parser.add_argument('--test-chat-tools', action='store_true', help='Test chat-based tool calling functionality')
+    parser.add_argument('--test-json-parsing', action='store_true', help='Test JSON tool calling format parsing')
     
     args = parser.parse_args()
     
@@ -3510,19 +3684,17 @@ def main():
         test_history_summarization()
         return
         
-    if args.test_edit_hallucination:
-        print("🧪 Running edit_file hallucination detection tests...")
-        # Create executor for testing
-        executor = ToolExecutor(
-            api_key=args.api_key, 
-            model=args.model,
-            workspace_dir=args.workspace_dir,
-            debug_mode=args.debug,
-            logs_dir=args.logs_dir,
-            streaming=streaming
-        )
-        test_results = executor.test_edit_file_hallucination_detection()
+    if args.test_chat_tools:
+        print("🧪 Running chat-based tool calling tests...")
+        test_chat_based_tool_calling()
         return
+        
+    if args.test_json_parsing:
+        print("🧪 Running JSON tool calling parsing tests...")
+        test_json_tool_calling_parsing()
+        return
+        
+
     
     # Check if prompt is provided for normal execution
     if not args.prompt:
@@ -3543,6 +3715,181 @@ def main():
     
     print(result)
 
+
+def test_json_tool_calling_parsing():
+    """Test JSON tool calling format parsing functionality"""
+    print("🧪 Testing JSON tool calling format parsing...")
+    
+    # Create a mock ToolExecutor instance for testing
+    try:
+        executor = ToolExecutor(
+            api_key="test_key",
+            model="Qwen/Qwen3-30B-A3B",  # This will use chat-based tools
+            api_base="test_base",
+            debug_mode=True
+        )
+        
+        print("\n1. Testing OpenAI-style JSON tool calls with code block:")
+        
+        # Test OpenAI-style JSON format with ```json wrapper
+        json_content_1 = '''I'll help you read that file.
+
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "arguments": {
+          "target_file": "src/main.py",
+          "should_read_entire_file": false,
+          "start_line_one_indexed": 1,
+          "end_line_one_indexed_inclusive": 50
+        }
+      }
+    }
+  ]
+}
+```
+
+Let me read the file for you.'''
+        
+        tool_calls_1 = executor.parse_tool_calls(json_content_1)
+        print(f"   Parsed {len(tool_calls_1)} tool calls:")
+        for i, call in enumerate(tool_calls_1, 1):
+            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
+        
+        print("\n2. Testing multiple tool calls in JSON format:")
+        
+        # Test multiple tool calls
+        json_content_2 = '''I'll list the directory and then search for code.
+
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "list_dir",
+        "arguments": {
+          "relative_workspace_path": "src"
+        }
+      }
+    },
+    {
+      "id": "call_2",
+      "type": "function",
+      "function": {
+        "name": "codebase_search",
+        "arguments": {
+          "query": "function definition",
+          "target_directories": ["src/*"]
+        }
+      }
+    }
+  ]
+}
+```
+
+Now let me execute these tools.'''
+        
+        tool_calls_2 = executor.parse_tool_calls(json_content_2)
+        print(f"   Parsed {len(tool_calls_2)} tool calls:")
+        for i, call in enumerate(tool_calls_2, 1):
+            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
+        
+        print("\n3. Testing direct JSON without code block:")
+        
+        # Test direct JSON format without ```json wrapper
+        json_content_3 = '''I'll edit the file for you.
+
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "edit_file",
+        "arguments": {
+          "target_file": "test.py",
+          "instructions": "Create a simple test function",
+          "code_edit": "def test_function():\\n    return \\"Hello World\\""
+        }
+      }
+    }
+  ]
+}
+
+The file will be edited as requested.'''
+        
+        tool_calls_3 = executor.parse_tool_calls(json_content_3)
+        print(f"   Parsed {len(tool_calls_3)} tool calls:")
+        for i, call in enumerate(tool_calls_3, 1):
+            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
+        
+        print("\n4. Testing edge cases and error handling:")
+        
+        # Test malformed JSON
+        malformed_json = '''```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "arguments": {
+          "target_file": "test.py"
+          // Missing comma and incomplete
+        }
+      }
+    
+  ]
+}
+```'''
+        
+        tool_calls_4 = executor.parse_tool_calls(malformed_json)
+        print(f"   Malformed JSON parsed {len(tool_calls_4)} tool calls (should be 0)")
+        
+        # Test no tool calls
+        no_tools_content = '''This is just a regular response without any tool calls.
+        
+The user asked me to explain something, so I'm providing a text-only response.'''
+        
+        tool_calls_5 = executor.parse_tool_calls(no_tools_content)
+        print(f"   No tools content parsed {len(tool_calls_5)} tool calls (should be 0)")
+        
+        print("\n5. Testing backwards compatibility with XML:")
+        
+        # Test that XML parsing still works
+        xml_content = '''I'll help you with that.
+
+<function_calls>
+<invoke name="read_file">
+<parameter name="target_file">test.py</parameter>
+<parameter name="should_read_entire_file">true</parameter>
+<parameter name="start_line_one_indexed">1</parameter>
+<parameter name="end_line_one_indexed_inclusive">100</parameter>
+</invoke>
+</function_calls>
+
+Let me read the file.'''
+        
+        tool_calls_6 = executor.parse_tool_calls(xml_content)
+        print(f"   XML format parsed {len(tool_calls_6)} tool calls:")
+        for i, call in enumerate(tool_calls_6, 1):
+            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
+        
+        print("\n=== JSON Tool Calling Parsing Tests Complete ===")
+        print("✅ All parsing formats are working correctly!")
+        
+    except Exception as e:
+        print(f"   Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

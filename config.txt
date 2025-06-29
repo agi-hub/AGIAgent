@@ -12,14 +12,14 @@ LANG=zh
 # SiliconFlow API configuration 
 # api_key=your key
 # api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen2.5-72B-Instruct-128K
+# model=Qwen/Qwen3-8B
 # model=Qwen/Qwen3-30B-A3B
 # model=Qwen/Qwen2.5-7B-Instruct
 # max_tokens=4096
 
 
 # Anthropic models
-# api_key= your key
+# api_key=your key
 # api_base=https://api.openai-proxy.org/anthropic
 # model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
@@ -127,7 +127,7 @@ summary_report=False
 # When enabled, the search results will be analyzed and summarized by the large model
 # providing detailed individual webpage analysis and synthesis across all sources
 # Default: True (enabled for better user experience)
-web_search_summary=True
+web_search_summary=False
 
 # Web search summary usage recommendations:
 # 1. Enable web_search_summary=True for comprehensive analysis of search results
