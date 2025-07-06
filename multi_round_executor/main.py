@@ -24,6 +24,7 @@ Main entry point for the multi-round task executor
 import os
 import argparse
 from .executor import MultiRoundTaskExecutor
+from tools.print_system import print_system, print_current
 
 
 def main():
@@ -51,7 +52,7 @@ def main():
     
     # Check if CSV file exists
     if not os.path.exists(args.csv_file):
-        print(f"Error: File not found {args.csv_file}")
+        print_current(f"Error: File not found {args.csv_file}")
         return 1
     
     # Determine workspace directory
@@ -62,7 +63,7 @@ def main():
         csv_basename = os.path.splitext(os.path.basename(args.csv_file))[0]
         workspace_dir = f"{csv_basename}_workspace"
     
-    print(f"📁 Workspace directory will be set to: {workspace_dir}")
+    print_current(f"📁 Workspace directory will be set to: {workspace_dir}")
     
     # Create and run executor
     executor = MultiRoundTaskExecutor(
@@ -87,10 +88,10 @@ def main():
             return 1
             
     except KeyboardInterrupt:
-        print("\n⚠️ Execution interrupted by user")
+        print_current("\n⚠️ Execution interrupted by user")
         return 130
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print_current(f"\n❌ Unexpected error: {e}")
         return 1
 
 

@@ -23,6 +23,7 @@ Task completion checker for detecting task completion flags
 from typing import List, Dict, Any
 
 from .config import TASK_COMPLETION_KEYWORDS
+from tools.print_system import print_system, print_current
 
 
 class TaskChecker:
@@ -32,6 +33,7 @@ class TaskChecker:
     def check_task_completion(result: str) -> bool:
         """
         Check if the large model response contains task completion flag
+        Only triggers when a line starts with TASK_COMPLETED or **TASK_COMPLETED
         
         Args:
             result: Large model response text
@@ -39,17 +41,42 @@ class TaskChecker:
         Returns:
             Whether task completion flag is detected
         """
-        # Check if task completion flag is included
-        if "TASK_COMPLETED:" in result:
-            # Extract completion description
-            try:
-                completion_part = result.split("TASK_COMPLETED:")[1].strip()
-                completion_desc = completion_part.split('\n')[0].strip()
-                print(f"🎉 Task completion flag detected: {completion_desc}")
-                return True
-            except Exception as e:
-                print(f"⚠️ Error parsing task completion flag: {e}")
-                return True  # Even if parsing fails, consider task completed
+        # Split result into lines for line-by-line checking
+        lines = result.split('\n')
+        
+        for line in lines:
+            stripped_line = line.strip()
+            
+            # Check if line starts with TASK_COMPLETED (any format)
+            if stripped_line.startswith("TASK_COMPLETED"):
+                # Extract completion description
+                try:
+                    if stripped_line.startswith("TASK_COMPLETED:"):
+                        completion_desc = stripped_line[len("TASK_COMPLETED:"):].strip()
+                        print_current(f"🎉 Task completion flag detected (colon format): {completion_desc}")
+                    else:
+                        print_current(f"🎉 Task completion flag detected (simple format)")
+                    return True
+                except Exception as e:
+                    print_current(f"⚠️ Error parsing task completion flag: {e}")
+                    return True  # Even if parsing fails, consider task completed
+            
+            # Check if line starts with **TASK_COMPLETED
+            elif stripped_line.startswith("**TASK_COMPLETED"):
+                # Extract completion description
+                try:
+                    if stripped_line.startswith("**TASK_COMPLETED**"):
+                        completion_part = stripped_line[len("**TASK_COMPLETED**"):].strip()
+                        if completion_part.startswith(":"):
+                            completion_part = completion_part[1:].strip()
+                        completion_desc = completion_part
+                        print_current(f"🎉 Task completion flag detected (star format): {completion_desc}")
+                    else:
+                        print_current(f"🎉 Task completion flag detected (star format)")
+                    return True
+                except Exception as e:
+                    print_current(f"⚠️ Error parsing task completion flag: {e}")
+                    return True  # Even if parsing fails, consider task completed
         
         return False
     

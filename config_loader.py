@@ -42,7 +42,7 @@ def load_config(config_file: str = "config.txt", verbose: bool = False) -> Dict[
             line_number = 0
             for line in f:
                 line_number += 1
-                original_line = line.rstrip('\n\r')  # 保留原始行用于调试
+                original_line = line.rstrip('\n\r')  # Keep original line for debugging
                 line = line.strip()
                 
                 # 跳过空行
@@ -304,7 +304,7 @@ def get_web_content_truncation_length(config_file: str = "config.txt") -> int:
             print(f"Warning: Invalid web_content_truncation_length value '{web_truncation_str}' in config file, must be an integer, using default 50000")
             return 50000
     
-    # 如果没有设置，则使用主截断长度的 5 倍，但不少于50000
+    # If not set, use 5 times the main truncation length, but not less than 50000
     main_truncation = get_truncation_length(config_file)
     return max(50000, main_truncation * 5)
 
@@ -498,4 +498,71 @@ def get_web_search_summary(config_file: str = "config.txt") -> bool:
         return False
     else:
         print(f"Warning: Invalid web_search_summary value '{web_summary_str}' in config file, using default True")
+        return True
+
+def get_multi_agent(config_file: str = "config.txt") -> bool:
+    """
+    Get multi-agent configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether multi-agent mode is enabled (default: True)
+    """
+    config = load_config(config_file)
+    multi_agent_str = config.get('multi_agent', 'True').lower()
+    
+    # Convert string to boolean
+    if multi_agent_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif multi_agent_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to True if invalid value
+        return True
+
+def get_enable_jieba(config_file: str = "config.txt") -> bool:
+    """
+    Get jieba Chinese segmentation configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether jieba Chinese segmentation is enabled (default: False)
+    """
+    config = load_config(config_file)
+    enable_jieba_str = config.get('enable_jieba', 'False').lower()
+    
+    # Convert string to boolean
+    if enable_jieba_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif enable_jieba_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to False if invalid value
+        return False
+
+def get_tool_calling_format(config_file: str = "config.txt") -> bool:
+    """
+    Get tool calling format configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to use standard tool calling (True) or chat-based tool calling (False)
+        Default: True (use standard tool calling when available)
+    """
+    config = load_config(config_file)
+    tool_calling_format_str = config.get('Tool_calling_format', 'True').lower()
+    
+    # Convert string to boolean
+    if tool_calling_format_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif tool_calling_format_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to True if invalid value
         return True

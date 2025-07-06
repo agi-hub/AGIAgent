@@ -27,6 +27,8 @@ from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
 from config_loader import get_model, get_truncation_length, get_summary_history
+from tools.print_system import print_manager, print_current
+from tools.debug_system import track_operation, finish_operation
 from .config import (
     DEFAULT_SUBTASK_LOOPS, DEFAULT_LOGS_DIR, DEFAULT_MODEL,
     DEFAULT_DETAILED_SUMMARY, extract_session_timestamp
@@ -46,7 +48,7 @@ class MultiRoundTaskExecutor:
                  debug_mode: bool = False, api_key: str = None, 
                  model: str = DEFAULT_MODEL, api_base: str = None, 
                  detailed_summary: bool = DEFAULT_DETAILED_SUMMARY,
-                 interactive_mode: bool = False):
+                 interactive_mode: bool = False, streaming: bool = None):
         """
         Initialize multi-round task executor
         
@@ -60,8 +62,10 @@ class MultiRoundTaskExecutor:
             api_base: API base URL
             detailed_summary: Whether to generate detailed summary
             interactive_mode: Whether to enable interactive mode
+            streaming: Whether to use streaming output (None to use config.txt)
         """
-        self.subtask_loops = subtask_loops
+        # Ensure subtask_loops is an integer to prevent type comparison errors
+        self.subtask_loops = int(subtask_loops) if subtask_loops is not None else DEFAULT_SUBTASK_LOOPS
         self.logs_dir = logs_dir
         self.workspace_dir = workspace_dir
         self.debug_mode = debug_mode
@@ -77,18 +81,16 @@ class MultiRoundTaskExecutor:
         self.api_base = api_base
         self.detailed_summary = detailed_summary
         self.interactive_mode = interactive_mode
+        self.streaming = streaming
         self.task_summaries = []  # Store summaries of all tasks
         
         # Extract session timestamp
         session_timestamp = extract_session_timestamp(logs_dir)
-        if session_timestamp:
-            print(f"📅 Detected session timestamp: {session_timestamp}")
         
         # Ensure directories exist
         os.makedirs(logs_dir, exist_ok=True)
         if workspace_dir:
             os.makedirs(workspace_dir, exist_ok=True)
-            print(f"📁 Workspace directory created: {workspace_dir}")
         
         # Initialize tool executor
         self.executor = ToolExecutor(
@@ -99,7 +101,8 @@ class MultiRoundTaskExecutor:
             debug_mode=debug_mode,
             logs_dir=logs_dir,
             session_timestamp=session_timestamp,
-            interactive_mode=interactive_mode
+            interactive_mode=interactive_mode,
+            streaming=streaming
         )
         
         # Initialize module components
@@ -114,21 +117,21 @@ class MultiRoundTaskExecutor:
     
     def _print_configuration(self):
         """Print executor configuration"""
-        # print(f"\n📋 Task executor configuration:")  # Commented out to reduce terminal noise
-        # print(f"   Subtask execution rounds: {self.subtask_loops}")  # Commented out to reduce terminal noise
-        # print(f"   Log directory: {self.logs_dir}")  # Commented out to reduce terminal noise
+        # print_current(f"\n📋 Task executor configuration:")  # Commented out to reduce terminal noise
+        # print_current(f"   Subtask execution rounds: {self.subtask_loops}")  # Commented out to reduce terminal noise
+        # print_current(f"   Log directory: {self.logs_dir}")  # Commented out to reduce terminal noise
         # if self.workspace_dir:
-        #     print(f"   Workspace directory: {self.workspace_dir}")  # Commented out to reduce terminal noise
+        #     print_current(f"   Workspace directory: {self.workspace_dir}")  # Commented out to reduce terminal noise
         # if self.debug_mode:
-        #     print(f"   DEBUG mode: Enabled")  # Commented out to reduce terminal noise
+        #     print_current(f"   DEBUG mode: Enabled")  # Commented out to reduce terminal noise
         # if self.detailed_summary:
-        #     print(f"   Detailed summary: Enabled (retain more technical information)")  # Commented out to reduce terminal noise
+        #     print_current(f"   Detailed summary: Enabled (retain more technical information)")  # Commented out to reduce terminal noise
         # else:
-        #     print(f"   Detailed summary: Disabled (use simplified summary)")  # Commented out to reduce terminal noise
+        #     print_current(f"   Detailed summary: Disabled (use simplified summary)")  # Commented out to reduce terminal noise
         
         # Print history summarization status
         # summary_history_enabled = get_summary_history()
-        # print(f"   History Summarization: {'✅ Enabled' if summary_history_enabled else '❌ Disabled'}")  # Commented out to reduce terminal noise
+        # print_current(f"   History Summarization: {'✅ Enabled' if summary_history_enabled else '❌ Disabled'}")  # Commented out to reduce terminal noise
         # print()  # Commented out to reduce terminal noise
         pass
     
@@ -158,11 +161,27 @@ class MultiRoundTaskExecutor:
         Returns:
             Task execution results and history
         """
-        task_id = task.get('Task ID', task.get('任务编号', ''))
-        task_name = task.get('Task Name', task.get('任务名称', ''))
-        task_desc = task.get('Task Description', task.get('任务详细描述', ''))
+        task_id = task.get('Task ID', task.get('任务编号', '')) or ''
+        task_name = task.get('Task Name', task.get('任务名称', '')) or ''
+        task_desc = task.get('Task Description', task.get('任务详细描述', '')) or ''
         
-        print(f"📋 Starting task execution [{task_index + 1}/{total_tasks}] - Task{task_id}: {task_name}")
+        # 🔧 Set agent_id at the beginning of task execution
+        from tools.print_system import get_agent_id, set_agent_id
+        current_agent_id = get_agent_id()
+        if not current_agent_id and task_id and 'agent' in task_id.lower():
+            # If agent_id not set but task_id contains agent, set it
+            if task_id.startswith('agent_'):
+                set_agent_id(task_id)
+                print_current(f"🏷️ Set agent ID from task_id: {task_id}")
+            else:
+                import re
+                agent_match = re.search(r'agent[_\-]?\d+', task_id, re.IGNORECASE)
+                if agent_match:
+                    set_agent_id(agent_match.group())
+                    print_current(f"🏷️ Set agent ID from task_id pattern: {agent_match.group()}")
+        
+        track_operation(f"Execute task: {task_name} ({task_id})")
+
 
         
         # Initialize task history
@@ -176,7 +195,7 @@ class MultiRoundTaskExecutor:
                 "content": context_summary,
                 "timestamp": datetime.now().isoformat()
             })
-            print(f"📚 Loaded prerequisite task intelligent summary")
+            print_current(f"📚 Loaded prerequisite task intelligent summary")
         
         # Add legacy task summaries as backup
         if self.task_summaries and not previous_tasks_summary:
@@ -189,7 +208,7 @@ class MultiRoundTaskExecutor:
                 "content": context_summary,
                 "timestamp": datetime.now().isoformat()
             })
-            print(f"📚 Loaded {len(self.task_summaries)} prerequisite task summaries (basic mode)")
+            print_current(f"📚 Loaded {len(self.task_summaries)} prerequisite task summaries (basic mode)")
         
         # Execute multi-round task
         task_history = self._execute_task_rounds(task_id, task_name, task_desc, task_history)
@@ -197,7 +216,7 @@ class MultiRoundTaskExecutor:
         # Check if user interrupted execution
         user_interrupted = any(record.get("user_interrupted", False) for record in task_history)
         if user_interrupted:
-            print(f"🛑 Task {task_id} execution stopped by user")
+            print_current(f"🛑 Task {task_id} execution stopped by user")
             return {
                 "task_id": task_id,
                 "task_name": task_name,
@@ -209,11 +228,13 @@ class MultiRoundTaskExecutor:
         # Check if task was actually completed or just reached max rounds
         completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
         if completed_rounds:
-            print(f"✅ Task {task_id} execution completed successfully")
+            print_current(f"✅ Task {task_id} execution completed successfully")
             status = "completed"
         else:
-            print(f"⚠️ Task {task_id} reached maximum rounds without explicit completion")
+            print_current(f"⚠️ Task {task_id} reached maximum rounds without explicit completion")
             status = "max_rounds_reached"
+        
+        finish_operation(f"Execute task: {task_name} ({task_id})")
         
         return {
             "task_id": task_id,
@@ -243,17 +264,16 @@ class MultiRoundTaskExecutor:
         task_completed = False
         
         while task_round <= max_rounds and not task_completed:
-            #print(f"\n🔄 --- Task Round {task_round}/{max_rounds} execution ---")
+            #print_current(f"\n🔄 --- Task Round {task_round}/{max_rounds} execution ---")
             
             # Use base prompt directly - round info will be handled by _build_new_user_message
             current_prompt = base_prompt
             
             try:
-                print(f"⏳ Starting task round {task_round} execution...")
                 
-                # Prepare history for LLM - filter out error records
+                # Prepare history for LLM - include error records so model can learn from mistakes
                 history_for_llm = [record for record in task_history 
-                                 if "prompt" in record and "result" in record and not record.get("error")]
+                                 if "prompt" in record and ("result" in record or "error" in record)]
                 
                 # Check if we need to summarize history to keep it manageable
                 total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
@@ -265,7 +285,7 @@ class MultiRoundTaskExecutor:
                    total_history_length > self.executor.summary_trigger_length and \
                    len(history_for_llm) > 1:  # Only summarize if we have multiple records
                     
-                    print(f"📊 History length ({total_history_length} chars) exceeds trigger, attempting to summarize...")
+                    print_current(f"📊 History length ({total_history_length} chars) exceeds trigger, attempting to summarize...")
                     
                     # Check if we can use executor's summarization capability
                     if hasattr(self.executor, 'conversation_summarizer') and self.executor.conversation_summarizer:
@@ -308,13 +328,29 @@ class MultiRoundTaskExecutor:
                                              if not ("prompt" in record and "result" in record) or record.get("error")]
                             task_history = non_llm_records + history_for_llm
                             
-                            print(f"✅ History summarized and replaced: {total_history_length} → {len(history_summary)} chars")
+                            print_current(f"✅ History summarized and replaced: {total_history_length} → {len(history_summary)} chars")
                             
                         except Exception as e:
-                            print(f"⚠️ History summarization failed: {e}")
+                            print_current(f"⚠️ History summarization failed: {e}")
                             # Keep recent history only as fallback
                             history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
-                            print(f"📋 Using recent history subset: {len(history_for_llm)} records")
+                            print_current(f"📋 Using recent history subset: {len(history_for_llm)} records")
+                
+                # 🔧 Fix display label issue: ensure correct agent_id is set before executing subtask
+                from tools.print_system import get_agent_id, set_agent_id
+                current_agent_id = get_agent_id()
+                if current_agent_id is None:
+                    # Try to infer agent_id from task ID
+                    if task_id and task_id.startswith('agent_'):
+                        set_agent_id(task_id)
+                        print_current(f"🏷️ Set agent ID: {task_id}")
+                    elif task_id and 'agent' in task_id.lower():
+                        # Handle other possible agent ID formats
+                        import re
+                        agent_match = re.search(r'agent[_\-]?\d+', task_id, re.IGNORECASE)
+                        if agent_match:
+                            set_agent_id(agent_match.group())
+                            print_current(f"🏷️ Set agent ID: {agent_match.group()}")
                 
                 # Execute task - this will handle internal tool calling rounds
                 # The tool executor's internal rounds are separate from task rounds
@@ -327,7 +363,7 @@ class MultiRoundTaskExecutor:
                 
                 # Check if user interrupted execution
                 if result.startswith("USER_INTERRUPTED:"):
-                    print(f"🛑 User interrupted execution: {result}")
+                    print_current(f"🛑 User interrupted execution: {result}")
                     # Record the interruption
                     round_record = {
                         "task_round": task_round, 
@@ -338,7 +374,7 @@ class MultiRoundTaskExecutor:
                         "timestamp": datetime.now().isoformat()
                     }
                     task_history.append(round_record)
-                    print(f"🛑 Task execution stopped by user at task round {task_round}")
+                    print_current(f"🛑 Task execution stopped by user at task round {task_round}")
                     break
                 
                 # Check task completion
@@ -359,20 +395,18 @@ class MultiRoundTaskExecutor:
                 
 
                 
-                print(f"✅ Task round {task_round} execution completed")
+                print_current(f"✅ Task round {task_round} execution completed")
                 
-                # Update codebase
-                try:
-                    self.executor.tools.perform_incremental_update()
-                except Exception as e:
-                    print(f"⚠️ Codebase incremental update failed: {e}")
+                # 🔧 Remove synchronous incremental update call, now handled automatically by background thread
+                # Commented out original synchronous update code:
+                # try:
+                #     self.executor.tools.perform_incremental_update()
+                # except Exception as e:
+                #     print_current(f"⚠️ Codebase incremental update failed: {e}")
                 
-                # Display execution summary
-                self._display_round_summary(task_round, result)
                 
                 # Check if task is completed
                 if task_completed:
-                    print(f"🎉 Large model determined task is completed, ending task iteration early!")
                     break
                 else:
                     task_round += 1
@@ -398,12 +432,13 @@ class MultiRoundTaskExecutor:
                 error_record = {
                     "task_round": task_round,  # Changed from "round" to "task_round"
                     "prompt": current_prompt,
-                    "error": error_msg,
+                    "result": f"❌ Execution Error: {error_msg}",  # Put error in result field so LLM can see it
+                    "error": error_msg,  # Keep error field for debugging
                     "task_completed": False,
                     "timestamp": datetime.now().isoformat()
                 }
                 task_history.append(error_record)
-                print(f"❌ Task round {task_round} execution error: {e}")
+                print_manager(f"❌ Task round {task_round} execution error: {e}")
                 task_round += 1
         
         return task_history
@@ -423,14 +458,15 @@ class MultiRoundTaskExecutor:
         tool_result = ""
         llm_output = ""
         
-        if "--- Tool Execution Result ---" in result or "--- 工具执行结果 ---" in result:
-            separator = "--- Tool Execution Result ---" if "--- Tool Execution Result ---" in result else "--- 工具执行结果 ---"
+        if "--- Tool Execution Result ---" in result or "--- Tool Execution Result ---" in result:
+            separator = "--- Tool Execution Result ---"
             parts = result.split(separator)
             llm_output = parts[0].strip()
             tool_result = parts[1].strip() if len(parts) > 1 else ""
             
             # Try to parse tool name and parameters
-            tool_call = self.executor.parse_tool_call(llm_output)
+            tool_calls = self.executor.parse_tool_calls(llm_output)
+            tool_call = tool_calls[0] if tool_calls else None
             if tool_call:
                 tool_name = tool_call.get("name", "")
                 import json
@@ -453,44 +489,6 @@ class MultiRoundTaskExecutor:
             history_length=history_length
         )
     
-    def _display_round_summary(self, task_round: int, result: str):
-        """Display task round execution summary"""
-        if "--- Tool Execution Result ---" in result or "--- 工具执行结果 ---" in result:
-            # Separate LLM response and tool execution results
-            separator = "--- Tool Execution Result ---" if "--- Tool Execution Result ---" in result else "--- 工具执行结果 ---"
-            parts = result.split(separator)
-            llm_response = parts[0].strip()
-            tool_results = parts[1].strip() if len(parts) > 1 else ""
-            
-            print(f"\n📝 Task Round {task_round} response summary:")
-            # 使用配置的历史截断长度
-            truncation_length = get_truncation_length()
-            print(f"   LLM analysis: {llm_response[:truncation_length]}{'...' if len(llm_response) > truncation_length else ''}")
-            
-            if tool_results:
-                print(f"   🛠️ Tool call executed, detailed results displayed above")
-        else:
-            # Pure text response - avoid repeating the content that was just streamed
-            # Extract key completion information instead of repeating the full text
-            if "TASK_COMPLETED:" in result:
-                task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', result)
-                completion_msg = task_completed_match.group(1).strip() if task_completed_match else "Task marked as completed"
-                print(f"\n📝 Task Round {task_round} response summary: ✅ {completion_msg}")
-            else:
-                # For non-completion responses, show a brief summary
-                lines = result.strip().split('\n')
-                first_meaningful_line = next((line.strip() for line in lines if line.strip() and not line.strip().startswith('🤖')), '')
-                
-                if first_meaningful_line:
-                    # 使用配置的历史截断长度
-                    truncation_length = get_truncation_length()
-                    summary_text = first_meaningful_line[:truncation_length]
-                    if len(first_meaningful_line) > truncation_length:
-                        summary_text += "..."
-                    print(f"\n📝 Task Round {task_round} response summary: {summary_text}")
-                else:
-                    print(f"\n📝 Task Round {task_round} response summary: [Response content displayed above]")
-    
     def execute_all_tasks(self, csv_file: str) -> Dict[str, Any]:
         """
         Process todo.csv as a single comprehensive task
@@ -511,8 +509,8 @@ class MultiRoundTaskExecutor:
         except Exception as e:
             return {"error": str(e)}
         
-        print(f"\n🚀 Starting task execution")
-        print(f"📄 Task file: {csv_file}")
+        print_manager(f"\n🚀 Starting task execution")
+        print_manager(f"📄 Task file: {csv_file}")
 
         
         # Initialize execution report
@@ -548,7 +546,7 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
         }
         
         try:
-            print(f"\n🎯 Starting todo file processing")
+            print_manager(f"\n🎯 Starting todo file processing")
             
             # Execute overall task
             task_result = self.execute_single_task(task_info, 0, 1, "")
@@ -556,19 +554,19 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
             execution_report["task_history"] = task_result.get("history", [])
             execution_report["success"] = True
             
-            print(f"✅ Todo file processing completed")
+            print_manager(f"✅ Todo file processing completed")
             
         except Exception as e:
             execution_report["error"] = str(e)
             execution_report["success"] = False
-            print(f"❌ Todo file processing failed: {e}")
+            print_manager(f"❌ Todo file processing failed: {e}")
         
         # Complete execution
         execution_report["end_time"] = datetime.now().isoformat()
         execution_report["execution_summary"] = self.report_generator.generate_execution_summary(execution_report)
         
         # Save execution report
-        print(f"\n💾 Saving execution report...")
+        print_current(f"\n💾 Saving execution report...")
         self.report_generator.save_execution_report(execution_report)
         
         # Output completion information
@@ -583,37 +581,36 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
         Args:
             report: Execution report
         """
-        print("🎉 Task execution completed!")
         print(report["execution_summary"])
         
         # Check if it's the new todo file processing mode
         if "todo_file" in report:
             # New mode: process entire todo file
             if not report.get("success", False) and "error" in report:
-                print(f"\n❌ Error occurred during execution:")
-                print(f"  Error message: {report['error']}")
+                print_current(f"\n❌ Error occurred during execution:")
+                print_current(f"  Error message: {report['error']}")
             
             task_history = report.get("task_history", [])
             if task_history:
                 rounds_completed = len([h for h in task_history if isinstance(h, dict) and "task_round" in h])
-                print(f"\n📊 Execution details:")
-                print(f"  Completed rounds: {rounds_completed}")
+                print_current(f"\n📊 Execution details:")
+                print_current(f"  Completed rounds: {rounds_completed}")
                 
                 # Check if there are task completion flags
                 completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
                 if completed_rounds:
-                    print(f"  Early completion: Task completion detected in round {completed_rounds[0].get('task_round', '?')}")
+                    print_current(f"  Early completion: Task completion detected in round {completed_rounds[0].get('task_round', '?')}")
                     
         else:
             # Legacy mode: compatibility support
             failed_tasks = report.get("failed_tasks", [])
             if failed_tasks:
-                print("\n❌ Failed tasks:")
+                print_current("\n❌ Failed tasks:")
                 for failed_task in failed_tasks:
-                    print(f"  - Task {failed_task['task_id']}: {failed_task['task_name']}")
-                    print(f"    Error: {failed_task['error']}")
+                    print_current(f"  - Task {failed_task['task_id']}: {failed_task['task_name']}")
+                    print_current(f"    Error: {failed_task['error']}")
         
-        print(f"\n📁 Detailed log files saved in: {self.logs_dir}/")
+        print_current(f"\n📁 Detailed log files saved in: {self.logs_dir}/")
     
     def generate_smart_summary(self, completed_tasks: List[Dict[str, Any]]) -> str:
         """
@@ -626,3 +623,14 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
             Intelligent summary text
         """
         return self.summary_generator.generate_smart_summary(completed_tasks)
+    
+    def cleanup(self):
+        """Clean up all resources and threads"""
+        try:
+
+            # Clean up ToolExecutor
+            if hasattr(self, 'executor') and self.executor:
+                self.executor.cleanup()
+            
+        except Exception as e:
+            print_current(f"⚠️ Error during MultiRoundTaskExecutor cleanup: {e}")

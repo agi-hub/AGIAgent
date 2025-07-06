@@ -16,9 +16,9 @@
 
 **edit_file**
 - `target_file` (required): File path to modify
-- `instructions` (required): Brief description of the edit
-- `code_edit` (required): Content to write, replace, insert, or append
 - `edit_mode` (required): Editing mode - "replace_lines", "insert_lines", "append", "full_replace"
+- `code_edit` (required): Content to write, replace, insert, or append
+- `instructions` (optional): Brief description of the edit
 - `start_line` (optional): Starting line number for replace_lines mode (1-indexed)
 - `end_line` (optional): Ending line number for replace_lines mode (1-indexed)
 - `insert_position` (optional): Line number to insert before for insert_lines mode (1-indexed)

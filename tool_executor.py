@@ -24,42 +24,75 @@ import sys
 import datetime
 import platform
 import subprocess
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 from pathlib import Path
 import requests
 import hashlib
 from openai import OpenAI
 from tools import Tools
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary
+from tools.print_system import print_system, print_manager, set_agent_id, print_current, streaming_context
+from tools.debug_system import track_operation, finish_operation
+from tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
+from tools.mcp_client import get_mcp_client, initialize_mcp_client, safe_cleanup_mcp_client
+from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
+import base64
+import mimetypes
+
+# Note: JSON parsing utilities now imported below with other utils
+
+# Import get_info utilities
+from utils.get_info import (
+    get_ip_location_info,
+    get_system_environment_info,
+    get_workspace_info,
+    format_file_size,
+    get_file_language,
+)
+
+# Import cache efficiency utilities
+from utils.cacheeff import (
+    analyze_cache_potential,
+    estimate_cache_efficiency,
+    estimate_token_count,
+)
+
+# Import parse utilities
+from utils.parse import (
+    fix_json_escapes,
+    smart_escape_quotes_in_json_values,
+    rebuild_json_structure,
+    fix_long_json_with_code,
+    parse_python_params_manually,
+    convert_parameter_value,
+    generate_tools_prompt_from_json,
+)
+
+# Note: test_api_connection imported dynamically to avoid circular imports
 
 # Check if the model is a Claude model
 def is_claude_model(model: str) -> bool:
     """Check if the model name is a Claude model"""
     return model.lower().startswith('claude')
 
-# Check if the model should use chat-based tool calling
+
 def should_use_chat_based_tools(model: str) -> bool:
     """
-    Check if the model should use chat-based tool calling instead of standard tool calling.
+    Determine if a model should use chat-based tool calling based on the configuration.
     
     Args:
-        model: Model name to check
+        model: The model name
         
     Returns:
-        True if chat-based tool calling should be used, False for standard tool calling
+        Boolean indicating whether to use chat-based tool calling
     """
-    model_lower = model.lower()
+    # Load tool calling format configuration from config.txt
+    # True = standard tool calling, False = chat-based tool calling
+    tool_calling_format = get_tool_calling_format()
     
-    # Use standard tool calling for:
-    # 1. Claude models (they support standard tool calling)
-    # 2. OpenAI GPT models (gpt-3.5, gpt-4, etc.)
-    if (model_lower.startswith('claude') or 
-        model_lower.startswith('gpt-')):
-        return False
-    
-    # Use chat-based tool calling for all other models
-    # This includes models like Qwen, Llama, Gemini, etc.
-    return True
+    # Return the inverse of tool_calling_format
+    # use_chat_based_tools is the inverse of tool_calling_format
+    return not tool_calling_format
+
 
 # Dynamically import Anthropic
 def get_anthropic_client():
@@ -68,58 +101,10 @@ def get_anthropic_client():
         from anthropic import Anthropic
         return Anthropic
     except ImportError:
-        print("❌ Anthropic library not installed, please run: pip install anthropic")
+        print_current("❌ Anthropic library not installed, please run: pip install anthropic")
         raise ImportError("Anthropic library not installed")
 
-def get_ip_location_info():
-    """
-    Get IP geolocation information
-    
-    Returns:
-        Dict containing IP and location information
-    """
-    try:
-        # Try to get public IP and location info
-        response = requests.get('http://ipapi.co/json/', timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                'ip': data.get('ip', 'Unknown'),
-                'city': data.get('city', 'Unknown'),
-                'region': data.get('region', 'Unknown'),
-                'country': data.get('country_name', 'Unknown'),
-                'country_code': data.get('country_code', 'Unknown'),
-                'timezone': data.get('timezone', 'Unknown')
-            }
-    except Exception as e:
-        print(f"Warning: Could not retrieve IP location info: {e}")
-    
-    # Fallback: try alternative service
-    try:
-        response = requests.get('https://ipinfo.io/json', timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            location = data.get('loc', '').split(',')
-            return {
-                'ip': data.get('ip', 'Unknown'),
-                'city': data.get('city', 'Unknown'),
-                'region': data.get('region', 'Unknown'),
-                'country': data.get('country', 'Unknown'),
-                'country_code': data.get('country', 'Unknown'),
-                'timezone': data.get('timezone', 'Unknown')
-            }
-    except Exception as e:
-        print(f"Warning: Could not retrieve IP location info from fallback: {e}")
-    
-    # Final fallback: return unknown values
-    return {
-        'ip': 'Unknown',
-        'city': 'Unknown',
-        'region': 'Unknown',
-        'country': 'Unknown',
-        'country_code': 'Unknown',
-        'timezone': 'Unknown'
-    }
+
 
 class ToolExecutor:
     def __init__(self, api_key: str = None, 
@@ -181,6 +166,9 @@ class ToolExecutor:
         # Load simplified search output configuration from config.txt
         self.simplified_search_output = get_simplified_search_output()
         
+        # Load multi-agent mode configuration from config.txt
+        self.multi_agent = get_multi_agent()
+        
         self.workspace_dir = workspace_dir or os.getcwd()
         self.debug_mode = debug_mode
         self.logs_dir = logs_dir
@@ -190,33 +178,40 @@ class ToolExecutor:
         # Check if it's a Claude model, automatically adjust api_base
         self.is_claude = is_claude_model(model)
         
-        # Check if the model should use chat-based tool calling
-        self.use_chat_based_tools = should_use_chat_based_tools(model)
+        # Load tool calling format configuration from config.txt
+        # True = standard tool calling, False = chat-based tool calling
+        tool_calling_format = get_tool_calling_format()
+        
+        # Set use_chat_based_tools based on configuration
+        # Note: use_chat_based_tools is the inverse of tool_calling_format
+        self.use_chat_based_tools = not tool_calling_format
         
         self.api_base = api_base
         
+        # Print system is ready to use
+        
         # Display tool calling method
         if self.use_chat_based_tools:
-            print(f"🔧 Tool calling method: Chat-based (tools described in messages)")
+            print_system(f"🔧 Tool calling method: Chat-based (tools described in messages)")
         else:
-            print(f"🔧 Tool calling method: Standard API tool calling")
+            print_system(f"🔧 Tool calling method: Standard API tool calling")
         
         # History summarization cache
         self.history_summary_cache = {}
         self.last_summarized_history_length = 0
         
-        # print(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
-        # print(f"   Model: {self.model}")  # Commented out to reduce terminal noise
-        # print(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
-        # print(f"   API Key: {self.api_key[:20]}...{self.api_key[-10:]}")  # Commented out to reduce terminal noise
-        # print(f"   Workspace: {self.workspace_dir}")  # Commented out to reduce terminal noise
-        # print(f"   Language: {'中文' if self.language == 'zh' else 'English'} ({self.language})")  # Commented out to reduce terminal noise
-        # print(f"   Streaming: {'✅ Enabled' if self.streaming else '❌ Disabled (Batch mode)'}")  # Commented out to reduce terminal noise
-        # print(f"   Cache Optimization: ✅ Enabled (All rounds use combined prompts for maximum cache hits)")  # Commented out to reduce terminal noise
-        # print(f"   History Summarization: {'✅ Enabled' if self.summary_history else '❌ Disabled'} (Trigger: {self.summary_trigger_length} chars, Max: {self.summary_max_length} chars)")  # Commented out to reduce terminal noise
-        # print(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects codebase_search and web_search terminal display)")  # Commented out to reduce terminal noise
+        # print_system(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
+        # print_system(f"   Model: {self.model}")  # Commented out to reduce terminal noise
+        # print_system(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
+        # print_system(f"   API Key: {self.api_key[:20]}...{self.api_key[-10:]}")  # Commented out to reduce terminal noise
+        # print_system(f"   Workspace: {self.workspace_dir}")  # Commented out to reduce terminal noise
+        # print_system(f"   Language: {'中文' if self.language == 'zh' else 'English'} ({self.language})")  # Commented out to reduce terminal noise
+        # print_system(f"   Streaming: {'✅ Enabled' if self.streaming else '❌ Disabled (Batch mode)'}")  # Commented out to reduce terminal noise
+        # print_system(f"   Cache Optimization: ✅ Enabled (All rounds use combined prompts for maximum cache hits)")  # Commented out to reduce terminal noise
+        # print_system(f"   History Summarization: {'✅ Enabled' if self.summary_history else '❌ Disabled'} (Trigger: {self.summary_trigger_length} chars, Max: {self.summary_max_length} chars)")  # Commented out to reduce terminal noise
+        # print_system(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects codebase_search and web_search terminal display)")  # Commented out to reduce terminal noise
         # if debug_mode:
-        #     print(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
+        #     print_system(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
         
         # Set up LLM client
         self._setup_llm_client()
@@ -226,6 +221,9 @@ class ToolExecutor:
         
         # Get the parent directory of workspace (typically the output directory)
         out_dir = os.path.dirname(self.workspace_dir) if self.workspace_dir else os.getcwd()
+        
+        # Store the project root directory for image path processing
+        self.project_root_dir = out_dir
         
         self.tools = Tools(
             workspace_root=self.workspace_dir,
@@ -237,6 +235,13 @@ class ToolExecutor:
             out_dir=out_dir
         )
         
+        # Initialize multi-agent tools directly if enabled
+        if self.multi_agent:
+            from tools.multiagents import MultiAgentTools
+            # 🔧 修复：传递debug_mode参数给MultiAgentTools
+            self.multi_agent_tools = MultiAgentTools(self.workspace_dir, debug_mode=self.debug_mode)
+        else:
+            self.multi_agent_tools = None
 
         
         # Initialize summary generator for conversation history summarization
@@ -244,13 +249,17 @@ class ToolExecutor:
             try:
                 from multi_round_executor.summary_generator import SummaryGenerator
                 self.conversation_summarizer = SummaryGenerator(self, detailed_summary=True)
-                # print(f"✅ Conversation history summarizer initialized")
+                # print_current(f"✅ Conversation history summarizer initialized")
             except ImportError as e:
-                print(f"⚠️ Failed to import SummaryGenerator: {e}, history summarization disabled")
+                print_system(f"⚠️ Failed to import SummaryGenerator: {e}, history summarization disabled")
                 self.conversation_summarizer = None
                 self.summary_history = False  # Disable summarization if import fails
         else:
             self.conversation_summarizer = None
+        
+        # Helper function for disabled multi-agent tools
+        def _multi_agent_disabled_error(*args, **kwargs):
+            return {"status": "error", "message": "Multi-agent functionality is disabled. Enable it in config.txt by setting multi_agent=True"}
         
         # Map of tool names to their implementation methods
         self.tool_map = {
@@ -263,8 +272,41 @@ class ToolExecutor:
             "file_search": self.tools.file_search,
             "web_search": self.tools.web_search,
             "tool_help": self.tools.tool_help,
-            "fetch_webpage_content": self.tools.fetch_webpage_content
+            "fetch_webpage_content": self.tools.fetch_webpage_content,
+            "get_background_update_status": self.tools.get_background_update_status,
+            "talk_to_user": self.tools.talk_to_user,
         }
+        
+        # Add multi-agent tools if enabled, otherwise add error handlers
+        if self.multi_agent_tools:
+            self.tool_map.update({
+                "spawn_agibot": self.multi_agent_tools.spawn_agibot,
+                "wait_for_agibot_spawns": self.multi_agent_tools.wait_for_agibot_spawns,
+                "get_agent_session_info": self.multi_agent_tools.get_agent_session_info,
+                "list_active_agents": self.multi_agent_tools.list_active_agents,
+                "debug_thread_status": self.multi_agent_tools.debug_thread_status,
+                "send_message_to_agent": self.multi_agent_tools.send_message_to_agent,
+                "broadcast_message_to_agents": self.multi_agent_tools.broadcast_message_to_agents,
+                "get_agent_messages": self.multi_agent_tools.get_agent_messages,
+                "mark_message_as_read": self.multi_agent_tools.mark_message_as_read,
+                "send_status_update_to_manager": self.multi_agent_tools.send_status_update_to_manager,
+                "send_message_to_manager": self.multi_agent_tools.send_message_to_manager,
+            })
+        else:
+            # Add error handlers for disabled multi-agent tools
+            self.tool_map.update({
+                "spawn_agibot": _multi_agent_disabled_error,
+                "wait_for_agibot_spawns": _multi_agent_disabled_error,
+                "get_agent_session_info": _multi_agent_disabled_error,
+                "list_active_agents": _multi_agent_disabled_error,
+                "debug_thread_status": _multi_agent_disabled_error,
+                "send_message_to_agent": _multi_agent_disabled_error,
+                "broadcast_message_to_agents": _multi_agent_disabled_error,
+                "get_agent_messages": _multi_agent_disabled_error,
+                "mark_message_as_read": _multi_agent_disabled_error,
+                "send_status_update_to_manager": _multi_agent_disabled_error,
+                "send_message_to_manager": _multi_agent_disabled_error,
+            })
         
         # Add plugin tools if available
         if hasattr(self.tools, 'kb_search'):
@@ -273,7 +315,28 @@ class ToolExecutor:
                 "kb_content": self.tools.kb_content,
                 "kb_body": self.tools.kb_body
             })
-            # print("🔌 Plugin tools registered: kb_search, kb_content, kb_body")
+            # print_current("🔌 Plugin tools registered: kb_search, kb_content, kb_body")
+        
+        # Initialize MCP clients - support both cli-mcp and direct MCP implementation
+        self.cli_mcp_client = get_cli_mcp_wrapper("config/mcp_servers.json")
+        self.direct_mcp_client = get_mcp_client()
+        self.cli_mcp_initialized = False
+        self.direct_mcp_initialized = False
+        
+        # Try to initialize both MCP clients synchronously if possible
+        try:
+            import asyncio
+            if not asyncio.get_event_loop().is_running():
+                # Safe to run async initialization
+                self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
+                self.direct_mcp_initialized = asyncio.run(initialize_mcp_client())
+                
+                # Add MCP tools to tool_map after successful initialization
+                if self.cli_mcp_initialized or self.direct_mcp_initialized:
+                    self._add_mcp_tools_to_map()
+        except:
+            # Will initialize later during first tool call
+            pass
         
         # Log related settings
         # Simplified logs directory path construction - always use simple "logs" structure
@@ -292,15 +355,145 @@ class ToolExecutor:
         
         # If DEBUG mode is enabled, initialize CSV logger
         if self.debug_mode:
-            # print(f"🐛 DEBUG mode enabled, LLM call records will be saved to: {self.llm_logs_dir}/llmcall.csv")
+            # print_current(f"🐛 DEBUG mode enabled, LLM call records will be saved to: {self.llm_logs_dir}/llmcall.csv")
             pass
+    
+    async def _initialize_mcp_async(self):
+        """Initialize both MCP clients asynchronously"""
+        try:
+            # Initialize cli-mcp wrapper
+            if not self.cli_mcp_initialized:
+                self.cli_mcp_initialized = await initialize_cli_mcp_wrapper("config/mcp_servers.json")
+                if self.cli_mcp_initialized:
+                    print_current("✅ cli-mcp client initialized successfully")
+                else:
+                    print_current("⚠️ cli-mcp client initialization failed")
+            
+            # Initialize direct MCP client
+            if not self.direct_mcp_initialized:
+                self.direct_mcp_initialized = await initialize_mcp_client()
+                if self.direct_mcp_initialized:
+                    print_current("✅ Direct MCP client initialized successfully")
+                else:
+                    print_current("⚠️ Direct MCP client initialization failed")
+            
+            # Add MCP tools to tool_map after initialization
+            if self.cli_mcp_initialized or self.direct_mcp_initialized:
+                self._add_mcp_tools_to_map()
+                
+        except Exception as e:
+            print_current(f"⚠️ MCP client async initialization failed: {e}")
+    
+    def _add_mcp_tools_to_map(self):
+        """Add MCP tools to the tool mapping"""
+        # Create tool source mapping table
+        if not hasattr(self, 'tool_source_map'):
+            self.tool_source_map = {}
+        
+        # Add cli-mcp tools (NPX/NPM format) - NO prefix
+        if self.cli_mcp_initialized and self.cli_mcp_client:
+            try:
+                # Get available MCP tools from cli-mcp wrapper
+                cli_mcp_tools = self.cli_mcp_client.get_available_tools()
+                
+                if cli_mcp_tools:
+                    for tool_name in cli_mcp_tools:
+                        # Create a wrapper function for each cli-mcp tool
+                        def create_cli_mcp_tool_wrapper(tool_name=tool_name):
+                            def sync_cli_mcp_tool_wrapper(**kwargs):
+                                import asyncio
+                                try:
+                                    # Call the cli-mcp wrapper
+                                    return asyncio.run(self.cli_mcp_client.call_tool(tool_name, kwargs))
+                                except Exception as e:
+                                    return {"error": f"cli-mcp tool {tool_name} call failed: {e}"}
+                            
+                            return sync_cli_mcp_tool_wrapper
+                        
+                        # Add to tool mapping WITHOUT prefix
+                        self.tool_map[tool_name] = create_cli_mcp_tool_wrapper()
+                        self.tool_source_map[tool_name] = 'cli_mcp'
+                    
+                    print_current(f"✅ Added {len(cli_mcp_tools)} cli-mcp tools to mapping: {', '.join(cli_mcp_tools)}")
+            except Exception as e:
+                print_current(f"⚠️ Failed to add cli-mcp tools to mapping: {e}")
+                self.cli_mcp_initialized = False
+        
+        # Add direct MCP client tools (SSE format) - NO prefix for SSE tools
+        if self.direct_mcp_initialized and self.direct_mcp_client:
+            try:
+                # Get available MCP tools from direct MCP client
+                direct_mcp_tools = self.direct_mcp_client.get_available_tools()
+                
+                if direct_mcp_tools:
+                    for tool_name in direct_mcp_tools:
+                        # Create a wrapper function for each direct MCP tool
+                        def create_direct_mcp_tool_wrapper(tool_name=tool_name):
+                            def sync_direct_mcp_tool_wrapper(**kwargs):
+                                import asyncio
+                                try:
+                                    # Call the direct MCP client
+                                    return asyncio.run(self.direct_mcp_client.call_tool(tool_name, kwargs))
+                                except Exception as e:
+                                    return {"error": f"Direct MCP tool {tool_name} call failed: {e}"}
+                            
+                            return sync_direct_mcp_tool_wrapper
+                        
+                        # Add to tool mapping WITHOUT prefix for SSE tools
+                        self.tool_map[tool_name] = create_direct_mcp_tool_wrapper()
+                        self.tool_source_map[tool_name] = 'direct_mcp'
+                    
+                    print_current(f"✅ Added {len(direct_mcp_tools)} SSE MCP tools to mapping: {', '.join(direct_mcp_tools)}")
+            except Exception as e:
+                print_current(f"⚠️ Failed to add direct MCP tools to mapping: {e}")
+                self.direct_mcp_initialized = False
+    
+    def cleanup(self):
+        """Clean up all resources and threads"""
+        try:
+            
+            # Cleanup cli-mcp client
+            if hasattr(self, 'cli_mcp_client') and self.cli_mcp_client:
+                try:
+                    safe_cleanup_cli_mcp_wrapper()
+                    # print_current("🔌 cli-mcp client cleanup completed")
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
+            
+            # Cleanup direct MCP client
+            if hasattr(self, 'direct_mcp_client') and self.direct_mcp_client:
+                try:
+                    safe_cleanup_mcp_client()
+                    # print_current("🔌 Direct MCP client cleanup completed")
+                except Exception as e:
+                    print_current(f"⚠️ Direct MCP client cleanup failed: {e}")
+            
+            # Cleanup tools
+            if hasattr(self, 'tools') and self.tools:
+                try:
+                    self.tools.cleanup()
+                except Exception as e:
+                    print_current(f"⚠️ Tools cleanup failed: {e}")
+            
+            # Close LLM client connections if needed
+            if hasattr(self, 'client'):
+                try:
+                    if hasattr(self.client, 'close'):
+                        self.client.close()
+                except:
+                    pass
+            
+            # print_system(f"✅ ToolExecutor cleanup completed")
+            
+        except Exception as e:
+            print_system(f"⚠️ Error during ToolExecutor cleanup: {e}")
     
     def _setup_llm_client(self):
         """
         Set up the LLM client based on the model type.
         """
         if self.is_claude:
-            # print(f"🧠 Detected Claude model, using Anthropic protocol")
+            # print_current(f"🧠 Detected Claude model, using Anthropic protocol")
             # Adjust api_base for Claude models
             if not self.api_base.endswith('/anthropic'):
                 if self.api_base.endswith('/v1'):
@@ -308,7 +501,7 @@ class ToolExecutor:
                 else:
                     self.api_base = self.api_base.rstrip('/') + '/anthropic'
             
-            # print(f" Claude API Base: {self.api_base}")
+            # print_current(f" Claude API Base: {self.api_base}")
             
             # Initialize Anthropic client
             Anthropic = get_anthropic_client()
@@ -317,7 +510,7 @@ class ToolExecutor:
                 base_url=self.api_base
             )
         else:
-            # print(f"🤖 Using OpenAI protocol")
+            # print_current(f"🤖 Using OpenAI protocol")
             # Initialize OpenAI client
             self.client = OpenAI(
                 api_key=self.api_key,
@@ -338,7 +531,7 @@ class ToolExecutor:
         # First try to get max_tokens from configuration file
         config_max_tokens = get_max_tokens()
         if config_max_tokens is not None:
-            # print(f"🔧 Using max_tokens from config: {config_max_tokens}")
+            # print_current(f"🔧 Using max_tokens from config: {config_max_tokens}")
             return config_max_tokens
         
         # Fallback to model-specific defaults
@@ -371,30 +564,10 @@ class ToolExecutor:
         elif 'claude' in model.lower():
             max_tokens = min(max_tokens, 8192)
         
-        print(f"🔧 Using default max_tokens for model {model}: {max_tokens}")
+        print_current(f"🔧 Using default max_tokens for model {model}: {max_tokens}")
         return max_tokens
     
-    def _check_command_available(self, command: str) -> bool:
-        """
-        Check if a command is available in the system.
-        
-        Args:
-            command: Command name to check
-            
-        Returns:
-            True if command is available, False otherwise
-        """
-        try:
-            import subprocess
-            # Use 'where' on Windows, 'which' on Unix-like systems
-            check_cmd = "where" if platform.system().lower() == "windows" else "which"
-            result = subprocess.run([check_cmd, command], 
-                                  capture_output=True, 
-                                  text=True, 
-                                  timeout=5)
-            return result.returncode == 0
-        except Exception:
-            return False
+
     
     def load_system_prompt(self, prompt_file: str = "prompts.txt") -> str:
         """
@@ -414,17 +587,15 @@ class ToolExecutor:
             if os.path.exists(system_prompt_file):
                 with open(system_prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read().strip()
-                print(f"✅ Loaded system prompt from: {system_prompt_file}")
                 return system_prompt
             else:
                 # Fall back to single file approach
                 with open(prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read()
-                print(f"📄 Loaded single prompt file: {prompt_file}")
                 return system_prompt
                 
         except Exception as e:
-            print(f"Error loading system prompt: {e}")
+            print_current(f"Error loading system prompt: {e}")
             return "You are a helpful AI assistant that can use tools to accomplish tasks."
     
     def load_user_prompt_components(self) -> Dict[str, str]:
@@ -441,240 +612,93 @@ class ToolExecutor:
         }
         
         try:
-            # Load rules and tools prompts - choose tool prompt based on tool calling mode
-            tool_prompt_file = "prompts/tool_prompt_for_chat.txt" if self.use_chat_based_tools else "prompts/tool_prompt.txt"
-            
-            if self.debug_mode:
-                print(f"🔧 Loading tool prompt file: {tool_prompt_file} (chat-based: {self.use_chat_based_tools})")
-            
-            rules_tool_files = [
-                tool_prompt_file,
-                "prompts/rules_prompt.txt", 
-                "prompts/plugin_tool_prompts.txt",
-                "prompts/user_rules.txt"
-            ]
-            
-            rules_parts = []
-            loaded_files = []
-            
-            for file_path in rules_tool_files:
-                if os.path.exists(file_path):
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read().strip()
-                            if content:
-                                rules_parts.append(content)
-                                loaded_files.append(file_path)
-                    except Exception as e:
-                        print(f"Warning: Could not load file {file_path}: {e}")
-            
-            if rules_parts:
-                components['rules_and_tools'] = "\n\n".join(rules_parts)
-                print(f"✅ Loaded rules and tools prompts from: {', '.join(loaded_files)}")
+            # For chat-based tools, generate tool descriptions from JSON instead of loading files
+            if self.use_chat_based_tools:
+                # Generate tools prompt from JSON definitions
+                tool_definitions = self._load_tool_definitions_from_file()
+                json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
+                
+                # Load only rules and plugin prompts (excluding deprecated tool files)
+                rules_tool_files = [
+                    "prompts/rules_prompt.txt", 
+                    "prompts/plugin_tool_prompts.txt",
+                    "prompts/user_rules.txt"
+                ]
+                
+                rules_parts = []
+                if json_tools_prompt:
+                    rules_parts.append(json_tools_prompt)
+                
+                loaded_files = []
+                
+                for file_path in rules_tool_files:
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                
+                if rules_parts:
+                    components['rules_and_tools'] = "\n\n".join(rules_parts)
+                
+                # Log the approach used
+                if json_tools_prompt:
+                    print_current("✅ Using JSON-generated tool descriptions for chat-based model")
+                else:
+                    print_current("⚠️  Failed to generate JSON tool descriptions, falling back to file-based approach")
+                    
+            else:
+                # For standard tool calling, load only rules (no tool descriptions needed)
+                rules_tool_files = [
+                    "prompts/rules_prompt.txt", 
+                    "prompts/plugin_tool_prompts.txt",
+                    "prompts/user_rules.txt"
+                ]
+                
+                rules_parts = []
+                loaded_files = []
+                
+                for file_path in rules_tool_files:
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                
+                if rules_parts:
+                    components['rules_and_tools'] = "\n\n".join(rules_parts)
+                
+                print_current("✅ Using standard tool calling (tool descriptions provided via API)")
+                
+            # Note: Removed loading of deprecated files:
+            # - prompts/tool_prompt.txt
+            # - prompts/tool_prompt_for_chat.txt  
+            # - prompts/multiagent_prompt.txt
+            # These are now replaced by JSON-generated tool descriptions
             
             # Load system environment information
-            components['system_environment'] = self._get_system_environment_info()
+            components['system_environment'] = get_system_environment_info(
+                language=self.language, 
+                model=self.model, 
+                api_base=self.api_base
+            )
             
             # Load workspace information
-            components['workspace_info'] = self._get_workspace_info()
+            components['workspace_info'] = get_workspace_info(self.workspace_dir)
             
         except Exception as e:
-            print(f"Warning: Error loading user prompt components: {e}")
+            print_current(f"Warning: Error loading user prompt components: {e}")
         
         return components
     
-    def _get_system_environment_info(self) -> str:
-        """
-        Get system environment information.
-        
-        Returns:
-            Formatted system environment information
-        """
-        try:
-            system_name = platform.system()
-            system_release = platform.release()
-            
-            # Get Python version
-            python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-            
-            # Check if pip is available
-            pip_available = "Available" if self._check_command_available("pip") else "Not Available"
-            
-            os_instruction = f"""**Operating System Information**:
-- Operating System: {system_name} {system_release}
-- Python Version: {python_version}
-- pip: {pip_available}"""
-            
-            # Add system-specific information
-            if system_name.lower() == "linux":
-                # For Linux: check gdb and shell type
-                gdb_available = "Available" if self._check_command_available("gdb") else "Not Available"
-                shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
-                
-                os_instruction += f"""
-- gdb: {gdb_available}
-- Shell Type: {shell_type}
-- Please use Linux-compatible commands and forward slashes for paths"""
-            
-            elif system_name.lower() == "windows":
-                # For Windows: check PowerShell
-                powershell_available = "Available" if self._check_command_available("powershell") else "Not Available"
-                
-                os_instruction += f"""
-- PowerShell: {powershell_available}
-- Please use Windows-compatible commands and backslashes for paths"""
-            
-            elif system_name.lower() == "darwin":  # macOS
-                # For macOS: check shell type
-                shell_type = os.environ.get('SHELL', 'Unknown').split('/')[-1] if os.environ.get('SHELL') else 'Unknown'
-                
-                os_instruction += f"""
-- Shell Type: {shell_type}
-- Please use macOS-compatible commands and forward slashes for paths"""
-            
-            # Add language instruction based on configuration
-            if self.language == 'zh':
-                language_instruction = """
-
-**重要的语言设置指令**:
-- 系统语言配置为中文，请尽量使用中文进行回复和生成报告
-- 当生成分析报告、总结文档或其他输出文件时，请使用中文
-- 代码注释和说明文档也请尽量使用中文
-- 只有在涉及英文专业术语或代码本身时才使用英语
-- 报告标题、章节名称等都应使用中文"""
-            else:
-                language_instruction = """
-
-**Language Configuration**:
-- System language is set to English
-- Please respond and generate reports in English
-- Code comments and documentation should be in English"""
-            
-            # Add current date information (standardized for cache consistency)
-            current_date = datetime.datetime.now()
-            date_instruction = f"""
-
-**Current Date Information**:
-- Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: [STANDARDIZED_FOR_CACHE]"""
-            
-            # Add IP geolocation information
-            location_info = get_ip_location_info()
-            location_instruction = f"""
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
-            
-            return os_instruction + language_instruction + date_instruction + location_instruction
-            
-        except Exception as e:
-            print(f"Warning: Could not retrieve system environment information: {e}")
-            return ""
-    
-    def _get_workspace_info(self) -> str:
-        """
-        Get workspace directory and context information.
-        
-        Returns:
-            Formatted workspace information
-        """
-        workspace_instruction = f"""**Important Workspace Information**:
-- Workspace Directory: {self.workspace_dir}
-- Please save all created code files and project files in this directory
-- When creating or editing files, please use filenames directly, do not add "workspace/" prefix to paths
-- The system has automatically set the correct working directory, you only need to use relative filenames"""
-        
-        # Get existing code context from workspace
-        workspace_context = self._get_workspace_context()
-        
-        return workspace_instruction + "\n\n" + workspace_context
-    
-    def _build_new_user_message(self, user_prompt: str, task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
-        """
-        Build user message with new architecture:
-        1. Pure user requirement (first)
-        2. Rules and tools prompts
-        3. System environment info
-        4. Workspace info
-        5. History context (with intelligent summarization)
-        6. Execution instructions (last)
-        
-        Args:
-            user_prompt: Current user prompt (pure requirement)
-            task_history: Previous task execution history
-            execution_round: Current execution round number
-            
-        Returns:
-            Structured user message string
-        """
-        message_parts = []
-        
-        # 1. Pure user requirement (first)
-        message_parts.append(user_prompt)
-        message_parts.append("")  # Empty line for separation
-        
-        # 2. Load and add rules and tools prompts
-        prompt_components = self.load_user_prompt_components()
-        
-        if prompt_components['rules_and_tools']:
-            message_parts.append("---")
-            message_parts.append("")
-            message_parts.append(prompt_components['rules_and_tools'])
-            message_parts.append("")
-        
-
-        
-        # 3. System environment information
-        if prompt_components['system_environment']:
-            message_parts.append("---")
-            message_parts.append("")
-            message_parts.append(prompt_components['system_environment'])
-            message_parts.append("")
-        
-        # 4. Workspace information
-        if prompt_components['workspace_info']:
-            message_parts.append("---")
-            message_parts.append("")
-            message_parts.append(prompt_components['workspace_info'])
-            message_parts.append("")
-        
-        # 5. Add task history context if provided
-        if task_history:
-            message_parts.append("---")
-            message_parts.append("")
-            
-            # Calculate total history length (consistent with upstream calculation)
-            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in task_history)
-            
-            # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
-            if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
-                print(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
-                print("⚠️ History is very long. Using recent history subset to keep context manageable.")
-                
-                # Use recent history subset as fallback when history is still too long
-                recent_history = self._get_recent_history_subset(task_history, max_length=self.summary_trigger_length // 2)
-                self._add_full_history_to_message(message_parts, recent_history)
-                print(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(task_history)} records")
-            else:
-                # History is manageable, use full history
-                self._add_full_history_to_message(message_parts, task_history)
-        
-        # 6. Execution instructions (last)
-        message_parts.append("---")
-        message_parts.append("")
-        message_parts.append("## Execution Instructions:")
-        message_parts.append(f"This is round {execution_round} of task execution. Please continue with the task based on the above context and requirements.")
-        
-        combined_message = "\n".join(message_parts)
-        
-        if self.debug_mode:
-            print(f"🔄 New architecture: User message length: {len(combined_message)} characters")
-            if task_history:
-                print(f"🔄 Included {len(task_history)} historical records")
-            print(f"🔄 Execution round: {execution_round}")
-        
-        return combined_message
     
     def _add_full_history_to_message(self, message_parts: List[str], task_history: List[Dict[str, Any]]) -> None:
         """
@@ -693,7 +717,6 @@ class ToolExecutor:
                 continue
             elif "prompt" in record and "result" in record:
                 # Add clear separator line for each round
-                message_parts.append("=" * 60)
                 message_parts.append(f"### Previous round {i}:")
                 message_parts.append("")
                 
@@ -750,7 +773,6 @@ class ToolExecutor:
                     message_parts.append(tool_results_section)
                     message_parts.append("")
                 
-                message_parts.append("=" * 60)
                 message_parts.append("")  # Extra space after separator
     
     def _standardize_tool_results_format(self, tool_results: str) -> str:
@@ -806,29 +828,7 @@ class ToolExecutor:
         
         return result
     
-    def _compute_history_hash(self, task_history: List[Dict[str, Any]]) -> str:
-        """
-        Compute a hash of the task history for caching purposes.
-        
-        Args:
-            task_history: Previous task execution history
-            
-        Returns:
-            Hash string representing the history
-        """
-        import hashlib
-        
-        # Create a stable representation of the history
-        history_str = ""
-        for record in task_history:
-            if "prompt" in record and "result" in record:
-                history_str += f"P:{record['prompt'][:200]}|R:{record['result'][:200]}|"
-            elif record.get("role") == "user":
-                history_str += f"U:{record.get('content', '')[:200]}|"
-            elif record.get("role") == "assistant":
-                history_str += f"A:{record.get('content', '')[:200]}|"
-        
-        return hashlib.md5(history_str.encode('utf-8')).hexdigest()
+
     
     def _get_recent_history_subset(self, task_history: List[Dict[str, Any]], max_length: int) -> List[Dict[str, Any]]:
         """
@@ -849,55 +849,69 @@ class ToolExecutor:
         current_length = 0
         
         for record in reversed(task_history):
-            record_length = len(str(record.get("prompt", ""))) + len(str(record.get("result", "")))
+            # Calculate the length of this record
+            record_length = len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", "")))
             
+            # Check if adding this record would exceed the limit
             if current_length + record_length > max_length and recent_history:
-                # Stop adding if it would exceed max length and we already have some records
                 break
             
-            recent_history.insert(0, record)  # Insert at beginning to maintain order
+            recent_history.insert(0, record)
             current_length += record_length
         
         return recent_history
-    
-    def clear_history_summary_cache(self) -> None:
+
+    def _compute_history_hash(self, task_history: List[Dict[str, Any]]) -> str:
         """
-        Clear the history summary cache to force regeneration of summaries.
-        Useful when you want to ensure fresh summaries are generated.
+        Compute a hash for the task history to enable caching.
+        
+        Args:
+            task_history: Task history to hash
+            
+        Returns:
+            Hash string for the history
         """
-        if hasattr(self, 'history_summary_cache'):
-            self.history_summary_cache.clear()
-            self.last_summarized_history_length = 0
-            print("🧹 History summary cache cleared")
-        else:
-            print("ℹ️ No history summary cache to clear")
-    
+        import hashlib
+        
+        # Create a string representation of the history
+        history_str = ""
+        for record in task_history:
+            history_str += str(record.get("prompt", "")) + str(record.get("result", "")) + str(record.get("content", ""))
+        
+        # Create SHA256 hash
+        return hashlib.sha256(history_str.encode('utf-8')).hexdigest()
+
     def get_history_summary_cache_info(self) -> Dict[str, Any]:
         """
         Get information about the history summary cache.
         
         Returns:
-            Dictionary with cache information
+            Dictionary containing cache information
         """
-        cache_info = {
-            "cache_enabled": hasattr(self, 'history_summary_cache'),
-            "cached_summaries": 0,
-            "last_summarized_length": getattr(self, 'last_summarized_history_length', 0),
-            "cache_keys": []
+        cache_size = len(self.history_summary_cache) if hasattr(self, 'history_summary_cache') else 0
+        last_length = getattr(self, 'last_summarized_history_length', 0)
+        
+        return {
+            'cache_size': cache_size,
+            'last_summarized_length': last_length,
+            'cache_keys': list(self.history_summary_cache.keys()) if hasattr(self, 'history_summary_cache') else []
         }
-        
+
+    def clear_history_summary_cache(self) -> None:
+        """
+        Clear the history summary cache.
+        """
         if hasattr(self, 'history_summary_cache'):
-            cache_info["cached_summaries"] = len(self.history_summary_cache)
-            cache_info["cache_keys"] = list(self.history_summary_cache.keys())
-        
-        return cache_info
-    
+            self.history_summary_cache.clear()
+        if hasattr(self, 'last_summarized_history_length'):
+            self.last_summarized_history_length = 0
+
     def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
         """
-        Execute a single subtask using an LLM with standard tool calling capabilities.
+        Execute a subtask with the given user prompt. This handles tool calling internally.
         
         Args:
-            user_prompt: The prompt for the subtask
+            user_prompt: The task to execute
             system_prompt_file: Path to the system prompt file
             task_history: Previous task execution history for multi-round continuity
             execution_round: Current execution round number
@@ -905,6 +919,10 @@ class ToolExecutor:
         Returns:
             Text result from executing the subtask
         """
+        # 保存当前轮次号以确保操作跟踪的一致性
+        current_round = execution_round
+        track_operation(f"executing task (round {current_round})")
+        
         try:
             # Load system prompt (only core system_prompt.txt content)
             system_prompt = self.load_system_prompt(system_prompt_file)
@@ -918,9 +936,6 @@ class ToolExecutor:
                 {"role": "user", "content": user_message}
             ]
             
-            # Call the LLM with standard tool calling format
-            print(f"🤖 Calling LLM with standard tools: {user_prompt}")
-            
             # Save debug log for this call's input (before LLM call)
             if self.debug_mode:
                 try:
@@ -930,15 +945,18 @@ class ToolExecutor:
                         "user_prompt": user_prompt
                     }
                 except Exception as e:
-                    print(f"⚠️ Debug preparation failed: {e}")
+                    print_current(f"⚠️ Debug preparation failed: {e}")
             
             # Execute LLM call with standard tools
             content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
             
-            print(f"\n📝 Response content length: {len(content)} characters")
+            # Show raw model response for debugging
+            if self.debug_mode and content:
+                print_current("🤖 Raw model response:")
+                print_current(content)
             
             # Calculate and display token and character statistics
-            self._display_llm_statistics(messages, content)
+            self._display_llm_statistics(messages, content, tool_calls)
             
             # Check for TASK_COMPLETED flag and detect conflicts
             has_task_completed = "TASK_COMPLETED:" in content
@@ -951,20 +969,18 @@ class ToolExecutor:
             # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
             conflict_detected = has_tool_calls and has_task_completed
             if conflict_detected:
-                print(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found!")
-                print(f"🔧 Prioritizing tool execution. Removing TASK_COMPLETED flag to continue operation.")
+                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
                 # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
                 content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
                 has_task_completed = False # Ensure the flag is updated after removal
             
             # If TASK_COMPLETED but no tool calls, complete the task
             if has_task_completed and not has_tool_calls:
-                print(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
                 # Extract the completion message
                 task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
                 if task_completed_match:
                     completion_message = task_completed_match.group(1).strip()
-                    print(f"🎉 Task completion flag detected: {completion_message}")
                 
                 # Save final debug log
                 if self.debug_mode:
@@ -978,22 +994,26 @@ class ToolExecutor:
                         
                         self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
                     except Exception as log_error:
-                        print(f"❌ Completion debug log save failed: {log_error}")
+                        print_current(f"❌ Completion debug log save failed: {log_error}")
                 
+                finish_operation(f"executing task (round {current_round})")
                 return content
             
             # Execute tools if present
             if tool_calls:
-                print(f"🔧 Found {len(tool_calls)} tool calls, starting execution...")
+                print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                print_current("=" * 50)
                 
-                # Print tool calls for terminal display
+                # Print tool calls for terminal display with better formatting
                 tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
                 if tool_calls_formatted:
-                    print(f"\n--- Tool Calls ---")
                     # Remove the "**Tool Calls:**" header since we already printed our own
                     display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
-                    print(display_content)
-                    print("--- End Tool Calls ---\n")
+                    print_current(display_content)
+                
+                print_current("=" * 50)
+                print_current("🚀 Starting tool execution...")
+                print_current("")
                 
                 # Execute all tool calls and collect results
                 all_tool_results = []
@@ -1004,11 +1024,10 @@ class ToolExecutor:
                     tool_name = self._get_tool_name_from_call(tool_call)
                     tool_params = self._get_tool_params_from_call(tool_call)
                     
-                    # Print tool execution start tag BEFORE any other output
-                    print(f"<tool_execute tool_name=\"{tool_name}\" tool_number=\"{i}\">")
-                    
-                    print(f"   - Executing tool {i}: {tool_name}")
-                    print(f"Executing tool: {tool_name} with params: {list(tool_params.keys())}")
+                    # Print tool execution start with clear formatting
+                    print_current(f"🔧 Executing tool {i}: {tool_name}")
+                    print_current(f"   Parameters: {tool_params}")
+                    print_current(f"   Results:")
                     
                     try:
                         # Convert to standard format for execute_tool
@@ -1025,7 +1044,7 @@ class ToolExecutor:
                         })
                         successful_executions += 1
                         
-                        # Real-time print of each tool's execution result (within tool boundaries)
+                        # Real-time print of each tool's execution result with proper indentation
                         if isinstance(tool_result, dict):
                             # Use simplified formatting for search tools if enabled in config
                             if (self.simplified_search_output and 
@@ -1033,21 +1052,29 @@ class ToolExecutor:
                                 formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
                             else:
                                 formatted_result = self._format_dict_as_text(tool_result)
-                            print(formatted_result)
+                            # Add indentation to each line
+                            indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                            print_current(indented_result)
                         else:
-                            print(str(tool_result))
+                            # Add indentation to the result
+                            result_str = str(tool_result)
+                            indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                            print_current(indented_result)
                         
                     except Exception as e:
                         error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                        print(f"❌ {error_msg}")
+                        print_current(f"   ❌ {error_msg}")
                         all_tool_results.append({
                             'tool_name': tool_name,
                             'tool_params': tool_params,
                             'tool_result': f"Error: {error_msg}"
                         })
                     
-                    # Print tool execution end tag
-                    print(f"</tool_execute>")
+                    # Add separator between tools
+                    if i < len(tool_calls):
+                        print_current("-" * 30)
+                
+
                 
                 # Format tool results for response
                 tool_results_message = self._format_tool_results_for_llm(all_tool_results)
@@ -1067,7 +1094,7 @@ class ToolExecutor:
                         
                         self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
                     except Exception as log_error:
-                        print(f"❌ Debug log save failed: {log_error}")
+                        print_current(f"❌ Debug log save failed: {log_error}")
                 
                 # Return combined response with tool calls and tool results
                 result_parts = [content]
@@ -1075,11 +1102,12 @@ class ToolExecutor:
                     result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
                 result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
                 
+                finish_operation(f"executing task (round {current_round})")
                 return "".join(result_parts)
             
             else:
                 # No tool calls, return LLM response directly
-                print("📝 No tool calls found, returning LLM response")
+                print_current("📝 No tool calls found, returning LLM response")
                 
                 # Save debug log for response without tools
                 if self.debug_mode:
@@ -1092,13 +1120,30 @@ class ToolExecutor:
                         
                         self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
                     except Exception as log_error:
-                        print(f"❌ Final debug log save failed: {log_error}")
+                        print_current(f"❌ Final debug log save failed: {log_error}")
                 
+                finish_operation(f"executing task (round {current_round})")
                 return content
             
+        except json.JSONDecodeError as e:
+            error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
+            print_current(error_msg)
+            print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
+            print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+            finish_operation(f"executing task (round {current_round})")
+            return error_msg
         except Exception as e:
             error_msg = f"❌ Error executing subtask: {str(e)}"
-            print(error_msg)
+            print_current(error_msg)
+            
+            # Add more specific error information for common issues
+            if "Expecting ',' delimiter" in str(e):
+                print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
+                print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
+            elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
+                print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+            
+            finish_operation(f"executing task (round {current_round})")
             return error_msg
     
     def parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
@@ -1111,7 +1156,6 @@ class ToolExecutor:
         Returns:
             List of dictionaries with tool name and parameters
         """
-
         
         # Debug mode, save raw content for analysis
         if self.debug_mode:
@@ -1124,8 +1168,7 @@ class ToolExecutor:
         
         all_tool_calls = []
         
-        # First try to parse OpenAI-style JSON tool calls format (新增)
-        # Look for {"tool_calls": [...]} format
+
         openai_json_pattern = r'```json\s*\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}\s*```'
         openai_json_match = re.search(openai_json_pattern, content, re.DOTALL)
         if openai_json_match:
@@ -1139,12 +1182,12 @@ class ToolExecutor:
                     # Handle common escape issues in JSON strings
                     # Replace single backslashes with double backslashes to make valid JSON
                     # But be careful not to double-escape already valid escapes
-                    json_block = self._fix_json_escapes(json_block)
+                    json_block = fix_json_escapes(json_block)
                     
                     tool_calls_data = json.loads(json_block)
                     
                     if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
-                        for tool_call in tool_calls_data['tool_calls']:
+                        for i, tool_call in enumerate(tool_calls_data['tool_calls']):
                             if isinstance(tool_call, dict) and 'function' in tool_call:
                                 function_data = tool_call['function']
                                 if 'name' in function_data and 'arguments' in function_data:
@@ -1166,15 +1209,15 @@ class ToolExecutor:
                             return all_tool_calls
             except json.JSONDecodeError as e:
                 if self.debug_mode:
-                    print(f"Failed to parse OpenAI-style JSON tool calls: {e}")
+                    print_current(f"Failed to parse OpenAI-style JSON tool calls: {e}")
         
-        # Also try to parse direct JSON tool calls without ```json wrapper (新增)
+        # Also try to parse direct JSON tool calls without ```json wrapper
         direct_json_pattern = r'\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}'
         direct_json_match = re.search(direct_json_pattern, content, re.DOTALL)
         if direct_json_match and not all_tool_calls:
             try:
                 json_str = direct_json_match.group(0)
-                json_str = self._fix_json_escapes(json_str)
+                json_str = fix_json_escapes(json_str)
                 tool_calls_data = json.loads(json_str)
                 if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
                     for tool_call in tool_calls_data['tool_calls']:
@@ -1199,7 +1242,7 @@ class ToolExecutor:
                         return all_tool_calls
             except json.JSONDecodeError as e:
                 if self.debug_mode:
-                    print(f"Failed to parse direct JSON tool calls: {e}")
+                    print_current(f"Failed to parse direct JSON tool calls: {e}")
         
         # Continue with existing XML parsing logic...
         # Try to parse individual <function_call> tags (single format)
@@ -1262,7 +1305,43 @@ class ToolExecutor:
             all_tool_calls.extend(python_tool_calls)
             return all_tool_calls
         
-        # Fallback: try to parse JSON format with nested content structure (like in the logs)
+        # NEW: Support for multiple independent JSON tool calls (like our new format)
+        # Look for multiple ```json blocks with tool_name format
+        multiple_json_pattern = r'```json\s*(.*?)\s*```'
+        multiple_json_matches = re.findall(multiple_json_pattern, content, re.DOTALL)
+        if multiple_json_matches:
+            for json_str in multiple_json_matches:
+                try:
+                    json_str = json_str.strip()
+                    tool_data = json.loads(json_str)
+                    
+                    if isinstance(tool_data, dict):
+                        # Check if it's our new tool_name format
+                        if 'tool_name' in tool_data and 'parameters' in tool_data:
+                            all_tool_calls.append({
+                                "name": tool_data["tool_name"],
+                                "arguments": tool_data["parameters"]
+                            })
+                        # Check if it's the old name format (backward compatibility)
+                        elif 'name' in tool_data and 'parameters' in tool_data:
+                            all_tool_calls.append({
+                                "name": tool_data["name"],
+                                "arguments": tool_data["parameters"]
+                            })
+                        # Check if it's content format
+                        elif 'name' in tool_data and 'content' in tool_data:
+                            all_tool_calls.append({
+                                "name": tool_data["name"],
+                                "arguments": tool_data["content"]
+                            })
+                except json.JSONDecodeError:
+                    continue
+            
+            # If we found any tool calls through multiple JSON blocks, return them
+            if all_tool_calls:
+                return all_tool_calls
+        
+        # Fallback: try to parse single JSON format with nested content structure (like in the logs)
         json_pattern = r'```json\s*(.*?)\s*```'
         json_match = re.search(json_pattern, content, re.DOTALL)
         if json_match:
@@ -1277,7 +1356,13 @@ class ToolExecutor:
                             "name": tool_data["name"],
                             "arguments": tool_data["content"]
                         }]
-                    # Check if it's a valid tool call format with name and parameters
+                    # Check if it's a valid tool call format with tool_name and parameters (新的JSON格式)
+                    elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                        return [{
+                            "name": tool_data["tool_name"],
+                            "arguments": tool_data["parameters"]
+                        }]
+                    # Check if it's a valid tool call format with name and parameters (兼容旧格式)
                     elif 'name' in tool_data and 'parameters' in tool_data:
                         return [{
                             "name": tool_data["name"],
@@ -1343,55 +1428,9 @@ class ToolExecutor:
                         }]
         except json.JSONDecodeError:
             pass
-        
-
-        
-
-        
+    
         return []
 
-    def _fix_json_escapes(self, json_str: str) -> str:
-        """
-        Fix common escape issues in JSON strings to make them valid JSON.
-        
-        Args:
-            json_str: Raw JSON string that may have escape issues
-            
-        Returns:
-            Fixed JSON string
-        """
-        # Common regex patterns that need proper escaping
-        # Handle regex backslashes that aren't properly escaped for JSON
-        import re
-        
-        # Find strings that contain unescaped backslashes
-        # This pattern finds quoted strings and fixes backslashes inside them
-        def fix_string_escapes(match):
-            quote_char = match.group(1)  # Get the quote character (")
-            string_content = match.group(2)  # Get the content between quotes
-            
-            # Fix common regex patterns
-            # \. -> \\.
-            string_content = string_content.replace('\\.', '\\\\.')
-            # \w -> \\w
-            string_content = string_content.replace('\\w', '\\\\w')
-            # \d -> \\d
-            string_content = string_content.replace('\\d', '\\\\d')
-            # \s -> \\s
-            string_content = string_content.replace('\\s', '\\\\s')
-            # \\n -> \\\\n (but only if it's not already properly escaped)
-            string_content = re.sub(r'(?<!\\)\\n', '\\\\n', string_content)
-            # \\t -> \\\\t (but only if it's not already properly escaped)
-            string_content = re.sub(r'(?<!\\)\\t', '\\\\t', string_content)
-            
-            return f'{quote_char}{string_content}{quote_char}'
-        
-        # Apply the fix to all quoted strings
-        # Pattern to match quoted strings: "..." 
-        string_pattern = r'(")((?:[^"\\]|\\.)*)(")'
-        fixed_json = re.sub(string_pattern, fix_string_escapes, json_str)
-        
-        return fixed_json
 
     def parse_tool_call(self, content: str) -> Optional[Dict[str, Any]]:
         """
@@ -1447,7 +1486,7 @@ class ToolExecutor:
                 except json.JSONDecodeError as e:
                     # Try to extract individual parameters manually
                     try:
-                        params = self._parse_python_params_manually(params_str)
+                        params = parse_python_params_manually(params_str)
                         if params:
                             function_calls.append({
                                 "name": tool_name,
@@ -1458,78 +1497,7 @@ class ToolExecutor:
         
         return function_calls
     
-    def _parse_python_params_manually(self, params_str: str) -> Dict[str, Any]:
-        """
-        Manually parse Python function parameters when JSON parsing fails.
-        
-        Args:
-            params_str: Parameter string from Python function call
-            
-        Returns:
-            Dictionary of parameters
-        """
-        params = {}
-        
-        # Remove the outer braces if present
-        if params_str.startswith('{') and params_str.endswith('}'):
-            params_str = params_str[1:-1].strip()
-        
-        # Split by commas, but be careful about commas inside strings
-        param_parts = []
-        current_part = ""
-        in_quotes = False
-        quote_char = None
-        brace_depth = 0
-        
-        for char in params_str:
-            if char in ('"', "'") and not in_quotes:
-                in_quotes = True
-                quote_char = char
-                current_part += char
-            elif char == quote_char and in_quotes:
-                in_quotes = False
-                quote_char = None
-                current_part += char
-            elif char == '{' and not in_quotes:
-                brace_depth += 1
-                current_part += char
-            elif char == '}' and not in_quotes:
-                brace_depth -= 1
-                current_part += char
-            elif char == ',' and not in_quotes and brace_depth == 0:
-                param_parts.append(current_part.strip())
-                current_part = ""
-            else:
-                current_part += char
-        
-        if current_part.strip():
-            param_parts.append(current_part.strip())
-        
-        # Parse each parameter
-        for part in param_parts:
-            # Look for key: value pattern
-            if ':' in part:
-                key_value = part.split(':', 1)
-                if len(key_value) == 2:
-                    key = key_value[0].strip().strip('"\'')
-                    value = key_value[1].strip()
-                    
-                    # Remove quotes from value if present
-                    if value.startswith('"') and value.endswith('"'):
-                        value = value[1:-1]
-                    elif value.startswith("'") and value.endswith("'"):
-                        value = value[1:-1]
-                    
-                    # Convert boolean values
-                    if value.lower() in ('true', 'false'):
-                        value = value.lower() == 'true'
-                    # Convert numeric values
-                    elif value.isdigit():
-                        value = int(value)
-                    
-                    params[key] = value
-        
-        return params
+
     
     def parse_function_calls(self, function_calls_text: str) -> List[Dict[str, Any]]:
         """
@@ -1568,7 +1536,7 @@ class ToolExecutor:
         arg_matches = re.findall(arg_pattern, args_text, re.DOTALL)
         for name, value in arg_matches:
             value = value.strip()
-            args[name] = self._convert_parameter_value(value)
+            args[name] = convert_parameter_value(value)
         
         # Method 2: Try the direct tag format <tag_name>value</tag_name>
         # This supports the more intuitive XML format that models often generate
@@ -1590,47 +1558,13 @@ class ToolExecutor:
                     if items:
                         args[tag_name] = [item.strip() for item in items]
                     else:
-                        args[tag_name] = self._convert_parameter_value(value)
+                        args[tag_name] = convert_parameter_value(value)
                 else:
-                    args[tag_name] = self._convert_parameter_value(value)
+                    args[tag_name] = convert_parameter_value(value)
         
         return args
     
-    def _convert_parameter_value(self, value: str) -> Any:
-        """
-        Convert parameter value to appropriate type.
-        
-        Args:
-            value: String value to convert
-            
-        Returns:
-            Converted value (string, int, bool, list, etc.)
-        """
-        # For certain parameters that may contain meaningful whitespace/formatting,
-        # don't strip the value
-        value_stripped = value.strip()
-        
-        # Handle boolean values
-        if value_stripped.lower() in ('true', 'false'):
-            return value_stripped.lower() == 'true'
-        
-        # Handle integers
-        if value_stripped.isdigit():
-            return int(value_stripped)
-        
-        # Handle negative integers
-        if value_stripped.startswith('-') and value_stripped[1:].isdigit():
-            return int(value_stripped)
-        
-        # Handle JSON arrays/objects
-        if (value_stripped.startswith('[') and value_stripped.endswith(']')) or (value_stripped.startswith('{') and value_stripped.endswith('}')):
-            try:
-                return json.loads(value_stripped)
-            except json.JSONDecodeError:
-                pass
-        
-        # Return original value (not stripped) for string parameters to preserve formatting
-        return value
+
     
     def execute_tool(self, tool_call: Dict[str, Any]) -> Any:
         """
@@ -1645,6 +1579,115 @@ class ToolExecutor:
         tool_name = tool_call["name"]
         params = tool_call["arguments"]
         
+        # Check tool source from mapping table
+        tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
+        
+        # Handle cli-mcp tools
+        if tool_source == 'cli_mcp':
+            # Ensure cli-mcp client is initialized
+            if not self.cli_mcp_initialized:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're in an async context, create a task
+                        future = asyncio.create_task(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
+                        # For now, we'll skip initialization if we can't wait
+                        # In a real implementation, you might want to handle this differently
+                        self.cli_mcp_initialized = True  # Assume initialization for now
+                        return {"error": "cli-mcp客户端正在初始化中，请稍后重试"}
+                    else:
+                        # We can run the async function directly
+                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
+                        # Add MCP tools to tool_map after initialization
+                        if self.cli_mcp_initialized:
+                            self._add_mcp_tools_to_map()
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp客户端初始化失败: {e}")
+                    return {"error": f"cli-mcp客户端初始化失败: {e}"}
+            
+            # Call cli-mcp tool
+            try:
+                import asyncio
+                import threading
+                
+                # 检查是否在异步环境中
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 在异步环境中，使用线程池执行
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            # Remove prefix from tool name
+                            actual_tool_name = tool_name.replace("cli_mcp_", "")
+                            future = executor.submit(asyncio.run, self.cli_mcp_client.call_tool(actual_tool_name, params))
+                            result = future.result(timeout=30)  # 30秒超时
+                            return result
+                except RuntimeError:
+                    # 没有事件循环，可以安全地运行asyncio.run
+                    pass
+                
+                # 在同步环境中运行异步函数
+                actual_tool_name = tool_name.replace("cli_mcp_", "")
+                result = asyncio.run(self.cli_mcp_client.call_tool(actual_tool_name, params))
+                return result
+                
+            except Exception as e:
+                print_current(f"❌ cli-mcp工具调用失败: {e}")
+                return {"error": f"cli-mcp工具调用失败: {e}"}
+        
+        # Handle direct MCP tools (SSE)
+        elif tool_source == 'direct_mcp':
+            # Ensure direct MCP client is initialized
+            if not self.direct_mcp_initialized:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're in an async context, create a task
+                        future = asyncio.create_task(initialize_mcp_client())
+                        # For now, we'll skip initialization if we can't wait
+                        self.direct_mcp_initialized = True  # Assume initialization for now
+                        return {"error": "SSE MCP客户端正在初始化中，请稍后重试"}
+                    else:
+                        # We can run the async function directly
+                        self.direct_mcp_initialized = asyncio.run(initialize_mcp_client())
+                        # Add MCP tools to tool_map after initialization
+                        if self.direct_mcp_initialized:
+                            self._add_mcp_tools_to_map()
+                except Exception as e:
+                    print_current(f"⚠️ SSE MCP客户端初始化失败: {e}")
+                    return {"error": f"SSE MCP客户端初始化失败: {e}"}
+            
+            # Call direct MCP tool
+            try:
+                import asyncio
+                import threading
+                
+                # 检查是否在异步环境中
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 在异步环境中，使用线程池执行
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            # Use tool name directly (no prefix removal needed for SSE tools)
+                            future = executor.submit(asyncio.run, self.direct_mcp_client.call_tool(tool_name, params))
+                            result = future.result(timeout=30)  # 30秒超时
+                            return result
+                except RuntimeError:
+                    # 没有事件循环，可以安全地运行asyncio.run
+                    pass
+                
+                # 在同步环境中运行异步函数
+                result = asyncio.run(self.direct_mcp_client.call_tool(tool_name, params))
+                return result
+                
+            except Exception as e:
+                print_current(f"❌ SSE MCP工具调用失败: {e}")
+                return {"error": f"SSE MCP工具调用失败: {e}"}
+        
+        # Handle regular tools
         if tool_name in self.tool_map:
             tool_func = self.tool_map[tool_name]
             try:
@@ -1655,34 +1698,34 @@ class ToolExecutor:
                 if tool_name == "read_file" and "end_line_one_indexed" in filtered_params:
                     # Map end_line_one_indexed to end_line_one_indexed_inclusive
                     filtered_params["end_line_one_indexed_inclusive"] = filtered_params.pop("end_line_one_indexed")
-                    print("Mapped end_line_one_indexed parameter to end_line_one_indexed_inclusive")
+                    print_current("Mapped end_line_one_indexed parameter to end_line_one_indexed_inclusive")
                 
                 # Robustness handling: auto-correct wrong parameter names for edit_file and read_file
                 if tool_name in ["edit_file", "read_file"]:
                     # Map relative_workspace_path to target_file
                     if "relative_workspace_path" in filtered_params:
                         filtered_params["target_file"] = filtered_params.pop("relative_workspace_path")
-                        print(f"🔧 Auto-corrected parameter: relative_workspace_path -> target_file for {tool_name}")
+                        print_current(f"🔧 Auto-corrected parameter: relative_workspace_path -> target_file for {tool_name}")
                     # Map file_path to target_file
                     if "file_path" in filtered_params:
                         filtered_params["target_file"] = filtered_params.pop("file_path")
-                        print(f"🔧 Auto-corrected parameter: file_path -> target_file for {tool_name}")
+                        print_current(f"🔧 Auto-corrected parameter: file_path -> target_file for {tool_name}")
                     # Map filename to target_file (for edit_file)
                     if "filename" in filtered_params:
                         filtered_params["target_file"] = filtered_params.pop("filename")
-                        print(f"🔧 Auto-corrected parameter: filename -> target_file for {tool_name}")
+                        print_current(f"🔧 Auto-corrected parameter: filename -> target_file for {tool_name}")
                 
                 # Robustness handling for edit_file: auto-correct content to code_edit
                 if tool_name == "edit_file" and "content" in filtered_params:
                     # Map content to code_edit
                     filtered_params["code_edit"] = filtered_params.pop("content")
-                    print(f"🔧 Auto-corrected parameter: content -> code_edit for {tool_name}")
+                    print_current(f"🔧 Auto-corrected parameter: content -> code_edit for {tool_name}")
                 
                 # Robustness handling for codebase_search: auto-correct search_term to query
                 if tool_name == "codebase_search" and "search_term" in filtered_params:
                     # Map search_term to query
                     filtered_params["query"] = filtered_params.pop("search_term")
-                    print(f"🔧 Auto-corrected parameter: search_term -> query for {tool_name}")
+                    print_current(f"🔧 Auto-corrected parameter: search_term -> query for {tool_name}")
                 
                 # No special handling needed for run_terminal_cmd anymore
                 
@@ -1696,38 +1739,47 @@ class ToolExecutor:
                         return result
                     else:
                         # Return detailed error information for other failed tool executions
-                        error_msg = result.get('error', 'Unknown error occurred')
+                        error_msg = result.get('error', result.get('message', 'Unknown error occurred'))
                         return {
                             'tool': tool_name,
                             'status': 'error', 
                             'error': error_msg,
-                            'parameters': filtered_params
+                            'parameters': filtered_params,
+                            'details': result  # Include original result for debugging
                         }
                 
                 return result
             except TypeError as e:
-                # Handle parameter mismatch - include correct usage example
-                usage_example = self._get_tool_usage_example(tool_name)
+                # Handle parameter mismatch with helpful guidance
+                error_msg = f"Parameter mismatch: {str(e)}"
+                
+                # Add specific guidance for common parameter issues
+                if tool_name == 'edit_file' and 'code_edit' in str(e):
+                    error_msg += "\n💡 HINT: edit_file requires 'code_edit' parameter. Example: \"code_edit\": \"your code content here\""
+                elif tool_name == 'edit_file' and any(param in str(e) for param in ['start_line', 'end_line']):
+                    error_msg += "\n💡 HINT: edit_file replace_lines mode requires 'start_line_one_indexed' and 'end_line_one_indexed_inclusive' parameters"
+                elif tool_name == 'read_file' and any(param in str(e) for param in ['start_line', 'end_line', 'should_read']):
+                    error_msg += "\n💡 HINT: read_file requires 'target_file', 'should_read_entire_file', 'start_line_one_indexed', 'end_line_one_indexed_inclusive'"
+                elif tool_name == 'run_terminal_cmd' and 'is_background' in str(e):
+                    error_msg += "\n💡 HINT: run_terminal_cmd requires 'command' and 'is_background' parameters"
+                
                 error_result = {
                     'tool': tool_name,
                     'status': 'error',
-                    'error': f"Parameter mismatch: {str(e)}",
-                    'parameters': params,
-                    'correct_usage': usage_example
+                    'error': error_msg,
+                    'parameters': params
                 }
-                print(f"❌ Tool execution failed: {error_result}")
+                print_current(f"❌ Tool execution failed: {error_result}")
                 return error_result
             except Exception as e:
-                # General exception handling - include correct usage example
-                usage_example = self._get_tool_usage_example(tool_name)
+                # General exception handling
                 error_result = {
                     'tool': tool_name,
                     'status': 'error', 
                     'error': f"Execution failed: {str(e)}",
-                    'parameters': params,
-                    'correct_usage': usage_example
+                    'parameters': params
                 }
-                print(f"❌ Tool execution failed: {error_result}")
+                print_current(f"❌ Tool execution failed: {error_result}")
                 return error_result
         else:
             # Unknown tool - provide list of available tools with brief usage info
@@ -1759,7 +1811,7 @@ class ToolExecutor:
                 'available_tools': available_tools_list,
                 'available_tools_help': f"Available tools:\n{available_tools_help}\n\nUse tool_help('<tool_name>') to get detailed usage for any specific tool."
             }
-            print(f"❌ Tool execution failed: {error_result}")
+            print_current(f"❌ Tool execution failed: {error_result}")
             return error_result
     
     def _format_dict_as_text(self, data: Dict[str, Any]) -> str:
@@ -1788,8 +1840,7 @@ class ToolExecutor:
                 error_msg += f"\nAvailable tools: {', '.join(data['available_tools'])}"
             if 'available_tools_help' in data:
                 error_msg += f"\n\n{data['available_tools_help']}"
-            if 'correct_usage' in data:
-                error_msg += f"\n\n{data['correct_usage']}"
+
             return error_msg
         
         if 'status' in data:
@@ -1895,260 +1946,8 @@ class ToolExecutor:
         
         return '\n'.join(lines)
 
-    def _get_tool_usage_example(self, tool_name: str) -> str:
-        """
-        Get correct usage example for a tool from help_tools.
-        
-        Args:
-            tool_name: Name of the tool to get usage example for
-            
-        Returns:
-            Formatted usage example string
-        """
-        try:
-            # Get tool help information
-            help_info = self.tools.tool_help(tool_name)
-            
-            if 'error' in help_info:
-                return f"Tool '{tool_name}' not found in help system."
-            
-            # Format the usage example
-            usage_parts = []
-            usage_parts.append(f"## Correct Usage for '{tool_name}':")
-            usage_parts.append("")
-            
-            # Add description
-            if 'description' in help_info:
-                usage_parts.append(f"**Description:** {help_info['description']}")
-                usage_parts.append("")
-            
-            # Add parameters information
-            if 'parameters' in help_info:
-                params_info = help_info['parameters']
-                properties = params_info.get('properties', {})
-                required_params = params_info.get('required', [])
-                
-                usage_parts.append("**Parameters:**")
-                for param_name, param_info in properties.items():
-                    param_type = param_info.get('type', 'string')
-                    description = param_info.get('description', '')
-                    is_required = param_name in required_params
-                    required_marker = " **(REQUIRED)**" if is_required else " (optional)"
-                    
-                    usage_parts.append(f"- `{param_name}` ({param_type}){required_marker}: {description}")
-                usage_parts.append("")
-            
-            # Add usage example
-            usage_parts.append("**Correct XML Format Example:**")
-            usage_parts.append("```xml")
-            usage_parts.append("<function_calls>")
-            usage_parts.append(f'<invoke name="{tool_name}">')
-            
-            # Generate example parameters
-            if 'parameters' in help_info:
-                properties = help_info['parameters'].get('properties', {})
-                required_params = help_info['parameters'].get('required', [])
-                
-                for param_name, param_info in properties.items():
-                    param_type = param_info.get('type', 'string')
-                    
-                    # Generate example values based on type and tool
-                    if param_type == "boolean":
-                        example_value = "false"
-                    elif param_type == "integer":
-                        if param_name in ['start_line_one_indexed', 'end_line_one_indexed_inclusive']:
-                            example_value = "1" if 'start' in param_name else "50"
-                        else:
-                            example_value = "1"
-                    elif param_type == "array":
-                        if tool_name == "codebase_search" and param_name == "target_directories":
-                            example_value = '["src/*", "lib/*"]'
-                        else:
-                            example_value = '["example1", "example2"]'
-                    else:  # string
-                        if param_name == "target_file":
-                            example_value = "src/main.py"
-                        elif param_name == "query":
-                            example_value = "search term or code pattern"
-                        elif param_name == "command":
-                            example_value = "ls -la"
-                        elif param_name == "relative_workspace_path":
-                            example_value = "src"
-                        elif param_name == "instructions":
-                            example_value = "Brief description of the change you are making"
-                        elif param_name == "code_edit":
-                            example_value = "# ... existing code ...\nnew_code_here\n# ... existing code ..."
-                        elif param_name == "search_term":
-                            example_value = "Python best practices"
-
-                        else:
-                            example_value = f"your_{param_name}_here"
-                    
-                    usage_parts.append(f'<parameter name="{param_name}">{example_value}</parameter>')
-            
-            usage_parts.append("</invoke>")
-            usage_parts.append("</function_calls>")
-            usage_parts.append("```")
-            usage_parts.append("")
-            
-            # Add alternative direct XML format
-            usage_parts.append("**Alternative Direct XML Format:**")
-            usage_parts.append("```xml")
-            usage_parts.append("<function_calls>")
-            usage_parts.append(f'<invoke name="{tool_name}">')
-            
-            if 'parameters' in help_info:
-                properties = help_info['parameters'].get('properties', {})
-                for param_name, param_info in properties.items():
-                    param_type = param_info.get('type', 'string')
-                    
-                    if param_type == "boolean":
-                        example_value = "false"
-                    elif param_type == "integer":
-                        example_value = "1"
-                    elif param_type == "array":
-                        example_value = '["item1", "item2"]'
-                    else:
-                        example_value = "value"
-                    
-                    usage_parts.append(f'<{param_name}>{example_value}</{param_name}>')
-            
-            usage_parts.append("</invoke>")
-            usage_parts.append("</function_calls>")
-            usage_parts.append("```")
-            
-            return '\n'.join(usage_parts)
-            
-        except Exception as e:
-            return f"Failed to get usage example for '{tool_name}': {str(e)}"
-
-# _build_combined_user_prompt function removed - using _build_new_user_message instead
 
 
-    
-
-
-
-
-
-
-    def _get_workspace_context(self) -> str:
-        """
-        Get basic workspace context without detailed information that could cause hallucination.
-        
-        Returns:
-            String representation of workspace context
-        """
-        if not os.path.exists(self.workspace_dir):
-            return ""
-        
-        context_parts = ["\n**Current Workspace Information:**\n"]
-        
-        # Define code file extensions to include
-        code_extensions = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.c', '.cpp', '.h', '.css', '.html', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.scala', '.sql', '.sh', '.bat', '.ps1', '.yaml', '.yml', '.json', '.xml', '.md', '.txt'}
-        
-        # Find all code files in workspace
-        code_files = []
-        total_files = 0
-        total_size = 0
-        
-        for root, dirs, files in os.walk(self.workspace_dir):
-            # Skip hidden directories and common non-code directories
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in {'node_modules', '__pycache__', 'venv', 'env', 'build', 'dist', 'target'}]
-            
-            for file in files:
-                if any(file.endswith(ext) for ext in code_extensions) and not file.startswith('.'):
-                    file_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(file_path, self.workspace_dir)
-                    
-                    try:
-                        # Get file size and modification time
-                        stat_info = os.stat(file_path)
-                        file_size = stat_info.st_size
-                        
-                        code_files.append({
-                            'path': rel_path,
-                            'size': file_size,
-                        })
-                        
-                        total_files += 1
-                        total_size += file_size
-                        
-                    except Exception as e:
-                        print(f"⚠️   Unable to get file information {rel_path}: {e}")
-                        continue
-        
-        if not code_files:
-            context_parts.append("No files found. Use list_dir tool to explore the workspace.\n")
-            return ''.join(context_parts)
-        
-        # Add basic summary statistics only
-        context_parts.append(f"📊 **Basic Statistics**: {total_files} files, total size {self._format_file_size(total_size)}\n")
-        context_parts.append("⚠️ **Important**: File names and statistics shown above are for reference only.\n")
-        context_parts.append("**You MUST use tools (list_dir, read_file, codebase_search) to get actual file contents before making any analysis or conclusions.**\n")
-        
-        return ''.join(context_parts)
-    
-    def _format_file_size(self, size_bytes: int) -> str:
-        """
-        Format file size in human readable format.
-        
-        Args:
-            size_bytes: Size in bytes
-            
-        Returns:
-            Formatted size string
-        """
-        if size_bytes < 1024:
-            return f"{size_bytes}B"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f}KB"
-        else:
-            return f"{size_bytes / (1024 * 1024):.1f}MB"
-    
-    def _get_file_language(self, file_path: str) -> str:
-        """
-        Get the programming language for syntax highlighting based on file extension.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            Language identifier for syntax highlighting
-        """
-        ext = os.path.splitext(file_path)[1].lower()
-        
-        language_map = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.ts': 'typescript',
-            '.jsx': 'jsx',
-            '.tsx': 'tsx',
-            '.java': 'java',
-            '.c': 'c',
-            '.cpp': 'cpp',
-            '.h': 'c',
-            '.css': 'css',
-            '.html': 'html',
-            '.php': 'php',
-            '.rb': 'ruby',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.swift': 'swift',
-            '.kt': 'kotlin',
-            '.scala': 'scala',
-            '.sql': 'sql',
-            '.sh': 'bash',
-            '.bat': 'batch',
-            '.ps1': 'powershell',
-            '.yaml': 'yaml',
-            '.yml': 'yaml',
-            '.json': 'json',
-            '.xml': 'xml',
-            '.md': 'markdown'
-        }
-        
-        return language_map.get(ext, 'text')
 
     def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, tool_call_round: int = 0, tool_calls_info: Dict[str, Any] = None) -> None:
         """
@@ -2167,8 +1966,13 @@ class ToolExecutor:
             # Create timestamp
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
             
-            # Create log filename
-            log_filename = f"llm_call_{self.llm_call_counter:03d}_{timestamp}.json"
+            # 🔧 获取当前agent ID并添加到文件名中
+            from tools.print_system import get_agent_id
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                log_filename = f"llm_call_{current_agent_id}_{self.llm_call_counter:03d}_{timestamp}.json"
+            else:
+                log_filename = f"llm_call_{self.llm_call_counter:03d}_{timestamp}.json"
             log_path = os.path.join(self.llm_logs_dir, log_filename)
             
             # Prepare debug data - including detailed tool call information
@@ -2202,18 +2006,18 @@ class ToolExecutor:
             with open(log_path, 'w', encoding='utf-8') as f:
                 json.dump(debug_data, f, ensure_ascii=False, indent=2)
             
-            print(f"🐛 Debug log saved: {log_filename}")
             
         except Exception as e:
-            print(f"⚠️ Debug log save failed: {e}")
+            print_current(f"⚠️ Debug log save failed: {e}")
 
-    def _display_llm_statistics(self, messages: List[Dict[str, Any]], response_content: str) -> None:
+    def _display_llm_statistics(self, messages: List[Dict[str, Any]], response_content: str, tool_calls: List[Dict[str, Any]] = None) -> None:
         """
         Display LLM input/output statistics including token count and character count.
         
         Args:
             messages: Input messages sent to LLM
             response_content: Response content from LLM
+            tool_calls: Tool calls from LLM response (optional)
         """
         try:
             # Calculate input statistics
@@ -2223,171 +2027,93 @@ class ToolExecutor:
                 content = message.get("content", "")
                 input_text += f"[{role}] {content}\n"
             
-            # Estimate token counts
-            input_tokens_est = self._estimate_token_count(input_text)
-            output_tokens_est = self._estimate_token_count(response_content)
+            # Estimate token counts for response content
+            input_tokens_est = estimate_token_count(input_text)
+            output_tokens_est = estimate_token_count(response_content)
+            
+            # Estimate token counts for tool calls if present
+            tool_calls_tokens = 0
+            if tool_calls:
+                tool_calls_text = self._format_tool_calls_for_token_estimation(tool_calls)
+                tool_calls_tokens = estimate_token_count(tool_calls_text)
+            
+            # Total output tokens including tool calls
+            total_output_tokens = output_tokens_est + tool_calls_tokens
             
             # Calculate cache-related statistics
-            cache_stats = self._analyze_cache_potential(messages)
+            cache_stats = analyze_cache_potential(messages)
             
             # Display simplified statistics in one line
             if cache_stats['has_history'] and cache_stats['estimated_cache_tokens'] > 0:
                 cached_tokens = cache_stats['estimated_cache_tokens']
                 new_input_tokens = cache_stats['new_tokens']
-                print(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {output_tokens_est:,}")
-            else:
-                print(f"📊 Input history (cached) tokens: 0, Input new tokens: {input_tokens_est:,}, Output tokens: {output_tokens_est:,}")
-            
-        except Exception as e:
-            print(f"⚠️ Statistics calculation failed: {e}")
-    
-    def _analyze_cache_potential(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Analyze cache potential for the current request.
-        
-        Args:
-            messages: Input messages sent to LLM
-            
-        Returns:
-            Dictionary containing cache analysis results
-        """
-        try:
-            total_content = ""
-            history_content = ""
-            new_content = ""
-            
-            for message in messages:
-                content = message.get("content", "")
-                total_content += content
-                
-                # Detect history sections (marked by separators)
-                if "=" * 60 in content:  # Our history separator
-                    # Split by history separator
-                    parts = content.split("=" * 60)
-                    if len(parts) > 1:
-                        # Everything before the last separator is likely history
-                        history_content += "=" * 60 + ("=" * 60).join(parts[:-1])
-                        new_content += parts[-1]
-                    else:
-                        new_content += content
+                print_current("")
+                if tool_calls_tokens > 0:
+                    print_current(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,} (content: {output_tokens_est:,}, tool calls: {tool_calls_tokens:,})")
                 else:
-                    new_content += content
-            
-            # Calculate token estimates
-            total_tokens = self._estimate_token_count(total_content)
-            history_tokens = self._estimate_token_count(history_content)
-            new_tokens = self._estimate_token_count(new_content)
-            
-            # Estimate cache hit potential based on history ratio
-            cache_hit_potential = history_tokens / total_tokens if total_tokens > 0 else 0
-            
-            # Estimate how many tokens might be cached
-            # Assume cache hit if history ratio is high and content is standardized
-            estimated_cache_tokens = 0
-            if cache_hit_potential > 0.5:  # More than 50% is history
-                # Estimate cache efficiency based on content standardization
-                cache_efficiency = self._estimate_cache_efficiency(history_content)
-                estimated_cache_tokens = int(history_tokens * cache_efficiency)
-            
-            return {
-                'has_history': history_tokens > 0,
-                'total_tokens': total_tokens,
-                'history_tokens': history_tokens,
-                'new_tokens': new_tokens,
-                'cache_hit_potential': cache_hit_potential,
-                'estimated_cache_tokens': estimated_cache_tokens,
-                'cache_efficiency': cache_efficiency if 'cache_efficiency' in locals() else 0
-            }
+                    print_current(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,}")
+            else:
+                if tool_calls_tokens > 0:
+                    print_current(f"📊 Input history (cached) tokens: 0, Input new tokens: {input_tokens_est:,}, Output tokens: {total_output_tokens:,} (content: {output_tokens_est:,}, tool calls: {tool_calls_tokens:,})")
+                else:
+                    print_current(f"📊 Input history (cached) tokens: 0, Input new tokens: {input_tokens_est:,}, Output tokens: {total_output_tokens:,}")
             
         except Exception as e:
-            print(f"⚠️ Cache analysis failed: {e}")
-            return {
-                'has_history': False,
-                'total_tokens': 0,
-                'history_tokens': 0,
-                'new_tokens': 0,
-                'cache_hit_potential': 0,
-                'estimated_cache_tokens': 0,
-                'cache_efficiency': 0
-            }
-    
-    def _estimate_cache_efficiency(self, content: str) -> float:
-        """
-        Estimate cache efficiency based on content standardization.
-        
-        Args:
-            content: Content to analyze for cache efficiency
-            
-        Returns:
-            Cache efficiency ratio (0.0 to 1.0)
-        """
-        if not content:
-            return 0.0
-        
-        efficiency_score = 0.0
-        
-        # Check for standardized timestamps
-        if "[STANDARDIZED_FOR_CACHE]" in content:
-            efficiency_score += 0.3
-        
-        # Check for standardized tool execution markers
-        if "Tool execution results:" in content:
-            efficiency_score += 0.2
-        
-        # Check for consistent formatting (separators)
-        separator_count = content.count("=" * 60)
-        if separator_count > 0:
-            efficiency_score += 0.2
-        
-        # Check for standardized tool result formatting
-        if "## Tool" in content and "**Parameters:**" in content:
-            efficiency_score += 0.2
-        
-        # Check for minimal dynamic content
-        dynamic_indicators = ["timestamp", "time:", "date:", "ms", "seconds"]
-        dynamic_count = sum(1 for indicator in dynamic_indicators if indicator.lower() in content.lower())
-        if dynamic_count == 0:
-            efficiency_score += 0.1
-        
-        return min(1.0, efficiency_score)
-    
+            print_current(f"⚠️ Statistics calculation failed: {e}")
 
-    
-    def _estimate_token_count(self, text: str) -> int:
+    def _format_tool_calls_for_token_estimation(self, tool_calls: List[Dict[str, Any]]) -> str:
         """
-        Estimate token count for given text.
-        This is a rough approximation based on character count and common tokenization patterns.
+        Format tool calls into text for token estimation.
         
         Args:
-            text: Input text to estimate tokens for
+            tool_calls: List of tool calls
             
         Returns:
-            Estimated token count
+            Formatted text representation of tool calls
         """
-        if not text:
-            return 0
+        if not tool_calls:
+            return ""
         
-        # Basic estimation rules:
-        # - English: ~4 characters per token
-        # - Chinese: ~1.5 characters per token (since Chinese characters are more dense)
-        # - Code: ~3.5 characters per token (due to symbols and keywords)
+        formatted_parts = []
+        for tool_call in tool_calls:
+            # Handle different tool call formats
+            if isinstance(tool_call, dict):
+                # Extract tool name
+                tool_name = ""
+                if "name" in tool_call:
+                    tool_name = tool_call["name"]
+                elif "function" in tool_call and isinstance(tool_call["function"], dict):
+                    tool_name = tool_call["function"].get("name", "")
+                
+                # Extract parameters/arguments
+                params = {}
+                if "arguments" in tool_call:
+                    params = tool_call["arguments"]
+                elif "input" in tool_call:
+                    params = tool_call["input"]
+                elif "function" in tool_call and isinstance(tool_call["function"], dict):
+                    if "arguments" in tool_call["function"]:
+                        try:
+                            import json
+                            params = json.loads(tool_call["function"]["arguments"]) if isinstance(tool_call["function"]["arguments"], str) else tool_call["function"]["arguments"]
+                        except:
+                            params = tool_call["function"]["arguments"]
+                
+                # Format tool call as text
+                tool_text = f"Tool: {tool_name}\n"
+                if params:
+                    import json
+                    try:
+                        params_text = json.dumps(params, ensure_ascii=False)
+                        tool_text += f"Parameters: {params_text}\n"
+                    except:
+                        tool_text += f"Parameters: {str(params)}\n"
+                
+                formatted_parts.append(tool_text)
         
-        # Detect text type
-        chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
-        total_chars = len(text)
-        
-        if chinese_chars > total_chars * 0.3:  # More than 30% Chinese characters
-            # Primarily Chinese text
-            estimated_tokens = int(total_chars / 1.5)
-        elif any(keyword in text.lower() for keyword in ['def ', 'class ', 'import ', 'function', '{', '}', '()', '=>']):
-            # Likely contains code
-            estimated_tokens = int(total_chars / 3.5)
-        else:
-            # Primarily English/Latin text
-            estimated_tokens = int(total_chars / 4)
-        
-        # Ensure minimum of 1 token for non-empty text
-        return max(1, estimated_tokens)
+        return "\n".join(formatted_parts)
+    
+    # Cache analysis functions moved to utils/cacheeff.py
     
 
 
@@ -2404,7 +2130,7 @@ class ToolExecutor:
         if not tool_results:
             return "No tool results to report."
         
-        # 从配置文件读取截断长度
+       
         truncation_length = get_truncation_length()
         
         message_parts = ["Tool execution results:\n"]
@@ -2437,7 +2163,7 @@ class ToolExecutor:
             message_parts.append("**Result:**")
             if isinstance(tool_result, dict):
                 # Handle different types of tool results
-                if 'error' in tool_result:
+                if 'error' in tool_result and tool_result['error'] is not None and tool_result['error'] != '':
                     message_parts.append(f"❌ Error: {tool_result['error']}")
                 elif 'status' in tool_result:
                     status = tool_result['status']
@@ -2454,7 +2180,7 @@ class ToolExecutor:
                             # For read_entire_file operations, don't truncate content
                             if is_read_entire_file and key == 'content':
                                 message_parts.append(f"- {key}: {value}")
-                                print(f"📄 Full file content passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
+                                print_current(f"📄 Full file content passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
                             elif isinstance(value, str) and len(value) > truncation_length:
                                 # Truncate very long content for non-read-entire-file operations
                                 value = value[:truncation_length] + f"... [Content truncated, total length: {len(value)} characters]"
@@ -2467,7 +2193,7 @@ class ToolExecutor:
                     # For read_entire_file operations, don't truncate the formatted result
                     if is_read_entire_file:
                         message_parts.append(formatted_result)
-                        print(f"📄 Full file content formatted and passed to LLM")
+                        print_current(f"📄 Full file content formatted and passed to LLM")
                     elif len(formatted_result) > truncation_length:
                         formatted_result = formatted_result[:truncation_length] + "... [Content truncated]"
                         message_parts.append(formatted_result)
@@ -2497,177 +2223,11 @@ class ToolExecutor:
     
 
 
-    def test_api_connection(self) -> bool:
-        """
-        Testing API connection
-        
-        Returns:
-            bool: True if connection is successful, False otherwise
-        """
-        print("🔍 Testing API connection...")
-        
-        try:
-            if self.is_claude:
-                # Claude API
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=50,
-                    messages=[{"role": "user", "content": "Hello, please respond with 'Connection test successful'"}],
-                    temperature=0.1
-                )
-                
-                if hasattr(response, 'content') and response.content:
-                    content = response.content[0].text if response.content else ""
-                    print(f"✅ Claude API connection successful! Response: {content[:50]}...")
-                    return True
-                else:
-                    print("❌ Claude API response format exception")
-                    return False
-            else:
-                # OpenAI API
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": "Hello, please respond with 'Connection test successful'"}],
-                    max_tokens=50,
-                    temperature=0.1
-                )
-                
-                if response.choices and response.choices[0].message:
-                    content = response.choices[0].message.content
-                    print(f"✅ OpenAI API connection successful! Response: {content[:50]}...")
-                    return True
-                else:
-                    print("❌ OpenAI API response format exception")
-                    return False
-                    
-        except Exception as e:
-            print(f"❌ API connection test failed: {e}")
-            print(f"🔧 Please check the following items:")
-            print(f"   1. API key validity")
-            print(f"   2. Network connection")
-            print(f"   3. API service endpoint accessibility")
-            print(f"   4. API quota")
-            return False
 
 
 
-    def analyze_debug_logs_completeness(self, logs_dir: str = None) -> Dict[str, Any]:
-        """
-        分析调试日志的完整性，检查工具调用信息是否完整记录
-        
-        Args:
-            logs_dir: 日志目录路径
-            
-        Returns:
-            包含分析结果的字典
-        """
-        if logs_dir is None:
-            logs_dir = self.llm_logs_dir
-        
-        print(f"🔍 分析调试日志完整性: {logs_dir}")
-        
-        analysis_result = {
-            "total_log_files": 0,
-            "logs_with_tool_calls": 0,
-            "logs_with_complete_tool_info": 0,
-            "logs_with_tool_results": 0,
-            "logs_with_formatted_results": 0,
-            "incomplete_logs": [],
-            "error_logs": [],
-            "summary": {}
-        }
-        
-        try:
-            if not os.path.exists(logs_dir):
-                return {"error": f"日志目录不存在: {logs_dir}"}
-            
-            log_files = [f for f in os.listdir(logs_dir) if f.startswith('llm_call_') and f.endswith('.json')]
-            analysis_result["total_log_files"] = len(log_files)
-            
-            for filename in sorted(log_files):
-                file_path = os.path.join(logs_dir, filename)
-                
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        log_data = json.load(f)
-                    
-                    call_info = log_data.get("call_info", {})
-                    tool_calls_info = log_data.get("tool_calls_info", {})
-                    
-                    # 检查是否有工具调用
-                    has_tool_calls = bool(tool_calls_info.get("parsed_tool_calls"))
-                    has_tool_results = bool(tool_calls_info.get("tool_results"))
-                    has_formatted_results = bool(tool_calls_info.get("formatted_tool_results"))
-                    
-                    file_analysis = {
-                        "filename": filename,
-                        "call_number": call_info.get("call_number"),
-                        "round": call_info.get("round"),
-                        "has_tool_calls": has_tool_calls,
-                        "has_tool_results": has_tool_results,
-                        "has_formatted_results": has_formatted_results,
-                        "tool_calls_count": call_info.get("tool_calls_count", 0),
-                        "tool_results_count": call_info.get("tool_results_count", 0)
-                    }
-                    
-                    if has_tool_calls:
-                        analysis_result["logs_with_tool_calls"] += 1
-                        
-                        # 检查工具调用信息的完整性
-                        if has_tool_results and has_formatted_results:
-                            analysis_result["logs_with_complete_tool_info"] += 1
-                        else:
-                            analysis_result["incomplete_logs"].append(file_analysis)
-                    
-                    if has_tool_results:
-                        analysis_result["logs_with_tool_results"] += 1
-                    
-                    if has_formatted_results:
-                        analysis_result["logs_with_formatted_results"] += 1
-                    
-                    # 检查是否有错误信息
-                    if tool_calls_info.get("processing_failed") or tool_calls_info.get("error"):
-                        analysis_result["error_logs"].append(file_analysis)
-                
-                except Exception as e:
-                    error_info = {
-                        "filename": filename,
-                        "error": str(e)
-                    }
-                    analysis_result["error_logs"].append(error_info)
-                    print(f"❌ 读取日志文件失败 {filename}: {e}")
-            
-            # 生成总结
-            total_files = analysis_result["total_log_files"]
-            tool_call_files = analysis_result["logs_with_tool_calls"]
-            complete_files = analysis_result["logs_with_complete_tool_info"]
-            
-            analysis_result["summary"] = {
-                "completeness_rate": (complete_files / tool_call_files * 100) if tool_call_files > 0 else 0,
-                "tool_call_coverage": (tool_call_files / total_files * 100) if total_files > 0 else 0,
-                "incomplete_count": len(analysis_result["incomplete_logs"]),
-                "error_count": len(analysis_result["error_logs"])
-            }
-            
-            # 打印分析结果
-            print(f"📊 调试日志完整性分析结果:")
-            print(f"   总日志文件数: {total_files}")
-            print(f"   包含工具调用的日志: {tool_call_files}")
-            print(f"   工具调用信息完整的日志: {complete_files}")
-            print(f"   完整性比率: {analysis_result['summary']['completeness_rate']:.1f}%")
-            print(f"   工具调用覆盖率: {analysis_result['summary']['tool_call_coverage']:.1f}%")
-            
-            if analysis_result["incomplete_logs"]:
-                print(f"⚠️ 发现 {len(analysis_result['incomplete_logs'])} 个不完整的工具调用日志")
-            
-            if analysis_result["error_logs"]:
-                print(f"❌ 发现 {len(analysis_result['error_logs'])} 个包含错误的日志")
-            
-            return analysis_result
-            
-        except Exception as e:
-            print(f"❌ 日志分析失败: {e}")
-            return {"error": str(e)}
+
+
 
 
     
@@ -2800,184 +2360,92 @@ class ToolExecutor:
         """
         standard_tools = []
         
-        # Tool definitions with their schemas
-        tool_definitions = {
-            "codebase_search": {
-                "description": "Find snippets of code from the codebase most relevant to the search query. This is a semantic search tool, so the query should ask for something semantically matching what is needed.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query to find relevant code. You should reuse the user's exact query/most recent message with their wording unless there is a clear reason not to."
-                        },
-                        "target_directories": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Glob patterns for directories to search over"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            },
-            "read_file": {
-                "description": "Read the contents of a file. The output will be the 1-indexed file contents from start_line_one_indexed to end_line_one_indexed_inclusive, together with a summary of the lines outside that range.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "target_file": {
-                            "type": "string",
-                            "description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path."
-                        },
-                        "should_read_entire_file": {
-                            "type": "boolean",
-                            "description": "Whether to read the entire file. Defaults to false."
-                        },
-                        "start_line_one_indexed": {
-                            "type": "integer",
-                            "description": "The one-indexed line number to start reading from (inclusive)."
-                        },
-                        "end_line_one_indexed_inclusive": {
-                            "type": "integer",
-                            "description": "The one-indexed line number to end reading at (inclusive)."
-                        }
-                    },
-                    "required": ["target_file", "should_read_entire_file", "start_line_one_indexed", "end_line_one_indexed_inclusive"]
-                }
-            },
-            "run_terminal_cmd": {
-                "description": "PROPOSE a command to run on behalf of the user. For ANY commands that would use a pager or require user interaction, you should append ` | cat` to the command. For commands that are long running/expected to run indefinitely until interruption, please run them in the background.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The terminal command to execute"
-                        },
-                        "is_background": {
-                            "type": "boolean",
-                            "description": "Whether the command should be run in the background"
-                        }
-                    },
-                    "required": ["command", "is_background"]
-                }
-            },
-            "list_dir": {
-                "description": "List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like semantic search or file reading.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "relative_workspace_path": {
-                            "type": "string",
-                            "description": "Path to list contents of, relative to the workspace root."
-                        }
-                    },
-                    "required": ["relative_workspace_path"]
-                }
-            },
-            "grep_search": {
-                "description": "Fast text-based regex search that finds exact pattern matches within files or directories, utilizing the ripgrep command for efficient searching. This is best for finding exact text matches or regex patterns.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The regex pattern to search for"
-                        },
-                        "case_sensitive": {
-                            "type": "boolean",
-                            "description": "Whether the search should be case sensitive"
-                        },
-                        "exclude_pattern": {
-                            "type": "string",
-                            "description": "Glob pattern for files to exclude"
-                        },
-                        "include_pattern": {
-                            "type": "string",
-                            "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            },
-            "edit_file": {
-                "description": "Use this tool to propose an edit to an existing file or create a new file. This will be read by a less intelligent model, which will quickly apply the edit.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "target_file": {
-                            "type": "string",
-                            "description": "The target file to modify. You can use either a relative path in the workspace or an absolute path."
-                        },
-                        "instructions": {
-                            "type": "string",
-                            "description": "A single sentence instruction describing what you are going to do for the sketched edit."
-                        },
-                        "code_edit": {
-                            "type": "string",
-                            "description": "Specify ONLY the precise lines of code that you wish to edit. NEVER specify or write out unchanged code. Instead, represent all unchanged code using the comment of the language you're editing in - example: `// ... existing code ...`"
-                        }
-                    },
-                    "required": ["target_file", "instructions", "code_edit"]
-                }
-            },
-            "file_search": {
-                "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Fuzzy filename to search for"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            },
-            "delete_file": {
-                "description": "Deletes a file at the specified path. The operation will fail gracefully if the file doesn't exist.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "target_file": {
-                            "type": "string",
-                            "description": "The path of the file to delete, relative to the workspace root."
-                        }
-                    },
-                    "required": ["target_file"]
-                }
-            },
-            "web_search": {
-                "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "search_term": {
-                            "type": "string",
-                            "description": "The search term to look up on the web. Be specific and include relevant keywords for better results."
-                        }
-                    },
-                    "required": ["search_term"]
-                }
-            },
-            "tool_help": {
-                "description": "Get detailed help information for a specific tool, including its parameters and usage examples.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tool_name": {
-                            "type": "string",
-                            "description": "The name of the tool to get help for"
-                        }
-                    },
-                    "required": ["tool_name"]
-                }
-            }
-        }
+        # Load tool definitions from JSON file
+        tool_definitions = self._load_tool_definitions_from_file()
+        
+        # Get tool source mapping
+        tool_source_map = getattr(self, 'tool_source_map', {})
         
         # Convert to standard format based on provider
         for tool_name in self.tool_map.keys():
-            if tool_name in tool_definitions:
+            tool_source = tool_source_map.get(tool_name, 'regular')
+            
+            # Handle cli-mcp tools
+            if tool_source == 'cli_mcp':
+                if self.cli_mcp_client and self.cli_mcp_initialized:
+                    try:
+                        # Use tool name directly (no prefix for cli-mcp tools now)
+                        cli_mcp_tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
+                        if cli_mcp_tool_def:
+                            if provider == "openai":
+                                # OpenAI format for cli-mcp tools
+                                standard_tool = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,  # Use original name (no prefix)
+                                        "description": cli_mcp_tool_def.get("description", f"cli-mcp工具: {tool_name}"),
+                                        "parameters": cli_mcp_tool_def.get("input_schema", {
+                                            "type": "object",
+                                            "properties": {},
+                                            "required": []
+                                        })
+                                    }
+                                }
+                            elif provider == "anthropic":
+                                # Anthropic format for cli-mcp tools
+                                standard_tool = {
+                                    "name": tool_name,  # Use original name (no prefix)
+                                    "description": cli_mcp_tool_def.get("description", f"cli-mcp工具: {tool_name}"),
+                                    "input_schema": cli_mcp_tool_def.get("input_schema", {
+                                        "type": "object",
+                                        "properties": {},
+                                        "required": []
+                                    })
+                                }
+                            
+                            standard_tools.append(standard_tool)
+                    except Exception as e:
+                        print_current(f"⚠️ 无法获取cli-mcp工具 {tool_name} 的定义: {e}")
+            
+            # Handle direct MCP tools (SSE)
+            elif tool_source == 'direct_mcp':
+                if self.direct_mcp_client and self.direct_mcp_initialized:
+                    try:
+                        # Use tool name directly (no prefix for SSE tools)
+                        direct_mcp_tool_def = self.direct_mcp_client.get_tool_definition(tool_name)
+                        if direct_mcp_tool_def:
+                            if provider == "openai":
+                                # OpenAI format for direct MCP tools
+                                standard_tool = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,  # No prefix for SSE tools
+                                        "description": direct_mcp_tool_def.get("description", f"SSE MCP工具: {tool_name}"),
+                                        "parameters": direct_mcp_tool_def.get("inputSchema", direct_mcp_tool_def.get("input_schema", {
+                                            "type": "object",
+                                            "properties": {},
+                                            "required": []
+                                        }))
+                                    }
+                                }
+                            elif provider == "anthropic":
+                                # Anthropic format for direct MCP tools
+                                standard_tool = {
+                                    "name": tool_name,  # No prefix for SSE tools
+                                    "description": direct_mcp_tool_def.get("description", f"SSE MCP工具: {tool_name}"),
+                                    "input_schema": direct_mcp_tool_def.get("inputSchema", direct_mcp_tool_def.get("input_schema", {
+                                        "type": "object",
+                                        "properties": {},
+                                        "required": []
+                                    }))
+                                }
+                            
+                            standard_tools.append(standard_tool)
+                    except Exception as e:
+                        print_current(f"⚠️ 无法获取SSE MCP工具 {tool_name} 的定义: {e}")
+            
+            # Handle regular tools from JSON definitions
+            elif tool_name in tool_definitions:
                 tool_def = tool_definitions[tool_name]
                 
                 if provider == "openai":
@@ -2999,6 +2467,7 @@ class ToolExecutor:
                     }
                 
                 standard_tools.append(standard_tool)
+ 
         
         return standard_tools
 
@@ -3042,27 +2511,26 @@ class ToolExecutor:
         
         try:
             if self.streaming:
-                print("🔄 Starting streaming generation with chat-based tools...")
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=api_messages,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    temperature=0.7,
-                    top_p=0.8,
-                    stream=True
-                )
+                with streaming_context(show_start_message=True) as printer:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=api_messages,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        temperature=0.7,
+                        top_p=0.8,
+                        stream=True
+                    )
+                    
+                    content = ""
+                    for chunk in response:
+                        if chunk.choices and len(chunk.choices) > 0:
+                            delta = chunk.choices[0].delta
+                            if delta.content is not None:
+                                printer.write(delta.content)
+                                content += delta.content
                 
-                content = ""
-                for chunk in response:
-                    if chunk.choices and len(chunk.choices) > 0:
-                        delta = chunk.choices[0].delta
-                        if delta.content is not None:
-                            print(delta.content, end="", flush=True)
-                            content += delta.content
-                
-                print("\n✅ Streaming completed")
             else:
-                print("🔄 Starting batch generation with chat-based tools...")
+                # print_current("🔄 LLM is thinking:")
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=api_messages,
@@ -3072,7 +2540,6 @@ class ToolExecutor:
                 )
                 
                 content = response.choices[0].message.content or ""
-                print("✅ Generation completed")
             
             # Parse tool calls from the response content
             tool_calls = self.parse_tool_calls(content)
@@ -3089,7 +2556,7 @@ class ToolExecutor:
             return content, standardized_tool_calls
             
         except Exception as e:
-            print(f"❌ Chat-based LLM API call failed: {e}")
+            print_current(f"❌ Chat-based LLM API call failed: {e}")
             raise e
 
     def _call_openai_with_standard_tools(self, messages, user_message, system_message):
@@ -3099,7 +2566,7 @@ class ToolExecutor:
         # Get standard tools for OpenAI
         tools = self._convert_tools_to_standard_format("openai")
         
-        # Prepare messages
+        # Prepare messages - user_message can be string or content array
         api_messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
@@ -3107,29 +2574,30 @@ class ToolExecutor:
         
         try:
             if self.streaming:
-                print("🔄 Starting streaming generation with standard tools...")
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=api_messages,
-                    tools=tools,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    temperature=0.7,
-                    top_p=0.8,
-                    stream=True
-                )
-                
-                content = ""
-                tool_calls = []
-                current_tool_call = None
-                
-                for chunk in response:
-                    if chunk.choices and len(chunk.choices) > 0:
-                        delta = chunk.choices[0].delta
-                        
-                        # Handle content
-                        if delta.content is not None:
-                            print(delta.content, end="", flush=True)
-                            content += delta.content
+                with streaming_context(show_start_message=False) as printer:
+                    # print_current("🔄 Starting streaming generation with standard tools...")
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=api_messages,
+                        tools=tools,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        temperature=0.7,
+                        top_p=0.8,
+                        stream=True
+                    )
+                    
+                    content = ""
+                    tool_calls = []
+                    current_tool_call = None
+                    
+                    for chunk in response:
+                        if chunk.choices and len(chunk.choices) > 0:
+                            delta = chunk.choices[0].delta
+                            
+                            # Handle content
+                            if delta.content is not None:
+                                printer.write(delta.content)
+                                content += delta.content
                         
                         # Handle tool calls
                         if delta.tool_calls:
@@ -3154,10 +2622,10 @@ class ToolExecutor:
                                         if tool_call_delta.function.arguments:
                                             current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
                 
-                print("\n✅ Streaming completed")
+                # print_current("\n✅ Streaming completed")
                 return content, tool_calls
             else:
-                print("🔄 Starting batch generation with standard tools...")
+                # print_current("🔄 Starting batch generation with standard tools...")
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=api_messages,
@@ -3168,13 +2636,25 @@ class ToolExecutor:
                 )
                 
                 content = response.choices[0].message.content or ""
-                tool_calls = response.choices[0].message.tool_calls or []
+                raw_tool_calls = response.choices[0].message.tool_calls or []
                 
-                print("✅ Generation completed")
+                # Convert OpenAI tool_calls objects to dictionary format
+                tool_calls = []
+                for tool_call in raw_tool_calls:
+                    tool_calls.append({
+                        "id": tool_call.id,
+                        "type": tool_call.type,
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    })
+                
+                # print_current("✅ Generation completed")
                 return content, tool_calls
                 
         except Exception as e:
-            print(f"❌ OpenAI API call failed: {e}")
+            print_current(f"❌ OpenAI API call failed: {e}")
             raise e
 
     def _call_claude_with_standard_tools(self, messages, user_message, system_message):
@@ -3184,26 +2664,26 @@ class ToolExecutor:
         # Get standard tools for Anthropic
         tools = self._convert_tools_to_standard_format("anthropic")
         
-        # Prepare messages for Claude
+        # Prepare messages for Claude - user_message can be string or content array
         claude_messages = [{"role": "user", "content": user_message}]
         
         try:
             if self.streaming:
-                print("🔄 Starting streaming generation with standard tools...")
-                with self.client.messages.stream(
-                    model=self.model,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    system=system_message,
-                    messages=claude_messages,
-                    tools=tools,
-                    temperature=0.7
-                ) as stream:
-                    content = ""
-                    tool_calls = []
-                    
-                    for text in stream.text_stream:
-                        print(text, end="", flush=True)
-                        content += text
+                with streaming_context(show_start_message=True) as printer:
+                    with self.client.messages.stream(
+                        model=self.model,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        system=system_message,
+                        messages=claude_messages,
+                        tools=tools,
+                        temperature=0.7
+                    ) as stream:
+                        content = ""
+                        tool_calls = []
+                        
+                        for text in stream.text_stream:
+                            printer.write(text)
+                            content += text
                     
                     # Get final message to extract tool use blocks
                     final_message = stream.get_final_message()
@@ -3217,10 +2697,9 @@ class ToolExecutor:
                                 "input": content_block.input
                             })
                 
-                print("\n✅ Streaming completed")
                 return content, tool_calls
             else:
-                print("🔄 Starting batch generation with standard tools...")
+                # print_current("🔄 LLM is thinking: ")
                 response = self.client.messages.create(
                     model=self.model,
                     max_tokens=self._get_max_tokens_for_model(self.model),
@@ -3244,11 +2723,10 @@ class ToolExecutor:
                             "input": content_block.input
                         })
                 
-                print("✅ Generation completed")
                 return content, tool_calls
                 
         except Exception as e:
-            print(f"❌ Claude API call failed: {e}")
+            print_current(f"❌ Claude API call failed: {e}")
             raise e
 
     def _get_tool_name_from_call(self, tool_call):
@@ -3268,6 +2746,12 @@ class ToolExecutor:
             # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
             elif "name" in tool_call:
                 return tool_call["name"]
+        else:
+            # Handle OpenAI API raw object format as fallback
+            if hasattr(tool_call, 'function') and hasattr(tool_call.function, 'name'):
+                return tool_call.function.name
+            elif hasattr(tool_call, 'name'):
+                return tool_call.name
         
         raise ValueError(f"Unknown tool call format: {tool_call}")
 
@@ -3287,7 +2771,16 @@ class ToolExecutor:
                 arguments = tool_call["function"]["arguments"]
                 if isinstance(arguments, str):
                     import json
-                    return json.loads(arguments)
+                    try:
+                        return json.loads(arguments)
+                    except json.JSONDecodeError as e:
+                        # Try to fix common JSON issues
+                        try:
+                            fixed_arguments = fix_json_escapes(arguments)
+                            parsed_result = json.loads(fixed_arguments)
+                            return parsed_result
+                        except json.JSONDecodeError as e2:
+                            return {}
                 return arguments
             # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
             elif "input" in tool_call:
@@ -3295,6 +2788,27 @@ class ToolExecutor:
             # Legacy/Chat-based format: {"name": "...", "arguments": {...}}
             elif "arguments" in tool_call:
                 return tool_call["arguments"]
+        else:
+            # Handle OpenAI API raw object format as fallback
+            if hasattr(tool_call, 'function') and hasattr(tool_call.function, 'arguments'):
+                arguments = tool_call.function.arguments
+                if isinstance(arguments, str):
+                    import json
+                    try:
+                        return json.loads(arguments)
+                    except json.JSONDecodeError as e:
+                        # Try to fix common JSON issues
+                        try:
+                            fixed_arguments = fix_json_escapes(arguments)
+                            parsed_result = json.loads(fixed_arguments)
+                            return parsed_result
+                        except json.JSONDecodeError as e2:
+                            return {}
+                return arguments
+            elif hasattr(tool_call, 'input'):
+                return tool_call.input
+            elif hasattr(tool_call, 'arguments'):
+                return tool_call.arguments
         
         raise ValueError(f"Unknown tool call format: {tool_call}")
 
@@ -3333,309 +2847,308 @@ class ToolExecutor:
         
         return "\n".join(formatted_calls)
 
-
-def test_chat_based_tool_calling():
-    """Test the new chat-based tool calling functionality"""
-    print("🧪 Testing chat-based tool calling functionality...")
-    
-    # Test model detection
-    test_models = [
-        "gpt-4",
-        "gpt-3.5-turbo", 
-        "claude-3-sonnet-20240229",
-        "Qwen/Qwen3-30B-A3B",
-        "meta-llama/Llama-2-70b-chat-hf",
-        "google/gemini-pro"
-    ]
-    
-    print("\n1. Testing model detection:")
-    for model in test_models:
-        use_chat_based = should_use_chat_based_tools(model)
-        is_claude = is_claude_model(model)
-        tool_method = "Chat-based" if use_chat_based else "Standard API"
-        print(f"   {model}: {tool_method} tool calling (Claude: {is_claude})")
-    
-    print("\n2. Testing tool prompt file loading:")
-    try:
-        print("   Testing tool_prompt_for_chat.txt file loading...")
+    def _load_tool_definitions_from_file(self, json_file_path: str = "prompts/tool_prompt.json") -> Dict[str, Any]:
+        """
+        Load tool definitions from JSON file.
         
-        # Test loading the chat-based tool prompt file
-        chat_tool_prompt_file = "prompts/tool_prompt_for_chat.txt"
-        standard_tool_prompt_file = "prompts/tool_prompt.txt"
-        
-        try:
-            with open(chat_tool_prompt_file, 'r', encoding='utf-8') as f:
-                chat_content = f.read()
-            print(f"   ✅ Chat tool prompt file loaded: {len(chat_content)} characters")
-        except FileNotFoundError:
-            print(f"   ❌ Chat tool prompt file not found: {chat_tool_prompt_file}")
+        Args:
+            json_file_path: Path to the JSON file containing tool definitions
             
+        Returns:
+            Dictionary containing tool definitions
+        """
         try:
-            with open(standard_tool_prompt_file, 'r', encoding='utf-8') as f:
-                standard_content = f.read()
-            print(f"   ✅ Standard tool prompt file loaded: {len(standard_content)} characters")
-        except FileNotFoundError:
-            print(f"   ❌ Standard tool prompt file not found: {standard_tool_prompt_file}")
+            import json
+            
+            # Load basic tool definitions
+            tool_definitions = {}
+            
+            # Try to load from the provided path
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    tool_definitions = json.load(f)
+                    # print_current(f"✅ Loaded basic tool definitions from {json_file_path}")
+            else:
+                # print_current(f"⚠️  Tool definitions file not found: {json_file_path}")
+                # No fallback definitions available
+                tool_definitions = {}
+            
+            # Check if multi-agent mode is enabled
+            multi_agent_enabled = self._is_multi_agent_enabled()
+            
+            if multi_agent_enabled:
+                # Load multi-agent tool definitions
+                multiagent_file_path = "prompts/multiagent_tool_prompt.json"
+                if os.path.exists(multiagent_file_path):
+                    with open(multiagent_file_path, 'r', encoding='utf-8') as f:
+                        multiagent_tools = json.load(f)
+                        tool_definitions.update(multiagent_tools)
+                        # print_current(f"✅ Loaded multi-agent tool definitions from {multiagent_file_path}")
+                else:
+                    # print_current(f"⚠️  Multi-agent tool definitions file not found: {multiagent_file_path}")
+                    pass
+            else:
+                # print_current("🔒 Multi-agent mode disabled - skipping multi-agent tool definitions")
+                pass
+            
+            return tool_definitions
+                
+        except json.JSONDecodeError as e:
+            print_current(f"❌ Error parsing JSON in {json_file_path}: {e}")
+        except Exception as e:
+            print_current(f"❌ Error loading tool definitions from {json_file_path}: {e}")
         
-        # Show sample of chat tool prompt
-        if 'chat_content' in locals():
-            print("   Sample of chat tool prompt:")
-            lines = chat_content.split('\n')
-            for i, line in enumerate(lines[:10]):  # Show first 10 lines
-                print(f"     {line}")
-            print("     ... (truncated)")
+        # Return empty definitions if file loading fails
+        # print_current("🔄 No fallback tool definitions available")
+        return {}
+    
+    def _is_multi_agent_enabled(self) -> bool:
+        """
+        Check if multi-agent mode is enabled from configuration.
         
-        print("\n=== Chat-based Tool Calling Tests Complete ===")
+        Returns:
+            True if multi-agent mode is enabled, False otherwise
+        """
+        try:
+            from config_loader import get_config_value
+            multi_agent_config = get_config_value("multi_agent", "True")
+            
+            # Handle different possible values
+            if isinstance(multi_agent_config, str):
+                return multi_agent_config.lower() in ["true", "1", "yes", "on"]
+            elif isinstance(multi_agent_config, bool):
+                return multi_agent_config
+            else:
+                return bool(multi_agent_config)
+                
+        except Exception as e:
+            print_current(f"⚠️  Error checking multi-agent configuration: {e}")
+            # Default to True if configuration cannot be read
+            return True
+    
+    # Tool prompt generation function moved to utils/parse.py
+    
+    def _parse_image_tags(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Parse image tags in user input [img=path_to_image_file]
         
-    except Exception as e:
-        print(f"   Test failed with error: {e}")
-        import traceback
-        traceback.print_exc()
-
-def test_search_result_formatting():
-    """Test search result formatting functionality"""
-    print("🧪 Testing search result formatting...")
-    
-    # Test codebase search result
-    codebase_result = {
-        'results': [
-            {
-                'file_path': 'test.py',
-                'line_number': 10,
-                'content': 'def example_function():',
-                'score': 0.95
-            }
-        ]
-    }
-    
-    executor = ToolExecutor()
-    formatted = executor._format_search_result_for_terminal(codebase_result, 'codebase_search')
-    print("Codebase search result formatting:")
-    print(formatted)
-    print()
-    
-    # Test web search result
-    web_result = {
-        'results': [
-            {
-                'title': 'Example Title',
-                'url': 'https://example.com',
-                'snippet': 'This is an example snippet',
-                'score': 0.9
-            }
-        ]
-    }
-    
-    formatted = executor._format_search_result_for_terminal(web_result, 'web_search')
-    print("Web search result formatting:")
-    print(formatted)
-
-def test_llm_statistics():
-    """Test LLM statistics calculation functionality"""
-    print("🧪 Testing LLM statistics calculation...")
-    
-    executor = ToolExecutor()
-    
-    # Test messages
-    test_messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "请帮我写一个Python函数来计算斐波那契数列。"},
-        {"role": "assistant", "content": "当然！我来帮你写一个计算斐波那契数列的Python函数。"}
-    ]
-    
-    # Test response content
-    test_response = """这是一个计算斐波那契数列的函数：
-
-```python
-def fibonacci(n):
-    if n <= 1:
-        return n
-    else:
-        return fibonacci(n-1) + fibonacci(n-2)
-
-# 测试函数
-for i in range(10):
-    print(f"fibonacci({i}) = {fibonacci(i)}")
-```
-
-这个函数使用递归方法计算斐波那契数列。"""
-    
-    print("Testing statistics display:")
-    executor._display_llm_statistics(test_messages, test_response)
-    
-    print("\nTesting token estimation for different text types:")
-    
-    # Test English text
-    english_text = "This is a sample English text for testing token estimation."
-    english_tokens = executor._estimate_token_count(english_text)
-    print(f"English text ({len(english_text)} chars): {english_tokens} tokens")
-    
-    # Test Chinese text
-    chinese_text = "这是一段用于测试token估算的中文文本。"
-    chinese_tokens = executor._estimate_token_count(chinese_text)
-    print(f"Chinese text ({len(chinese_text)} chars): {chinese_tokens} tokens")
-    
-    # Test code text
-    code_text = """def example_function():
-    return {"key": "value"}"""
-    code_tokens = executor._estimate_token_count(code_text)
-    print(f"Code text ({len(code_text)} chars): {code_tokens} tokens")
-    
-    print("\nTesting cache analysis:")
-    
-    # Test messages with history
-    cache_test_messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": """Current request: Write a function
-
-============================================================
-Previous execution history:
-============================================================
-
-Round 1:
-User: Create a class
-Assistant: I'll create a class for you.
-
-Tool execution results:
-## Tool 1: edit_file
-**Parameters:** target_file=test.py
-**Result:**
-✅ Completed
-- content: class Example: pass
-
-============================================================
-Current request: Write a function"""}
-    ]
-    
-    cache_stats = executor._analyze_cache_potential(cache_test_messages)
-    print(f"Cache analysis results:")
-    print(f"  Has history: {cache_stats['has_history']}")
-    print(f"  Total tokens: {cache_stats['total_tokens']}")
-    print(f"  History tokens: {cache_stats['history_tokens']}")
-    print(f"  New tokens: {cache_stats['new_tokens']}")
-    print(f"  Cache hit potential: {cache_stats['cache_hit_potential']:.1%}")
-    print(f"  Estimated cache tokens: {cache_stats['estimated_cache_tokens']}")
-
-def test_cache_mechanisms():
-    """Test the enhanced cache mechanisms"""
-    print("=== Testing Cache-Friendly Text Formatting ===")
-    
-    # Create a mock ToolExecutor instance for testing
-    try:
-        executor = ToolExecutor(
-            api_key="test_key",
-            model="test_model", 
-            api_base="test_base",
-            debug_mode=True
-        )
+        Args:
+            text: User input text
+            
+        Returns:
+            Tuple of (processed_text, image_data_list)
+            - processed_text: Text with image tags removed
+            - image_data_list: List of image data, each containing {'path': str, 'data': str, 'mime_type': str}
+        """
+        # Regular expression to match image tags
+        image_pattern = r'\[img=([^\]]+)\]'
+        matches = re.findall(image_pattern, text)
         
-        print("\n1. Testing tool results standardization:")
+        if not matches:
+            return text, []
         
-        raw_tool_results = """<tool_execute tool_name="read_file" tool_number="1">
-   - Executing tool 1: read_file
-Executing tool: read_file with params: ['target_file', 'start_line_one_indexed']
-File content here...
-</tool_execute>
-
-<tool_execute tool_name="edit_file" tool_number="2">
-   - Executing tool 2: edit_file  
-Executing tool: edit_file with params: ['target_file', 'instructions']
-Edit completed successfully
-</tool_execute>"""
+        # Process each image file
+        image_data_list = []
+        for image_path in matches:
+            try:
+                # Normalize path
+                if not os.path.isabs(image_path):
+                    # Relative path, relative to project root directory
+                    full_path = os.path.join(self.project_root_dir, image_path)
+                else:
+                    full_path = image_path
+                
+                # Check if file exists
+                if not os.path.exists(full_path):
+                    print_current(f"⚠️ Image file does not exist: {full_path}")
+                    continue
+                
+                # Read image file and encode as base64
+                with open(full_path, 'rb') as f:
+                    image_data = f.read()
+                    base64_data = base64.b64encode(image_data).decode('utf-8')
+                
+                # Get MIME type
+                mime_type, _ = mimetypes.guess_type(full_path)
+                if not mime_type or not mime_type.startswith('image/'):
+                    print_current(f"⚠️ Unsupported image format: {full_path}")
+                    continue
+                
+                image_data_list.append({
+                    'path': image_path,
+                    'full_path': full_path,
+                    'data': base64_data,
+                    'mime_type': mime_type
+                })
+                
+                print_current(f"📸 Successfully loaded image: {image_path} ({mime_type})")
+                
+            except Exception as e:
+                print_current(f"❌ Failed to load image {image_path}: {e}")
+                continue
         
-        standardized = executor._standardize_tool_results_format(raw_tool_results)
-        print("Standardized tool results:")
-        print(standardized)
+        # Remove image tags from text
+        processed_text = re.sub(image_pattern, '', text).strip()
         
-        print("\n2. Testing history formatting:")
+        return processed_text, image_data_list
+    
+    def _build_message_with_images(self, text_content: str, image_data_list: List[Dict[str, Any]], is_claude: bool = False) -> Any:
+        """
+        Build message content with images
         
-        # Test history formatting with standardized separators
-        test_history = [
-            {
-                "prompt": "Create a Python function",
-                "result": "I'll create a Python function for you.\n\n--- Tool Execution Results ---\nFunction created successfully."
-            }
-        ]
+        Args:
+            text_content: Text content
+            image_data_list: List of image data
+            is_claude: Whether using Claude model
+            
+        Returns:
+            Message content built according to model type
+        """
+        if not image_data_list:
+            return text_content
+        
+        if is_claude:
+            # Claude format: using content array
+            content_parts = []
+            
+            # Add text part
+            if text_content.strip():
+                content_parts.append({
+                    "type": "text",
+                    "text": text_content
+                })
+            
+            # Add image parts
+            for image_data in image_data_list:
+                content_parts.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image_data['mime_type'],
+                        "data": image_data['data']
+                    }
+                })
+            
+            return content_parts
+        else:
+            # OpenAI format: using content array
+            content_parts = []
+            
+            # Add text part
+            if text_content.strip():
+                content_parts.append({
+                    "type": "text",
+                    "text": text_content
+                })
+            
+            # Add image parts
+            for image_data in image_data_list:
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{image_data['mime_type']};base64,{image_data['data']}"
+                    }
+                })
+            
+            return content_parts
+    
+    def _build_new_user_message(self, user_prompt: str, task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> Any:
+        """
+        Build user message with new architecture:
+        1. Pure user requirement (first)
+        2. Rules and tools prompts  
+        3. System environment info
+        4. Workspace info
+        5. History context (with intelligent summarization)
+        6. Execution instructions (last)
+        
+        Args:
+            user_prompt: Current user prompt (pure requirement)
+            task_history: Previous task execution history
+            execution_round: Current execution round number
+            
+        Returns:
+            Structured user message (string or content array with images)
+        """
+        # Check and process image tags in first iteration
+        processed_prompt = user_prompt
+        image_data_list = []
+        
+        if execution_round == 1:
+            processed_prompt, image_data_list = self._parse_image_tags(user_prompt)
         
         message_parts = []
-        executor._add_full_history_to_message(message_parts, test_history)
         
-        print("Formatted history:")
-        print('\n'.join(message_parts))
+        # 1. Pure user requirement (first)
+        message_parts.append(processed_prompt)
+        message_parts.append("")  # Empty line for separation
         
-        print("\n=== Cache-Friendly Formatting Tests Complete ===")
+        # 2. Load and add rules and tools prompts
+        prompt_components = self.load_user_prompt_components()
         
-    except Exception as e:
-        print(f"Test failed with error: {e}")
-        import traceback
-        traceback.print_exc()
+        if prompt_components['rules_and_tools']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['rules_and_tools'])
+            message_parts.append("")
+        
+        # 3. System environment information
+        if prompt_components['system_environment']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['system_environment'])
+            message_parts.append("")
+        
+        # 4. Workspace information
+        if prompt_components['workspace_info']:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(prompt_components['workspace_info'])
+            message_parts.append("")
+        
+        # 5. Add task history context if provided
+        if task_history:
+            message_parts.append("---")
+            message_parts.append("")
+            
+            # Calculate total history length (consistent with upstream calculation)
+            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in task_history)
+            
+            # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
+            if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
+                print_system(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
+                print_system("⚠️ History is very long. Using recent history subset to keep context manageable.")
+                
+                # Use recent history subset as fallback when history is still too long
+                recent_history = self._get_recent_history_subset(task_history, max_length=self.summary_trigger_length // 2)
+                self._add_full_history_to_message(message_parts, recent_history)
+                print_system(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(task_history)} records")
+            else:
+                # History is manageable, use full history
+                self._add_full_history_to_message(message_parts, task_history)
+        
+        # 6. Execution instructions (last)
+        message_parts.append("---")
+        message_parts.append("")
+        message_parts.append("## Execution Instructions:")
+        message_parts.append(f"This is round {execution_round} of task execution. Please continue with the task based on the above context and requirements.")
+        
+        # Build final message
+        combined_message = "\n".join(message_parts)
+        
+        # If there is image data, build message format with images
+        if image_data_list:
+            final_message = self._build_message_with_images(combined_message, image_data_list, self.is_claude)
+            print_current(f"📸 First iteration contains {len(image_data_list)} images")
+        else:
+            final_message = combined_message
+        
+        if self.debug_mode:
+            if task_history:
+                pass
+        
+        return final_message
 
-
-def test_history_summarization():
-    """Test the improved history summarization functionality"""
-    print("🧪 Testing improved history summarization functionality...")
-    
-    # Create a mock ToolExecutor instance for testing
-    try:
-        executor = ToolExecutor(
-            api_key="test_key",
-            model="test_model", 
-            api_base="test_base",
-            debug_mode=True
-        )
-        
-        # Create large test history
-        large_history = []
-        for i in range(10):
-            large_history.append({
-                "prompt": f"Test task {i}: " + "x" * 10000,  # 10k chars each
-                "result": f"Result for task {i}: " + "y" * 10000  # 10k chars each
-            })
-        
-        print(f"\n1. Testing with large history ({len(large_history)} records)")
-        
-        # Calculate total length
-        total_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in large_history)
-        print(f"   Total history length: {total_length:,} characters")
-        
-        # Test history hash computation
-        hash1 = executor._compute_history_hash(large_history)
-        hash2 = executor._compute_history_hash(large_history)  # Should be the same
-        print(f"   History hash consistency: {hash1 == hash2}")
-        print(f"   History hash: {hash1[:16]}...")
-        
-        # Test recent history subset
-        recent_subset = executor._get_recent_history_subset(large_history, max_length=50000)
-        recent_length = sum(len(str(record.get("content", ""))) + len(str(record.get("result", ""))) + len(str(record.get("prompt", ""))) for record in recent_subset)
-        print(f"   Recent subset: {len(recent_subset)} records, {recent_length:,} characters")
-        
-        # Test cache info
-        cache_info = executor.get_history_summary_cache_info()
-        print(f"   Cache info: {cache_info}")
-        
-        # Test cache clearing
-        executor.clear_history_summary_cache()
-        
-        print("\n2. Testing cache functionality")
-        
-        # Simulate adding items to cache
-        executor.history_summary_cache = {"test_hash": "test_summary"}
-        executor.last_summarized_history_length = 100000
-        
-        cache_info_after = executor.get_history_summary_cache_info()
-        print(f"   Cache info after adding item: {cache_info_after}")
-        
-        # Test cache clearing again
-        executor.clear_history_summary_cache()
-        cache_info_cleared = executor.get_history_summary_cache_info()
-        print(f"   Cache info after clearing: {cache_info_cleared}")
-        
-        print("\n=== History Summarization Tests Complete ===")
-        
-    except Exception as e:
-        print(f"Test failed with error: {e}")
-        import traceback
-        traceback.print_exc()
 
 def main():
     """Main function for command-line usage."""
@@ -3650,55 +3163,23 @@ def main():
     parser.add_argument('--streaming', action='store_true', help='Enable streaming output mode')
     parser.add_argument('--no-streaming', action='store_true', help='Disable streaming output mode (force batch)')
 
-    parser.add_argument('--test-cache', action='store_true', help='Test enhanced cache mechanisms')
-    parser.add_argument('--test-stats', action='store_true', help='Test LLM statistics calculation')
-    parser.add_argument('--test-history-summary', action='store_true', help='Test improved history summarization')
-    parser.add_argument('--test-chat-tools', action='store_true', help='Test chat-based tool calling functionality')
-    parser.add_argument('--test-json-parsing', action='store_true', help='Test JSON tool calling format parsing')
+
     
     args = parser.parse_args()
     
     # Handle streaming configuration
     streaming = None
     if args.streaming and args.no_streaming:
-        print("Warning: Both --streaming and --no-streaming specified, using config.txt default")
+        print_current("Warning: Both --streaming and --no-streaming specified, using config.txt default")
     elif args.streaming:
         streaming = True
     elif args.no_streaming:
         streaming = False
     # If neither specified, streaming=None will use config.txt value
     
-    # Handle test modes
-    if args.test_cache:
-        print("🧪 Running enhanced cache mechanism tests...")
-        test_cache_mechanisms()
-        return
-        
-    if args.test_stats:
-        print("🧪 Running LLM statistics calculation tests...")
-        test_llm_statistics()
-        return
-        
-    if args.test_history_summary:
-        print("🧪 Running improved history summarization tests...")
-        test_history_summarization()
-        return
-        
-    if args.test_chat_tools:
-        print("🧪 Running chat-based tool calling tests...")
-        test_chat_based_tool_calling()
-        return
-        
-    if args.test_json_parsing:
-        print("🧪 Running JSON tool calling parsing tests...")
-        test_json_tool_calling_parsing()
-        return
-        
-
-    
     # Check if prompt is provided for normal execution
     if not args.prompt:
-        parser.error("prompt is required unless using test options")
+        parser.error("prompt is required")
     
     # Create executor
     executor = ToolExecutor(
@@ -3714,182 +3195,6 @@ def main():
     result = executor.execute_subtask(args.prompt, args.system_prompt)
     
     print(result)
-
-
-def test_json_tool_calling_parsing():
-    """Test JSON tool calling format parsing functionality"""
-    print("🧪 Testing JSON tool calling format parsing...")
-    
-    # Create a mock ToolExecutor instance for testing
-    try:
-        executor = ToolExecutor(
-            api_key="test_key",
-            model="Qwen/Qwen3-30B-A3B",  # This will use chat-based tools
-            api_base="test_base",
-            debug_mode=True
-        )
-        
-        print("\n1. Testing OpenAI-style JSON tool calls with code block:")
-        
-        # Test OpenAI-style JSON format with ```json wrapper
-        json_content_1 = '''I'll help you read that file.
-
-```json
-{
-  "tool_calls": [
-    {
-      "id": "call_1",
-      "type": "function",
-      "function": {
-        "name": "read_file",
-        "arguments": {
-          "target_file": "src/main.py",
-          "should_read_entire_file": false,
-          "start_line_one_indexed": 1,
-          "end_line_one_indexed_inclusive": 50
-        }
-      }
-    }
-  ]
-}
-```
-
-Let me read the file for you.'''
-        
-        tool_calls_1 = executor.parse_tool_calls(json_content_1)
-        print(f"   Parsed {len(tool_calls_1)} tool calls:")
-        for i, call in enumerate(tool_calls_1, 1):
-            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
-        
-        print("\n2. Testing multiple tool calls in JSON format:")
-        
-        # Test multiple tool calls
-        json_content_2 = '''I'll list the directory and then search for code.
-
-```json
-{
-  "tool_calls": [
-    {
-      "id": "call_1",
-      "type": "function",
-      "function": {
-        "name": "list_dir",
-        "arguments": {
-          "relative_workspace_path": "src"
-        }
-      }
-    },
-    {
-      "id": "call_2",
-      "type": "function",
-      "function": {
-        "name": "codebase_search",
-        "arguments": {
-          "query": "function definition",
-          "target_directories": ["src/*"]
-        }
-      }
-    }
-  ]
-}
-```
-
-Now let me execute these tools.'''
-        
-        tool_calls_2 = executor.parse_tool_calls(json_content_2)
-        print(f"   Parsed {len(tool_calls_2)} tool calls:")
-        for i, call in enumerate(tool_calls_2, 1):
-            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
-        
-        print("\n3. Testing direct JSON without code block:")
-        
-        # Test direct JSON format without ```json wrapper
-        json_content_3 = '''I'll edit the file for you.
-
-{
-  "tool_calls": [
-    {
-      "id": "call_1",
-      "type": "function",
-      "function": {
-        "name": "edit_file",
-        "arguments": {
-          "target_file": "test.py",
-          "instructions": "Create a simple test function",
-          "code_edit": "def test_function():\\n    return \\"Hello World\\""
-        }
-      }
-    }
-  ]
-}
-
-The file will be edited as requested.'''
-        
-        tool_calls_3 = executor.parse_tool_calls(json_content_3)
-        print(f"   Parsed {len(tool_calls_3)} tool calls:")
-        for i, call in enumerate(tool_calls_3, 1):
-            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
-        
-        print("\n4. Testing edge cases and error handling:")
-        
-        # Test malformed JSON
-        malformed_json = '''```json
-{
-  "tool_calls": [
-    {
-      "id": "call_1",
-      "type": "function",
-      "function": {
-        "name": "read_file",
-        "arguments": {
-          "target_file": "test.py"
-          // Missing comma and incomplete
-        }
-      }
-    
-  ]
-}
-```'''
-        
-        tool_calls_4 = executor.parse_tool_calls(malformed_json)
-        print(f"   Malformed JSON parsed {len(tool_calls_4)} tool calls (should be 0)")
-        
-        # Test no tool calls
-        no_tools_content = '''This is just a regular response without any tool calls.
-        
-The user asked me to explain something, so I'm providing a text-only response.'''
-        
-        tool_calls_5 = executor.parse_tool_calls(no_tools_content)
-        print(f"   No tools content parsed {len(tool_calls_5)} tool calls (should be 0)")
-        
-        print("\n5. Testing backwards compatibility with XML:")
-        
-        # Test that XML parsing still works
-        xml_content = '''I'll help you with that.
-
-<function_calls>
-<invoke name="read_file">
-<parameter name="target_file">test.py</parameter>
-<parameter name="should_read_entire_file">true</parameter>
-<parameter name="start_line_one_indexed">1</parameter>
-<parameter name="end_line_one_indexed_inclusive">100</parameter>
-</invoke>
-</function_calls>
-
-Let me read the file.'''
-        
-        tool_calls_6 = executor.parse_tool_calls(xml_content)
-        print(f"   XML format parsed {len(tool_calls_6)} tool calls:")
-        for i, call in enumerate(tool_calls_6, 1):
-            print(f"     {i}. {call['name']}: {list(call['arguments'].keys())}")
-        
-        print("\n=== JSON Tool Calling Parsing Tests Complete ===")
-        print("✅ All parsing formats are working correctly!")
-        
-    except Exception as e:
-        print(f"   Test failed with error: {e}")
-        import traceback
-        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

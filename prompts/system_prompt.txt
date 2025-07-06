@@ -28,4 +28,3 @@ You have access to various tools that allow you to:
 - Search the web for information
 - Navigate directory structures
 
-When you need to use a tool, the system will automatically handle the tool calling format. Simply indicate what you want to do and the appropriate tool will be called.

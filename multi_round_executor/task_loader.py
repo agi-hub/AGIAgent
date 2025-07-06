@@ -23,6 +23,7 @@ Task loader for parsing todo.csv files
 import csv
 import os
 from typing import List, Dict, Any
+from tools.print_system import print_system, print_current
 
 
 class TaskLoader:
@@ -57,19 +58,19 @@ class TaskLoader:
                         tasks.append(TaskLoader._parse_task_row(row))
                 else:
                     # No header, manual parsing
-                    print("⚠️  CSV file missing header, using default column names for parsing")
+                    print_current("⚠️  CSV file missing header, using default column names for parsing")
                     for line_num, line in enumerate(lines, 1):
                         if line.strip():
                             parts = [part.strip() for part in line.strip().split(',')]
                             if len(parts) >= 3:
                                 tasks.append(TaskLoader._parse_task_parts(parts, line_num))
                 
-                print(f"📋 Successfully loaded {len(tasks)} tasks")
+                print_current(f"📋 Successfully loaded {len(tasks)} tasks")
                 for i, task in enumerate(tasks):
-                    print(f"  Task{task['Task ID']}: {task['Task Name']} - {task['Task Description'][:50]}...")
+                    print_current(f"  Task{task['Task ID']}: {task['Task Name']} - {task['Task Description'][:50]}...")
                     
         except Exception as e:
-            print(f"Error loading CSV file: {e}")
+            print_current(f"Error loading CSV file: {e}")
             return []
         
         return tasks

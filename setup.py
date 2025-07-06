@@ -72,6 +72,9 @@ setup(
         "tqdm>=4.30.0",
         "pandoc>=2.0.0",
         
+        #MCP
+        "cli-mcp>=0.1.0",
+        
         # GUI dependencies
         "flask>=2.0.0",
         "flask-socketio>=5.0.0",

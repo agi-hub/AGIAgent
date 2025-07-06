@@ -1,0 +1,47 @@
+# Chat-Based Tool Usage Guidelines
+
+## JSON Tool Calling Format
+
+You have access to tools that must be called using JSON format. To use a tool, respond with JSON format:
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "list_dir",
+        "arguments": {
+          "relative_workspace_path": "src"
+        }
+      }
+    },
+    {
+      "id": "call_2",
+      "type": "function",
+      "function": {
+        "name": "codebase_search",
+        "arguments": {
+          "query": "function definition",
+          "target_directories": ["src/*"]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Important Usage Notes
+
+1. **JSON Structure**: Always use the exact JSON structure with `tool_calls` array
+2. **Tool Call ID**: Each tool call must have a unique `id` (use "call_1", "call_2", etc.)
+3. **Function Type**: Always set `type` to "function"
+4. **Parameter Accuracy**: Use exact parameter names as specified above
+5. **Required vs Optional**: Always provide required parameters
+6. **Data Types**: Use proper JSON data types (strings, booleans, numbers, arrays)
+7. **Information First**: Use read_file and list_dir to understand existing code before making edits
+8. **Background Execution**: Use `is_background=true` for GUI apps and web servers
+9. **Error Handling**: Handle tool failures gracefully
+10. **Self-Diagnosis**: Use `tool_help` when uncertain about tool usage
+
+Remember: All tool calls must use the JSON format exactly as shown. Parameter names are case-sensitive and must match the specifications above. Each tool call needs a unique ID and proper JSON structure. 

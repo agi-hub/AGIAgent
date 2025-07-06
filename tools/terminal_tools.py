@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -24,6 +25,7 @@ import re
 import os
 from typing import Dict, Any
 import sys
+import signal
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config_loader import get_auto_fix_interactive_commands
 
@@ -31,7 +33,6 @@ from config_loader import get_auto_fix_interactive_commands
 class TerminalTools:
     def __init__(self, workspace_root: str = None):
         self.workspace_root = workspace_root or "."
-        print(f"🔧 DEBUG: TerminalTools initialized with workspace_root: {self.workspace_root}")
     
     def _fix_html_entities(self, text: str) -> str:
         """
@@ -71,9 +72,9 @@ class TerminalTools:
             
             # If there are other entities not in our common list, mention them generically
             if corrections:
-                print(f"🔧 Auto-corrected HTML entities in command: {', '.join(corrections)}")
+                print_current(f"🔧 Auto-corrected HTML entities in command: {', '.join(corrections)}")
             else:
-                print(f"🔧 Auto-corrected HTML entities in command (various types found)")
+                print_current(f"🔧 Auto-corrected HTML entities in command (various types found)")
         
         return decoded_text
     
@@ -117,7 +118,7 @@ class TerminalTools:
         timed_out = False
         
         pass  # Separator line removed
-        print("🚀 Command execution started, real-time output as follows:")
+        print_current("🚀 Command execution started, real-time output as follows:")
         pass  # Separator line removed
         
         try:
@@ -134,7 +135,7 @@ class TerminalTools:
                         line_clean = line.rstrip()
                         stdout_lines.append(line_clean)
                         if line_clean:
-                            print(f"📤 {line_clean}")
+                            print_current(f"📤 {line_clean}")
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -146,7 +147,7 @@ class TerminalTools:
                         line_clean = line.rstrip()
                         stderr_lines.append(line_clean)
                         if line_clean:
-                            print(f"⚠️  {line_clean}")
+                            print_current(f"⚠️  {line_clean}")
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -156,11 +157,11 @@ class TerminalTools:
                 total_time = current_time - start_time
                 
                 if total_time > max_total_time:
-                    print(f"\n⏰ Process execution exceeded maximum time limit of {max_total_time} seconds, force terminating")
+                    print_current(f"\n⏰ Process execution exceeded maximum time limit of {max_total_time} seconds, force terminating")
                     timed_out = True
                     break
                 elif time_since_last_output > timeout_inactive:
-                    print(f"\n⏰ Process has no output for more than {timeout_inactive} seconds, may be stuck, force terminating")
+                    print_current(f"\n⏰ Process has no output for more than {timeout_inactive} seconds, may be stuck, force terminating")
                     timed_out = True
                     break
                 
@@ -169,15 +170,15 @@ class TerminalTools:
             if timed_out:
                 try:
                     process.terminate()
-                    print("🔄 Attempting graceful process termination...")
+                    print_current("🔄 Attempting graceful process termination...")
                     try:
                         process.wait(timeout=5)
-                        print("✅ Process terminated gracefully")
+                        print_current("✅ Process terminated gracefully")
                     except subprocess.TimeoutExpired:
-                        print("💀 Force killing process...")
+                        print_current("💀 Force killing process...")
                         process.kill()
                         process.wait()
-                        print("✅ Process force terminated")
+                        print_current("✅ Process force terminated")
                 except:
                     pass
             
@@ -187,7 +188,7 @@ class TerminalTools:
                     line_clean = line.rstrip()
                     stdout_lines.append(line_clean)
                     if line_clean:
-                        print(f"📤 {line_clean}")
+                        print_current(f"📤 {line_clean}")
             except queue.Empty:
                 pass
             
@@ -197,12 +198,12 @@ class TerminalTools:
                     line_clean = line.rstrip()
                     stderr_lines.append(line_clean)
                     if line_clean:
-                        print(f"⚠️  {line_clean}")
+                        print_current(f"⚠️  {line_clean}")
             except queue.Empty:
                 pass
                 
         except KeyboardInterrupt:
-            print("\n⏰ User interrupted, terminating process")
+            print_current("\n⏰ User interrupted, terminating process")
             timed_out = True
             try:
                 process.terminate()
@@ -217,11 +218,11 @@ class TerminalTools:
         
         pass  # Separator line removed
         if timed_out:
-            print("⏰ Command execution timed out")
+            print_current("⏰ Command execution timed out")
         elif return_code == 0:
-            print("✅ Command execution completed successfully")
+            print_current("✅ Command execution completed successfully")
         else:
-            print(f"❌ Command execution failed, exit code: {return_code}")
+            print_current(f"❌ Command execution failed, exit code: {return_code}")
         pass  # Separator line removed
         
         return '\n'.join(stdout_lines), '\n'.join(stderr_lines), return_code, timed_out
@@ -286,6 +287,87 @@ class TerminalTools:
         
         return "\n".join(suggestions)
 
+    def talk_to_user(self, query: str, timeout: int = 10) -> Dict[str, Any]:
+        """
+        Display a question to the user and wait for keyboard input with timeout.
+        
+        Args:
+            query: The question to display to the user
+            timeout: Maximum time to wait for user response (default: 10 seconds)
+            
+        Returns:
+            Dict containing the user's response or timeout indication
+        """
+        print_current(f"❓ {query}")
+        print_current(f"⏱️  等待用户回复（{timeout}秒内）...")
+        
+        # Create a queue to communicate between threads
+        response_queue = queue.Queue()
+        
+        def get_user_input():
+            """Thread function to get user input"""
+            try:
+                user_input = input("👤 请输入您的回复: ")
+                response_queue.put(('success', user_input.strip()))
+            except EOFError:
+                # Handle Ctrl+D or end of input
+                response_queue.put(('error', 'EOF'))
+            except KeyboardInterrupt:
+                # Handle Ctrl+C
+                response_queue.put(('error', 'KeyboardInterrupt'))
+            except Exception as e:
+                response_queue.put(('error', str(e)))
+        
+        # Start input thread
+        input_thread = threading.Thread(target=get_user_input)
+        input_thread.daemon = True
+        input_thread.start()
+        
+        # Wait for response or timeout
+        try:
+            status, response = response_queue.get(timeout=timeout)
+            
+            if status == 'success':
+                print_current(f"✅ 用户回复: {response}")
+                return {
+                    'status': 'success',
+                    'query': query,
+                    'user_response': response,
+                    'timeout': timeout,
+                    'response_time': 'within_timeout'
+                }
+            else:
+                print_current(f"❌ 输入错误: {response}")
+                return {
+                    'status': 'error',
+                    'query': query,
+                    'user_response': 'no user response',
+                    'timeout': timeout,
+                    'response_time': 'error',
+                    'error': response
+                }
+                
+        except queue.Empty:
+            # Timeout occurred
+            print_current("⏰ 用户未在指定时间内回复")
+            return {
+                'status': 'timeout',
+                'query': query,
+                'user_response': 'no user response',
+                'timeout': timeout,
+                'response_time': 'timeout'
+            }
+        except Exception as e:
+            print_current(f"❌ 等待用户输入时发生错误: {e}")
+            return {
+                'status': 'error',
+                'query': query,
+                'user_response': 'no user response',
+                'timeout': timeout,
+                'response_time': 'error',
+                'error': str(e)
+            }
+
     def run_terminal_cmd(self, command: str, is_background: bool = False, 
                         timeout_inactive: int = 180, max_total_time: int = 300, 
                         auto_fix_interactive: bool = None, **kwargs) -> Dict[str, Any]:
@@ -305,7 +387,7 @@ class TerminalTools:
         
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         # Auto-correct HTML entities in command
         original_command = command
@@ -321,9 +403,7 @@ class TerminalTools:
                 suggestions = self._provide_command_suggestions(command)
                 if suggestions:
                     print(suggestions)
-        
-        print(f"Working directory: {self.workspace_root}")
-        print(f"Absolute working directory: {os.path.abspath(self.workspace_root)}")
+
         
         try:
             if is_background:
@@ -354,7 +434,7 @@ class TerminalTools:
                 if is_potentially_interactive:
                     timeout_inactive = min(timeout_inactive, 60)
                     max_total_time = min(max_total_time, 180)
-                    print(f"🖥️ Detected potential interactive/GUI program, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    print_current(f"🖥️ Detected potential interactive/GUI program, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 long_running_indicators = [
                     'git clone', 'git fetch', 'git pull', 'git push',
@@ -370,7 +450,7 @@ class TerminalTools:
                 if is_potentially_long_running:
                     timeout_inactive = max(timeout_inactive, 600)
                     max_total_time = max(max_total_time, 1800)
-                    print(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    print_current(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 # For interactive commands, use special environment variables
                 env = None
@@ -379,7 +459,7 @@ class TerminalTools:
                     env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'  # For apt commands
                     env['NEEDRESTART_MODE'] = 'a'  # Auto restart services
-                    print("🔧 DEBUG: Set noninteractive environment for interactive command")
+                    print_current("🔧 DEBUG: Set noninteractive environment for interactive command")
                 
                 process = subprocess.Popen(
                     command,
@@ -425,7 +505,7 @@ class TerminalTools:
                     suggestions = self._provide_command_suggestions(original_command)
                     if suggestions:
                         result['suggestions'] = suggestions
-                        print("\n" + suggestions)
+                        print_current("\n" + suggestions)
                 
                 return result
                 

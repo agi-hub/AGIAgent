@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -21,8 +22,17 @@ import subprocess
 import threading
 import time
 import queue
+from typing import Dict, Any
 
 from .code_repository_parser import CodeRepositoryParser
+
+# Supported file extensions for code parsing
+SUPPORTED_EXTENSIONS = [
+    '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.h', '.hpp', 
+    '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bat', 
+    '.ps1', '.sql', '.html', '.css', '.scss', '.less', '.xml', '.json', '.yaml', 
+    '.yml', '.toml', '.cfg', '.ini', '.md', '.txt', '.dockerfile', '.makefile'
+]
 
 
 class BaseTools:
@@ -34,85 +44,54 @@ class BaseTools:
         # Initialize code repository parser
         self.code_parser = None
         self._init_code_parser()
-
-    def _get_code_index_path(self) -> str:
-        """Get the path to the code index database"""
-        workspace_name = os.path.basename(self.workspace_root.rstrip('/'))
         
-        if workspace_name == "workspace":
-            workspace_name = "test_workspace"
-        
-        db_path = f"{workspace_name.replace('/', '_')}_code_index"
-        
-        if not os.path.isabs(db_path):
-            db_path = os.path.join(os.path.dirname(__file__), '..', db_path)
-        
-        return db_path
+        # Initialize terminal tools
+        self.terminal_tools = None
+        self._init_terminal_tools()
 
     def _init_code_parser(self):
-        """Initialize code repository parser"""
+        """Initialize code repository parser with background update enabled"""
         try:
-            from tools.code_repository_parser import CodeRepositoryParser
+            from .code_repository_parser import CodeRepositoryParser
             
+            # Create parser instance with background update enabled
             self.code_parser = CodeRepositoryParser(
-                root_path=self.workspace_root,
-                supported_extensions=['.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.h', '.hpp', 
-                          '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bat', 
-                          '.ps1', '.sql', '.html', '.css', '.scss', '.less', '.xml', '.json', '.yaml', 
-                          '.yml', '.toml', '.cfg', '.ini', '.md', '.txt', '.dockerfile', '.makefile']
+                root_path=self.workspace_root or os.getcwd(),
+                supported_extensions=SUPPORTED_EXTENSIONS,
+                enable_background_update=True,  # 启用后台更新
+                update_interval=1.0  # 1秒更新间隔
             )
-
-            db_path = self._get_code_index_path()
-            if os.path.exists(f"{db_path}/code_segments.pkl"):
-                try:
-                    # print(f"📚 Loading code index database from: {db_path}")
-                    self.code_parser.load_database(db_path)
-                    
-                    changes = self.code_parser.check_repository_changes()
-                    if any(changes.values()):
-                        # print(f"🔄 Code files have changed, starting incremental update...")
-                        self.perform_incremental_update()
-                    else:
-                        pass
-                        # print(f"✅ Code index is up to date")
-                except Exception as e:
-                    print(f"⚠️ Failed to load code index database: {e}, will recreate")
-                    self._rebuild_code_index()
-            else:
-                # print(f"🆕 Creating new code index database: {db_path}")
-                self._rebuild_code_index()
+            
+            # Initialize with database loading
+            success = self.code_parser.init_code_parser(
+                workspace_root=self.workspace_root,
+                supported_extensions=SUPPORTED_EXTENSIONS
+            )
+            
+            if not success:
+                self.code_parser = None
                 
         except Exception as e:
-            print(f"❌ Failed to initialize code repository parser: {e}")
+            print_current(f"❌ Failed to initialize code repository parser: {e}")
             self.code_parser = None
 
+    def _get_code_index_path(self) -> str:
+        """Get the path to the code index database (proxy method)"""
+        if self.code_parser:
+            return self.code_parser._get_code_index_path(self.workspace_root or os.getcwd())
+        return ""
+
     def _rebuild_code_index(self):
-        """Rebuild code index"""
-        try:
-            if self.code_parser:
-                # print(f"🔄 Starting to build code index...")
-                self.code_parser.parse_repository(force_rebuild=True)
-                
-                db_path = self._get_code_index_path()
-                self.code_parser.save_database(db_path)
-                # print(f"✅ Code index build complete, saved to: {db_path}")
-        except Exception as e:
-            print(f"❌ Failed to rebuild code index: {e}")
+        """Rebuild code index (proxy method)"""
+        if self.code_parser:
+            return self.code_parser._rebuild_code_index()
+        return False
 
     def perform_incremental_update(self):
-        """Perform incremental update"""
-        try:
-            if not self.code_parser:
-                return
-                
-            update_result = self.code_parser.incremental_update()
-            
-            if any(count > 0 for count in update_result.values()):
-                db_path = self._get_code_index_path()
-                self.code_parser.save_database(db_path)
-                
-        except Exception as e:
-            print(f"⚠️ Code repository update failed: {e}")
+        """Perform incremental update (proxy method)"""
+        if self.code_parser:
+            return self.code_parser.perform_incremental_update()
+        return False
 
     def _resolve_path(self, path: str) -> str:
         """Resolve a path to an absolute path, cleaning up any redundant workspace prefixes."""
@@ -123,8 +102,41 @@ class BaseTools:
             workspace_dir_name = os.path.basename(self.workspace_root)
             if workspace_dir_name in ['workspace', 'output']:
                 path = path[10:]
-                # print(f"⚠️  Path cleanup: removed redundant 'workspace/' prefix, using: {path}")
+                # print_current(f"⚠️  Path cleanup: removed redundant 'workspace/' prefix, using: {path}")
         
         resolved_path = os.path.join(self.workspace_root, path)
-        # print(f"🔍 Path resolution: '{path}' -> '{resolved_path}'")
+        # print_current(f"🔍 Path resolution: '{path}' -> '{resolved_path}'")
         return resolved_path
+
+    def _init_terminal_tools(self):
+        """Initialize terminal tools for user interaction"""
+        try:
+            from .terminal_tools import TerminalTools
+            self.terminal_tools = TerminalTools(workspace_root=self.workspace_root)
+        except Exception as e:
+            print_current(f"❌ Failed to initialize terminal tools: {e}")
+            self.terminal_tools = None
+
+    def talk_to_user(self, query: str, timeout: int = 10) -> Dict[str, Any]:
+        """
+        Display a question to the user and wait for keyboard input with timeout.
+        
+        Args:
+            query: The question to display to the user
+            timeout: Maximum time to wait for user response (default: 10 seconds)
+            
+        Returns:
+            Dict containing the user's response or timeout indication
+        """
+        if self.terminal_tools:
+            return self.terminal_tools.talk_to_user(query, timeout)
+        else:
+            return {
+                'status': 'error',
+                'query': query,
+                'user_response': 'no user response',
+                'timeout': timeout,
+                'response_time': 'error',
+                'error': 'Terminal tools not initialized'
+            }
+

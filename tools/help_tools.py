@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -77,23 +78,23 @@ class HelpTools:
                             "description": "File path to modify (relative to workspace or absolute path)",
                             "type": "string"
                         },
-                        "instructions": {
-                            "description": "Brief description of the edit being performed",
+                        "edit_mode": {
+                            "description": "Editing mode: 'append' (SAFEST - add to end), 'replace_lines' (replace specific lines), 'insert_lines' (insert at position), 'full_replace' (DANGEROUS - replace entire file)",
                             "type": "string"
                         },
                         "code_edit": {
                             "description": "Content to write, replace, insert, or append",
                             "type": "string"
                         },
-                        "edit_mode": {
-                            "description": "Editing mode: 'append' (SAFEST - add to end), 'replace_lines' (replace specific lines), 'insert_lines' (insert at position), 'auto' (USE WITH CAUTION - requires existing code markers), 'full_replace' (DANGEROUS - replace entire file)",
+                        "instructions": {
+                            "description": "Brief description of the edit being performed",
                             "type": "string"
                         },
-                        "start_line": {
+                        "start_line_one_indexed": {
                             "description": "Starting line number for replace_lines mode (1-indexed, inclusive)",
                             "type": "integer"
                         },
-                        "end_line": {
+                        "end_line_one_indexed_inclusive": {
                             "description": "Ending line number for replace_lines mode (1-indexed, inclusive)",
                             "type": "integer"
                         },
@@ -102,10 +103,10 @@ class HelpTools:
                             "type": "integer"
                         }
                     },
-                    "required": ["target_file", "instructions", "code_edit"],
+                    "required": ["target_file", "edit_mode", "code_edit"],
                     "type": "object"
                 },
-                "notes": "SAFETY FIRST: Read file before editing. Use 'append' mode as default. Avoid 'auto' mode without existing code markers.",
+                "notes": "SAFETY FIRST: Read file before editing. Default mode is now 'append' (SAFEST). Avoid 'auto' mode without existing code markers.",
                 "warning": "NEVER use auto mode on existing files without proper existing code markers (// ... existing code ...)"
             },
             "list_dir": {
@@ -211,6 +212,94 @@ class HelpTools:
                 },
                 "notes": "Returns detailed parameters, examples, and usage guidelines"
             },
+            "spawn_agibot": {
+                "description": "Spawn a new AGIBot instance to handle a specific task asynchronously. Useful for complex task decomposition and parallel execution. TIP: For most cases, omit the 'model' parameter to use the same model as the current instance automatically.",
+                "parameters": {
+                    "task_description": {
+                        "type": "string",
+                        "description": "Description of the task for the new AGIBot instance",
+                        "required": True
+                    },
+                    "agent_id": {
+                        "type": "string", 
+                        "description": "Custom agent ID (optional, will auto-generate if not provided). Must match format 'agent_XXX' where XXX is a 3-digit number (e.g., 'agent_001')",
+                        "required": False
+                    },
+                    "output_directory": {
+                        "type": "string",
+                        "description": "Directory where the new AGIBot should save its output (optional, will use parent's if not provided)",
+                        "required": False
+                    },
+                    "api_key": {
+                        "type": "string",
+                        "description": "API key for the new instance (optional, will use current if not provided)",
+                        "required": False
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name for the new instance. RECOMMENDED: Leave this parameter empty to automatically use the same model as the current instance. Only specify if you need a different model.",
+                        "required": False
+                    },
+                    "max_loops": {
+                        "type": "integer",
+                        "description": "Maximum execution loops for the new instance (default: 10)",
+                        "required": False
+                    },
+                    "wait_for_completion": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the spawned AGIBot to complete before returning (default: false)",
+                        "required": False
+                    },
+                    "shared_workspace": {
+                        "type": "boolean",
+                        "description": "Whether to share parent's workspace directory (default: true)",
+                        "required": False
+                    },
+                    "streaming": {
+                        "type": "boolean",
+                        "description": "Whether to use streaming output (default: false for python interface, overrides config.txt setting)",
+                        "required": False
+                    }
+                },
+                "note": "Runs asynchronously in separate thread (unless wait_for_completion=true), output redirected to logs/ directory. All spawned AGIBots share the same workspace/ directory for collaboration by default. Returns detailed status information. Check the .agibot_spawn_[task_id]_status.json file in the output directory for completion status. Output is redirected to logs/ directory to avoid conflicts. When shared_workspace=true, all spawned AGIBots work in the same workspace directory. When streaming=false (default for python interface), the spawned AGIBot will use batch mode instead of streaming output to reduce log fragmentation."
+            },
+            "wait_for_agibot_spawns": {
+                "description": "Wait for multiple spawned AGIBot instances to complete. Useful for synchronizing after launching multiple parallel tasks.",
+                "parameters": {
+                    "properties": {
+                        "task_ids": {
+                            "description": "List of task IDs to wait for (optional, will auto-discover if not provided)",
+                            "type": "array",
+                            "items": {"type": "string"}
+                        },
+                        "output_directories": {
+                            "description": "List of output directories to check (optional)",
+                            "type": "array",
+                            "items": {"type": "string"}
+                        },
+                        "check_interval": {
+                            "description": "Interval in seconds between status checks (default: 5)",
+                            "type": "integer"
+                        },
+                        "max_wait_time": {
+                            "description": "Maximum time to wait in seconds (default: 3600)",
+                            "type": "integer"
+                        }
+                    },
+                    "required": [],
+                    "type": "object"
+                },
+                "notes": "If no task_ids or output_directories are provided, the tool will auto-discover all AGIBot spawn tasks in the current directory tree. Returns detailed completion status for all tasks."
+            },
+            "debug_thread_status": {
+                "description": "Debug function: Check the status of currently active threads. Use to diagnose thread states created by spawn_agibot, especially when the program is stuck or threads terminate unexpectedly.",
+                "parameters": {
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                },
+                "notes": "Returns detailed status information for all tracked threads, including thread ID, alive status, daemon thread status, etc. Primarily used for debugging thread management issues in spawn_agibot."
+            },
             
             # Extended Web Tools
             "fetch_webpage_content": {
@@ -230,6 +319,26 @@ class HelpTools:
                     "type": "object"
                 },
                 "notes": "Returns webpage content with metadata"
+            },
+            
+            # User Interaction Tools
+            "talk_to_user": {
+                "description": "Display a question to the user and wait for keyboard input with timeout. This tool allows interactive communication with the user.",
+                "parameters": {
+                    "properties": {
+                        "query": {
+                            "description": "The question to display to the user",
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "description": "Maximum time to wait for user response in seconds (default: 10 seconds)",
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["query"],
+                    "type": "object"
+                },
+                "notes": "Returns user response or 'no user response' if timeout occurs. Useful for getting user input during automated tasks."
             }
         }
 
@@ -245,7 +354,7 @@ class HelpTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         if tool_name not in self.tool_definitions:
             available_tools = list(self.tool_definitions.keys())
@@ -304,8 +413,10 @@ class HelpTools:
                     example_value = "https://example.com"
                 elif "edit_mode" in param_name.lower():
                     example_value = '"replace_lines"'
-                elif "line" in param_name.lower() and "position" not in param_name.lower():
+                elif "start_line" in param_name.lower():
                     example_value = "10"
+                elif "end_line" in param_name.lower():
+                    example_value = "15"
                 elif "position" in param_name.lower():
                     example_value = "15"
                 else:
@@ -321,14 +432,18 @@ class HelpTools:
         examples = {
             "run_terminal_cmd": '{\n  "name": "run_terminal_cmd",\n  "arguments": {\n    "command": "python script.py",\n    "is_background": false\n  }\n}',
             "read_file": '{\n  "name": "read_file",\n  "arguments": {\n    "target_file": "src/main.py",\n    "start_line_one_indexed": 1,\n    "end_line_one_indexed_inclusive": 50,\n    "should_read_entire_file": false\n  }\n}',
-            "edit_file": '// ALWAYS save content to files, NEVER output to chat!\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "data_analysis.py",\n    "instructions": "Create data analysis script",\n    "code_edit": "import pandas as pd\\nimport matplotlib.pyplot as plt\\n\\ndef analyze_data(filename):\\n    df = pd.read_csv(filename)\\n    return df.describe()",\n    "edit_mode": "append"\n  }\n}\n\n// Example: Creating a report file instead of chat output\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "project_report.md",\n    "instructions": "Create comprehensive project analysis report",\n    "code_edit": "# Project Analysis Report\\n\\n## Executive Summary\\n\\nThis report analyzes...",\n    "edit_mode": "full_replace"\n  }\n}',
+            "edit_file": '// ALWAYS save content to files, NEVER output to chat!\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "data_analysis.py",\n    "edit_mode": "append",\n    "code_edit": "import pandas as pd\\nimport matplotlib.pyplot as plt\\n\\ndef analyze_data(filename):\\n    df = pd.read_csv(filename)\\n    return df.describe()",\n    "instructions": "Create data analysis script"\n  }\n}\n\n// Example: Creating a report file instead of chat output\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "project_report.md",\n    "edit_mode": "full_replace",\n    "code_edit": "# Project Analysis Report\\n\\n## Executive Summary\\n\\nThis report analyzes...",\n    "instructions": "Create comprehensive project analysis report"\n  }\n}\n\n// Example: Replace specific lines\n{\n  "name": "edit_file",\n  "arguments": {\n    "target_file": "config.py",\n    "edit_mode": "replace_lines",\n    "start_line_one_indexed": 5,\n    "end_line_one_indexed_inclusive": 10,\n    "code_edit": "# Updated configuration\\nDEBUG = True\\nAPI_KEY = \\"new_key\\"",\n    "instructions": "Update configuration settings"\n  }\n}',
             "list_dir": '{\n  "name": "list_dir",\n  "arguments": {\n    "relative_workspace_path": "src"\n  }\n}',
             "codebase_search": '{\n  "name": "codebase_search",\n  "arguments": {\n    "query": "function that handles user authentication",\n    "target_directories": ["src", "lib"]\n  }\n}',
             "grep_search": '{\n  "name": "grep_search",\n  "arguments": {\n    "query": "def.*authenticate",\n    "include_pattern": "*.py",\n    "case_sensitive": false\n  }\n}',
             "file_search": '{\n  "name": "file_search",\n  "arguments": {\n    "query": "config.py"\n  }\n}',
             "web_search": '{\n  "name": "web_search",\n  "arguments": {\n    "search_term": "Python asyncio best practices 2024"\n  }\n}',
             "tool_help": '{\n  "name": "tool_help",\n  "arguments": {\n    "tool_name": "edit_file"\n  }\n}',
-            "fetch_webpage_content": '{\n  "name": "fetch_webpage_content",\n  "arguments": {\n    "url": "https://example.com/article",\n    "search_term": "important topic"\n  }\n}'
+            "spawn_agibot": '{\n  "name": "spawn_agibot",\n  "arguments": {\n    "task_description": "Create a Python web scraper that extracts data from e-commerce websites",\n    "agent_id": "agent_010",\n    "max_loops": 15,\n    "shared_workspace": true,\n    "single_task_mode": true,\n    "wait_for_completion": false\n  }\n}',
+            "wait_for_agibot_spawns": '{\n  "name": "wait_for_agibot_spawns",\n  "arguments": {\n    "check_interval": 10,\n    "max_wait_time": 1800\n  }\n}',
+            "debug_thread_status": '{\n  "name": "debug_thread_status",\n  "arguments": {}\n}',
+            "fetch_webpage_content": '{\n  "name": "fetch_webpage_content",\n  "arguments": {\n    "url": "https://example.com/article",\n    "search_term": "important topic"\n  }\n}',
+            "talk_to_user": '{\n  "name": "talk_to_user",\n  "arguments": {\n    "query": "What is the capital of France?",\n    "timeout": 5\n  }\n}'
         }
         
         return examples.get(tool_name, f'{{\n  "name": "{tool_name}",\n  "arguments": {{\n    // See parameter template above\n  }}\n}}')
@@ -337,14 +452,15 @@ class HelpTools:
         """List all available tools with brief descriptions and categories."""
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         # Organize tools by category
         categories = {
             "Core Tools": ["run_terminal_cmd", "read_file", "edit_file", "list_dir"],
             "Search Tools": ["codebase_search", "grep_search", "file_search", "web_search"],
-            "Utility Tools": ["tool_help"],
-            "Extended Web Tools": ["fetch_webpage_content"]
+            "Utility Tools": ["tool_help", "spawn_agibot", "wait_for_agibot_spawns", "debug_thread_status"],
+            "Extended Web Tools": ["fetch_webpage_content"],
+            "User Interaction Tools": ["talk_to_user"]
         }
         
         tools_by_category = {}

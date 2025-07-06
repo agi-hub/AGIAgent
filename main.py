@@ -29,6 +29,10 @@ A complete automated task processing workflow:
 # Application name macro definition
 APP_NAME = "AGI Bot"
 
+from tools.print_system import set_agent_id, print_manager, print_system, print_current
+from tools import Tools
+from tools.debug_system import install_debug_system, track_operation, finish_operation
+
 def is_jupyter_environment():
     """
     Check if the code is running in a Jupyter environment
@@ -142,14 +146,63 @@ import os
 import sys
 import argparse
 import json
+import atexit
+import signal
 from datetime import datetime
 from task_decomposer import TaskDecomposer
 from multi_round_executor import MultiRoundTaskExecutor
 from typing import Dict, Any
 from config_loader import get_api_key, get_api_base, get_model, get_truncation_length, get_summary_report
+from tools.print_system import print_system, print_manager, print_current
 
 # Configuration file to store last output directory
 LAST_OUTPUT_CONFIG_FILE = ".agibot_last_output.json"
+
+# Global cleanup flag
+_cleanup_executed = False
+
+def global_cleanup():
+    """Global cleanup function to ensure all resources are properly released"""
+    global _cleanup_executed
+    if _cleanup_executed:
+        return
+    _cleanup_executed = True
+    
+    try:
+        
+        # Import here to avoid circular imports
+        # Note: AgentManager class is not implemented, skipping cleanup
+        
+        # Stop message router if it exists
+        try:
+            from tools.message_system import get_message_router
+            router = get_message_router()
+            if router:
+                router.stop()
+        except:
+            pass
+        
+        # Cleanup debug system
+        try:
+            from tools.debug_system import get_debug_system
+            debug_sys = get_debug_system()
+            debug_sys.cleanup()
+        except:
+            pass
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        
+    except Exception as e:
+        print_current(f"⚠️ Error during final cleanup: {e}")
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals"""
+    print_current(f"\n⚠️ 收到信号 {signum}，正在清理...")
+    global_cleanup()
+    sys.exit(1)
 
 def save_last_output_dir(out_dir: str):
     """
@@ -166,7 +219,7 @@ def save_last_output_dir(out_dir: str):
         with open(LAST_OUTPUT_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"⚠️ Failed to save last output directory: {e}")
+        print_current(f"⚠️ Failed to save last output directory: {e}")
 
 def load_last_output_dir() -> str:
     """
@@ -186,11 +239,11 @@ def load_last_output_dir() -> str:
         if last_dir and os.path.exists(last_dir):
             return last_dir
         else:
-            print(f"⚠️ Last output directory does not exist: {last_dir}")
+            print_current(f"⚠️ Last output directory does not exist: {last_dir}")
             return None
             
     except Exception as e:
-        print(f"⚠️ Failed to load last output directory: {e}")
+        print_current(f"⚠️ Failed to load last output directory: {e}")
         return None
 
 class AGIBotMain:
@@ -203,7 +256,8 @@ class AGIBotMain:
                  detailed_summary: bool = True, 
                  single_task_mode: bool = True,
                  interactive_mode: bool = False,
-                 continue_mode: bool = False):
+                 continue_mode: bool = False,
+                 streaming: bool = None):
 
         """
         Initialize AGI Bot main program
@@ -218,6 +272,7 @@ class AGIBotMain:
             single_task_mode: Whether to enable single task mode, skip task decomposition and execute directly
             interactive_mode: Whether to enable interactive mode, ask user confirmation at each step
             continue_mode: Whether to continue from last output directory
+            streaming: Whether to use streaming output
         """
         # Handle continue mode - load last output directory if requested
         if continue_mode:
@@ -227,13 +282,13 @@ class AGIBotMain:
             # Check if absolute or relative path exists
             out_dir_abs = os.path.abspath(out_dir)
             if out_dir != "output" and (os.path.exists(out_dir) or os.path.exists(out_dir_abs)):
-                print(f"🔄 Continue mode: Using specified directory: {out_dir}")
+                print_system(f"🔄 Continue mode: Using specified directory: {out_dir}")
             elif last_dir:
                 out_dir = last_dir
-                print(f"🔄 Continue mode: Using last output directory: {out_dir}")
+                print_system(f"🔄 Continue mode: Using last output directory: {out_dir}")
             else:
-                print("⚠️ Continue mode requested but no valid last output directory found")
-                print("    Creating new output directory instead")
+                print_system("⚠️ Continue mode requested but no valid last output directory found")
+                print_system("    Creating new output directory instead")
         
         # Load API key from config.txt if not provided
         if api_key is None:
@@ -254,28 +309,28 @@ class AGIBotMain:
                 raise ValueError("API base URL not found. Please provide api_base parameter or set it in config.txt")
         
 
-        # print(f"🚀 {APP_NAME} Automated Task Processing System")  # Commented out to reduce terminal noise
+        # print_current(f"🚀 {APP_NAME} Automated Task Processing System")  # Commented out to reduce terminal noise
 
-        # print(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
-        # print(f"   Model: {model}")  # Commented out to reduce terminal noise
-        # print(f"   API Base: {api_base}")  # Commented out to reduce terminal noise
+        # print_current(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
+        # print_current(f"   Model: {model}")  # Commented out to reduce terminal noise
+        # print_current(f"   API Base: {api_base}")  # Commented out to reduce terminal noise
         # if api_key:
-        #     print(f"   API Key: {api_key[:20]}...{api_key[-10:] if len(api_key) > 30 else api_key}")  # Commented out to reduce terminal noise
+        #     print_current(f"   API Key: {api_key[:20]}...{api_key[-10:] if len(api_key) > 30 else api_key}")  # Commented out to reduce terminal noise
         # else:
-        #     print(f"   API Key: Not set")  # Commented out to reduce terminal noise
-        # print(f"📁 Output Directory: {out_dir}")  # Commented out to reduce terminal noise
+        #     print_current(f"   API Key: Not set")  # Commented out to reduce terminal noise
+        # print_current(f"📁 Output Directory: {out_dir}")  # Commented out to reduce terminal noise
         # if debug_mode:
-        #     print(f"🐛 DEBUG Mode: Enabled")  # Commented out to reduce terminal noise
+        #     print_current(f"🐛 DEBUG Mode: Enabled")  # Commented out to reduce terminal noise
         # if detailed_summary:
-        #     print(f"📋 Detailed Summary: Enabled (retaining more technical information)")  # Commented out to reduce terminal noise
+        #     print_current(f"📋 Detailed Summary: Enabled (retaining more technical information)")  # Commented out to reduce terminal noise
         # else:
-        #     print(f"📋 Detailed Summary: Disabled (using simplified summary)")  # Commented out to reduce terminal noise
+        #     print_current(f"📋 Detailed Summary: Disabled (using simplified summary)")  # Commented out to reduce terminal noise
         # if interactive_mode:
-        #     print(f"🤝 Interactive Mode: Enabled (ask user confirmation at each step)")  # Commented out to reduce terminal noise
+        #     print_current(f"🤝 Interactive Mode: Enabled (ask user confirmation at each step)")  # Commented out to reduce terminal noise
         # else:
-        #     print(f"🤖 Automatic Mode: Enabled (no user confirmation required)")  # Commented out to reduce terminal noise
+        #     print_current(f"🤖 Automatic Mode: Enabled (no user confirmation required)")  # Commented out to reduce terminal noise
         # if continue_mode:
-        #     print(f"🔄 Continue Mode: Enabled (using last output directory)")  # Commented out to reduce terminal noise
+        #     print_current(f"🔄 Continue Mode: Enabled (using last output directory)")  # Commented out to reduce terminal noise
 
         
         self.out_dir = out_dir
@@ -286,6 +341,7 @@ class AGIBotMain:
         self.detailed_summary = detailed_summary
         self.single_task_mode = single_task_mode
         self.interactive_mode = interactive_mode
+        self.streaming = streaming
         
         # Ensure output directory exists
         os.makedirs(out_dir, exist_ok=True)
@@ -296,6 +352,16 @@ class AGIBotMain:
         
         # Ensure logs directory exists  
         os.makedirs(self.logs_dir, exist_ok=True)
+        
+        # Set up workspace directory
+        self.workspace_dir = os.path.join(self.out_dir, "workspace")
+        os.makedirs(self.workspace_dir, exist_ok=True)
+        
+        # Set agent ID for main AGIBot
+        set_agent_id("manager")
+        
+        # Initialize tools with workspace root
+        self.tools = Tools(self.workspace_dir)
         
         # Only create task decomposer in multi-task mode
         if not single_task_mode:
@@ -314,13 +380,19 @@ class AGIBotMain:
             User requirement string
         """
         if requirement:
-            print(f"Received user requirement: {requirement}")
+            # 🔧 修复：根据当前agent ID打印信息，而不是总是使用manager
+            from tools.print_system import get_agent_id
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                print_current(f"Received user requirement: {requirement}")
+            else:
+                print_manager(f"Received user requirement: {requirement}")
             return requirement
         
-        print(f"=== {APP_NAME} Automated Task Processing System ===")
-        print("Please describe your requirements, the system will automatically decompose tasks and execute:")
-        print("(Supports multi-line input, enter two empty lines to finish)")
-        print("-" * 50)
+        print_system(f"=== {APP_NAME} Automated Task Processing System ===")
+        print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
+        print_system("(Supports multi-line input, enter two empty lines to finish)")
+        print_system("-" * 50)
         
         lines = []
         empty_line_count = 0
@@ -337,7 +409,7 @@ class AGIBotMain:
                     empty_line_count = 0
                     lines.append(line)
             except KeyboardInterrupt:
-                print("\nUser cancelled input")
+                print_current("\nUser cancelled input")
                 sys.exit(0)
             except EOFError:
                 break
@@ -345,7 +417,7 @@ class AGIBotMain:
         requirement = "\n".join(lines).strip()
         
         if not requirement:
-            print("❌ No valid requirement entered")
+            print_current("❌ No valid requirement entered")
             sys.exit(1)
             
         return requirement
@@ -360,7 +432,7 @@ class AGIBotMain:
         Returns:
             Whether todo.csv was successfully created
         """
-        print("🔧 Starting task decomposition...")
+        print_manager("🔧 Starting task decomposition...")
         
         try:
             # Set working directory
@@ -372,18 +444,18 @@ class AGIBotMain:
                 self.todo_csv_path,
                 workspace_dir=workspace_dir
             )
-            print(f"Task decomposition result: {result}")
+            print_current(f"Task decomposition result: {result}")
             
             # Check if CSV file was successfully created
             # First check expected location
             if not os.path.exists(self.todo_csv_path):
-                print("❌ Task decomposition failed: Failed to create todo.csv file")
+                print_current("❌ Task decomposition failed: Failed to create todo.csv file")
                 return False
             
             return True
             
         except Exception as e:
-            print(f"❌ Task decomposition error: {e}")
+            print_current(f"❌ Task decomposition error: {e}")
             return False
     
     def execute_tasks(self, loops: int = 3) -> bool:
@@ -396,7 +468,6 @@ class AGIBotMain:
         Returns:
             Whether execution was successful
         """
-        print("🚀 Starting task execution...")
         
         try:
             # Set working directory
@@ -419,14 +490,29 @@ class AGIBotMain:
             report = executor.execute_all_tasks(self.todo_csv_path)
             
             if "error" in report:
-                print(f"❌ Task execution failed: {report['error']}")
+                print_current(f"❌ Task execution failed: {report['error']}")
+                # Clean up resources before returning
+                try:
+                    executor.cleanup()
+                except:
+                    pass
                 return False
             
-            print("✅ Task execution completed")
+            # Clean up resources before returning
+            try:
+                executor.cleanup()
+            except:
+                pass
             return True
             
         except Exception as e:
-            print(f"❌ Task execution error: {e}")
+            print_current(f"❌ Task execution error: {e}")
+            # Clean up resources if executor was created
+            try:
+                if 'executor' in locals():
+                    executor.cleanup()
+            except:
+                pass
             return False
     
     def execute_single_task(self, user_requirement: str, loops: int = 3) -> bool:
@@ -445,6 +531,12 @@ class AGIBotMain:
             # Set working directory
             workspace_dir = os.path.join(self.out_dir, "workspace")
             
+            # 🔧 检查当前agent_id并传递给执行器
+            from tools.print_system import get_agent_id, set_agent_id
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                print_current(f"🏷️ Using agent ID for task execution: {current_agent_id}")
+            
             # Create multi-round task executor
             executor = MultiRoundTaskExecutor(
                 subtask_loops=loops,
@@ -455,8 +547,18 @@ class AGIBotMain:
                 model=self.model,
                 api_base=self.api_base,
                 detailed_summary=self.detailed_summary,
-                interactive_mode=self.interactive_mode
+                interactive_mode=self.interactive_mode,
+                streaming=self.streaming
             )
+            
+            # 🔧 确保executor使用正确的agent_id
+            if current_agent_id and hasattr(executor, 'executor') and hasattr(executor.executor, 'tools'):
+                try:
+                    # 在executor的工具中设置agent_id
+                    if hasattr(executor.executor.tools, 'set_agent_context'):
+                        executor.executor.tools.set_agent_context(current_agent_id)
+                except Exception as e:
+                    print_current(f"⚠️ Warning: Could not set agent context: {e}")
             
             # Construct single task
             single_task = {
@@ -467,19 +569,23 @@ class AGIBotMain:
                 'Dependent Tasks': ''
             }
             
-            print(f"🚀 Starting task execution ({loops} rounds max)")
+            print_manager(f"🚀 Starting task execution ({loops} rounds max)")
             
             # Execute single task
             task_result = executor.execute_single_task(single_task, 0, 1, "")
             
             # Check if user interrupted execution
             if task_result.get("status") == "user_interrupted":
-                print("🛑 Single task execution stopped by user")
-                print("📋 Skipping report generation due to user interruption")
+                print_current("🛑 Single task execution stopped by user")
+                print_current("📋 Skipping report generation due to user interruption")
+                # Clean up resources before returning
+                try:
+                    executor.cleanup()
+                except:
+                    pass
                 return False
             
             if task_result.get("status") == "completed":
-                print("✅ Single task execution completed successfully")
                 
                 # Save simple execution report
                 execution_report = {
@@ -495,35 +601,44 @@ class AGIBotMain:
                 
                 # Save execution report
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
+                # 🔧 添加agent ID到报告文件名
+                from tools.print_system import get_agent_id
+                current_agent_id = get_agent_id()
+                if current_agent_id:
+                    report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
+                else:
+                    report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
                 
                 try:
                     import json
                     with open(report_file, 'w', encoding='utf-8') as f:
                         json.dump(execution_report, f, ensure_ascii=False, indent=2)
-                    print(f"📋 Execution report saved to: {report_file}")
                 except Exception as e:
-                    print(f"⚠️ Report save failed: {e}")
+                    print_current(f"⚠️ Report save failed: {e}")
                 
                 # Generate human-readable Markdown report
                 try:
                     self.generate_single_task_markdown_report(execution_report, timestamp)
                 except Exception as e:
-                    print(f"⚠️ Markdown report generation failed: {e}")
+                    print_current(f"⚠️ Markdown report generation failed: {e}")
                 
                 # Generate detailed summary report (if enabled in config)
                 if get_summary_report():
                     try:
                         self.generate_single_task_summary_report(execution_report, timestamp)
                     except Exception as e:
-                        print(f"⚠️ Detailed summary report generation failed: {e}")
-                else:
-                    print("📋 Summary report generation disabled in config")
+                        print_current(f"⚠️ Detailed summary report generation failed: {e}")
+                
+                # Clean up resources before returning
+                try:
+                    executor.cleanup()
+                except:
+                    pass
                 
                 return True
             elif task_result.get("status") == "max_rounds_reached":
                 # For max rounds reached, still generate reports but return False to indicate partial success
-                print("⚠️ Task reached maximum execution rounds, may not be fully completed")
+                print_current("⚠️ Task reached maximum execution rounds")
                 
                 # Save execution report for max rounds case
                 execution_report = {
@@ -531,7 +646,7 @@ class AGIBotMain:
                     "end_time": datetime.now().isoformat(),
                     "total_tasks": 1,
                     "completed_tasks": [],
-                    "failed_tasks": [task_result],
+                    "max_rounds_reached_tasks": [task_result],  # 🔧 修复：不再标记为failed_tasks
                     "execution_summary": f"Single task mode execution reached max rounds\nTask: {user_requirement}",
                     "workspace_dir": workspace_dir,
                     "mode": "single_task"
@@ -539,23 +654,47 @@ class AGIBotMain:
                 
                 # Save execution report
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
+                # 🔧 添加agent ID到报告文件名
+                from tools.print_system import get_agent_id
+                current_agent_id = get_agent_id()
+                if current_agent_id:
+                    report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
+                else:
+                    report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
                 
                 try:
                     import json
                     with open(report_file, 'w', encoding='utf-8') as f:
                         json.dump(execution_report, f, ensure_ascii=False, indent=2)
-                    print(f"📋 Execution report saved to: {report_file}")
+                    print_current(f"📋 Execution report saved to: {report_file}")
                 except Exception as e:
-                    print(f"⚠️ Report save failed: {e}")
+                    print_current(f"⚠️ Report save failed: {e}")
+                
+                # Clean up resources before returning
+                try:
+                    executor.cleanup()
+                except:
+                    pass
                 
                 return False
             else:
-                print("❌ Single task execution failed")
+                # 🔧 修复：区分真正的失败和达到最大轮数  
+                print_current("⚠️ Single task execution reached maximum rounds")
+                # Clean up resources before returning
+                try:
+                    executor.cleanup()
+                except:
+                    pass
                 return False
                 
         except Exception as e:
-            print(f"❌ Single task execution error: {e}")
+            print_current(f"❌ Single task execution error: {e}")
+            # Clean up resources if executor was created
+            try:
+                if 'executor' in locals():
+                    executor.cleanup()
+            except:
+                pass
             return False
     
     def generate_single_task_markdown_report(self, report: Dict[str, Any], timestamp: str):
@@ -567,7 +706,13 @@ class AGIBotMain:
             timestamp: Timestamp
         """
         try:
-            markdown_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.md")
+            # 🔧 添加agent ID到markdown报告文件名
+            from tools.print_system import get_agent_id
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                markdown_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.md")
+            else:
+                markdown_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.md")
             
             start_time = datetime.fromisoformat(report["start_time"])
             end_time = datetime.fromisoformat(report["end_time"])
@@ -700,10 +845,8 @@ This report was generated by {APP_NAME} Automated Task Processing System.
             with open(markdown_file, 'w', encoding='utf-8') as f:
                 f.write(markdown_content)
             
-            print(f"📝 Human-readable report saved to: {markdown_file}")
-            
         except Exception as e:
-            print(f"⚠️ Single task Markdown report generation failed: {e}")
+            print_current(f"⚠️ Single task Markdown report generation failed: {e}")
     
     def generate_single_task_summary_report(self, report: Dict[str, Any], timestamp: str):
         """
@@ -716,10 +859,18 @@ This report was generated by {APP_NAME} Automated Task Processing System.
         try:
             # Save summary report to workspace directory for easy user access
             workspace_dir = report.get("workspace_dir")
-            if workspace_dir and os.path.exists(workspace_dir):
-                summary_file = os.path.join(workspace_dir, f"task_summary_{timestamp}.md")
+            # 🔧 添加agent ID到summary文件名
+            from tools.print_system import get_agent_id
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                summary_filename = f"task_summary_{current_agent_id}_{timestamp}.md"
             else:
-                summary_file = os.path.join(self.logs_dir, f"task_summary_{timestamp}.md")
+                summary_filename = f"task_summary_{timestamp}.md"
+            
+            if workspace_dir and os.path.exists(workspace_dir):
+                summary_file = os.path.join(workspace_dir, summary_filename)
+            else:
+                summary_file = os.path.join(self.logs_dir, summary_filename)
             
             task = report["completed_tasks"][0] if report["completed_tasks"] else {}
             task_name = task.get("task_name", "User Requirement Execution")
@@ -795,7 +946,7 @@ Final result: {final_result}
 Please generate a markdown format detailed summary report, retaining all important information but removing round markers."""
             
             try:
-                print(f"🧠 Using LLM to generate detailed summary report...")
+                print_current(f"🧠 Using LLM to generate detailed summary report...")
                 
                 # Create temporary multi-round task executor to call LLM
                 from multi_round_executor import MultiRoundTaskExecutor
@@ -844,7 +995,7 @@ Please generate a markdown format detailed summary report, retaining all importa
 - City: {location_info['city']}
 - Country: {location_info['country']}"""
                     
-                    print("🔄 Starting generation of single task summary...")
+                    print_current("🔄 Starting generation of single task summary...")
                     response = temp_executor.executor.client.messages.create(
                         model=self.model,
                         max_tokens=temp_executor.executor._get_max_tokens_for_model(self.model),
@@ -860,8 +1011,8 @@ Please generate a markdown format detailed summary report, retaining all importa
                         llm_summary = response.content[0].text
                     else:
                         llm_summary = "Summary generation failed: API returned empty response"
-                        print("⚠️ Warning: Claude API returned empty content list")
-                    print("📋 Single task summary generated")
+                        print_current("⚠️ Warning: Claude API returned empty content list")
+                    print_current("📋 Single task summary generated")
                     
                 else:
                     # Use OpenAI API - batch call
@@ -896,7 +1047,7 @@ Please generate a markdown format detailed summary report, retaining all importa
 - City: {location_info['city']}
 - Country: {location_info['country']}"""
                     
-                    print("🔄 Starting generation of single task summary...")
+                    print_current("🔄 Starting generation of single task summary...")
                     response = temp_executor.executor.client.chat.completions.create(
                         model=self.model,
                         messages=[
@@ -913,8 +1064,8 @@ Please generate a markdown format detailed summary report, retaining all importa
                         llm_summary = response.choices[0].message.content
                     else:
                         llm_summary = "Summary generation failed: API returned empty response"
-                        print("⚠️ Warning: OpenAI API returned empty choices list")
-                    print("📋 Single task summary generated")
+                        print_current("⚠️ Warning: OpenAI API returned empty choices list")
+                    print_current("📋 Single task summary generated")
                 
                 # Build final summary report
                 final_summary = f"""# {APP_NAME} Task Summary Report
@@ -956,15 +1107,15 @@ Please generate a markdown format detailed summary report, retaining all importa
                 with open(summary_file, 'w', encoding='utf-8') as f:
                     f.write(final_summary)
                 
-                print(f"📋 Detailed summary report saved to: {summary_file}")
+                print_current(f"📋 Detailed summary report saved to: {summary_file}")
                 
             except Exception as e:
-                print(f"⚠️ LLM summary generation failed: {e}")
+                print_current(f"⚠️ LLM summary generation failed: {e}")
                 # Use backup plan - directly organize existing information
                 self._generate_detailed_single_task_summary(report, timestamp, user_requirement, llm_responses, tool_outputs, final_result)
             
         except Exception as e:
-            print(f"⚠️ Single task summary report generation failed: {e}")
+            print_current(f"⚠️ Single task summary report generation failed: {e}")
     
     def _generate_detailed_single_task_summary(self, report: Dict[str, Any], timestamp: str, user_requirement: str, llm_responses: list, tool_outputs: list, final_result: str):
         """
@@ -1046,10 +1197,10 @@ Please generate a markdown format detailed summary report, retaining all importa
             with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(detailed_summary)
             
-            print(f"📋 Detailed summary report saved to: {summary_file}")
+            print_current(f"📋 Detailed summary report saved to: {summary_file}")
             
         except Exception as e:
-            print(f"⚠️ Detailed summary report generation failed: {e}")
+            print_current(f"⚠️ Detailed summary report generation failed: {e}")
     
     def ask_user_confirmation(self, message: str, default_yes: bool = True) -> bool:
         """
@@ -1075,7 +1226,7 @@ Please generate a markdown format detailed summary report, retaining all importa
             return response in ['y', 'yes', 'yes', 'confirm']
             
         except (KeyboardInterrupt, EOFError):
-            print("\n❌ User cancelled operation")
+            print_current("\n❌ User cancelled operation")
             return False
     
     def run(self, user_requirement: str = None, loops: int = 3) -> bool:
@@ -1089,50 +1240,64 @@ Please generate a markdown format detailed summary report, retaining all importa
         Returns:
             Whether successfully completed
         """
+        track_operation("主程序执行")
+        
         workspace_dir = os.path.join(self.out_dir, "workspace")
         
-        print(f"📁 Project: {os.path.abspath(self.out_dir)}")
         if not self.single_task_mode:
-            print(f"📋 Task File: {os.path.abspath(self.todo_csv_path)}")
+            print_current(f"📋 Task File: {os.path.abspath(self.todo_csv_path)}")
         
         # Step 1: Get user requirement
+        track_operation("获取用户需求")
         requirement = self.get_user_requirement(user_requirement)
+        finish_operation("获取用户需求")
         
         if not requirement:
-            print("❌ Invalid user requirement")
+            print_current("❌ Invalid user requirement")
             return False
         
         # Choose execution path based on mode
         if self.single_task_mode:
             # Single task mode: directly execute user requirement
-            # Execute single task
+            track_operation("单任务执行")
             if not self.execute_single_task(requirement, loops):
-                print("❌ Single task execution failed")
+                print_current("⚠️ Single task execution reached maximum rounds")  # 🔧 修复：区分失败和达到最大轮数
+                finish_operation("单任务执行")
+                finish_operation("主程序执行")
                 return False
+            finish_operation("单任务执行")
                 
         else:
             # Step 2: Task decomposition
+            track_operation("任务分解")
             if not self.decompose_task(requirement):
-                print("❌ Task decomposition failed, program terminated")
+                print_current("❌ Task decomposition failed, program terminated")
+                finish_operation("任务分解")
+                finish_operation("主程序执行")
                 return False
+            finish_operation("任务分解")
             
             # Interactive mode confirmation is handled by individual task execution
             # No need for pre-execution confirmation here
             
             # Step 3: Execute tasks
+            track_operation("多任务执行")
             if not self.execute_tasks(loops):
-                print("❌ Task execution failed")
+                print_current("❌ Task execution failed")
+                finish_operation("多任务执行")
+                finish_operation("主程序执行")
                 return False
+            finish_operation("多任务执行")
         
         # Task execution completed
-        print("\n🎉 Task execution completed!")
-        print(f"📁 All output files saved at: {os.path.abspath(self.out_dir)}")
-        print(f"💻 Code files saved at: {os.path.abspath(workspace_dir)}")
+        print_current(f"📁 All output files saved at: {os.path.abspath(self.out_dir)}")
+        print_current(f"💻 Code files saved at: {os.path.abspath(workspace_dir)}")
         
         # Save current output directory for future continue operations
         save_last_output_dir(self.out_dir)
         
-        print("\n🎉 Workflow completed!")
+        print_current("\n🎉 Workflow completed!")
+        finish_operation("主程序执行")
         return True
 
 
@@ -1155,9 +1320,9 @@ class AGIBotClient:
         )
         
         if response["success"]:
-            print(f"Task completed! Output: {response['output_dir']}")
+            print_current(f"Task completed! Output: {response['output_dir']}")
         else:
-            print(f"Task failed: {response['message']}")
+            print_current(f"Task failed: {response['message']}")
     """
     
     def __init__(self, 
@@ -1167,7 +1332,8 @@ class AGIBotClient:
                  debug_mode: bool = False,
                  detailed_summary: bool = True,
                  single_task_mode: bool = True,
-                 interactive_mode: bool = False):
+                 interactive_mode: bool = False,
+                 streaming: bool = None):
         """
         Initialize AGI Bot Client
         
@@ -1179,6 +1345,7 @@ class AGIBotClient:
             detailed_summary: Whether to enable detailed summary mode
             single_task_mode: Whether to use single task mode (default: True)
             interactive_mode: Whether to enable interactive mode
+            streaming: Whether to use streaming output (None to use config.txt)
         """
         if not api_key:
             raise ValueError("api_key is required")
@@ -1192,13 +1359,8 @@ class AGIBotClient:
         self.detailed_summary = detailed_summary
         self.single_task_mode = single_task_mode
         self.interactive_mode = interactive_mode
+        self.streaming = streaming
         
-        print(f"🤖 AGI Bot Client initialized")
-        print(f"   Model: {model}")
-        if api_base:
-            print(f"   API Base: {api_base}")
-        print(f"   Mode: {'Single Task' if single_task_mode else 'Multi Task'}")
-    
     def chat(self, 
              messages: list,
              dir: str = None,
@@ -1265,6 +1427,10 @@ class AGIBotClient:
             dir = f"agibot_output_{timestamp}"
         
         try:
+            # 🔧 检查当前线程的agent_id并设置到主线程
+            from tools.print_system import get_agent_id, set_agent_id
+            current_agent_id = get_agent_id()
+            
             # Create AGI Bot main instance
             main_app = AGIBotMain(
                 out_dir=dir,
@@ -1275,11 +1441,20 @@ class AGIBotClient:
                 detailed_summary=self.detailed_summary,
                 single_task_mode=self.single_task_mode,
                 interactive_mode=self.interactive_mode,
-                continue_mode=continue_mode
+                continue_mode=continue_mode,
+                streaming=self.streaming
             )
             
+            # 🔧 如果有agent_id，设置到主线程中
+            if current_agent_id:
+                set_agent_id(current_agent_id)
+                print_current(f"🏷️ AGIBotClient using agent ID: {current_agent_id}")
+            
             # Execute the task
-            print(f"🚀 Executing task: {user_message}")
+            if current_agent_id:
+                print_current(f"🚀 Executing task: {user_message}")
+            else:
+                print_manager(f"🚀 Executing task: {user_message}")
             success = main_app.run(
                 user_requirement=user_message,
                 loops=loops
@@ -1303,9 +1478,10 @@ class AGIBotClient:
                     }
                 }
             else:
+                # 🔧 修复：区分失败和达到最大轮数
                 return {
                     "success": False,
-                    "message": "Task execution failed or incomplete",
+                    "message": "Task execution reached maximum execution rounds",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
@@ -1314,7 +1490,7 @@ class AGIBotClient:
                         "loops": loops,
                         "mode": "single_task" if self.single_task_mode else "multi_task",
                         "model": self.model,
-                        "error": "Execution failed"
+                        "error": "Reached maximum execution rounds"
                     }
                 }
                 
@@ -1388,6 +1564,17 @@ def main():
     """
     Main function - handle command line parameters
     """
+    # Install debug system first (re-enabled for debugging freeze issues)
+    debug_system = install_debug_system(
+        enable_stack_trace=True,
+        enable_memory_monitor=True, 
+        enable_execution_tracker=True
+    )
+    
+    # Register cleanup handlers
+    atexit.register(global_cleanup)
+    # Note: signal handlers are now managed by debug system
+    
     # Print ASCII banner at startup
     print_ascii_banner()
     
@@ -1504,13 +1691,6 @@ Usage Examples:
     )
     
     parser.add_argument(
-        "--analyze-logs",
-        action="store_true",
-        default=False,
-        help="Analyze debug logs completeness and exit (requires --dir to specify log location)"
-    )
-    
-    parser.add_argument(
         "--continue", "-c",
         action="store_true",
         default=False,
@@ -1524,14 +1704,14 @@ Usage Examples:
     user_specified_out_dir = '--dir' in sys.argv or '-d' in sys.argv
     if args.continue_mode and user_specified_out_dir:
         # User specified both --continue/-c and --dir
-        print("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
-        print("    The --continue/-c parameter takes priority and --dir will be ignored.")
-        print("    If you want to use a specific output directory, don't use --continue/-c.")
+        print_current("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
+        print_current("    The --continue/-c parameter takes priority and --dir will be ignored.")
+        print_current("    If you want to use a specific output directory, don't use --continue/-c.")
         print()
     
     # Check if no parameters provided, if so use default parameters
     if len(sys.argv) == 1:  # Only script name, no other parameters
-        print("🔧 No parameters provided, using default configuration...")
+        print_current("🔧 No parameters provided, using default configuration...")
         # Set default parameters
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
@@ -1542,9 +1722,9 @@ Usage Examples:
         args.api_key = None
         args.model = None  # Let it load from config.txt
         args.api_base = None
-        print(f"📁 Output directory: {args.dir}")
-        print(f"🔄 Execution rounds: {args.loops}")
-        print(f"🤖 Model: Will load from config.txt")
+        print_current(f"📁 Output directory: {args.dir}")
+        print_current(f"🔄 Execution rounds: {args.loops}")
+        print_current(f"🤖 Model: Will load from config.txt")
         print()
     
     # Get API key
@@ -1558,53 +1738,6 @@ Usage Examples:
     
     # Create and run main program
     try:
-        # If user chooses to analyze logs, execute log analysis and exit
-        if args.analyze_logs:
-            print("🔍 Log completeness analysis mode")
-            print(f"📁 Analysis directory: {args.dir}")
-            
-            # Create ToolExecutor instance to use log analysis functionality
-            from tool_executor import ToolExecutor
-            
-            logs_dir = os.path.join(args.dir, "logs")
-            if not os.path.exists(logs_dir):
-                print(f"❌ Log directory does not exist: {logs_dir}")
-                print("Please ensure tasks have been run and debug logs have been generated")
-                sys.exit(1)
-            
-            # Find the latest session log directory
-            session_dirs = [d for d in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, d))]
-            if session_dirs:
-                latest_session = max(session_dirs)
-                session_logs_dir = os.path.join(logs_dir, latest_session)
-                print(f"📅 Analyzing latest session: {latest_session}")
-                print(f"📂 Session log directory: {session_logs_dir}")
-            else:
-                session_logs_dir = logs_dir
-                print(f"📂 Using root log directory: {logs_dir}")
-            
-            try:
-                executor = ToolExecutor(
-                    api_key=api_key,
-                    model=args.model,
-                    api_base=args.api_base,
-                    debug_mode=True
-                )
-                
-                analysis_result = executor.analyze_debug_logs_completeness(session_logs_dir)
-                
-                if "error" in analysis_result:
-                    print(f"❌ Analysis failed: {analysis_result['error']}")
-                    sys.exit(1)
-                else:
-                    print("\n✅ Log completeness analysis completed")
-                    print("Detailed analysis results are displayed above")
-                    sys.exit(0)
-                    
-            except Exception as e:
-                print(f"❌ Error occurred during log analysis: {e}")
-                sys.exit(1)
-        
         main_app = AGIBotMain(
             out_dir=args.dir,
             api_key=api_key,
@@ -1625,10 +1758,10 @@ Usage Examples:
         sys.exit(0 if success else 1)
         
     except KeyboardInterrupt:
-        print("\nUser interrupted program execution")
+        print_current("\nUser interrupted program execution")
         sys.exit(1)
     except Exception as e:
-        print(f"Program execution error: {e}")
+        print_current(f"Program execution error: {e}")
         sys.exit(1)
 
 

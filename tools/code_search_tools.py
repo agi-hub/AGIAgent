@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -32,13 +33,13 @@ class CodeSearchTools:
         Returns:
             Dictionary with search results
         """
-        print(f"🔍 Codebase semantic search: {query}")
+        print_current(f"🔍 Codebase semantic search: {query}")
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         if not self.code_parser:
-            print(f"❌ Code parser not initialized, using basic search")
+            print_current(f"❌ Code parser not initialized, using basic search")
             return self._fallback_codebase_search(query, target_directories)
         
         try:
@@ -83,8 +84,8 @@ class CodeSearchTools:
             # Get repository statistics
             stats = self.code_parser.get_repository_stats()
             
-            print(f"✅ Search completed, found {len(results)} relevant code snippets")
-            print(f"📊 Codebase statistics: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} code segments")
+            print_current(f"✅ Search completed, found {len(results)} relevant code snippets")
+            print_current(f"📊 Codebase statistics: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} code segments")
             
             return {
                 'query': query,
@@ -95,8 +96,80 @@ class CodeSearchTools:
             }
             
         except Exception as e:
-            print(f"❌ Semantic search failed: {e}, using basic search")
+            print_current(f"❌ Semantic search failed: {e}, using basic search")
             return self._fallback_codebase_search(query, target_directories)
+    
+    def get_background_update_status(self) -> Dict[str, Any]:
+        """
+        Get the status information of the background incremental update thread for code repository
+        
+        Returns:
+            Dictionary containing background update status and statistics
+        """
+        if not self.code_parser:
+            return {
+                'status': 'error',
+                'message': 'Code parser not initialized',
+                'background_update_enabled': False,
+                'thread_running': False
+            }
+        
+        try:
+            # Check if background update is enabled
+            background_enabled = getattr(self.code_parser, '_background_update_enabled', False)
+            
+            # Get background update statistics
+            stats = self.code_parser.get_background_update_stats()
+            
+            # Check if thread is running
+            thread_running = False
+            if hasattr(self.code_parser, 'background_update_thread') and self.code_parser.background_update_thread:
+                thread_running = self.code_parser.background_update_thread.is_running()
+            
+            status_info = {
+                'status': 'success',
+                'background_update_enabled': background_enabled,
+                'thread_running': thread_running,
+                'update_interval': getattr(self.code_parser, 'update_interval', 1.0),
+                'statistics': stats
+            }
+            
+            # If statistics available, add friendly status description
+            if stats:
+                total_checks = stats.get('total_checks', 0)
+                total_updates = stats.get('total_updates', 0)
+                successful_updates = stats.get('successful_updates', 0)
+                failed_updates = stats.get('failed_updates', 0)
+                last_update_time = stats.get('last_update_time')
+                last_error = stats.get('last_error')
+                
+                status_info['status_summary'] = {
+                    'total_checks': total_checks,
+                    'total_updates': total_updates,
+                    'successful_updates': successful_updates,
+                    'failed_updates': failed_updates,
+                    'success_rate': f"{(successful_updates / max(total_updates, 1) * 100):.1f}%" if total_updates > 0 else "100%",
+                    'last_update_time': last_update_time,
+                    'last_error': last_error
+                }
+                
+                # Generate status description
+                if thread_running:
+                    status_info['description'] = f"Background update thread is running, performed {total_checks} checks, completed {successful_updates} updates"
+                else:
+                    status_info['description'] = "Background update thread is not running"
+            else:
+                status_info['description'] = "Background update thread status information unavailable"
+            
+            return status_info
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Failed to get background update status: {e}',
+                'background_update_enabled': False,
+                'thread_running': False
+            }
     
     def _find_best_match_in_segment(self, segment, query: str):
         """
@@ -149,7 +222,7 @@ class CodeSearchTools:
         """
         Basic search implementation (fallback option)
         """
-        print(f"🔍 Using basic text search: {query}")
+        print_current(f"🔍 Using basic text search: {query}")
         
         results = []
         search_dirs = []
@@ -195,7 +268,7 @@ class CodeSearchTools:
                                                 'search_type': 'text_matching'
                                             })
                         except Exception as e:
-                            print(f"Error reading file {file_path}: {e}")
+                            print_current(f"Error reading file {file_path}: {e}")
         
         # Sort results by relevance
         results.sort(key=lambda x: x['score'], reverse=True)

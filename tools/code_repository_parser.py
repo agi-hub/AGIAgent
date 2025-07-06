@@ -28,13 +28,54 @@ import re
 from tqdm import tqdm
 import logging
 import time
+import threading
 from datetime import datetime
+from tools.print_system import print_system, print_current
+
+# Configure logging BEFORE importing jieba to suppress debug output
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+# Disable jieba debug logging
+jieba_logger = logging.getLogger('jieba')
+jieba_logger.setLevel(logging.ERROR)
 
 # Machine learning related libraries
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import jieba
-import jieba.analyse
+
+# Import jieba conditionally based on configuration
+try:
+    # Import configuration loader to check jieba setting
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from config_loader import get_enable_jieba
+    
+    # Check if jieba is enabled
+    JIEBA_ENABLED = get_enable_jieba()
+    
+    if JIEBA_ENABLED:
+        # Further suppress jieba initialization output
+        import warnings
+        warnings.filterwarnings('ignore', category=UserWarning, module='jieba')
+        
+        # Redirect jieba stderr to suppress prints
+        import contextlib
+        import io
+        
+        with contextlib.redirect_stderr(io.StringIO()):
+            import jieba
+            import jieba.analyse
+            # Configure jieba to be quiet
+            jieba.setLogLevel(logging.ERROR)
+    else:
+        jieba = None
+        
+except ImportError:
+    # If config_loader is not available, default to disabled
+    JIEBA_ENABLED = False
+    jieba = None
 
 # Vectorization related libraries - removed sentence_transformers
 # Vector database related libraries
@@ -43,11 +84,7 @@ try:
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
-    # print("Warning: faiss not available. Will use numpy for vector storage.")  # Moved warning display to main.py
-
-# Configure logging - only show WARNING and above level logs
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
+    # print_current("Warning: faiss not available. Will use numpy for vector storage.")  # Moved warning display to main.py
 
 @dataclass
 class CodeSegment:
@@ -73,13 +110,153 @@ class FileTimestamp:
     file_size: int
     last_checked: float
 
+class IncrementalUpdateThread:
+    """Independent incremental update thread that periodically checks and updates code repository indexes"""
+    
+    def __init__(self, code_parser, update_interval: float = 1.0):
+        """
+        Initialize incremental update thread
+        
+        Args:
+            code_parser: CodeRepositoryParser instance
+            update_interval: Update interval in seconds, default 1 second
+        """
+        self.code_parser = code_parser
+        self.update_interval = update_interval
+        self.running = False
+        self.thread = None
+        self.lock = threading.Lock()  # For thread safety
+        self.last_update_time = 0
+        self.total_updates = 0
+        self.successful_updates = 0
+        
+        # Statistics
+        self.stats = {
+            'total_checks': 0,
+            'total_updates': 0,
+            'successful_updates': 0,
+            'failed_updates': 0,
+            'last_update_time': None,
+            'last_error': None
+        }
+    
+    def start(self):
+        """Start incremental update thread"""
+        if self.running:
+            print_current("⚠️ Incremental update thread is already running")
+            return
+        
+        self.running = True
+        self.thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.thread.start()
+        print_current(f"🚀 Incremental update thread started, update interval: {self.update_interval} seconds")
+    
+    def stop(self):
+        """Stop incremental update thread"""
+        if not self.running:
+            return
+        
+        self.running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=5)  # Wait up to 5 seconds
+        
+        # Stop the incremental update thread
+        if self.update_thread and self.update_thread.is_alive():
+            self.stop_update_event.set()
+            self.update_thread.join(timeout=2.0)  # Wait up to 2 seconds
+            # print_current(f"⏹️ Incremental update thread stopped (total checks: {self.stats['total_checks']}, total updates: {self.stats['total_updates']})")
+    
+    def _update_loop(self):
+        """Main update loop"""
+        print_current("🔄 Incremental update thread started running")
+        
+        while self.running:
+            try:
+                start_time = time.time()
+                
+                # Use lock to ensure thread safety
+                with self.lock:
+                    if self.code_parser and hasattr(self.code_parser, 'check_repository_changes'):
+                        # Check for changes
+                        changes = self.code_parser.check_repository_changes()
+                        self.stats['total_checks'] += 1
+                        
+                        # If there are changes, perform incremental update
+                        if any(changes.values()):
+                            self.stats['total_updates'] += 1
+                            
+                            try:
+                                # Execute incremental update
+                                update_result = self.code_parser.incremental_update()
+                                
+                                # If there are actual updates, save database
+                                if any(count > 0 for count in update_result.values()):
+                                    db_path = self.code_parser._get_code_index_path()
+                                    self.code_parser.save_database(db_path)
+                                
+                                self.stats['successful_updates'] += 1
+                                self.stats['last_update_time'] = datetime.now().isoformat()
+                                
+                                # Silent update, only print when there are important changes
+                                total_changes = sum(len(changes[key]) for key in changes)
+                                if total_changes > 0:
+                                    print_current(f"📁 Code repository update completed: {total_changes} file changes")
+                                    
+                            except Exception as e:
+                                self.stats['failed_updates'] += 1
+                                self.stats['last_error'] = str(e)
+                                print_current(f"❌ Incremental update failed: {e}")
+                
+                # Calculate update time for this iteration
+                elapsed = time.time() - start_time
+                
+                # Dynamically adjust sleep time to ensure stable update interval
+                sleep_time = max(0, self.update_interval - elapsed)
+                time.sleep(sleep_time)
+                
+            except Exception as e:
+                self.stats['failed_updates'] += 1
+                self.stats['last_error'] = str(e)
+                print_current(f"❌ Incremental update thread error: {e}")
+                time.sleep(self.update_interval)  # Wait one cycle after error
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get update statistics"""
+        with self.lock:
+            return self.stats.copy()
+    
+    def is_running(self) -> bool:
+        """Check if thread is running"""
+        return self.running and self.thread and self.thread.is_alive()
+    
+    def __getstate__(self):
+        """Custom pickle state method to handle thread locks"""
+        state = self.__dict__.copy()
+        # Remove unpicklable thread locks and thread objects
+        state.pop('lock', None)
+        state.pop('thread', None)
+        # Set running to False since thread won't be active after unpickling
+        state['running'] = False
+        return state
+    
+    def __setstate__(self, state):
+        """Custom unpickle state method to recreate thread locks"""
+        self.__dict__.update(state)
+        # Recreate thread lock
+        self.lock = threading.Lock()
+        # Thread will be recreated when needed
+        self.thread = None
+        self.running = False
+
 class CodeRepositoryParser:
     """Code repository parser"""
     
     def __init__(self, 
                  root_path: str,
                  segment_size: int = 200,
-                 supported_extensions: List[str] = None):
+                 supported_extensions: List[str] = None,
+                 enable_background_update: bool = True,
+                 update_interval: float = 1.0):
         """
         Initialize code repository parser
         
@@ -87,6 +264,8 @@ class CodeRepositoryParser:
             root_path: Code repository root path
             segment_size: Number of lines per segment
             supported_extensions: Supported file extensions
+            enable_background_update: Whether to enable background incremental updates
+            update_interval: Background update interval in seconds
         """
         self.root_path = Path(root_path)
         self.segment_size = segment_size
@@ -118,6 +297,41 @@ class CodeRepositoryParser:
             token_pattern=None  # Explicitly set to None to avoid warning when using custom tokenizer
         )
         self.tfidf_matrix = None
+        
+        # Background update thread
+        self.background_update_thread = None
+        self.enable_background_update = enable_background_update
+        self.update_interval = update_interval
+        self._update_lock = threading.Lock()  # For protecting data access
+        
+        # If background update is enabled, thread will be started later (after initialization)
+        self._background_update_enabled = enable_background_update
+    
+    def start_background_update(self):
+        """Start background incremental update thread"""
+        if not self._background_update_enabled:
+            return
+        
+        if self.background_update_thread and self.background_update_thread.is_running():
+            return
+        
+        self.background_update_thread = IncrementalUpdateThread(
+            code_parser=self,
+            update_interval=self.update_interval
+        )
+        self.background_update_thread.start()
+    
+    def stop_background_update(self):
+        """Stop background incremental update thread"""
+        if self.background_update_thread:
+            self.background_update_thread.stop()
+            self.background_update_thread = None
+    
+    def get_background_update_stats(self) -> Dict[str, Any]:
+        """Get background update statistics"""
+        if self.background_update_thread:
+            return self.background_update_thread.get_stats()
+        return {}
     
     def _tokenize_code(self, text: str) -> List[str]:
         """
@@ -134,11 +348,16 @@ class CodeRepositoryParser:
         identifier_pattern = r'\b[a-zA-Z_][a-zA-Z0-9_]*\b'
         identifiers = re.findall(identifier_pattern, text)
         
-        # Add Chinese word segmentation support (for Chinese comments)
-        chinese_text = re.sub(r'[^\u4e00-\u9fff]+', ' ', text)
-        if chinese_text.strip():
-            chinese_tokens = jieba.lcut(chinese_text)
-            identifiers.extend([token for token in chinese_tokens if len(token) > 1])
+        # Add Chinese word segmentation support (for Chinese comments) if jieba is enabled
+        if JIEBA_ENABLED and jieba is not None:
+            chinese_text = re.sub(r'[^\u4e00-\u9fff]+', ' ', text)
+            if chinese_text.strip():
+                try:
+                    chinese_tokens = jieba.lcut(chinese_text)
+                    identifiers.extend([token for token in chinese_tokens if len(token) > 1])
+                except Exception as e:
+                    # If jieba fails, continue without Chinese segmentation
+                    logger.warning(f"Jieba segmentation failed: {e}")
         
         # Remove common programming keywords (can be adjusted as needed)
         programming_keywords = {
@@ -398,55 +617,59 @@ class CodeRepositoryParser:
     
     def check_repository_changes(self) -> Dict[str, List[str]]:
         """
-        Check file changes in code repository
+        Check file changes in code repository (thread-safe version)
         
         Returns:
             Change information dictionary containing lists of added, modified, deleted files
         """
-        logger.info("Checking repository changes...")
-        
-        changes = {
-            'added': [],
-            'modified': [],
-            'deleted': []
-        }
-        
-        # Get all current code files
-        current_files = set()
-        for file_path in self.root_path.rglob('*'):
-            if file_path.is_file() and self._is_code_file(file_path):
-                current_files.add(str(file_path.relative_to(self.root_path)))
-        
-        # Check changes in known files
-        for file_path in current_files:
-            full_path = self.root_path / file_path
-            if self._has_file_changed(full_path):
-                if file_path in self.file_timestamps:
-                    changes['modified'].append(file_path)
-                else:
-                    changes['added'].append(file_path)
-        
-        # Check deleted files
-        stored_files = set(self.file_timestamps.keys())
-        for file_path in stored_files:
-            if file_path not in current_files:
-                changes['deleted'].append(file_path)
-        
-        logger.info(f"Repository changes: {len(changes['added'])} added, "
-                   f"{len(changes['modified'])} modified, {len(changes['deleted'])} deleted")
-        
-        return changes
+        # Use lock to ensure thread safety
+        with self._update_lock:
+            logger.info("Checking repository changes...")
+            
+            changes = {
+                'added': [],
+                'modified': [],
+                'deleted': []
+            }
+            
+            # Get all current code files
+            current_files = set()
+            for file_path in self.root_path.rglob('*'):
+                if file_path.is_file() and self._is_code_file(file_path):
+                    current_files.add(str(file_path.relative_to(self.root_path)))
+            
+            # Check changes in known files
+            for file_path in current_files:
+                full_path = self.root_path / file_path
+                if self._has_file_changed(full_path):
+                    if file_path in self.file_timestamps:
+                        changes['modified'].append(file_path)
+                    else:
+                        changes['added'].append(file_path)
+            
+            # Check deleted files
+            stored_files = set(self.file_timestamps.keys())
+            for file_path in stored_files:
+                if file_path not in current_files:
+                    changes['deleted'].append(file_path)
+            
+            logger.info(f"Repository changes: {len(changes['added'])} added, "
+                       f"{len(changes['modified'])} modified, {len(changes['deleted'])} deleted")
+            
+            return changes
     
     def incremental_update(self) -> Dict[str, int]:
         """
-        Incremental update of code repository
+        Incremental update of code repository (thread-safe version)
         
         Returns:
             Update statistics
         """
+        # Use lock to ensure thread safety, but check_repository_changes already uses lock internally
+        # Here we only need to ensure atomicity of update operations
         logger.info("Starting incremental update...")
         
-        # Check changes
+        # Check changes (already uses lock internally)
         changes = self.check_repository_changes()
         
         stats = {
@@ -457,47 +680,51 @@ class CodeRepositoryParser:
             'segments_removed': 0
         }
         
-        # Handle deleted files
-        for file_path in changes['deleted']:
-            self._remove_file_segments(file_path)
-            if file_path in self.file_timestamps:
-                del self.file_timestamps[file_path]
-            stats['files_deleted'] += 1
-            logger.info(f"Removed deleted file: {file_path}")
+        # If no changes, return directly
+        if not any(changes.values()):
+            logger.info("No changes detected, indexes unchanged")
+            return stats
         
-        # Handle modified files
-        for file_path in changes['modified']:
-            # Remove old code segments
-            original_count = len(self.code_segments)
-            self._remove_file_segments(file_path)
-            removed_count = original_count - len(self.code_segments)
-            stats['segments_removed'] += removed_count
+        # Use lock to ensure atomicity of update operations
+        with self._update_lock:
+            # Handle deleted files
+            for file_path in changes['deleted']:
+                self._remove_file_segments(file_path)
+                if file_path in self.file_timestamps:
+                    del self.file_timestamps[file_path]
+                stats['files_deleted'] += 1
+                logger.info(f"Removed deleted file: {file_path}")
             
-            # Reprocess file
-            full_path = self.root_path / file_path
-            added_count = self._process_single_file(full_path)
-            stats['segments_added'] += added_count
-            stats['files_modified'] += 1
+            # Handle modified files
+            for file_path in changes['modified']:
+                # Remove old code segments
+                original_count = len(self.code_segments)
+                self._remove_file_segments(file_path)
+                removed_count = original_count - len(self.code_segments)
+                stats['segments_removed'] += removed_count
+                
+                # Reprocess file
+                full_path = self.root_path / file_path
+                added_count = self._process_single_file(full_path)
+                stats['segments_added'] += added_count
+                stats['files_modified'] += 1
+                
+                logger.info(f"Updated modified file: {file_path} "
+                           f"(removed {removed_count}, added {added_count} segments)")
             
-            logger.info(f"Updated modified file: {file_path} "
-                       f"(removed {removed_count}, added {added_count} segments)")
-        
-        # Handle added files
-        for file_path in changes['added']:
-            full_path = self.root_path / file_path
-            added_count = self._process_single_file(full_path)
-            stats['segments_added'] += added_count
-            stats['files_added'] += 1
+            # Handle added files
+            for file_path in changes['added']:
+                full_path = self.root_path / file_path
+                added_count = self._process_single_file(full_path)
+                stats['segments_added'] += added_count
+                stats['files_added'] += 1
+                
+                logger.info(f"Added new file: {file_path} ({added_count} segments)")
             
-            logger.info(f"Added new file: {file_path} ({added_count} segments)")
-        
-        # If there are changes, rebuild indexes
-        if any(changes.values()):
+            # If there are changes, rebuild indexes
             logger.info("Rebuilding indexes due to changes...")
             self._build_vector_database()
             self._build_tfidf_database()
-        else:
-            logger.info("No changes detected, indexes unchanged")
         
         logger.info(f"Incremental update completed: "
                    f"{stats['files_added']} files added, "
@@ -536,7 +763,7 @@ class CodeRepositoryParser:
         logger.info(f"Found {len(code_files)} code files")
         
         # Process each file
-        for file_path in tqdm(code_files, desc="Processing files"):
+        for file_path in code_files:
             self._process_single_file(file_path)
         
         logger.info(f"Total segments created: {len(self.code_segments)}")
@@ -593,7 +820,7 @@ class CodeRepositoryParser:
     
     def vector_search(self, query: str, top_k: int = 5) -> List[SearchResult]:
         """
-        Vector similarity search
+        Vector similarity search (thread-safe version)
         
         Args:
             query: Query text
@@ -602,80 +829,84 @@ class CodeRepositoryParser:
         Returns:
             List of search results
         """
-        if self.segment_vectors is None:
-            logger.warning("Vector database not built")
-            return []
-        
-        # Convert query to vector
-        query_vector = self.tfidf_vectorizer.transform([query]).toarray()
-        
-        # Search similar vectors
-        if self.vector_index is not None and FAISS_AVAILABLE:
-            # Use FAISS search
-            faiss.normalize_L2(query_vector.astype(np.float32))
-            scores, indices = self.vector_index.search(
-                query_vector.astype(np.float32), 
-                min(top_k, len(self.code_segments))
-            )
+        # Use lock to ensure thread safety when reading data
+        with self._update_lock:
+            if self.segment_vectors is None:
+                logger.warning("Vector database not built")
+                return []
             
-            results = []
-            for score, idx in zip(scores[0], indices[0]):
-                if idx < len(self.code_segments):
+            # Convert query to vector
+            query_vector = self.tfidf_vectorizer.transform([query]).toarray()
+            
+            # Search similar vectors
+            if self.vector_index is not None and FAISS_AVAILABLE:
+                # Use FAISS search
+                faiss.normalize_L2(query_vector.astype(np.float32))
+                scores, indices = self.vector_index.search(
+                    query_vector.astype(np.float32), 
+                    min(top_k, len(self.code_segments))
+                )
+                
+                results = []
+                for score, idx in zip(scores[0], indices[0]):
+                    if idx < len(self.code_segments):
+                        result = SearchResult(
+                            segment=self.code_segments[idx],
+                            score=float(score),
+                            search_type='vector'
+                        )
+                        results.append(result)
+            else:
+                # Use numpy to calculate cosine similarity
+                similarities = cosine_similarity(query_vector, self.segment_vectors)[0]
+                top_indices = np.argsort(similarities)[-top_k:][::-1]
+                
+                results = []
+                for idx in top_indices:
                     result = SearchResult(
                         segment=self.code_segments[idx],
-                        score=float(score),
+                        score=float(similarities[idx]),
                         search_type='vector'
                     )
                     results.append(result)
-        else:
-            # Use numpy to calculate cosine similarity
-            similarities = cosine_similarity(query_vector, self.segment_vectors)[0]
+            
+            return results
+    
+    def keyword_search(self, query: str, top_k: int = 5) -> List[SearchResult]:
+        """
+        TF-IDF similarity search (thread-safe version)
+        
+        Args:
+            query: Query text
+            top_k: Number of results to return
+            
+        Returns:
+            List of search results
+        """
+        # Use lock to ensure thread safety when reading data
+        with self._update_lock:
+            if self.tfidf_matrix is None:
+                logger.warning("TF-IDF database not built")
+                return []
+            
+            # Convert query to TF-IDF vector
+            query_vector = self.tfidf_vectorizer.transform([query])
+            
+            # Calculate similarity with all segments
+            similarities = cosine_similarity(query_vector, self.tfidf_matrix)[0]
             top_indices = np.argsort(similarities)[-top_k:][::-1]
             
             results = []
             for idx in top_indices:
-                result = SearchResult(
-                    segment=self.code_segments[idx],
-                    score=float(similarities[idx]),
-                    search_type='vector'
-                )
-                results.append(result)
-        
-        return results
-    
-    def keyword_search(self, query: str, top_k: int = 5) -> List[SearchResult]:
-        """
-        TF-IDF similarity search
-        
-        Args:
-            query: Query text
-            top_k: Number of results to return
+                if similarities[idx] > 0:  # Only return results with similarity
+                    result = SearchResult(
+                        segment=self.code_segments[idx],
+                        score=float(similarities[idx]),
+                        search_type='keyword'
+                    )
+                    results.append(result)
             
-        Returns:
-            List of search results
-        """
-        if self.tfidf_matrix is None:
-            logger.warning("TF-IDF database not built")
-            return []
-        
-        # Convert query to TF-IDF vector
-        query_vector = self.tfidf_vectorizer.transform([query])
-        
-        # Calculate similarity with all segments
-        similarities = cosine_similarity(query_vector, self.tfidf_matrix)[0]
-        top_indices = np.argsort(similarities)[-top_k:][::-1]
-        
-        results = []
-        for idx in top_indices:
-            if similarities[idx] > 0:  # Only return results with similarity
-                result = SearchResult(
-                    segment=self.code_segments[idx],
-                    score=float(similarities[idx]),
-                    search_type='keyword'
-                )
-                results.append(result)
-        
-        return results
+            return results
     
     def hybrid_search(self, query: str, vector_top_k: int = 5, keyword_top_k: int = 5) -> List[SearchResult]:
         """
@@ -850,11 +1081,184 @@ class CodeRepositoryParser:
             self.vector_index = faiss.read_index(str(faiss_index_file))
         
         logger.info(f"Database loaded from {load_path}")
+    
+    def cleanup(self):
+        """Clean up resources used by the parser"""
+        try:
+            # First stop background update thread
+            self.stop_background_update()
+            
+            # Use lock to ensure cleanup process safety
+            with self._update_lock:
+                # Clear large data structures to free memory
+                self.code_segments.clear()
+                self.segment_vectors = None
+                self.tfidf_matrix = None
+                self.file_timestamps.clear()
+                
+                # Clear vector index if it exists
+                if hasattr(self, 'vector_index') and self.vector_index is not None:
+                    self.vector_index = None
+                
+                # Clear TF-IDF vectorizer
+                if hasattr(self, 'tfidf_vectorizer') and self.tfidf_vectorizer is not None:
+                    self.tfidf_vectorizer = None
+                    
+        except Exception as e:
+            logger.warning(f"Error during CodeRepositoryParser cleanup: {e}")
+    
+    def __getstate__(self):
+        """Custom pickle state method to handle thread locks"""
+        state = self.__dict__.copy()
+        # Remove unpicklable thread locks
+        state.pop('_update_lock', None)
+        # Remove background update thread (it will be recreated if needed)
+        state.pop('background_update_thread', None)
+        return state
+    
+    def __setstate__(self, state):
+        """Custom unpickle state method to recreate thread locks"""
+        self.__dict__.update(state)
+        # Recreate thread lock
+        self._update_lock = threading.Lock()
+        # Background update thread will be recreated when needed
+        self.background_update_thread = None
+
+    def _get_code_index_path(self, workspace_root: str = None) -> str:
+        """
+        Get the path to the code index database
+        
+        Args:
+            workspace_root: Workspace root directory (optional, uses self.root_path if not provided)
+            
+        Returns:
+            Path to the code index database
+        """
+        if workspace_root is None:
+            workspace_root = str(self.root_path)
+            
+        workspace_name = os.path.basename(workspace_root.rstrip('/'))
+        
+        if workspace_name == "workspace":
+            workspace_name = "test_workspace"
+        
+        db_path = f"{workspace_name.replace('/', '_')}_code_index"
+        
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(os.path.dirname(__file__), '..', db_path)
+        
+        return db_path
+
+    def init_code_parser(self, workspace_root: str = None, supported_extensions: List[str] = None) -> bool:
+        """
+        Initialize code repository parser with database loading
+        
+        Args:
+            workspace_root: Workspace root directory (optional, uses self.root_path if not provided)
+            supported_extensions: Supported file extensions (optional)
+            
+        Returns:
+            True if initialization successful, False otherwise
+        """
+        try:
+            # Update root path if provided
+            if workspace_root is not None:
+                self.root_path = Path(workspace_root)
+            
+            # Update supported extensions if provided
+            if supported_extensions is not None:
+                self.supported_extensions = set(supported_extensions)
+            
+            # Get database path
+            db_path = self._get_code_index_path(workspace_root)
+            
+            initialization_success = False
+            
+            # Try to load existing database
+            if os.path.exists(f"{db_path}/code_segments.pkl"):
+                try:
+                    self.load_database(db_path)
+                    
+                    # Check for repository changes (perform initial check synchronously)
+                    changes = self.check_repository_changes()
+                    if any(changes.values()):
+                        # Perform incremental update
+                        update_result = self.incremental_update()
+                        if any(count > 0 for count in update_result.values()):
+                            self.save_database(db_path)
+                    initialization_success = True
+                except Exception as e:
+                    print_current(f"⚠️ Failed to load code index database: {e}, will recreate")
+                    initialization_success = self._rebuild_code_index(db_path)
+            else:
+                # Create new database
+                initialization_success = self._rebuild_code_index(db_path)
+            
+            # If initialization successful, start background update thread
+            if initialization_success:
+                self.start_background_update()
+                print_current(f"✅ Code repository parser initialization completed, background update {'enabled' if self._background_update_enabled else 'disabled'}")
+            
+            return initialization_success
+                
+        except Exception as e:
+            print_current(f"❌ Failed to initialize code repository parser: {e}")
+            return False
+
+    def _rebuild_code_index(self, db_path: str = None) -> bool:
+        """
+        Rebuild code index
+        
+        Args:
+            db_path: Database path (optional, will generate if not provided)
+            
+        Returns:
+            True if rebuild successful, False otherwise
+        """
+        try:
+            if db_path is None:
+                db_path = self._get_code_index_path()
+            
+            # Parse repository
+            self.parse_repository(force_rebuild=True)
+            
+            # Save database
+            self.save_database(db_path)
+            return True
+            
+        except Exception as e:
+            print_current(f"❌ Failed to rebuild code index: {e}")
+            return False
+
+    def perform_incremental_update(self, db_path: str = None) -> bool:
+        """
+        Perform incremental update
+        
+        Args:
+            db_path: Database path (optional, will generate if not provided)
+            
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            if db_path is None:
+                db_path = self._get_code_index_path()
+                
+            update_result = self.incremental_update()
+            
+            if any(count > 0 for count in update_result.values()):
+                self.save_database(db_path)
+                return True
+            return True
+            
+        except Exception as e:
+            print_current(f"⚠️ Code repository update failed: {e}")
+            return False
 
 
 def test_code_repository_parser():
     """Test code repository parser"""
-    print("=== Code Repository Parser Test ===")
+    print_current("=== Code Repository Parser Test ===")
     
     # Initialize parser (use current directory as test)
     parser = CodeRepositoryParser(
@@ -863,10 +1267,10 @@ def test_code_repository_parser():
     )
     
     # Parse repository
-    print("1. Parsing code repository...")
+    print_current("1. Parsing code repository...")
     parser.parse_repository()
     
-    print(f"Total parsed {len(parser.code_segments)} code segments")
+    print_current(f"Total parsed {len(parser.code_segments)} code segments")
     
     # Test queries
     test_queries = [
@@ -877,47 +1281,47 @@ def test_code_repository_parser():
         "exception handling"
     ]
     
-    print("\n2. Testing search functionality...")
+    print_current("\n2. Testing search functionality...")
     
     for query in test_queries:
-        print(f"\nQuery: '{query}'")
-        print("-" * 50)
+        print_current(f"\nQuery: '{query}'")
+        print_current("-" * 50)
         
         # Vector search
-        print("Vector search results:")
+        print_current("Vector search results:")
         vector_results = parser.vector_search(query, top_k=3)
         for i, result in enumerate(vector_results[:3], 1):
-            print(f"  {i}. File: {result.segment.file_path}")
-            print(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
-            print(f"     Score: {result.score:.4f}")
-            print(f"     Type: {result.search_type}")
-            print(f"     Preview: {result.segment.content[:100]}...")
+            print_current(f"  {i}. File: {result.segment.file_path}")
+            print_current(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
+            print_current(f"     Score: {result.score:.4f}")
+            print_current(f"     Type: {result.search_type}")
+            print_current(f"     Preview: {result.segment.content[:100]}...")
             print()
         
         # Keyword search
-        print("Keyword search results:")
+        print_current("Keyword search results:")
         keyword_results = parser.keyword_search(query, top_k=3)
         for i, result in enumerate(keyword_results[:3], 1):
-            print(f"  {i}. File: {result.segment.file_path}")
-            print(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
-            print(f"     Score: {result.score:.4f}")
-            print(f"     Type: {result.search_type}")
-            print(f"     Preview: {result.segment.content[:100]}...")
+            print_current(f"  {i}. File: {result.segment.file_path}")
+            print_current(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
+            print_current(f"     Score: {result.score:.4f}")
+            print_current(f"     Type: {result.search_type}")
+            print_current(f"     Preview: {result.segment.content[:100]}...")
             print()
         
         # Hybrid search
-        print("Hybrid search results:")
+        print_current("Hybrid search results:")
         hybrid_results = parser.hybrid_search(query, vector_top_k=3, keyword_top_k=3)
         for i, result in enumerate(hybrid_results[:3], 1):
-            print(f"  {i}. File: {result.segment.file_path}")
-            print(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
-            print(f"     Score: {result.score:.4f}")
-            print(f"     Type: {result.search_type}")
-            print(f"     Preview: {result.segment.content[:100]}...")
+            print_current(f"  {i}. File: {result.segment.file_path}")
+            print_current(f"     Lines: {result.segment.start_line}-{result.segment.end_line}")
+            print_current(f"     Score: {result.score:.4f}")
+            print_current(f"     Type: {result.search_type}")
+            print_current(f"     Preview: {result.segment.content[:100]}...")
             print()
     
     # Test save and load
-    print("\n3. Testing database save and load...")
+    print_current("\n3. Testing database save and load...")
     save_path = "test_database"
     parser.save_database(save_path)
     
@@ -925,14 +1329,14 @@ def test_code_repository_parser():
     new_parser = CodeRepositoryParser(root_path=".")
     new_parser.load_database(save_path)
     
-    print(f"Segment count after loading: {len(new_parser.code_segments)}")
+    print_current(f"Segment count after loading: {len(new_parser.code_segments)}")
     
     # Test search functionality after loading
     test_query = "test query"
     results = new_parser.hybrid_search(test_query, vector_top_k=2, keyword_top_k=2)
-    print(f"Search for '{test_query}' after loading got {len(results)} results")
+    print_current(f"Search for '{test_query}' after loading got {len(results)} results")
     
-    print("\n=== Test Complete ===")
+    print_current("\n=== Test Complete ===")
 
 
 if __name__ == "__main__":

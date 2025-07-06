@@ -46,6 +46,12 @@ Perfect for bug fixes, feature optimizations, and focused objectives. If you don
 ```bash
 python main.py --requirement "Search today's news"
 python main.py -r "Write a joke"
+
+# Image input support
+python main.py -r "Analyze this diagram: [img=chart.png]"
+
+# MCP tool integration, please configure the MCP tools in config/mcp_servers.json
+python main.py -r "Use AISearch to find AI news"
 ```
 
 #### 📋 Task Decomposition Mode
@@ -105,6 +111,8 @@ python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.co
 - **🌐 Web Search Integration**: Real-time web search for latest information and solutions
 - **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
 - **🛠️ Rich Tool Ecosystem**: Complete local tools + OS command invocation capabilities supporting full development workflows
+- **🖼️ Image Input Support**: Process images in requirements using `[img=path]` syntax, supports Claude and OpenAI vision models
+- **🔗 MCP Integration**: External tool integration via Model Context Protocol, includes AI search and other third-party services
 - **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
 - **📊 Dual-Format Reports**: JSON detailed logs + Markdown readable reports
 - **⚡ Real-Time Feedback**: Detailed execution progress and status display

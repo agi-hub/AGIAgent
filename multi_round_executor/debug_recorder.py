@@ -40,8 +40,6 @@ class DebugRecorder:
         self.debug_mode = debug_mode
         self.llm_call_records: List[Dict[str, Any]] = []
         
-        if self.debug_mode:
-            print("🐛 DEBUG mode enabled")
     
     def record_llm_call(self, task_id: str, task_name: str, round_num: int, 
                        prompt: str, llm_output: str, tool_name: str = "", 
@@ -88,8 +86,6 @@ class DebugRecorder:
             
             # Store in memory for potential future use
             self.llm_call_records.append(record)
-                
-            print(f"🐛 DEBUG: Recorded LLM call - Task{task_id}-Round{round_num}")
             
         except Exception as e:
             print(f"❌ Failed to record LLM call: {e}")

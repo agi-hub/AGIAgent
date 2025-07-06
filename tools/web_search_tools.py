@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -49,6 +50,12 @@ def is_windows():
     return platform.system().lower() == 'windows'
 
 
+def is_main_thread():
+    """Check if running in main thread"""
+    import threading
+    return threading.current_thread() is threading.main_thread()
+
+
 # Check if the model is a Claude model
 def is_claude_model(model: str) -> bool:
     """Check if the model name is a Claude model"""
@@ -62,7 +69,7 @@ def get_anthropic_client():
         from anthropic import Anthropic
         return Anthropic
     except ImportError:
-        print("❌ Anthropic library not installed, please run: pip install anthropic")
+        print_current("❌ Anthropic library not installed, please run: pip install anthropic")
         raise ImportError("Anthropic library not installed")
 
 
@@ -96,18 +103,14 @@ class WebSearchTools:
                     features.append("content filtering")
                 if enable_summary:
                     features.append("search results summarization")
-                print(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
+                print_current(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
             except Exception as e:
-                print(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
+                print_current(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
                 self.enable_llm_filtering = False
                 self.enable_summary = False
         elif enable_llm_filtering or enable_summary:
-            print("⚠️ LLM features requested but missing configuration, disabling")
             self.enable_llm_filtering = False
             self.enable_summary = False
-        else:
-            if self.verbose:
-                print("📝 LLM features disabled")
     
     def _verbose_print(self, message: str):
         """Print message only if verbose mode is enabled"""
@@ -119,11 +122,8 @@ class WebSearchTools:
         try:
             if not os.path.exists(self.web_result_dir):
                 os.makedirs(self.web_result_dir)
-                print(f"📁 Created web search result directory: {self.web_result_dir}")
-            else:
-                print(f"📁 Using existing web search result directory: {self.web_result_dir}")
         except Exception as e:
-            print(f"⚠️ Failed to create result directory: {e}")
+            print_current(f"⚠️ Failed to create result directory: {e}")
             self.web_result_dir = None
     
     def _save_webpage_html(self, page, url: str, title: str, search_term: str = "") -> str:
@@ -153,13 +153,13 @@ class WebSearchTools:
                 "百度学术" in html_content or "- 百度学术" in title or
                 "相关论文" in html_content or "获取方式" in html_content):
                 if "当前环境异常，完成验证后即可继续访问。" in html_content:
-                    print("⚠️ Skipping HTML save for verification page")
+                    print_current("⚠️ Skipping HTML save for verification page")
                 elif "豆丁网" in html_content or "docin.com" in html_content:
-                    print("⚠️ Skipping HTML save for DocIn embedded document page")
+                    print_current("⚠️ Skipping HTML save for DocIn embedded document page")
                 elif ("百度学术搜索" in html_content or "xueshu.baidu.com" in html_content or 
                       "百度学术" in html_content or "- 百度学术" in title or
                       "相关论文" in html_content or "获取方式" in html_content):
-                    print("⚠️ Skipping HTML save for Baidu Scholar search page")
+                    print_current("⚠️ Skipping HTML save for Baidu Scholar search page")
                 return ""  # Return empty string to indicate no file was saved
             
             # Generate filename
@@ -188,11 +188,10 @@ class WebSearchTools:
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            print(f"💾 Saved webpage HTML: {filename} ({len(html_content)} bytes)")
             return filepath
             
         except Exception as e:
-            print(f"⚠️ Failed to save webpage HTML: {e}")
+            print_current(f"⚠️ Failed to save webpage HTML: {e}")
             return ""
     
     def _save_webpage_content(self, page, url: str, title: str, content: str, search_term: str = "") -> tuple:
@@ -253,13 +252,13 @@ class WebSearchTools:
                     "相关论文" in html_content or "获取方式" in html_content):
                     should_skip_html = True
                     if "当前环境异常，完成验证后即可继续访问。" in html_content:
-                        print("⚠️ Skipping HTML save for verification page")
+                        print_current("⚠️ Skipping HTML save for verification page")
                     elif "豆丁网" in html_content or "docin.com" in html_content:
-                        print("⚠️ Skipping HTML save for DocIn embedded document page")
+                        print_current("⚠️ Skipping HTML save for DocIn embedded document page")
                     elif ("百度学术搜索" in html_content or "xueshu.baidu.com" in html_content or
                           "百度学术" in html_content or "- 百度学术" in title or
                           "相关论文" in html_content or "获取方式" in html_content):
-                        print("⚠️ Skipping HTML save for Baidu Scholar search page")
+                        print_current("⚠️ Skipping HTML save for Baidu Scholar search page")
                 
                 if not should_skip_html:
                     # Ensure the HTML file has .html extension
@@ -267,12 +266,11 @@ class WebSearchTools:
                     html_filepath = os.path.join(self.web_result_dir, html_filename)
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
-                    print(f"💾 Saved webpage HTML: {html_filename} ({len(html_content)} bytes)")
                 else:
-                    print(f"⏭️ Skipped HTML save for special page: {title[:50]}...")
+                    print_current(f"⏭️ Skipped HTML save for special page: {title[:50]}...")
                     
             except Exception as e:
-                print(f"⚠️ Failed to save webpage HTML: {e}")
+                print_current(f"⚠️ Failed to save webpage HTML: {e}")
             
             # Save text content
             try:
@@ -334,18 +332,15 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         
                         with open(txt_filepath, 'w', encoding='utf-8') as f:
                             f.write(formatted_content)
-                        print(f"📝 Saved cleaned text: {txt_filename} ({len(cleaned_content)} characters, cleaned from {len(content)})")
-                    else:
-                        print(f"⚠️ Content too short or low quality after cleaning for: {title}")
                 else:
-                    print(f"⚠️ No text content to save for: {title}")
+                    print_current(f"⚠️ No text content to save for: {title}")
             except Exception as e:
-                print(f"⚠️ Failed to save text content: {e}")
+                print_current(f"⚠️ Failed to save text content: {e}")
             
             return html_filepath, txt_filepath
             
         except Exception as e:
-            print(f"⚠️ Failed to save webpage content: {e}")
+            print_current(f"⚠️ Failed to save webpage content: {e}")
             return "", ""
     
     def _setup_llm_client(self, api_key: str, model: str, api_base: str):
@@ -381,7 +376,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
         if self._google_connectivity_checked:
             return self._google_available
         
-        print("🌐 Checking Google connectivity for the first time...")
+        print_current("🌐 Checking Google connectivity for the first time...")
         try:
             # Try to download Google homepage with 3 second timeout
             response = requests.get('https://www.google.com', 
@@ -389,20 +384,20 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                   headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
             
             if response.status_code == 200 and len(response.text) > 100:
-                print("✅ Google connectivity test passed")
+                print_current("✅ Google connectivity test passed")
                 self._google_available = True
             else:
-                print(f"❌ Google connectivity test failed: status {response.status_code}")
+                print_current(f"❌ Google connectivity test failed: status {response.status_code}")
                 self._google_available = False
                 
         except requests.exceptions.Timeout:
-            print("⚠️ Google connectivity test timeout (>3s)")
+            print_current("⚠️ Google connectivity test timeout (>3s)")
             self._google_available = False
         except requests.exceptions.RequestException as e:
-            print(f"⚠️ Google connectivity test error: {e}")
+            print_current(f"⚠️ Google connectivity test error: {e}")
             self._google_available = False
         except Exception as e:
-            print(f"⚠️ Google connectivity test error: {e}")
+            print_current(f"⚠️ Google connectivity test error: {e}")
             self._google_available = False
         
         self._google_connectivity_checked = True
@@ -425,19 +420,19 @@ Cleaned Content Length: {len(cleaned_content)} characters
         
         # Check for verification page and skip LLM processing
         if "当前环境异常，完成验证后即可继续访问。" in content:
-            print("⚠️ Detected verification page in LLM filtering, skipping LLM processing")
+            print_current("⚠️ Detected verification page in LLM filtering, skipping LLM processing")
             return "当前环境异常，完成验证后即可继续访问。"
         
         # Check for DocIn embedded document page and skip LLM processing
         if "豆丁网" in content or "docin.com" in content:
-            print("⚠️ Detected DocIn embedded document page in LLM filtering, skipping LLM processing")
+            print_current("⚠️ Detected DocIn embedded document page in LLM filtering, skipping LLM processing")
             return "正文为嵌入式文档，不可阅读"
         
         # Check for Baidu Scholar search page and skip LLM processing
         if ("百度学术搜索" in content or "百度学术" in content or
             "相关论文" in content or "获取方式" in content or
             "按相关性按相关性按被引量按时间降序" in content):
-            print("⚠️ Detected Baidu Scholar search page in LLM filtering, skipping LLM processing")
+            print_current("⚠️ Detected Baidu Scholar search page in LLM filtering, skipping LLM processing")
             return "结果无可用数据"
         
         # Skip processing if content is too short
@@ -445,7 +440,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
             return content
         
         try:
-            print(f"🧠 Using LLM to extract relevant information for: {search_term}")
+            print_current(f"🧠 Using LLM to extract relevant information for: {search_term}")
             
             # Construct system prompt for content filtering
             system_prompt = """You are an expert at extracting relevant information from web content. Your task is to:
@@ -485,7 +480,7 @@ Please provide the extracted relevant content:"""
                 if hasattr(response, 'content') and response.content:
                     filtered_content = response.content[0].text if response.content else ""
                 else:
-                    print("⚠️ Claude API response format unexpected")
+                    print_current("⚠️ Claude API response format unexpected")
                     return content
             else:
                 # OpenAI API call
@@ -502,23 +497,23 @@ Please provide the extracted relevant content:"""
                 if response.choices and response.choices[0].message:
                     filtered_content = response.choices[0].message.content
                 else:
-                    print("⚠️ OpenAI API response format unexpected")
+                    print_current("⚠️ OpenAI API response format unexpected")
                     return content
             
             # Validate filtered content
             if filtered_content and filtered_content.strip():
                 if "No relevant content found" in filtered_content or "no relevant content" in filtered_content.lower():
-                    print("🔍 LLM determined no relevant content found")
+                    print_current("🔍 LLM determined no relevant content found")
                     return "No relevant content found in this webpage for the search query."
                 elif len(filtered_content.strip()) > 50:  # Ensure we got substantial content
-                    print(f"✅ LLM filtering completed: {len(content)} → {len(filtered_content)} characters")
+                    print_current(f"✅ LLM filtering completed: {len(content)} → {len(filtered_content)} characters")
                     return filtered_content.strip()
             
-            print("⚠️ LLM filtering produced insufficient content, using original")
+            print_current("⚠️ LLM filtering produced insufficient content, using original")
             return content
             
         except Exception as e:
-            print(f"❌ LLM content filtering failed: {e}")
+            print_current(f"❌ LLM content filtering failed: {e}")
             return content
 
     def _summarize_search_results_with_llm(self, results: List[Dict], search_term: str) -> str:
@@ -552,10 +547,10 @@ Please provide the extracted relevant content:"""
                     valid_results.append(result_with_files)
         
         if not valid_results:
-            print("⚠️ No valid content found for summarization")
+            print_current("⚠️ No valid content found for summarization")
             return ""
         
-        print(f"📝 Using LLM to summarize {len(valid_results)} search results for: {search_term}")
+        print_current(f"📝 Using LLM to summarize {len(valid_results)} search results for: {search_term}")
         
         try:
             # Construct system prompt for detailed individual analysis
@@ -654,7 +649,7 @@ Please create a detailed, structured analysis that preserves important informati
                 if hasattr(response, 'content') and response.content:
                     summary = response.content[0].text if response.content else ""
                 else:
-                    print("⚠️ Claude API response format unexpected")
+                    print_current("⚠️ Claude API response format unexpected")
                     return ""
             else:
                 # OpenAI API call
@@ -671,19 +666,19 @@ Please create a detailed, structured analysis that preserves important informati
                 if response.choices and response.choices[0].message:
                     summary = response.choices[0].message.content
                 else:
-                    print("⚠️ OpenAI API response format unexpected")
+                    print_current("⚠️ OpenAI API response format unexpected")
                     return ""
             
             # Validate summary
             if summary and summary.strip() and len(summary.strip()) > 100:
-                print(f"✅ Search results detailed analysis completed: {len(summary)} characters")
+                print_current(f"✅ Search results detailed analysis completed: {len(summary)} characters")
                 return summary.strip()
             else:
-                print("⚠️ LLM produced insufficient summary")
+                print_current("⚠️ LLM produced insufficient summary")
                 return ""
                 
         except Exception as e:
-            print(f"❌ Search results summarization failed: {e}")
+            print_current(f"❌ Search results summarization failed: {e}")
             return ""
 
     def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 10, **kwargs) -> Dict[str, Any]:
@@ -696,19 +691,23 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print(f"🔍 Search keywords: {search_term}")
+        print_current(f"🔍 Search keywords: {search_term}")
         if fetch_content:
-            print(f"📄 Will automatically fetch webpage content for the first {max_content_results} results")
+            print_current(f"📄 Will automatically fetch webpage content for the first {max_content_results} results")
         else:
-            print(f"📝 Only get search result summaries, not webpage content")
+            print_current(f"📝 Only get search result summaries, not webpage content")
         
         # Set global timeout of 30 seconds for the entire search operation
         old_handler = None
-        if not is_windows():
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)
+        if not is_windows() and is_main_thread():
+            try:
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)
+            except ValueError as e:
+                print_current(f"⚠️ Cannot set signal handler (not in main thread): {e}")
+                old_handler = None
         
         browser = None
         try:
@@ -845,7 +844,7 @@ Please create a detailed, structured analysis that preserves important informati
                 """)
                 
                 if search_term.startswith(('http://', 'https://')):
-                    print(f"🔗 Direct URL detected, attempting to access: {search_term}")
+                    print_current(f"🔗 Direct URL detected, attempting to access: {search_term}")
                     try:
                         page.goto(search_term, timeout=10000, wait_until='domcontentloaded')
                         page.wait_for_timeout(1000)
@@ -862,17 +861,17 @@ Please create a detailed, structured analysis that preserves important informati
                         # Check if this is a DocIn page by URL or Baidu Scholar page
                         current_url = page.url
                         if "docin.com" in current_url or "豆丁网" in title:
-                            print("⚠️ Detected DocIn embedded document page by URL/title")
+                            print_current("⚠️ Detected DocIn embedded document page by URL/title")
                             content = "正文为嵌入式文档，不可阅读"
                         elif ("百度学术搜索" in title or "xueshu.baidu.com" in current_url or 
                               "百度学术" in title or "- 百度学术" in title or
                               "search.baidu.com" in current_url):
-                            print("⚠️ Detected Baidu Scholar search page by URL/title")
+                            print_current("⚠️ Detected Baidu Scholar search page by URL/title")
                             content = "结果无可用数据"
                         else:
                             if fetch_content:
                                 content = self._extract_main_content(page)
-                            print(f"📄 Extracted webpage content length: {len(content)} characters")
+                            print_current(f"📄 Extracted webpage content length: {len(content)} characters")
                             
                             # Apply LLM filtering if enabled
                             if content and self.enable_llm_filtering:
@@ -902,10 +901,10 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         results.append(result_dict)
                         
-                        print(f"✅ Successfully accessed URL directly, got {len(content)} characters of content")
+                        print_current(f"✅ Successfully accessed URL directly, got {len(content)} characters of content")
                         
                     except Exception as e:
-                        print(f"❌ Direct URL access failed: {e}")
+                        print_current(f"❌ Direct URL access failed: {e}")
                         results.append({
                             'title': f'Access failed: {search_term}',
                             'url': search_term,
@@ -930,7 +929,7 @@ Please create a detailed, structured analysis that preserves important informati
                             'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
-                        print("🔍 Google search engine added as primary option (connectivity confirmed)")
+                        print_current("🔍 Google search engine added as primary option (connectivity confirmed)")
                         
                         # Add backup Google search with different approach
                         search_engines.append({
@@ -941,9 +940,9 @@ Please create a detailed, structured analysis that preserves important informati
                             'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf', '[data-sncf]'],
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
-                        print("🔍 Google backup search engine added")
+                        print_current("🔍 Google backup search engine added")
                     else:
-                        print("⚠️ Google connectivity test failed, will use alternative search engines")
+                        print_current("⚠️ Google connectivity test failed, will use alternative search engines")
                     
                     # Always add Baidu as fallback or secondary option
                     search_engines.append({
@@ -953,7 +952,7 @@ Please create a detailed, structured analysis that preserves important informati
                         'container_selector': '.result',
                         'snippet_selectors': ['.c-abstract', '.c-span9', 'span', 'div']
                     })
-                    print("🔍 Baidu search engine added to available options")
+                    print_current("🔍 Baidu search engine added to available options")
                     
                     # Add DuckDuckGo as additional fallback
                     search_engines.append({
@@ -963,10 +962,10 @@ Please create a detailed, structured analysis that preserves important informati
                         'container_selector': '[data-testid="result"], .result, .web-result',
                         'snippet_selectors': ['.result__snippet', '[data-testid="result-snippet"]', '.result-snippet']
                     })
-                    print("🔍 DuckDuckGo search engine added as additional fallback")
+                    print_current("🔍 DuckDuckGo search engine added as additional fallback")
                     
                     if not search_engines:
-                        print("❌ No search engines available")
+                        print_current("❌ No search engines available")
                         return {
                             'search_term': search_term,
                             'results': [{
@@ -984,7 +983,7 @@ Please create a detailed, structured analysis that preserves important informati
                     
                     for engine in search_engines:
                         try:
-                            print(f"🔍 Trying to search with {engine['name']}...")
+                            print_current(f"🔍 Trying to search with {engine['name']}...")
                             
                             # Add rate limiting for Google to avoid being blocked
                             if engine['name'].startswith('Google'):
@@ -1025,7 +1024,7 @@ Please create a detailed, structured analysis that preserves important informati
                             result_elements = page.query_selector_all(engine['result_selector'])
                             
                             if result_elements:
-                                print(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
+                                print_current(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
                                 
                                 for i, elem in enumerate(result_elements[:10]):  # Top 5 results
                                     try:
@@ -1088,20 +1087,20 @@ Please create a detailed, structured analysis that preserves important informati
                                             })
                                     
                                     except Exception as e:
-                                        print(f"Error extracting result {i}: {e}")
+                                        print_current(f"Error extracting result {i}: {e}")
                                         continue
                                 
                                 if results:
                                     break
                             else:
-                                print(f"❌ {engine['name']} found no search results")
+                                print_current(f"❌ {engine['name']} found no search results")
                         
                         except Exception as e:
-                            print(f"❌ {engine['name']} search failed: {e}")
+                            print_current(f"❌ {engine['name']} search failed: {e}")
                             continue
                     
                     if fetch_content and results:
-                        print(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
+                        print_current(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
                         
                         # Use parallel processing for better efficiency
                         try:
@@ -1112,8 +1111,8 @@ Please create a detailed, structured analysis that preserves important informati
                             self._fetch_webpage_content_parallel(results[:max_content_results], max_workers=8)
                             
                         except Exception as e:
-                            print(f"⚠️ Parallel content fetching failed: {e}")
-                            print(f"🔄 Falling back to sequential content fetching...")
+                            print_current(f"⚠️ Parallel content fetching failed: {e}")
+                            print_current(f"🔄 Falling back to sequential content fetching...")
                             # Fallback to sequential method if parallel fails
                             try:
                                 # Need to recreate page for fallback
@@ -1128,12 +1127,12 @@ Please create a detailed, structured analysis that preserves important informati
                                 
                                 self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=20)
                             except Exception as fallback_e:
-                                print(f"⚠️ Fallback sequential content fetching also failed: {fallback_e}")
+                                print_current(f"⚠️ Fallback sequential content fetching also failed: {fallback_e}")
                                 # Final fallback - try basic method
                                 try:
                                     self._fetch_webpage_content(results[:max_content_results], page)
                                 except Exception as final_e:
-                                    print(f"⚠️ All content fetching methods failed: {final_e}")
+                                    print_current(f"⚠️ All content fetching methods failed: {final_e}")
                         
                         valid_results = []
                         for result in results:
@@ -1148,9 +1147,9 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         if valid_results:
                             results = valid_results
-                            print(f"✅ Successfully got {len(results)} search results with valid content")
+                            print_current(f"✅ Successfully got {len(results)} search results with valid content")
                         else:
-                            print("⚠️ All search results failed to get valid webpage content, returning search results only")
+                            print_current("⚠️ All search results failed to get valid webpage content, returning search results only")
                             # Return search results even without content
                             for result in results:
                                 if not result.get('content'):
@@ -1163,7 +1162,7 @@ Please create a detailed, structured analysis that preserves important informati
                     pass
             
             if not results:
-                print("🔄 All search engines failed, providing fallback result...")
+                print_current("🔄 All search engines failed, providing fallback result...")
                 results = [{
                     'title': f'Search: {search_term}',
                     'snippet': f'Failed to get results from search engines. Possible reasons: network connection issues, search engine structure changes, or access restrictions. Recommend manual search: {search_term}',
@@ -1205,7 +1204,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 if optimized_results:
                     results = optimized_results
-                    print(f"✅ Optimized search result format, {len([r for r in results if r.get('has_full_content')])} results contain full content")
+                    print_current(f"✅ Optimized search result format, {len([r for r in results if r.get('has_full_content')])} results contain full content")
             
             # Count saved files
             saved_html_count = len([r for r in results if r.get('saved_html_path')])
@@ -1250,11 +1249,11 @@ Please create a detailed, structured analysis that preserves important informati
                 # Remove the detailed results array to avoid overwhelming LLM
                 del result_data['results']
                 
-                print(f"📋 Generated comprehensive summary ({len(summary)} characters)")
-                print(f"\n🎯 Final Summary for Search Term: '{search_term}'")
-                print(f"{'='*60}")
+                print_current(f"📋 Generated comprehensive summary ({len(summary)} characters)")
+                print_current(f"\n🎯 Final Summary for Search Term: '{search_term}'")
+                print_current(f"{'='*60}")
                 print(summary)
-                print(f"{'='*60}\n")
+                print_current(f"{'='*60}\n")
             else:
                 result_data['summary_available'] = False
             
@@ -1271,8 +1270,8 @@ Please create a detailed, structured analysis that preserves important informati
                 file_notice_parts.append(f"📁 {files_str} saved to folder: {self.web_result_dir}/")
                 file_notice_parts.append("💡 You can use codebase_search or grep_search tools to search within these files")
                 
-                print(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
-                print(f"💡 You can use codebase_search or grep_search tools to search within these files")
+                print_current(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
+                print_current(f"💡 You can use codebase_search or grep_search tools to search within these files")
             
             # Always add notice about original content access
             if summary:
@@ -1285,8 +1284,8 @@ Please create a detailed, structured analysis that preserves important informati
             return result_data
             
         except ImportError as import_error:
-            print(f"Playwright not installed: {import_error}")
-            print("Install with: pip install playwright && playwright install chromium")
+            print_current(f"Playwright not installed: {import_error}")
+            print_current("Install with: pip install playwright && playwright install chromium")
             return {
                 'search_term': search_term,
                 'results': [{
@@ -1303,9 +1302,9 @@ Please create a detailed, structured analysis that preserves important informati
             # Handle Playwright browser launch errors (including GLIBC issues)
             error_str = str(playwright_error)
             if 'GLIBC' in error_str or 'version' in error_str or 'not found' in error_str:
-                print(f"❌ Playwright system compatibility error: {playwright_error}")
-                print("⚠️  Your system GLIBC version is too old for Playwright")
-                print("💡 Suggestion: Try using requests-based fallback or upgrade your system")
+                print_current(f"❌ Playwright system compatibility error: {playwright_error}")
+                print_current("⚠️  Your system GLIBC version is too old for Playwright")
+                print_current("💡 Suggestion: Try using requests-based fallback or upgrade your system")
                 return {
                     'search_term': search_term,
                     'results': [{
@@ -1318,8 +1317,8 @@ Please create a detailed, structured analysis that preserves important informati
                     'error': 'glibc_compatibility_error'
                 }
             elif 'PlaywrightContextManager' in error_str or '_playwright' in error_str:
-                print(f"❌ Playwright initialization error: {playwright_error}")
-                print("💡 This might be due to browser installation issues")
+                print_current(f"❌ Playwright initialization error: {playwright_error}")
+                print_current("💡 This might be due to browser installation issues")
                 return {
                     'search_term': search_term,
                     'results': [{
@@ -1332,7 +1331,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'error': 'playwright_init_error'
                 }
             else:
-                print(f"❌ Playwright error: {playwright_error}")
+                print_current(f"❌ Playwright error: {playwright_error}")
                 return {
                     'search_term': search_term,
                     'results': [{
@@ -1346,7 +1345,7 @@ Please create a detailed, structured analysis that preserves important informati
                 }
         
         except TimeoutError:
-            # print("❌ Web search timed out after 60 seconds")  # Commented out to reduce terminal noise
+            # print_current("❌ Web search timed out after 60 seconds")  # Commented out to reduce terminal noise
             return {
                 'search_term': search_term,
                 'results': [{
@@ -1360,7 +1359,7 @@ Please create a detailed, structured analysis that preserves important informati
             }
         
         except Exception as e:
-            print(f"❌ Web search failed: {e}")
+            print_current(f"❌ Web search failed: {e}")
             return {
                 'search_term': search_term,
                 'results': [{
@@ -1375,9 +1374,13 @@ Please create a detailed, structured analysis that preserves important informati
         
         finally:
             # Reset the alarm and restore the original signal handler
-            if not is_windows() and old_handler is not None:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            if not is_windows() and is_main_thread() and old_handler is not None:
+                try:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                except ValueError:
+                    # Already not in main thread, nothing to clean up
+                    pass
             
             # Emergency browser cleanup
             if browser:
@@ -1419,7 +1422,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 break
         
         except Exception as e:
-            print(f"Error extracting snippet: {e}")
+            print_current(f"Error extracting snippet: {e}")
         
         return snippet
 
@@ -1431,11 +1434,11 @@ Please create a detailed, structured analysis that preserves important informati
         
         for i, result in enumerate(results):
             if time.time() - start_time > timeout_seconds:
-                print(f"⏰ Overall content fetching timeout reached ({timeout_seconds}s), stopping")
+                print_current(f"⏰ Overall content fetching timeout reached ({timeout_seconds}s), stopping")
                 break
                 
             try:
-                print(f"📖 Getting webpage content for result {i+1}: {result['title'][:50]}...")
+                print_current(f"📖 Getting webpage content for result {i+1}: {result['title'][:50]}...")
                 
                 target_url = result.get('_internal_url') or result.get('url', '')
                 
@@ -1447,7 +1450,7 @@ Please create a detailed, structured analysis that preserves important informati
                     decoded_url = self._decode_baidu_redirect_url(target_url)
                     if decoded_url != target_url:
                         target_url = decoded_url
-                        print(f"🎯 Using decoded URL instead of redirect")
+                        print_current(f"🎯 Using decoded URL instead of redirect")
                         is_baidu_redirect = False  # No longer need special handling
                 
                 # Quick domain check
@@ -1458,19 +1461,19 @@ Please create a detailed, structured analysis that preserves important informati
                 ]
                 
                 if any(domain in target_url.lower() for domain in problematic_domains):
-                    print(f"⏭️ Skip video/social media link: {target_url}")
+                    print_current(f"⏭️ Skip video/social media link: {target_url}")
                     result['content'] = "Video or social media link, skip content fetch"
                     continue
                 
                 if target_url.startswith(('javascript:', 'mailto:')):
-                    print(f"⏭️ Skip non-webpage link: {target_url}")
+                    print_current(f"⏭️ Skip non-webpage link: {target_url}")
                     result['content'] = "Non-webpage link, skip content fetch"
                     continue
                 
                 # Navigate to page with short timeout
                 remaining_time = max(5000, int((timeout_seconds - (time.time() - start_time)) * 1000))
                 if remaining_time <= 5000:
-                    # print("⏰ Insufficient remaining time, skip this result")
+                    # print_current("⏰ Insufficient remaining time, skip this result")
                     result['content'] = "Insufficient time, skip content fetch"
                     continue
                 
@@ -1486,7 +1489,7 @@ Please create a detailed, structured analysis that preserves important informati
                     for attempt in range(max_retries):
                         try:
                             if attempt > 0:
-                                # print(f"🔄 Retry attempt {attempt + 1} for: {result['title'][:30]}...")
+                                # print_current(f"🔄 Retry attempt {attempt + 1} for: {result['title'][:30]}...")
                                 page.wait_for_timeout(500)  # Reduced wait before retry for faster processing
                             
                             # Skip special header settings for faster processing
@@ -1514,11 +1517,11 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             # Special handling for common Baidu redirect errors
                             if is_baidu_redirect and ('timeout' in error_msg or 'net::err' in error_msg):
-                                # print(f"⚠️ Navigation attempt {attempt + 1} failed (Baidu redirect timeout): {nav_error}")  # Commented out to reduce terminal noise
+                                # print_current(f"⚠️ Navigation attempt {attempt + 1} failed (Baidu redirect timeout): {nav_error}")  # Commented out to reduce terminal noise
                                 if attempt < max_retries - 1:
                                     continue
                             elif attempt < max_retries - 1:
-                                # print(f"⚠️ Navigation attempt {attempt + 1} failed: {nav_error}")  # Commented out to reduce terminal noise
+                                # print_current(f"⚠️ Navigation attempt {attempt + 1} failed: {nav_error}")  # Commented out to reduce terminal noise
                                 continue
                             else:
                                 raise nav_error
@@ -1545,9 +1548,9 @@ Please create a detailed, structured analysis that preserves important informati
                             cleaned_content = self._clean_text_for_saving(content)
                             result['content'] = cleaned_content if cleaned_content else content
                             result['final_url'] = page.url
-                            print(f"✅ Successfully got {len(result['content'])} characters of useful content")
+                            print_current(f"✅ Successfully got {len(result['content'])} characters of useful content")
                             if is_baidu_redirect:
-                                print(f"🎯 Final redirected URL: {page.url}")
+                                print_current(f"🎯 Final redirected URL: {page.url}")
                         else:
                             result['content'] = "Content too short or unable to extract"
                 
@@ -1587,16 +1590,16 @@ Please create a detailed, structured analysis that preserves important informati
                         error_msg = "SSL/TLS certificate error"
                         error_type = "ssl_error"
                     
-                    # print(f"❌ Failed to get webpage content: {error_msg}")  # Commented out to reduce terminal noise
+                    # print_current(f"❌ Failed to get webpage content: {error_msg}")  # Commented out to reduce terminal noise
                     result['content'] = f"Content fetch error: {error_msg}"
                     result['error_type'] = error_type
                     
                     # Special message for Baidu redirects
                     if is_baidu_redirect:
-                        pass  # print(f"💡 Baidu redirect troubleshooting: URL={target_url[:100]}...")  # Commented out to reduce terminal noise
+                        pass  # print_current(f"💡 Baidu redirect troubleshooting: URL={target_url[:100]}...")  # Commented out to reduce terminal noise
                 
             except Exception as e:
-                # print(f"❌ Error processing result {i+1}: {e}")  # Commented out to reduce terminal noise
+                # print_current(f"❌ Error processing result {i+1}: {e}")  # Commented out to reduce terminal noise
                 result['content'] = f"Processing error: {str(e)}"
 
     def _fetch_webpage_content_parallel(self, results: List[Dict], max_workers: int = 8) -> None:
@@ -1610,7 +1613,7 @@ Please create a detailed, structured analysis that preserves important informati
         if not results:
             return
         
-        print(f"🚀 Starting parallel content fetching for {len(results)} results with {max_workers} workers")
+        print_current(f"🚀 Starting parallel content fetching for {len(results)} results with {max_workers} workers")
         
         # Filter results that need content fetching
         results_to_fetch = []
@@ -1628,22 +1631,22 @@ Please create a detailed, structured analysis that preserves important informati
             ]
             
             if any(domain in target_url.lower() for domain in problematic_domains):
-                # print(f"⏭️ Skip video/social media link: {result['title'][:30]}...")
+                # print_current(f"⏭️ Skip video/social media link: {result['title'][:30]}...")
                 result['content'] = "Video or social media link, skip content fetch"
                 continue
             
             if target_url.startswith(('javascript:', 'mailto:')):
-                # print(f"⏭️ Skip non-webpage link: {result['title'][:30]}...")
+                # print_current(f"⏭️ Skip non-webpage link: {result['title'][:30]}...")
                 result['content'] = "Non-webpage link, skip content fetch"
                 continue
             
             results_to_fetch.append((i, result))
         
         if not results_to_fetch:
-            print("⚠️ No valid URLs to fetch content from")
+            print_current("⚠️ No valid URLs to fetch content from")
             return
         
-        print(f"📊 Processing {len(results_to_fetch)} valid URLs for content fetching")
+        print_current(f"📊 Processing {len(results_to_fetch)} valid URLs for content fetching")
         
         # Use ThreadPoolExecutor for parallel processing with improved timeout handling
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1668,16 +1671,15 @@ Please create a detailed, structured analysis that preserves important informati
                             original_result.update(updated_result)
                         
                         completed += 1
-                        print(f"✅ Completed {completed}/{len(results_to_fetch)} content fetching tasks")
                         
                     except Exception as e:
                         i, original_result = future_to_result[future]
-                        # print(f"❌ Error fetching content for result {i+1}: {e}")  # Commented out to reduce terminal noise
+                        # print_current(f"❌ Error fetching content for result {i+1}: {e}")  # Commented out to reduce terminal noise
                         original_result['content'] = f"Parallel fetch error: {str(e)}"
                         completed += 1
                         
             except concurrent.futures.TimeoutError:
-                print(f"⏰ Parallel processing timeout after {timeout_per_batch}s, handling remaining tasks...")
+                print_current(f"⏰ Parallel processing timeout after {timeout_per_batch}s, handling remaining tasks...")
                 
                 # Handle remaining futures that didn't complete
                 for future in future_to_result:
@@ -1692,7 +1694,7 @@ Please create a detailed, structured analysis that preserves important informati
                             original_result['content'] = "Parallel fetch timeout"
                         completed += 1
         
-        print(f"🎉 Parallel content fetching completed for all {len(results_to_fetch)} results")
+        print_current(f"🎉 Parallel content fetching completed for all {len(results_to_fetch)} results")
 
     def _fetch_single_webpage_content(self, result: Dict, index: int) -> Dict[str, Any]:
         """
@@ -1710,7 +1712,7 @@ Please create a detailed, structured analysis that preserves important informati
         target_url = result.get('_internal_url') or result.get('url', '')
         
         try:
-            print(f"🔗 [{index+1}] Fetching content: {result['title'][:40]}...")
+            print_current(f"🔗 [{index+1}] Fetching content: {result['title'][:40]}...")
             
             # Handle Baidu redirect URLs
             is_baidu_redirect = 'baidu.com/link?url=' in target_url
@@ -1719,7 +1721,7 @@ Please create a detailed, structured analysis that preserves important informati
                 decoded_url = self._decode_baidu_redirect_url(target_url)
                 if decoded_url != target_url:
                     target_url = decoded_url
-                    # print(f"🎯 [{index+1}] Using decoded URL")
+                    # print_current(f"🎯 [{index+1}] Using decoded URL")
                     is_baidu_redirect = False
             
             with sync_playwright() as p:
@@ -1783,7 +1785,7 @@ Please create a detailed, structured analysis that preserves important informati
                 for attempt in range(max_retries):
                     try:
                         if attempt > 0:
-                            print(f"🔄 [{index+1}] Retry attempt {attempt + 1}")
+                            print_current(f"🔄 [{index+1}] Retry attempt {attempt + 1}")
                             page.wait_for_timeout(500)
                         
                         # Skip special header settings for faster processing
@@ -1804,7 +1806,7 @@ Please create a detailed, structured analysis that preserves important informati
                         
                     except Exception as nav_error:
                         if attempt < max_retries - 1:
-                            print(f"⚠️ [{index+1}] Navigation attempt {attempt + 1} failed: {nav_error}")
+                            print_current(f"⚠️ [{index+1}] Navigation attempt {attempt + 1} failed: {nav_error}")
                             continue
                         else:
                             raise nav_error
@@ -1823,7 +1825,7 @@ Please create a detailed, structured analysis that preserves important informati
                         # Save both HTML and text content to files
                         saved_html_path, saved_txt_path = self._save_webpage_content(page, target_url, title, content, search_term)
                         
-                        print(f"✅ [{index+1}] Successfully fetched {len(content)} characters")
+                        print_current(f"✅ [{index+1}] Successfully fetched {len(content)} characters")
                         browser.close()
                         
                         # Clean content for better LLM processing
@@ -1850,7 +1852,7 @@ Please create a detailed, structured analysis that preserves important informati
         
         except Exception as e:
             error_msg = str(e)
-            # print(f"❌ [{index+1}] Fetch failed: {error_msg}")  # Commented out to reduce terminal noise
+            # print_current(f"❌ [{index+1}] Fetch failed: {error_msg}")  # Commented out to reduce terminal noise
             return {'content': f"Content fetch error: {error_msg}"}
 
     def _fetch_webpage_content(self, results: List[Dict], page) -> None:
@@ -1860,7 +1862,7 @@ Please create a detailed, structured analysis that preserves important informati
         for i, result in enumerate(results):
             start_time = time.time()
             try:
-                print(f"📖 Getting webpage content for result {i+1}: {result['title'][:50]}...")
+                print_current(f"📖 Getting webpage content for result {i+1}: {result['title'][:50]}...")
                 
                 target_url = result.get('_internal_url') or result.get('url', '')
                 
@@ -1872,7 +1874,7 @@ Please create a detailed, structured analysis that preserves important informati
                     decoded_url = self._decode_baidu_redirect_url(target_url)
                     if decoded_url != target_url:
                         target_url = decoded_url
-                        # print(f"🎯 Using decoded URL instead of redirect (fallback)")
+                        # print_current(f"🎯 Using decoded URL instead of redirect (fallback)")
                         is_baidu_redirect = False  # No longer need special handling
                 
                 problematic_domains = [
@@ -1885,17 +1887,17 @@ Please create a detailed, structured analysis that preserves important informati
                 ]
                 
                 if any(domain in target_url.lower() for domain in problematic_domains):
-                    # print(f"⏭️ Skip video/social media link: {target_url}")
+                    # print_current(f"⏭️ Skip video/social media link: {target_url}")
                     result['content'] = "Video or social media link, skip content fetch"
                     continue
                 
                 if target_url.startswith('javascript:') or target_url.startswith('mailto:'):
-                    # print(f"⏭️ Skip non-webpage link: {target_url}")
+                    # print_current(f"⏭️ Skip non-webpage link: {target_url}")
                     result['content'] = "Non-webpage link, skip content fetch"
                     continue
                 
                 if time.time() - start_time > 3:
-                    # print("⏰ Processing time exceeded 3 seconds, skip this result")
+                    # print_current("⏰ Processing time exceeded 3 seconds, skip this result")
                     result['content'] = "Processing timeout"
                     continue
                 
@@ -1910,7 +1912,7 @@ Please create a detailed, structured analysis that preserves important informati
                     for attempt in range(max_retries):
                         try:
                             if attempt > 0:
-                                # print(f"🔄 Retry attempt {attempt + 1} (fallback) for: {result['title'][:30]}...")
+                                # print_current(f"🔄 Retry attempt {attempt + 1} (fallback) for: {result['title'][:30]}...")
                                 page.wait_for_timeout(500)
                             
                             page.goto(target_url, timeout=timeout_ms, wait_until='domcontentloaded')
@@ -1952,10 +1954,10 @@ Please create a detailed, structured analysis that preserves important informati
                             cleaned_content = self._clean_text_for_saving(content)
                             result['content'] = cleaned_content if cleaned_content else content
                             elapsed_time = time.time() - start_time
-                            # print(f"✅ Successfully got {len(result['content'])} characters of useful content (time: {elapsed_time:.2f}s)")
+                            # print_current(f"✅ Successfully got {len(result['content'])} characters of useful content (time: {elapsed_time:.2f}s)")
                         else:
                             result['content'] = ""
-                            # print(f"⚠️ Webpage content too short or unable to get, skip this result")
+                            # print_current(f"⚠️ Webpage content too short or unable to get, skip this result")
                 
                 except Exception as extract_error:
                     error_msg = str(extract_error)
@@ -1964,12 +1966,12 @@ Please create a detailed, structured analysis that preserves important informati
                     elif "interrupted by another navigation" in error_msg:
                         error_msg = "Navigation interrupted"
                     
-                    # print(f"⚠️ Content extraction failed: {error_msg}")  # Commented out to reduce terminal noise
+                    # print_current(f"⚠️ Content extraction failed: {error_msg}")  # Commented out to reduce terminal noise
                     result['content'] = ""
                 
             except Exception as e:
                 elapsed_time = time.time() - start_time
-                # print(f"❌ Failed to get webpage content (time: {elapsed_time:.2f}s): {e}")  # Commented out to reduce terminal noise
+                # print_current(f"❌ Failed to get webpage content (time: {elapsed_time:.2f}s): {e}")  # Commented out to reduce terminal noise
                 result['content'] = ""
                 
                 if "timeout" in str(e).lower() or elapsed_time > 2:
@@ -2027,7 +2029,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 
                                 if self._is_quality_content(text):
                                     content = text
-                                    # print(f"✅ Successfully extracted content with selector '{selector}'")
+                                    # print_current(f"✅ Successfully extracted content with selector '{selector}'")
                                     break
                         except:
                             continue
@@ -2036,7 +2038,7 @@ Please create a detailed, structured analysis that preserves important informati
             
             if not content:
                 try:
-                    # print("⚠️ Selector method found no content, trying to extract full body text")
+                    # print_current("⚠️ Selector method found no content, trying to extract full body text")
                     body_text = page.query_selector('body').text_content() if page.query_selector('body') else ""
                     
                     # Check for verification page in body text
@@ -2057,7 +2059,7 @@ Please create a detailed, structured analysis that preserves important informati
                         cleaned_body = self._clean_body_content(body_text)
                         if cleaned_body and len(cleaned_body) > 200:
                             content = cleaned_body
-                            # print("✅ Successfully extracted using body content")
+                            # print_current("✅ Successfully extracted using body content")
                 except:
                     pass
             
@@ -2083,10 +2085,10 @@ Please create a detailed, structured analysis that preserves important informati
     
                     return ""
                 
-                # print(f"📄 Successfully extracted content, total length: {len(content)} characters")
+                # print_current(f"📄 Successfully extracted content, total length: {len(content)} characters")
         
         except Exception as e:
-            # print(f"Error extracting webpage content: {e}")  # Commented out to reduce terminal noise
+            # print_current(f"Error extracting webpage content: {e}")  # Commented out to reduce terminal noise
             pass
         
         return content
@@ -2265,19 +2267,19 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Check for verification page early and return as-is
         if "当前环境异常，完成验证后即可继续访问。" in content:
-            print("⚠️ Detected verification page in cleaning, returning verification message only")
+            print_current("⚠️ Detected verification page in cleaning, returning verification message only")
             return "当前环境异常，完成验证后即可继续访问。"
         
         # Check for DocIn embedded document page early and return as-is
         if "豆丁网" in content or "docin.com" in content:
-            print("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
+            print_current("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
             return "正文为嵌入式文档，不可阅读"
         
         # Check for Baidu Scholar search page early and return as-is
         if ("百度学术搜索" in content or "百度学术" in content or
             "相关论文" in content or "获取方式" in content or
             "按相关性按相关性按被引量按时间降序" in content):
-            print("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
+            print_current("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
             return "结果无可用数据"
         
         # Remove HTML tags
@@ -2377,15 +2379,19 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print(f"Fetching content from: {url}")
+        print_current(f"Fetching content from: {url}")
         
         # Set timeout for this operation
         old_handler = None
-        if not is_windows():
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)  # 30 second timeout
+        if not is_windows() and is_main_thread():
+            try:
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
+            except ValueError as e:
+                print_current(f"⚠️ Cannot set signal handler (not in main thread): {e}")
+                old_handler = None
         
         try:
             from playwright.sync_api import sync_playwright
@@ -2449,13 +2455,13 @@ Please create a detailed, structured analysis that preserves important informati
                 is_baidu_redirect = 'baidu.com/link?url=' in url
                 
                 if is_baidu_redirect:
-                    print(f"🔄 Detected Baidu redirect URL, using extended timeout")
+                    print_current(f"🔄 Detected Baidu redirect URL, using extended timeout")
                     # Try to decode first
                     decoded_url = self._decode_baidu_redirect_url(url)
                     if decoded_url != url:
                         url = decoded_url
                         is_baidu_redirect = False  # No longer need special handling
-                        print(f"🎯 Using decoded URL: {url[:100]}...")
+                        print_current(f"🎯 Using decoded URL: {url[:100]}...")
                 
                 page.goto(url, timeout=final_timeout, wait_until='domcontentloaded')
                 
@@ -2504,8 +2510,8 @@ Please create a detailed, structured analysis that preserves important informati
                         result_data['saved_txt_path'] = saved_txt_path
                     
                     result_data['file_notice'] = f"📁 Webpage content saved to folder: {self.web_result_dir}/\n💡 You can use codebase_search or grep_search tools to search within these files"
-                    print(f"\n📁 Webpage content saved to folder: {self.web_result_dir}/")
-                    print(f"💡 You can use codebase_search or grep_search tools to search within these files")
+                    print_current(f"\n📁 Webpage content saved to folder: {self.web_result_dir}/")
+                    print_current(f"💡 You can use codebase_search or grep_search tools to search within these files")
                 
                 return result_data
                 
@@ -2529,9 +2535,13 @@ Please create a detailed, structured analysis that preserves important informati
         
         finally:
             # Reset the alarm and restore the original signal handler
-            if not is_windows() and old_handler is not None:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            if not is_windows() and is_main_thread() and old_handler is not None:
+                try:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                except ValueError:
+                    # Already not in main thread, nothing to clean up
+                    pass
 
     def _decode_baidu_redirect_url(self, baidu_url: str) -> str:
         """
@@ -2561,8 +2571,8 @@ Please create a detailed, structured analysis that preserves important informati
                     try:
                         decoded = decode_method(url_part)
                         if decoded.startswith(('http://', 'https://')):
-                            print(f"✅ Successfully decoded Baidu redirect URL using method {i+1}")
-                            print(f"🎯 Decoded URL: {decoded[:100]}...")
+                            print_current(f"✅ Successfully decoded Baidu redirect URL using method {i+1}")
+                            print_current(f"🎯 Decoded URL: {decoded[:100]}...")
                             return decoded
                     except Exception as decode_error:
                         continue
@@ -2578,8 +2588,8 @@ Please create a detailed, structured analysis that preserves important informati
                     decoded_bytes = base64.b64decode(clean_url)
                     decoded = decoded_bytes.decode('utf-8')
                     if decoded.startswith(('http://', 'https://')):
-                        print(f"✅ Successfully decoded Baidu redirect URL using base64")
-                        print(f"🎯 Decoded URL: {decoded[:100]}...")
+                        print_current(f"✅ Successfully decoded Baidu redirect URL using base64")
+                        print_current(f"🎯 Decoded URL: {decoded[:100]}...")
                         return decoded
                 except:
                     pass
@@ -2590,7 +2600,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                     
         except Exception as e:
-            print(f"⚠️ Failed to decode Baidu redirect URL: {e}")
+            print_current(f"⚠️ Failed to decode Baidu redirect URL: {e}")
         
         # Return original URL if decoding fails
         return baidu_url
@@ -2610,7 +2620,7 @@ Please create a detailed, structured analysis that preserves important informati
         for year_match in re.finditer(r'\b(\d{4})\b', optimized_term):
             year = int(year_match.group(1))
             if year > current_year:
-                print(f"🔄 Found future year {year}, replacing with current year {current_year}")
+                print_current(f"🔄 Found future year {year}, replacing with current year {current_year}")
                 optimized_term = optimized_term.replace(str(year), str(current_year))
         
         today_keywords = ['today', 'latest', 'current', 'recent', 'breaking']

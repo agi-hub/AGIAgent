@@ -46,6 +46,12 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 ```bash
 python main.py --requirement "搜索今日新闻"
 python main.py -r "写一个笑话"
+
+# 图像输入支持
+python main.py -r "分析这张图表：[img=chart.png]"
+
+# MCP工具集成
+python main.py -r "使用AISearch_search搜索AI新闻"
 ```
 
 #### 📋 任务分解模式
@@ -105,6 +111,8 @@ python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.co
 - **🌐 网络搜索集成**：实时网络搜索获取最新信息和解决方案
 - **📚 代码库检索**：高级代码仓库分析和智能代码索引
 - **🛠️ 丰富工具生态**：完备的本地工具+操作系统命令调用能力，支持完整开发流程
+- **🖼️ 图像输入支持**：使用`[img=路径]`语法在需求中包含图像，支持Claude和OpenAI视觉模型
+- **🔗 MCP集成支持**：通过模型上下文协议集成外部工具，包含AI搜索等第三方服务
 - **🖥️ Web界面**：直观的网页界面，实时执行监控
 - **📊 双格式报告**：JSON详细日志 + Markdown可读报告
 - **⚡ 实时反馈**：详细的执行进度和状态显示

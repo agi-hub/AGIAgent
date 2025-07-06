@@ -17,19 +17,23 @@ LANG=zh
 # model=Qwen/Qwen2.5-7B-Instruct
 # max_tokens=4096
 
-
 # Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
+api_key=your key
+api_base=https://api.openai-proxy.org/anthropic
+model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
-# max_tokens=16384
+max_tokens=16384
 
+# Google gemini model
+# api_key=your key
+# api_base=https://api.openai-proxy.org/v1
+# model=gemini-2.5-pro
+# max_tokens=8192
 
 # DeepSeek API configuration
-api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
 
 
 
@@ -48,7 +52,12 @@ model=deepseek-chat
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
 
-
+# Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
+# When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
+# When set to False, uses chat-based tool calling (tools described in messages)
+# This overrides the automatic model-based detection
+# Default: True (use standard tool calling when available)
+Tool_calling_format=True
 
 # Truncation Length Configuration
 # These configurations control the length of information returned by tool calls to the large model,
@@ -150,3 +159,19 @@ gui_default_data_directory=.
 # Default: False (disabled)
 # Set to True to enable automatic modification of interactive commands
 auto_fix_interactive_commands=False
+
+# Multi-Agent Mode Configuration
+# Controls whether to enable multi-agent functionality
+# When enabled, multi-agent tools like spawn_agibot, wait_for_agibot_spawns, etc. are available
+# When disabled, these tools are hidden from the model to reduce complexity
+# Default: True (enabled)
+# Set to False to disable multi-agent capabilities
+multi_agent=True
+
+# Jieba Chinese Segmentation Configuration
+# Controls whether to enable jieba Chinese text segmentation for code parsing
+# When enabled, jieba will be used to segment Chinese comments and text for better search results
+# When disabled, only basic English tokenization is used (recommended for better performance)
+# Default: False (disabled)
+# Set to True to enable jieba Chinese segmentation
+enable_jieba=False

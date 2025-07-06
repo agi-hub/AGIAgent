@@ -22,6 +22,7 @@ Summary generator for creating intelligent task summaries
 
 from typing import List, Dict, Any
 from .config import SUMMARY_WORD_LIMIT
+from tools.print_system import print_system, print_current
 
 
 class SummaryGenerator:
@@ -59,7 +60,7 @@ class SummaryGenerator:
         summary_prompt = self._build_detailed_prompt(completed_tasks)
         
         try:
-            print("🧠 Using large model to generate detailed summary of prerequisite tasks...")
+            print_current("🧠 Using large model to generate detailed summary of prerequisite tasks...")
             
             # Use large model to generate summary
             if self.executor.is_claude:
@@ -67,11 +68,11 @@ class SummaryGenerator:
             else:
                 smart_summary = self._generate_with_openai(summary_prompt)
             
-            print(f"✅ Detailed summary generation completed (length: {len(smart_summary)} characters)")
+            # print_current(f"✅ Detailed summary generation completed (length: {len(smart_summary)} characters)")
             return smart_summary
             
         except Exception as e:
-            print(f"⚠️ Failed to generate intelligent summary: {e}, using enhanced basic summary")
+            print_current(f"⚠️ Failed to generate intelligent summary: {e}, using enhanced basic summary")
             return self._generate_enhanced_basic_summary(completed_tasks)
     
     def _build_detailed_prompt(self, completed_tasks: List[Dict[str, Any]]) -> str:
@@ -242,7 +243,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
 - City: {location_info['city']}
 - Country: {location_info['country']}"""
         
-        print("🔄 Starting summary generation...")
+        # print_current("🔄 Starting summary generation...")
         response = self.executor.client.messages.create(
             model=self.executor.model,
             max_tokens=self.executor._get_max_tokens_for_model(self.executor.model),
@@ -254,7 +255,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
         )
         
         smart_summary = response.content[0].text
-        print("📋 Intelligent summary generated")
+        # print_current("📋 Intelligent summary generated")
         
         return smart_summary
     
@@ -293,7 +294,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
 - City: {location_info['city']}
 - Country: {location_info['country']}"""
         
-        print("🔄 Starting summary generation...")
+        # print_current("🔄 Starting summary generation...")
         response = self.executor.client.chat.completions.create(
             model=self.executor.model,
             messages=[
@@ -309,8 +310,8 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
             smart_summary = response.choices[0].message.content
         else:
             smart_summary = "Summary generation failed: API returned empty response"
-            print("⚠️ Warning: OpenAI API returned empty choices list")
-        print("📋 Intelligent summary generated")
+            print_current("⚠️ Warning: OpenAI API returned empty choices list")
+        # print_current("📋 Intelligent summary generated")
         
         return smart_summary
     
@@ -396,7 +397,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
         summary_prompt = self._build_conversation_summary_prompt(conversation_history, latest_tool_result)
         
         try:
-            print("🧠 Using large model to generate conversation history summary...")
+            print_current("🧠 Using large model to generate conversation history summary...")
             
             # Use large model to generate summary
             if self.executor.is_claude:
@@ -404,11 +405,11 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
             else:
                 conversation_summary = self._generate_with_openai(summary_prompt)
             
-            print(f"✅ Conversation history summary completed (length: {len(conversation_summary)} characters)")
+            print_current(f"✅ Conversation history summary completed (length: {len(conversation_summary)} characters)")
             return conversation_summary
             
         except Exception as e:
-            print(f"⚠️ Failed to generate conversation history summary: {e}, using basic summary")
+            print_current(f"⚠️ Failed to generate conversation history summary: {e}, using basic summary")
             return self._generate_basic_conversation_summary(conversation_history, latest_tool_result)
     
     def _build_conversation_summary_prompt(self, conversation_history: List[Dict[str, Any]], latest_tool_result: str = None) -> str:

@@ -13,3 +13,4 @@ pandoc>=2.0.0
 flask>=2.0.0
 flask-socketio>=5.0.0
 eventlet>=0.30.0
+cli-mcp

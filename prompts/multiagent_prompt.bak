@@ -1,0 +1,119 @@
+
+**spawn_agibot**
+  - task_description (required): Description of the task for the new AGIBot instance
+  - agent_id (optional): Custom agent ID (will auto-generate if not provided). Must match format 'agent_XXX' where XXX is a 3-digit number (e.g., 'agent_001')
+  - output_directory (optional): Directory where the new AGIBot should save its output (uses parent's if not provided)
+  - api_key (optional): API key for the new instance (will use current if not provided)
+  - model (optional): Model name for the new instance (will use current if not provided)
+  - max_loops (optional): Maximum execution loops for the new instance (default: 25)
+  - shared_workspace (optional): Whether to share parent's workspace directory (default: true)
+  - debug_mode (optional): Whether to enable debug mode for the new instance
+  - single_task_mode (optional): Whether to use single task mode (default: true)
+  - continue_mode (optional): Whether to continue from previous work in the same directory
+  - wait_for_completion (optional): Whether to wait for completion before returning (default: false)
+  - streaming (optional): Whether to use streaming output (default: false for python interface, overrides config.txt setting)
+- Description: Spawn a new AGIBot instance to handle a specific task asynchronously. Useful for complex task decomposition and parallel execution.
+- Note: Runs asynchronously in separate thread (unless wait_for_completion=true), output redirected to logs/ directory. All spawned AGIBots share the same workspace/ directory for collaboration. When streaming=false (default for python interface), the spawned AGIBot will use batch mode instead of streaming output to reduce log fragmentation.
+
+**wait_for_agibot_spawns**
+- `task_ids` (optional): List of specific task IDs to wait for (will wait for all active if not provided)
+- `check_interval` (optional): Interval in seconds between status checks (default: 5)
+- `max_wait_time` (optional): Maximum time to wait in seconds (default: 3600)
+- Returns: Completion status of all tasks with session summary
+- Note: Uses Agent Manager to track current session tasks, no longer scans file system
+
+**get_agent_session_info**
+- No parameters required
+- Returns: Comprehensive information about current agent session including:
+  - Session ID and duration
+  - Total, active, completed, and failed agent counts
+  - Detailed information about each agent in the session
+- Use this to understand current agent status and session overview
+
+**list_active_agents**
+- No parameters required
+- Returns: List of currently active (running) agents with their details
+- Includes task descriptions, status, working directories, and other metadata
+- Use this to monitor ongoing agent tasks
+
+**send_message_to_agent**
+- `receiver_id` (required): Target agent ID to send message to
+- `message_type` (required): Message type (status_update, task_request, collaboration, broadcast, system, error)
+- `content` (required): Message content as dictionary
+- `priority` (optional): Message priority (low, normal, high, urgent) - default: normal
+- Returns: Status of message sending operation
+- Use this to send direct messages between agents
+
+**broadcast_message_to_agents**
+- `message_type` (required): Message type for broadcast
+- `content` (required): Message content as dictionary
+- Returns: Number of agents that received the broadcast
+- Use this to send messages to all active agents
+
+**get_agent_messages**
+- `agent_id` (optional): Agent ID to get messages for (default: manager)
+- `include_read` (optional): Include already read messages (default: false)
+- Returns: List of messages in agent's mailbox with statistics
+- Use this to check incoming messages and mailbox status
+
+**mark_message_as_read**
+- `message_id` (required): ID of message to mark as read
+- `agent_id` (optional): Agent ID whose mailbox to update (default: manager)
+- Returns: Success status of marking operation
+- Use this to mark messages as read after processing
+
+**send_status_update_to_manager**
+- `agent_id` (required): ID of the agent sending the update
+- `round_number` (required): Current execution round number
+- `task_completed` (required): Whether the task is completed (true/false)
+- `llm_response_preview` (required): Preview of LLM response (first 200 characters)
+- `tool_calls_summary` (required): List of tool names called in this round
+- `current_task_description` (optional): Description of current task being worked on
+- `error_message` (optional): Error message if any error occurred
+- Returns: Status of message sending to manager
+- Use this for spawned agents to report their progress to the manager
+
+
+
+### Spawn AGIBot Example
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "spawn_agibot",
+        "arguments": {
+          "task_description": "Create a Python web scraper that extracts product information from e-commerce websites",
+          "agent_id": "agent_010",
+          "max_loops": 15,
+          "shared_workspace": true,
+          "single_task_mode": true,
+          "debug_mode": false,
+          "wait_for_completion": false
+        }
+      }
+    }
+  ]
+}
+```
+
+### Wait for AGIBot Spawns Example
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_1",
+      "type": "function",
+      "function": {
+        "name": "wait_for_agibot_spawns",
+        "arguments": {
+          "check_interval": 10,
+          "max_wait_time": 1800
+        }
+      }
+    }
+  ]
+}
+```

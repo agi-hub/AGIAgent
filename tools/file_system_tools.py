@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from tools.print_system import print_system, print_current
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -42,20 +43,20 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print(f"🎯 Requested to read file: {target_file}")
-        print(f"📂 Current working directory: {self.workspace_root}")
+        print_current(f"🎯 Requested to read file: {target_file}")
+        print_current(f"📂 Current working directory: {self.workspace_root}")
         
         file_path = self._resolve_path(target_file)
         
         if not os.path.exists(file_path):
-            print(f"❌ File does not exist: {file_path}")
+            print_current(f"❌ File does not exist: {file_path}")
             try:
                 current_dir_files = os.listdir(self.workspace_root)
-                print(f"📁 Files in current directory: {current_dir_files}")
+                print_current(f"📁 Files in current directory: {current_dir_files}")
             except Exception as e:
-                print(f"⚠️ Cannot list current directory: {e}")
+                print_current(f"⚠️ Cannot list current directory: {e}")
             
             return {
                 'file': target_file,
@@ -66,7 +67,7 @@ class FileSystemTools:
             }
         
         if not os.path.isfile(file_path):
-            print(f"❌ Path is not a file: {file_path}")
+            print_current(f"❌ Path is not a file: {file_path}")
             return {
                 'file': target_file,
                 'error': f'Path is not a file: {file_path}',
@@ -77,18 +78,15 @@ class FileSystemTools:
             }
         
         try:
-            print(f"✅ File exists, starting to read: {file_path}")
             with open(file_path, 'r', encoding='utf-8') as f:
                 all_lines = f.readlines()
             
             total_lines = len(all_lines)
-            print(f"📊 Total lines in file: {total_lines}")
             
             if should_read_entire_file:
                 max_entire_lines = 500
                 if total_lines <= max_entire_lines:
                     content = ''.join(all_lines)
-                    print(f"📄 Read entire file, content length: {len(content)} characters")
                     return {
                         'file': target_file,
                         'content': content,
@@ -101,7 +99,7 @@ class FileSystemTools:
                     content_lines = all_lines[:max_entire_lines]
                     content = ''.join(content_lines)
                     after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
-                    print(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
+                    print_current(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
                     return {
                         'file': target_file,
                         'content': content,
@@ -124,7 +122,7 @@ class FileSystemTools:
                 if end_idx - start_idx > 250:
                     end_idx = start_idx + 250
                 
-                print(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
+                print_current(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
                 
                 content_lines = all_lines[start_idx:end_idx]
                 content = ''.join(content_lines)
@@ -144,7 +142,7 @@ class FileSystemTools:
                     'status': 'success'
                 }
         except UnicodeDecodeError as e:
-            print(f"❌ File encoding error: {e}")
+            print_current(f"❌ File encoding error: {e}")
             return {
                 'file': target_file,
                 'error': f'Unicode decode error: {str(e)}',
@@ -152,7 +150,7 @@ class FileSystemTools:
                 'status': 'encoding_error'
             }
         except Exception as e:
-            print(f"❌ Error occurred while reading file: {e}")
+            print_current(f"❌ Error occurred while reading file: {e}")
             return {
                 'file': target_file,
                 'error': str(e),
@@ -166,7 +164,7 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         dir_path = self._resolve_path(relative_workspace_path)
         
@@ -203,9 +201,9 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print(f"Searching for: {query}")
+        print_current(f"Searching for: {query}")
         
         results = []
         max_results = 50
@@ -247,24 +245,24 @@ class FileSystemTools:
             'truncated': len(results) >= max_results
         }
 
-    def edit_file(self, target_file: str, code_edit: str, instructions: str = None, 
-                  edit_mode: str = "full_replace", start_line: int = None, end_line: int = None, 
+    def edit_file(self, target_file: str, edit_mode: str, code_edit: str, instructions: str = None, 
+                  start_line_one_indexed: int = None, end_line_one_indexed_inclusive: int = None, 
                   insert_position: int = None, **kwargs) -> Dict[str, Any]:
         """
         Edit a file or create a new file with multiple editing modes.
         
         Args:
             target_file: Path to the file to edit
+            edit_mode: Editing mode - "replace_lines", "insert_lines", "append", "full_replace"
             code_edit: The code/text content to add or edit
             instructions: Optional instructions for the edit
-            edit_mode: Editing mode - "auto", "replace_lines", "insert_lines", "append", "full_replace"
-            start_line: Starting line number for replace_lines mode (1-indexed, inclusive)
-            end_line: Ending line number for replace_lines mode (1-indexed, inclusive)
+            start_line_one_indexed: Starting line number for replace_lines mode (1-indexed, inclusive)
+            end_line_one_indexed_inclusive: Ending line number for replace_lines mode (1-indexed, inclusive)
             insert_position: Line number to insert before for insert_lines mode (1-indexed)
         """
         # Check for dummy placeholder file created by hallucination detection
         if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
-            print(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
+            print_current(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
             return {
                 'file': target_file,
                 'status': 'skipped',
@@ -272,26 +270,26 @@ class FileSystemTools:
                 'hallucination_prevention': True
             }
         
-        print(f"Editing file: {target_file}")
-        if instructions:
-            print(f"Instructions: {instructions}")
-        else:
-            print("Instructions: (not provided)")
+        #print_current(f"Editing file: {target_file}")
+        #if instructions:
+        #    print_current(f"Instructions: {instructions}")
+        #else:
+        #    print_current("Instructions: (not provided)")
         
         # Default to append mode if auto mode is set for safety
         if edit_mode == "auto":
             edit_mode = "append"
-            print("📝 Auto mode detected - defaulting to 'append' mode for safety")
+            #print_current("📝 Auto mode detected - defaulting to 'append' mode for safety")
         
-        print(f"📝 Edit mode: {edit_mode}")
-        if edit_mode == "replace_lines" and start_line and end_line:
-            print(f"🎯 Replace lines {start_line}-{end_line}")
-        elif edit_mode == "insert_lines" and insert_position:
-            print(f"📍 Insert at line {insert_position}")
+        #print_current(f"📝 Edit mode: {edit_mode}")
+        #if edit_mode == "replace_lines" and start_line_one_indexed and end_line_one_indexed_inclusive:
+        #    print_current(f"🎯 Replace lines {start_line_one_indexed}-{end_line_one_indexed_inclusive}")
+        #elif edit_mode == "insert_lines" and insert_position:
+        #    print_current(f"📍 Insert at line {insert_position}")
         
         # Ignore additional parameters
-        if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+        #if kwargs:
+        #    print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         file_path = self._resolve_path(target_file)
         file_exists = os.path.exists(file_path)
@@ -307,8 +305,8 @@ class FileSystemTools:
             'instructions': instructions,
             'code_edit': cleaned_code_edit,
             'edit_mode': edit_mode,
-            'start_line': start_line,
-            'end_line': end_line,
+            'start_line': start_line_one_indexed,
+            'end_line': end_line_one_indexed_inclusive,
             'insert_position': insert_position
         }
         
@@ -338,7 +336,7 @@ class FileSystemTools:
             # Process edit based on mode
             new_content = self._process_edit_by_mode(
                 original_content, cleaned_code_edit, edit_mode, target_file,
-                start_line, end_line, insert_position
+                start_line_one_indexed, end_line_one_indexed_inclusive, insert_position
             )
             
             # Write the new content
@@ -394,13 +392,13 @@ class FileSystemTools:
         start_marker_pattern = r'^```[^\n]*\n'
         if re.match(start_marker_pattern, code_content):
             has_start_marker = True
-            print(f"🧹 Found markdown code block start marker")
+            print_current(f"🧹 Found markdown code block start marker")
         
         # Check for end marker (```) at the end
         end_marker_pattern = r'\n```\s*$'
         if re.search(end_marker_pattern, code_content):
             has_end_marker = True
-            print(f"🧹 Found markdown code block end marker")
+            print_current(f"🧹 Found markdown code block end marker")
         
         # If no markers found, return original content to preserve exact formatting
         if not has_start_marker and not has_end_marker:
@@ -412,14 +410,14 @@ class FileSystemTools:
         if has_start_marker:
             # Remove start marker (```[language]\n)
             cleaned_content = re.sub(start_marker_pattern, '', cleaned_content)
-            print(f"🧹 Removed markdown code block start marker")
+            print_current(f"🧹 Removed markdown code block start marker")
         
         if has_end_marker:
             # Remove end marker (\n```)
             cleaned_content = re.sub(end_marker_pattern, '', cleaned_content)
-            print(f"🧹 Removed markdown code block end marker")
+            print_current(f"🧹 Removed markdown code block end marker")
         
-        print(f"✅ Cleaned markdown markers while preserving formatting")
+        print_current(f"✅ Cleaned markdown markers while preserving formatting")
         return cleaned_content
 
     def _fix_html_entities(self, code_content: str) -> str:
@@ -460,14 +458,14 @@ class FileSystemTools:
             
             # If there are other entities not in our common list, mention them generically
             if corrections:
-                print(f"🔧 Auto-corrected HTML entities: {', '.join(corrections)}")
+                print_current(f"🔧 Auto-corrected HTML entities: {', '.join(corrections)}")
             else:
-                print(f"🔧 Auto-corrected HTML entities (various types found)")
+                print_current(f"🔧 Auto-corrected HTML entities (various types found)")
         
         return code_content
 
     def _process_edit_by_mode(self, original_content: str, code_edit: str, edit_mode: str, 
-                             target_file: str, start_line: int = None, end_line: int = None, 
+                             target_file: str, start_line_one_indexed: int = None, end_line_one_indexed_inclusive: int = None, 
                              insert_position: int = None) -> str:
         """
         Process the edit based on the specified mode.
@@ -477,57 +475,56 @@ class FileSystemTools:
             code_edit: New content to add/replace
             edit_mode: The editing mode to use
             target_file: Target file path (for legacy mode)
-            start_line: Starting line number (1-indexed, inclusive)
-            end_line: Ending line number (1-indexed, inclusive)
+            start_line_one_indexed: Starting line number (1-indexed, inclusive)
+            end_line_one_indexed_inclusive: Ending line number (1-indexed, inclusive)
             insert_position: Line number to insert before (1-indexed)
         
         Returns:
             The new file content after applying the edit
         """
         if edit_mode == "replace_lines":
-            return self._replace_lines(original_content, code_edit, start_line, end_line)
+            return self._replace_lines(original_content, code_edit, start_line_one_indexed, end_line_one_indexed_inclusive)
         elif edit_mode == "insert_lines":
             return self._insert_lines(original_content, code_edit, insert_position)
         elif edit_mode == "append":
             return self._append_content(original_content, code_edit)
         elif edit_mode == "full_replace":
-            print("🔄 Full file replacement mode")
             return code_edit
         else:  # "auto" mode - use legacy logic
             return self._process_code_edit(original_content, code_edit, target_file)
 
-    def _replace_lines(self, content: str, new_content: str, start_line: int, end_line: int) -> str:
+    def _replace_lines(self, content: str, new_content: str, start_line_one_indexed: int, end_line_one_indexed_inclusive: int) -> str:
         """
         Replace specified line range with new content.
         
         Args:
             content: Original file content
             new_content: Content to replace with
-            start_line: Starting line number (1-indexed, inclusive)
-            end_line: Ending line number (1-indexed, inclusive)
+            start_line_one_indexed: Starting line number (1-indexed, inclusive)
+            end_line_one_indexed_inclusive: Ending line number (1-indexed, inclusive)
         
         Returns:
             Updated content with lines replaced
         """
-        if start_line is None or end_line is None:
-            raise ValueError("start_line and end_line must be specified for replace_lines mode")
+        if start_line_one_indexed is None or end_line_one_indexed_inclusive is None:
+            raise ValueError("start_line_one_indexed and end_line_one_indexed_inclusive must be specified for replace_lines mode")
         
         lines = content.split('\n')
         new_lines = new_content.split('\n')
         
         # Convert to 0-indexed
-        start_idx = start_line - 1
-        end_idx = end_line - 1
+        start_idx = start_line_one_indexed - 1
+        end_idx = end_line_one_indexed_inclusive - 1
         
         # Validate line range
         if start_idx < 0:
-            raise ValueError(f"start_line must be >= 1, got {start_line}")
+            raise ValueError(f"start_line_one_indexed must be >= 1, got {start_line_one_indexed}")
         if end_idx >= len(lines):
-            raise ValueError(f"end_line {end_line} exceeds file length ({len(lines)} lines)")
+            raise ValueError(f"end_line_one_indexed_inclusive {end_line_one_indexed_inclusive} exceeds file length ({len(lines)} lines)")
         if start_idx > end_idx:
-            raise ValueError(f"start_line ({start_line}) must be <= end_line ({end_line})")
+            raise ValueError(f"start_line_one_indexed ({start_line_one_indexed}) must be <= end_line_one_indexed_inclusive ({end_line_one_indexed_inclusive})")
         
-        print(f"🔧 Replacing lines {start_line}-{end_line} ({end_idx - start_idx + 1} lines) with {len(new_lines)} new lines")
+        print_current(f"🔧 Replacing lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} ({end_idx - start_idx + 1} lines) with {len(new_lines)} new lines")
         
         # Replace the specified lines
         result = lines[:start_idx] + new_lines + lines[end_idx + 1:]
@@ -560,7 +557,7 @@ class FileSystemTools:
         if insert_idx > len(lines):
             raise ValueError(f"insert_position {insert_position} exceeds file length + 1 ({len(lines) + 1})")
         
-        print(f"📍 Inserting {len(new_lines)} lines at position {insert_position}")
+        print_current(f"📍 Inserting {len(new_lines)} lines at position {insert_position}")
         
         # Insert the new lines
         result = lines[:insert_idx] + new_lines + lines[insert_idx:]
@@ -584,7 +581,7 @@ class FileSystemTools:
         clean_content = clean_content.replace('<!-- ... existing code ...', '').strip()
         
         if not content:
-            print("📝 Creating new file with append content")
+            print_current("📝 Creating new file with append content")
             return clean_content
         
         # Ensure there's a newline before appending if the file doesn't end with one
@@ -593,7 +590,7 @@ class FileSystemTools:
         else:
             result = content + clean_content
         
-        print(f"➕ Appending {len(clean_content.split(chr(10)))} lines to end of file")
+        print_current(f"➕ Appending {len(clean_content.split(chr(10)))} lines to end of file")
         return result
 
     def _process_code_edit(self, original_content: str, code_edit: str, target_file: str) -> str:
@@ -617,7 +614,7 @@ class FileSystemTools:
                 break
         
         if not used_pattern:
-            print("⚠️ No existing code marker found - treating as full content replacement")
+            print_current("⚠️ No existing code marker found - treating as full content replacement")
             return code_edit
         
         edit_parts = code_edit.split(used_pattern)
@@ -625,8 +622,8 @@ class FileSystemTools:
         if len(edit_parts) == 1:
             return code_edit
         
-        print(f"🔧 Found existing code marker: {used_pattern}")
-        print(f"📝 Edit split into {len(edit_parts)} parts")
+        print_current(f"🔧 Found existing code marker: {used_pattern}")
+        print_current(f"📝 Edit split into {len(edit_parts)} parts")
         
         original_lines = original_content.split('\n')
         
@@ -668,7 +665,7 @@ class FileSystemTools:
 
     def _apply_simple_edit(self, original_lines: List[str], before_edit: str, after_edit: str) -> str:
         """
-        Apply a simple edit with one existing code marker (simplified logic).
+        Apply a simple edit with one existing code marker (fixed logic to avoid duplication).
         """
         before_lines = before_edit.strip().split('\n') if before_edit.strip() else []
         after_lines = after_edit.strip().split('\n') if after_edit.strip() else []
@@ -676,16 +673,17 @@ class FileSystemTools:
         if not before_lines and not after_lines:
             return '\n'.join(original_lines)
         
-        # Simplified logic: before content + original content + after content
+        # Fixed logic: avoid duplicating original content
         if before_lines and after_lines:
-            # Content before and after: insert in middle
-            mid_point = len(original_lines) // 2
-            new_lines = before_lines + original_lines[mid_point:] + after_lines
+            # Content before and after: replace middle section
+            mid_start = len(original_lines) // 3
+            mid_end = (len(original_lines) * 2) // 3
+            new_lines = original_lines[:mid_start] + before_lines + original_lines[mid_end:] + after_lines
         elif before_lines:
-            # Only before content: prepend
+            # Only before content: prepend without duplicating
             new_lines = before_lines + original_lines
         else:
-            # Only after content: append
+            # Only after content: append without duplicating
             new_lines = original_lines + after_lines
         
         return '\n'.join(new_lines)
@@ -724,9 +722,9 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print(f"Searching for file: {query}")
+        print_current(f"Searching for file: {query}")
         
         results = []
         max_results = 10
@@ -759,7 +757,7 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         file_path = self._resolve_path(target_file)
         
@@ -814,7 +812,7 @@ class FileSystemTools:
         
         # 如果原文件有内容但是新内容很短，可能有风险
         if len(original_content.strip()) > 100 and len(new_content.strip()) < 50:
-            print("🚨 Safety check: Original file has substantial content but new content is very short")
+            print_current("🚨 Safety check: Original file has substantial content but new content is very short")
             return True
         
         # 检查是否包含 existing code 标记
@@ -829,7 +827,7 @@ class FileSystemTools:
         
         # 如果没有 existing code 标记，且原文件有内容，可能有风险
         if not has_existing_marker and len(original_content.strip()) > 20:
-            print("🚨 Safety check: No existing code marker found in auto mode with existing content")
+            print_current("🚨 Safety check: No existing code marker found in auto mode with existing content")
             return True
         
         return False
