@@ -37,6 +37,7 @@ from tools.mcp_client import get_mcp_client, initialize_mcp_client, safe_cleanup
 from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
 import base64
 import mimetypes
+import threading
 
 # Note: JSON parsing utilities now imported below with other utils
 
@@ -115,7 +116,9 @@ class ToolExecutor:
                  logs_dir: str = "logs",
                  session_timestamp: str = None,
                  streaming: bool = None,
-                 interactive_mode: bool = False):
+                 interactive_mode: bool = False,
+                 MCP_config_file: str = None,
+                 prompts_folder: str = None):
         """
         Initialize the ToolExecutor
         
@@ -129,6 +132,8 @@ class ToolExecutor:
             session_timestamp: Timestamp for this session (used for log organization)
             streaming: Whether to use streaming output (None to use config.txt)
             interactive_mode: Whether to enable interactive mode
+            MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
+            prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
         """
         # Load API key from config.txt if not provided
         if api_key is None:
@@ -174,6 +179,10 @@ class ToolExecutor:
         self.logs_dir = logs_dir
         self.session_timestamp = session_timestamp
         self.interactive_mode = interactive_mode
+        
+        # Store custom file paths
+        self.MCP_config_file = MCP_config_file or "config/mcp_servers.json"
+        self.prompts_folder = prompts_folder or "prompts"
         
         # Check if it's a Claude model, automatically adjust api_base
         self.is_claude = is_claude_model(model)
@@ -271,41 +280,34 @@ class ToolExecutor:
             "edit_file": self.tools.edit_file,
             "file_search": self.tools.file_search,
             "web_search": self.tools.web_search,
-            "tool_help": self.tools.tool_help,
+            "tool_help": self.enhanced_tool_help,  # Use enhanced version that supports MCP tools
             "fetch_webpage_content": self.tools.fetch_webpage_content,
             "get_background_update_status": self.tools.get_background_update_status,
             "talk_to_user": self.tools.talk_to_user,
+            "idle": self.tools.idle,
         }
         
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
             self.tool_map.update({
                 "spawn_agibot": self.multi_agent_tools.spawn_agibot,
-                "wait_for_agibot_spawns": self.multi_agent_tools.wait_for_agibot_spawns,
-                "get_agent_session_info": self.multi_agent_tools.get_agent_session_info,
-                "list_active_agents": self.multi_agent_tools.list_active_agents,
-                "debug_thread_status": self.multi_agent_tools.debug_thread_status,
-                "send_message_to_agent": self.multi_agent_tools.send_message_to_agent,
-                "broadcast_message_to_agents": self.multi_agent_tools.broadcast_message_to_agents,
+                "send_message_to_agent_or_manager": self.multi_agent_tools.send_message_to_agent_or_manager,
                 "get_agent_messages": self.multi_agent_tools.get_agent_messages,
-                "mark_message_as_read": self.multi_agent_tools.mark_message_as_read,
                 "send_status_update_to_manager": self.multi_agent_tools.send_status_update_to_manager,
-                "send_message_to_manager": self.multi_agent_tools.send_message_to_manager,
+                "broadcast_message_to_agents": self.multi_agent_tools.broadcast_message_to_agents,
+                "get_agent_session_info": self.multi_agent_tools.get_agent_session_info,
+                "terminate_agibot": self.multi_agent_tools.terminate_agibot
             })
         else:
             # Add error handlers for disabled multi-agent tools
             self.tool_map.update({
                 "spawn_agibot": _multi_agent_disabled_error,
-                "wait_for_agibot_spawns": _multi_agent_disabled_error,
-                "get_agent_session_info": _multi_agent_disabled_error,
-                "list_active_agents": _multi_agent_disabled_error,
-                "debug_thread_status": _multi_agent_disabled_error,
-                "send_message_to_agent": _multi_agent_disabled_error,
-                "broadcast_message_to_agents": _multi_agent_disabled_error,
+                "send_message_to_agent_or_manager": _multi_agent_disabled_error,
                 "get_agent_messages": _multi_agent_disabled_error,
-                "mark_message_as_read": _multi_agent_disabled_error,
                 "send_status_update_to_manager": _multi_agent_disabled_error,
-                "send_message_to_manager": _multi_agent_disabled_error,
+                "broadcast_message_to_agents": _multi_agent_disabled_error,
+                "get_agent_session_info": _multi_agent_disabled_error,
+                "terminate_agibot": _multi_agent_disabled_error,
             })
         
         # Add plugin tools if available
@@ -318,25 +320,79 @@ class ToolExecutor:
             # print_current("🔌 Plugin tools registered: kb_search, kb_content, kb_body")
         
         # Initialize MCP clients - support both cli-mcp and direct MCP implementation
-        self.cli_mcp_client = get_cli_mcp_wrapper("config/mcp_servers.json")
-        self.direct_mcp_client = get_mcp_client()
+        self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
+        # Create direct MCP client with specific config file instead of using global singleton
+        from tools.mcp_client import MCPClient
+        self.direct_mcp_client = MCPClient(self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json")
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
         
         # Try to initialize both MCP clients synchronously if possible
+        import asyncio
         try:
-            import asyncio
-            if not asyncio.get_event_loop().is_running():
-                # Safe to run async initialization
-                self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
-                self.direct_mcp_initialized = asyncio.run(initialize_mcp_client())
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, use thread pool for initialization
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    # Initialize cli-mcp client
+                    try:
+                        future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
+                        self.cli_mcp_initialized = future_cli.result(timeout=10)
+                        if self.cli_mcp_initialized:
+                            print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                        self.cli_mcp_initialized = False
+                    
+                    # Initialize direct MCP client
+                    try:
+                        future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
+                        self.direct_mcp_initialized = future_direct.result(timeout=10)
+                        if self.direct_mcp_initialized:
+                            print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                        self.direct_mcp_initialized = False
+            else:
+                # Safe to run async initialization directly
+                try:
+                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                    if self.cli_mcp_initialized:
+                        print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                    self.cli_mcp_initialized = False
                 
-                # Add MCP tools to tool_map after successful initialization
-                if self.cli_mcp_initialized or self.direct_mcp_initialized:
-                    self._add_mcp_tools_to_map()
-        except:
-            # Will initialize later during first tool call
-            pass
+                try:
+                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                    if self.direct_mcp_initialized:
+                        print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                    self.direct_mcp_initialized = False
+        except RuntimeError:
+            # No event loop, safe to create one
+            try:
+                self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                if self.cli_mcp_initialized:
+                    print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+            except Exception as e:
+                print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                self.cli_mcp_initialized = False
+            
+            try:
+                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                if self.direct_mcp_initialized:
+                    print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+            except Exception as e:
+                print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                self.direct_mcp_initialized = False
+        
+        # Add MCP tools to tool_map after successful initialization
+        if self.cli_mcp_initialized or self.direct_mcp_initialized:
+            self._add_mcp_tools_to_map()
+            print_current(f"🔧 MCP tools loaded successfully during startup")
         
         # Log related settings
         # Simplified logs directory path construction - always use simple "logs" structure
@@ -363,7 +419,7 @@ class ToolExecutor:
         try:
             # Initialize cli-mcp wrapper
             if not self.cli_mcp_initialized:
-                self.cli_mcp_initialized = await initialize_cli_mcp_wrapper("config/mcp_servers.json")
+                self.cli_mcp_initialized = await initialize_cli_mcp_wrapper(self.MCP_config_file)
                 if self.cli_mcp_initialized:
                     print_current("✅ cli-mcp client initialized successfully")
                 else:
@@ -371,7 +427,7 @@ class ToolExecutor:
             
             # Initialize direct MCP client
             if not self.direct_mcp_initialized:
-                self.direct_mcp_initialized = await initialize_mcp_client()
+                self.direct_mcp_initialized = await self.direct_mcp_client.initialize()
                 if self.direct_mcp_initialized:
                     print_current("✅ Direct MCP client initialized successfully")
                 else:
@@ -581,8 +637,8 @@ class ToolExecutor:
             The core system prompt text from system_prompt.txt
         """
         try:
-            # Try to load system_prompt.txt first
-            system_prompt_file = "prompts/system_prompt.txt"
+            # Try to load system_prompt.txt first from custom prompts folder
+            system_prompt_file = os.path.join(self.prompts_folder, "system_prompt.txt")
             
             if os.path.exists(system_prompt_file):
                 with open(system_prompt_file, 'r', encoding='utf-8') as f:
@@ -620,9 +676,9 @@ class ToolExecutor:
                 
                 # Load only rules and plugin prompts (excluding deprecated tool files)
                 rules_tool_files = [
-                    "prompts/rules_prompt.txt", 
-                    "prompts/plugin_tool_prompts.txt",
-                    "prompts/user_rules.txt"
+                    os.path.join(self.prompts_folder, "rules_prompt.txt"), 
+                    os.path.join(self.prompts_folder, "plugin_tool_prompts.txt"),
+                    os.path.join(self.prompts_folder, "user_rules.txt")
                 ]
                 
                 rules_parts = []
@@ -654,9 +710,9 @@ class ToolExecutor:
             else:
                 # For standard tool calling, load only rules (no tool descriptions needed)
                 rules_tool_files = [
-                    "prompts/rules_prompt.txt", 
-                    "prompts/plugin_tool_prompts.txt",
-                    "prompts/user_rules.txt"
+                    os.path.join(self.prompts_folder, "rules_prompt.txt"), 
+                    os.path.join(self.prompts_folder, "plugin_tool_prompts.txt"),
+                    os.path.join(self.prompts_folder, "user_rules.txt")
                 ]
                 
                 rules_parts = []
@@ -906,245 +962,361 @@ class ToolExecutor:
         if hasattr(self, 'last_summarized_history_length'):
             self.last_summarized_history_length = 0
 
-    def execute_subtask(self, user_prompt: str, system_prompt_file: str = "prompts.txt", task_history: List[Dict[str, Any]] = None, execution_round: int = 1) -> str:
+    def execute_subtask(self, prompt: str, prompts_file: str = "", 
+                       task_history: List[Dict[str, Any]] = None, 
+                       execution_round: int = 1) -> str:
         """
-        Execute a subtask with the given user prompt. This handles tool calling internally.
+        Execute a subtask with multiple tool calling rounds.
         
         Args:
-            user_prompt: The task to execute
-            system_prompt_file: Path to the system prompt file
-            task_history: Previous task execution history for multi-round continuity
-            execution_round: Current execution round number
+            prompt: Task prompt
+            prompts_file: File containing prompts (unused)
+            task_history: Previous task execution history (optional)
+            execution_round: Current execution round (for logging)
             
         Returns:
-            Text result from executing the subtask
+            Final result string
         """
-        # 保存当前轮次号以确保操作跟踪的一致性
-        current_round = execution_round
-        track_operation(f"executing task (round {current_round})")
-        
         try:
-            # Load system prompt (only core system_prompt.txt content)
-            system_prompt = self.load_system_prompt(system_prompt_file)
+            # 🔧 新增：在任务开始时检查terminate消息
+            terminate_signal = self._check_terminate_messages()
+            if terminate_signal:
+                return terminate_signal
             
-            # Build user message with new architecture
-            user_message = self._build_new_user_message(user_prompt, task_history, execution_round)
+            # Initialize execution state
+            conversation_history = []
+            accumulated_results = ""
+            round_counter = 1  # Initialize tool call round counter
+            max_rounds = 30  # Maximum rounds for tool calling
             
-            # Prepare messages for the LLM with proper system/user separation
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ]
+            # Add task history as context if provided
+            if task_history:
+                for record in task_history:
+                    if "prompt" in record:
+                        conversation_history.append({"role": "user", "content": record["prompt"]})
+                    if "result" in record:
+                        conversation_history.append({"role": "assistant", "content": record["result"]})
             
-            # Save debug log for this call's input (before LLM call)
-            if self.debug_mode:
+            # Add current prompt
+            conversation_history.append({"role": "user", "content": prompt})
+            
+            while round_counter <= max_rounds:
                 try:
-                    initial_call_info = {
-                        "is_single_call": True,
-                        "call_type": "standard_tools_execution",
-                        "user_prompt": user_prompt
-                    }
-                except Exception as e:
-                    print_current(f"⚠️ Debug preparation failed: {e}")
-            
-            # Execute LLM call with standard tools
-            content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
-            
-            # Show raw model response for debugging
-            if self.debug_mode and content:
-                print_current("🤖 Raw model response:")
-                print_current(content)
-            
-            # Calculate and display token and character statistics
-            self._display_llm_statistics(messages, content, tool_calls)
-            
-            # Check for TASK_COMPLETED flag and detect conflicts
-            has_task_completed = "TASK_COMPLETED:" in content
-            has_tool_calls = len(tool_calls) > 0
-            
-            # Check for TASK_COMPLETED flag and detect conflicts
-            has_task_completed = "TASK_COMPLETED:" in content
-            has_tool_calls = len(tool_calls) > 0
-            
-            # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
-            conflict_detected = has_tool_calls and has_task_completed
-            if conflict_detected:
-                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
-                # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
-                content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
-                has_task_completed = False # Ensure the flag is updated after removal
-            
-            # If TASK_COMPLETED but no tool calls, complete the task
-            if has_task_completed and not has_tool_calls:
-                print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
-                # Extract the completion message
-                task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
-                if task_completed_match:
-                    completion_message = task_completed_match.group(1).strip()
-                
-                # Save final debug log
-                if self.debug_mode:
-                    try:
-                        completion_info = {
-                            "has_tool_calls": False,
-                            "task_completed": True,
-                            "completion_detected": True,
-                            "execution_result": "task_completed_flag"
-                        }
-                        
-                        self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
-                    except Exception as log_error:
-                        print_current(f"❌ Completion debug log save failed: {log_error}")
-                
-                finish_operation(f"executing task (round {current_round})")
-                return content
-            
-            # Execute tools if present
-            if tool_calls:
-                print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
-                print_current("=" * 50)
-                
-                # Print tool calls for terminal display with better formatting
-                tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
-                if tool_calls_formatted:
-                    # Remove the "**Tool Calls:**" header since we already printed our own
-                    display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
-                    print_current(display_content)
-                
-                print_current("=" * 50)
-                print_current("🚀 Starting tool execution...")
-                print_current("")
-                
-                # Execute all tool calls and collect results
-                all_tool_results = []
-                successful_executions = 0
-                
-                for i, tool_call in enumerate(tool_calls, 1):
-                    # Handle standard format tool calls (both OpenAI and Anthropic)
-                    tool_name = self._get_tool_name_from_call(tool_call)
-                    tool_params = self._get_tool_params_from_call(tool_call)
+                    # 🔧 新增：在每轮工具调用前检查terminate消息
+                    terminate_signal = self._check_terminate_messages()
+                    if terminate_signal:
+                        return terminate_signal
                     
-                    # Print tool execution start with clear formatting
-                    print_current(f"🔧 Executing tool {i}: {tool_name}")
-                    print_current(f"   Parameters: {tool_params}")
-                    print_current(f"   Results:")
+                    # Load system prompt (only core system_prompt.txt content)
+                    system_prompt = self.load_system_prompt()
                     
-                    try:
-                        # Convert to standard format for execute_tool
-                        standard_tool_call = {
-                            "name": tool_name,
-                            "arguments": tool_params
-                        }
-                        tool_result = self.execute_tool(standard_tool_call)
-                        
-                        all_tool_results.append({
-                            'tool_name': tool_name,
-                            'tool_params': tool_params,
-                            'tool_result': tool_result
-                        })
-                        successful_executions += 1
-                        
-                        # Real-time print of each tool's execution result with proper indentation
-                        if isinstance(tool_result, dict):
-                            # Use simplified formatting for search tools if enabled in config
-                            if (self.simplified_search_output and 
-                                tool_name in ['codebase_search', 'web_search']):
-                                formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
-                            else:
-                                formatted_result = self._format_dict_as_text(tool_result)
-                            # Add indentation to each line
-                            indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                            print_current(indented_result)
-                        else:
-                            # Add indentation to the result
-                            result_str = str(tool_result)
-                            indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                            print_current(indented_result)
-                        
-                    except Exception as e:
-                        error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                        print_current(f"   ❌ {error_msg}")
-                        all_tool_results.append({
-                            'tool_name': tool_name,
-                            'tool_params': tool_params,
-                            'tool_result': f"Error: {error_msg}"
-                        })
+                    # Build user message with new architecture
+                    user_message = self._build_new_user_message(prompt, task_history, round_counter)
                     
-                    # Add separator between tools
-                    if i < len(tool_calls):
-                        print_current("-" * 30)
-                
+                    # Prepare messages for the LLM with proper system/user separation
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ]
+                    
+                    # Save debug log for this call's input (before LLM call)
+                    if self.debug_mode:
+                        try:
+                            initial_call_info = {
+                                "is_single_call": True,
+                                "call_type": "standard_tools_execution",
+                                "user_prompt": prompt
+                            }
+                        except Exception as e:
+                            print_current(f"⚠️ Debug preparation failed: {e}")
+                    
+                    # Execute LLM call with standard tools
+                    content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
+                    
+                    # Show raw model response for debugging
+                    if self.debug_mode and content:
+                        print_current("🤖 Raw model response:")
+                        print_current(content)
+                    
+                    # Calculate and display token and character statistics
+                    self._display_llm_statistics(messages, content, tool_calls)
+                    
+                    # Check for TASK_COMPLETED flag and detect conflicts
+                    has_task_completed = "TASK_COMPLETED:" in content
+                    has_tool_calls = len(tool_calls) > 0
+                    
+                    # Check for TASK_COMPLETED flag and detect conflicts
+                    has_task_completed = "TASK_COMPLETED:" in content
+                    has_tool_calls = len(tool_calls) > 0
+                    
+                    # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
+                    conflict_detected = has_tool_calls and has_task_completed
+                    if conflict_detected:
+                        print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
+                        # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                        content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                        has_task_completed = False # Ensure the flag is updated after removal
+                    
+                    # If TASK_COMPLETED but no tool calls, complete the task
+                    if has_task_completed and not has_tool_calls:
+                        print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                        # Extract the completion message
+                        task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                        if task_completed_match:
+                            completion_message = task_completed_match.group(1).strip()
+                        
+                        # Save final debug log
+                        if self.debug_mode:
+                            try:
+                                completion_info = {
+                                    "has_tool_calls": False,
+                                    "task_completed": True,
+                                    "completion_detected": True,
+                                    "execution_result": "task_completed_flag"
+                                }
+                                
+                                self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
+                            except Exception as log_error:
+                                print_current(f"❌ Completion debug log save failed: {log_error}")
+                        
+                        finish_operation(f"executing task (round {round_counter})")
+                        return content
+                    
+                    # Execute tools if present
+                    if tool_calls:
+                        print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                        print_current("=" * 50)
+                        
+                        # Print tool calls for terminal display with better formatting
+                        tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
+                        if tool_calls_formatted:
+                            # Remove the "**Tool Calls:**" header since we already printed our own
+                            display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                            print_current(display_content)
+                        
+                        print_current("=" * 50)
+                        print_current("🚀 Starting tool execution...")
+                        print_current("")
+                        
+                        # Execute all tool calls and collect results
+                        all_tool_results = []
+                        successful_executions = 0
+                        
+                        for i, tool_call in enumerate(tool_calls, 1):
+                            # Handle standard format tool calls (both OpenAI and Anthropic)
+                            tool_name = self._get_tool_name_from_call(tool_call)
+                            tool_params = self._get_tool_params_from_call(tool_call)
+                            
+                            # Print tool execution start with clear formatting
+                            print_current(f"🔧 Executing tool {i}: {tool_name}")
+                            print_current(f"   Parameters: {tool_params}")
+                            print_current(f"   Results:")
+                            
+                            try:
+                                # Convert to standard format for execute_tool
+                                standard_tool_call = {
+                                    "name": tool_name,
+                                    "arguments": tool_params
+                                }
+                                tool_result = self.execute_tool(standard_tool_call)
+                                
+                                all_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_params,
+                                    'tool_result': tool_result
+                                })
+                                successful_executions += 1
+                                
+                                # Real-time print of each tool's execution result with proper indentation
+                                if isinstance(tool_result, dict):
+                                    # Use simplified formatting for search tools if enabled in config
+                                    if (self.simplified_search_output and 
+                                        tool_name in ['codebase_search', 'web_search']):
+                                        formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
+                                    else:
+                                        formatted_result = self._format_dict_as_text(tool_result)
+                                    # Add indentation to each line
+                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                                    print_current(indented_result)
+                                else:
+                                    # Add indentation to the result
+                                    result_str = str(tool_result)
+                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                                    print_current(indented_result)
+                                
+                            except Exception as e:
+                                error_msg = f"Tool {tool_name} execution failed: {str(e)}"
+                                print_current(f"   ❌ {error_msg}")
+                                all_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_params,
+                                    'tool_result': f"Error: {error_msg}"
+                                })
+                            
+                            # Add separator between tools
+                            if i < len(tool_calls):
+                                print_current("-" * 30)
+                        
 
-                
-                # Format tool results for response
-                tool_results_message = self._format_tool_results_for_llm(all_tool_results)
-                
-                # Save debug log with tool execution info
-                if self.debug_mode:
-                    try:
-                        tool_execution_info = {
-                            "has_tool_calls": True,
-                            "parsed_tool_calls": tool_calls,
-                            "tool_results": all_tool_results,
-                            "formatted_tool_results": tool_results_message,
-                            "successful_executions": successful_executions,
-                            "total_tool_calls": len(tool_calls),
-                            "conflict_detected": conflict_detected
-                        }
                         
-                        self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
-                    except Exception as log_error:
-                        print_current(f"❌ Debug log save failed: {log_error}")
-                
-                # Return combined response with tool calls and tool results
-                result_parts = [content]
-                if tool_calls_formatted:
-                    result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
-                result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
-                
-                finish_operation(f"executing task (round {current_round})")
-                return "".join(result_parts)
-            
-            else:
-                # No tool calls, return LLM response directly
-                print_current("📝 No tool calls found, returning LLM response")
-                
-                # Save debug log for response without tools
-                if self.debug_mode:
-                    try:
-                        no_tools_info = {
-                            "has_tool_calls": False,
-                            "task_completed": has_task_completed,
-                            "execution_result": "llm_response_only"
-                        }
+                        # Format tool results for response
+                        tool_results_message = self._format_tool_results_for_llm(all_tool_results)
                         
-                        self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
-                    except Exception as log_error:
-                        print_current(f"❌ Final debug log save failed: {log_error}")
+                        # Save debug log with tool execution info
+                        if self.debug_mode:
+                            try:
+                                tool_execution_info = {
+                                    "has_tool_calls": True,
+                                    "parsed_tool_calls": tool_calls,
+                                    "tool_results": all_tool_results,
+                                    "formatted_tool_results": tool_results_message,
+                                    "successful_executions": successful_executions,
+                                    "total_tool_calls": len(tool_calls),
+                                    "conflict_detected": conflict_detected
+                                }
+                                
+                                self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
+                            except Exception as log_error:
+                                print_current(f"❌ Debug log save failed: {log_error}")
+                        
+                        # Return combined response with tool calls and tool results
+                        result_parts = [content]
+                        if tool_calls_formatted:
+                            result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
+                        result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
+                        
+                        finish_operation(f"executing task (round {round_counter})")
+                        return "".join(result_parts)
+                    
+                    else:
+                        # No tool calls, return LLM response directly
+                        print_current("📝 No tool calls found, returning LLM response")
+                        
+                        # Save debug log for response without tools
+                        if self.debug_mode:
+                            try:
+                                no_tools_info = {
+                                    "has_tool_calls": False,
+                                    "task_completed": has_task_completed,
+                                    "execution_result": "llm_response_only"
+                                }
+                                
+                                self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
+                            except Exception as log_error:
+                                print_current(f"❌ Final debug log save failed: {log_error}")
+                        
+                        finish_operation(f"executing task (round {round_counter})")
+                        return content
+                    
+                except json.JSONDecodeError as e:
+                    error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
+                    print_current(error_msg)
+                    print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
+                    print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+                    finish_operation(f"executing task (round {round_counter})")
+                    return error_msg
+                except Exception as e:
+                    error_msg = f"❌ Error executing subtask: {str(e)}"
+                    print_current(error_msg)
+                    
+                    # Add more specific error information for common issues
+                    if "Expecting ',' delimiter" in str(e):
+                        print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
+                        print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
+                    elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
+                        print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+                    
+                    finish_operation(f"executing task (round {round_counter})")
+                    return error_msg
                 
-                finish_operation(f"executing task (round {current_round})")
-                return content
+                # Add current result to accumulated results
+                accumulated_results += content
+                
+                # Add tool calls to conversation history
+                conversation_history.append({"role": "assistant", "content": content})
+                
+                # Add tool calls to tool_calls list
+                tool_calls_list.extend(tool_calls)
+                
+                round_counter += 1
             
-        except json.JSONDecodeError as e:
-            error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
-            print_current(error_msg)
-            print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
-            print_current(f"💡 Try regenerating the response or check the model's tool calling format")
-            finish_operation(f"executing task (round {current_round})")
-            return error_msg
+            # If we reach here, it means we've completed all tool calls
+            print_current("🎉 All tool calls completed successfully!")
+            
+            # Return final accumulated results
+            return accumulated_results
+        
         except Exception as e:
-            error_msg = f"❌ Error executing subtask: {str(e)}"
-            print_current(error_msg)
+            print_current(f"❌ Error executing subtask: {str(e)}")
+            return f"Error: {str(e)}"
+    
+    def _check_terminate_messages(self) -> Optional[str]:
+        """
+        检查agent是否收到terminate信号
+        
+        Returns:
+            如果收到terminate信号返回终止消息，否则返回None
+        """
+        try:
+            # 只有在多智能体模式下才检查
+            if not self.multi_agent_tools:
+                return None
             
-            # Add more specific error information for common issues
-            if "Expecting ',' delimiter" in str(e):
-                print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
-                print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
-            elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
-                print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+            # 🔧 修复：直接从mailbox获取未读消息，不自动标记为已读
+            from tools.message_system import get_message_router
+            from tools.print_system import get_agent_id
             
-            finish_operation(f"executing task (round {current_round})")
-            return error_msg
+            current_agent_id = get_agent_id()
+            if not current_agent_id:
+                return None
+                
+            try:
+                router = get_message_router(self.multi_agent_tools.workspace_root, cleanup_on_init=False)
+                mailbox = router.get_mailbox(current_agent_id)
+                
+                if not mailbox:
+                    return None
+                
+                # 直接获取未读消息，不自动标记为已读
+                unread_messages = mailbox.get_unread_messages()
+                
+                # 检查是否有terminate信号
+                for message in unread_messages:
+                    if hasattr(message, 'message_type') and hasattr(message, 'content'):
+                        message_type = message.message_type
+                        content = message.content
+                        
+                        # 检查是否是系统消息且包含terminate信号
+                        if (message_type.value == "system" and 
+                            isinstance(content, dict) and 
+                            content.get("signal") == "terminate"):
+                            
+                            reason = content.get("reason", "Terminated by request")
+                            sender = content.get("sender", "unknown")
+                            
+                            terminate_msg = f"AGENT_TERMINATED: Agent {current_agent_id} received terminate signal from {sender}. Reason: {reason}"
+                            print_current(f"🛑 {terminate_msg}")
+                            
+                            # 只有在确认terminate信号后才标记消息为已读
+                            try:
+                                mailbox.mark_as_read(message.message_id)
+                            except Exception as e:
+                                print_current(f"⚠️ Warning: Could not mark terminate message as read: {e}")
+                            
+                            return terminate_msg
+                            
+                return None
+                
+            except Exception as e:
+                if self.debug_mode:
+                    print_current(f"⚠️ Warning: Error accessing mailbox directly: {e}")
+                return None
+            
+        except Exception as e:
+            # 如果检查terminate消息失败，不应该中断正常执行
+            if self.debug_mode:
+                print_current(f"⚠️ Warning: Failed to check terminate messages: {e}")
+            return None
     
     def parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """
@@ -1579,90 +1751,198 @@ class ToolExecutor:
         tool_name = tool_call["name"]
         params = tool_call["arguments"]
         
+        # 🔧 Error handling: If the large model calls the send_message_to_manager tool, correct it to send_message_to_agent_or_manager
+        if tool_name == "send_message_to_manager":
+            print_current(f"🔧 Auto-correcting tool call: {tool_name} -> send_message_to_agent_or_manager")
+            tool_name = "send_message_to_agent_or_manager"
+            
+            # If receiver_id parameter is missing, set it to manager
+            if "receiver_id" not in params:
+                params["receiver_id"] = "manager"
+                print_current(f"🔧 Added missing receiver_id parameter: manager")
+            
+            # Update tool_call object to reflect the correction
+            tool_call["name"] = tool_name
         # Check tool source from mapping table
         tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
         
         # Handle cli-mcp tools
         if tool_source == 'cli_mcp':
-            # Ensure cli-mcp client is initialized
-            if not self.cli_mcp_initialized:
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # We're in an async context, create a task
-                        future = asyncio.create_task(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
-                        # For now, we'll skip initialization if we can't wait
-                        # In a real implementation, you might want to handle this differently
-                        self.cli_mcp_initialized = True  # Assume initialization for now
-                        return {"error": "cli-mcp客户端正在初始化中，请稍后重试"}
-                    else:
-                        # We can run the async function directly
-                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper("config/mcp_servers.json"))
-                        # Add MCP tools to tool_map after initialization
-                        if self.cli_mcp_initialized:
-                            self._add_mcp_tools_to_map()
-                except Exception as e:
-                    print_current(f"⚠️ cli-mcp客户端初始化失败: {e}")
-                    return {"error": f"cli-mcp客户端初始化失败: {e}"}
+            # Enhanced multi-thread initialization for cli-mcp client
+            current_thread = threading.current_thread().name
             
-            # Call cli-mcp tool
-            try:
-                import asyncio
-                import threading
+            # First check: instance-level initialization status
+            if not self.cli_mcp_initialized:
+                print_current(f"🔄 [Thread: {current_thread}] cli-mcp client not initialized, attempting initialization for tool {tool_name}...")
                 
-                # 检查是否在异步环境中
+                # Second check: global cli-mcp wrapper status
+                from tools.cli_mcp_wrapper import get_cli_mcp_status, is_cli_mcp_initialized, initialize_cli_mcp_wrapper
+                
+                global_status = get_cli_mcp_status(self.MCP_config_file)
+                print_current(f"🔍 [Thread: {current_thread}] Global cli-mcp status: {global_status}")
+                
+                # If globally initialized but not locally, sync the status
+                if global_status.get("initialized", False) and not self.cli_mcp_initialized:
+                    print_current(f"🔄 [Thread: {current_thread}] Global cli-mcp is initialized, syncing local status...")
+                    self.cli_mcp_initialized = True
+                    self._add_mcp_tools_to_map()
+                    print_current(f"✅ [Thread: {current_thread}] Local cli-mcp status synced successfully")
+                
+                # If still not initialized, attempt initialization with enhanced retry
+                if not self.cli_mcp_initialized:
+                    retry_count = 0
+                    max_retries = 3
+                    
+                    while retry_count < max_retries and not self.cli_mcp_initialized:
+                        try:
+                            retry_count += 1
+                            print_current(f"🔄 [Thread: {current_thread}] cli-mcp initialization attempt {retry_count}/{max_retries}")
+                            
+                            import asyncio
+                            
+                            # Enhanced async handling for different thread contexts
+                            try:
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    # We're in an async context, use thread pool for initialization
+                                    import concurrent.futures
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
+                                        init_result = future.result(timeout=20)  # Increased timeout
+                                        self.cli_mcp_initialized = init_result
+                                else:
+                                    # We can run the async function directly
+                                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                            except RuntimeError as re:
+                                # No event loop or other runtime issues
+                                print_current(f"⚠️ [Thread: {current_thread}] Runtime error during async init: {re}")
+                                # Try creating new event loop
+                                try:
+                                    new_loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(new_loop)
+                                    self.cli_mcp_initialized = new_loop.run_until_complete(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                                    new_loop.close()
+                                except Exception as loop_e:
+                                    print_current(f"❌ [Thread: {current_thread}] Failed to create new event loop: {loop_e}")
+                                    self.cli_mcp_initialized = False
+                            
+                            # Verify initialization and add tools to mapping
+                            if self.cli_mcp_initialized:
+                                self._add_mcp_tools_to_map()
+                                print_current(f"✅ [Thread: {current_thread}] cli-mcp client initialized successfully with config: {self.MCP_config_file}")
+                                
+                                # Double-check the tool mapping
+                                if tool_name in self.tool_map:
+                                    print_current(f"✅ [Thread: {current_thread}] Tool {tool_name} found in tool mapping")
+                                else:
+                                    print_current(f"⚠️ [Thread: {current_thread}] Tool {tool_name} NOT found in tool mapping after initialization")
+                                break
+                            else:
+                                print_current(f"⚠️ [Thread: {current_thread}] cli-mcp initialization attempt {retry_count} failed")
+                                if retry_count < max_retries:
+                                    import time
+                                    time.sleep(3)  # Wait 3 seconds before retry
+                                    
+                        except Exception as e:
+                            print_current(f"⚠️ [Thread: {current_thread}] cli-mcp client initialization attempt {retry_count} failed: {e}")
+                            if retry_count < max_retries:
+                                import time
+                                time.sleep(3)  # Wait 3 seconds before retry
+                            else:
+                                error_msg = f"cli-mcp client initialization failed after {max_retries} attempts in thread {current_thread}: {e}"
+                                print_current(f"❌ {error_msg}")
+                                return {"error": error_msg}
+                    
+                    # Final check
+                    if not self.cli_mcp_initialized:
+                        error_msg = f"cli-mcp client failed to initialize after all attempts in thread {current_thread}"
+                        print_current(f"❌ {error_msg}")
+                        return {"error": error_msg}
+            
+            # Call cli-mcp tool with enhanced error handling
+            try:
+                print_current(f"🔧 [Thread: {current_thread}] Calling cli-mcp tool: {tool_name}")
+                
+                import asyncio
+                
+                # Enhanced async execution handling
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
-                        # 在异步环境中，使用线程池执行
+                        # We're in an async context, use thread pool for execution
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as executor:
-                            # Remove prefix from tool name
+                            # Remove prefix from tool name if present
                             actual_tool_name = tool_name.replace("cli_mcp_", "")
+                            print_current(f"🎯 [Thread: {current_thread}] Calling actual tool: {actual_tool_name} with params: {params}")
                             future = executor.submit(asyncio.run, self.cli_mcp_client.call_tool(actual_tool_name, params))
-                            result = future.result(timeout=30)  # 30秒超时
+                            result = future.result(timeout=35)  # Increased timeout
+                            print_current(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully")
                             return result
                 except RuntimeError:
-                    # 没有事件循环，可以安全地运行asyncio.run
+                    # No event loop, safe to run asyncio.run
                     pass
                 
-                # 在同步环境中运行异步函数
+                # Synchronous execution
                 actual_tool_name = tool_name.replace("cli_mcp_", "")
+                print_current(f"🎯 [Thread: {current_thread}] Calling actual tool (sync): {actual_tool_name} with params: {params}")
                 result = asyncio.run(self.cli_mcp_client.call_tool(actual_tool_name, params))
+                print_current(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully (sync)")
                 return result
                 
             except Exception as e:
-                print_current(f"❌ cli-mcp工具调用失败: {e}")
-                return {"error": f"cli-mcp工具调用失败: {e}"}
+                error_msg = f"cli-mcp工具调用失败 in thread {current_thread}: {e}"
+                print_current(f"❌ {error_msg}")
+                return {"error": error_msg}
         
         # Handle direct MCP tools (SSE)
         elif tool_source == 'direct_mcp':
             # Ensure direct MCP client is initialized
             if not self.direct_mcp_initialized:
+                print_current(f"🔄 Attempting to initialize direct MCP client for tool {tool_name}...")
                 import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # We're in an async context, create a task
-                        future = asyncio.create_task(initialize_mcp_client())
-                        # For now, we'll skip initialization if we can't wait
-                        self.direct_mcp_initialized = True  # Assume initialization for now
-                        return {"error": "SSE MCP客户端正在初始化中，请稍后重试"}
-                    else:
-                        # We can run the async function directly
-                        self.direct_mcp_initialized = asyncio.run(initialize_mcp_client())
-                        # Add MCP tools to tool_map after initialization
+                
+                retry_count = 0
+                max_retries = 3
+                
+                while retry_count < max_retries and not self.direct_mcp_initialized:
+                    try:
+                        retry_count += 1
+                        print_current(f"🔄 Direct MCP initialization attempt {retry_count}/{max_retries}")
+                        
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # We're in an async context, use thread pool for initialization
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                future = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
+                                self.direct_mcp_initialized = future.result(timeout=15)  # 增加超时时间
+                        else:
+                            # We can run the async function directly
+                            self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                        
+                        # Add MCP tools to tool_map after successful initialization
                         if self.direct_mcp_initialized:
                             self._add_mcp_tools_to_map()
-                except Exception as e:
-                    print_current(f"⚠️ SSE MCP客户端初始化失败: {e}")
-                    return {"error": f"SSE MCP客户端初始化失败: {e}"}
+                            print_current(f"✅ Direct MCP client initialized with config: {self.MCP_config_file}")
+                            break
+                        else:
+                            print_current(f"⚠️ Direct MCP initialization attempt {retry_count} failed")
+                            if retry_count < max_retries:
+                                import time
+                                time.sleep(2)  # 等待2秒后重试
+                                
+                    except Exception as e:
+                        print_current(f"⚠️ Direct MCP client initialization attempt {retry_count} failed: {e}")
+                        if retry_count < max_retries:
+                            import time
+                            time.sleep(2)  # 等待2秒后重试
+                        else:
+                            return {"error": f"Direct MCP client initialization failed after {max_retries} attempts: {e}"}
             
             # Call direct MCP tool
             try:
                 import asyncio
-                import threading
                 
                 # 检查是否在异步环境中
                 try:
@@ -1909,6 +2189,78 @@ class ToolExecutor:
             
             return '\n'.join(lines)
         
+        # Handle agent messages results from get_agent_messages
+        if 'messages' in data and 'agent_id' in data and 'message_count' in data:
+            agent_id = data.get('agent_id', 'unknown')
+            message_count = data.get('message_count', 0)
+            messages = data.get('messages', [])
+            
+            lines.append(f"📬 Agent {agent_id} Messages: {message_count} messages")
+            
+            if message_count > 0:
+                lines.append("")
+                # Show each message with a summary format
+                for i, msg in enumerate(messages[:10], 1):  # Limit to first 10 messages
+                    if isinstance(msg, dict):
+                        msg_id = msg.get('message_id', f'msg_{i}')
+                        sender = msg.get('sender_id', 'unknown')
+                        msg_type = msg.get('message_type', 'unknown')
+                        timestamp = msg.get('timestamp', 'unknown')
+                        read_status = "✓ read" if msg.get('read', False) else "unread"
+                        
+                        lines.append(f"  {i}. {msg_id} from {sender}")
+                        lines.append(f"     Type: {msg_type} | Time: {timestamp} | Status: {read_status}")
+                        
+                        # Show content preview
+                        content = msg.get('content', {})
+                        if isinstance(content, dict):
+                            # Special handling for different message types
+                            if content.get('message'):
+                                preview = str(content['message'])[:100]
+                                if len(str(content['message'])) > 100:
+                                    preview += "..."
+                                lines.append(f"     Content: {preview}")
+                            elif content.get('llm_response_preview'):
+                                preview = str(content['llm_response_preview'])[:100]
+                                if len(str(content['llm_response_preview'])) > 100:
+                                    preview += "..."
+                                lines.append(f"     Response: {preview}")
+                            elif content.get('current_task_description'):
+                                preview = str(content['current_task_description'])[:100]
+                                if len(str(content['current_task_description'])) > 100:
+                                    preview += "..."
+                                lines.append(f"     Task: {preview}")
+                            else:
+                                # Generic content preview
+                                content_str = json.dumps(content, ensure_ascii=False)[:150]
+                                if len(json.dumps(content, ensure_ascii=False)) > 150:
+                                    content_str += "..."
+                                lines.append(f"     Content: {content_str}")
+                        else:
+                            content_str = str(content)[:100]
+                            if len(str(content)) > 100:
+                                content_str += "..."
+                            lines.append(f"     Content: {content_str}")
+                        
+                        lines.append("")  # Empty line between messages
+                
+                if message_count > 10:
+                    lines.append(f"  ... and {message_count - 10} more messages")
+            
+            # Add mailbox statistics if available
+            if 'mailbox_stats' in data:
+                stats = data['mailbox_stats']
+                lines.append("")
+                lines.append(f"📊 Mailbox Stats:")
+                for key, value in stats.items():
+                    lines.append(f"   {key}: {value}")
+            
+            # Add workspace info
+            if 'found_in_workspace' in data:
+                lines.append(f"📁 Workspace: {data['found_in_workspace']}")
+            
+            return '\n'.join(lines)
+
         # Handle other types of results
         if 'results' in data:
             results = data['results']
@@ -1940,7 +2292,13 @@ class ToolExecutor:
         if not lines:
             for key, value in data.items():
                 if isinstance(value, (list, dict)):
-                    lines.append(f"{key}: {json.dumps(value, indent=2, ensure_ascii=False)}")
+                    # Avoid serializing very large lists/dicts that could cause display issues
+                    if isinstance(value, list) and len(value) > 20:
+                        lines.append(f"{key}: [Large list with {len(value)} items - use specific tools to inspect]")
+                    elif isinstance(value, dict) and len(json.dumps(value, ensure_ascii=False)) > 5000:
+                        lines.append(f"{key}: [Large dict with {len(value)} keys - use specific tools to inspect]")
+                    else:
+                        lines.append(f"{key}: {json.dumps(value, indent=2, ensure_ascii=False)}")
                 else:
                     lines.append(f"{key}: {value}")
         
@@ -2654,7 +3012,24 @@ class ToolExecutor:
                 return content, tool_calls
                 
         except Exception as e:
-            print_current(f"❌ OpenAI API call failed: {e}")
+            error_str = str(e).lower()
+            
+            # Check if this is a retryable error
+            retryable_errors = [
+                'overloaded', 'rate limit', 'too many requests', 
+                'service unavailable', 'timeout', 'temporary failure',
+                'server error', '429', '503', '502', '500'
+            ]
+            
+            is_retryable = any(error_keyword in error_str for error_keyword in retryable_errors)
+            
+            if is_retryable:
+                print_current(f"⚠️ OpenAI API temporarily unavailable: {e}")
+                print_current(f"💡 Consider switching to a different model or trying again later")
+                print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+            else:
+                print_current(f"❌ OpenAI API call failed: {e}")
+            
             raise e
 
     def _call_claude_with_standard_tools(self, messages, user_message, system_message):
@@ -2726,7 +3101,24 @@ class ToolExecutor:
                 return content, tool_calls
                 
         except Exception as e:
-            print_current(f"❌ Claude API call failed: {e}")
+            error_str = str(e).lower()
+            
+            # Check if this is a retryable error
+            retryable_errors = [
+                'overloaded', 'rate limit', 'too many requests', 
+                'service unavailable', 'timeout', 'temporary failure',
+                'server error', '429', '503', '502', '500'
+            ]
+            
+            is_retryable = any(error_keyword in error_str for error_keyword in retryable_errors)
+            
+            if is_retryable:
+                print_current(f"⚠️ Claude API temporarily unavailable: {e}")
+                print_current(f"💡 Consider switching to a different model or trying again later")
+                print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+            else:
+                print_current(f"❌ Claude API call failed: {e}")
+            
             raise e
 
     def _get_tool_name_from_call(self, tool_call):
@@ -2847,7 +3239,7 @@ class ToolExecutor:
         
         return "\n".join(formatted_calls)
 
-    def _load_tool_definitions_from_file(self, json_file_path: str = "prompts/tool_prompt.json") -> Dict[str, Any]:
+    def _load_tool_definitions_from_file(self, json_file_path: str = None) -> Dict[str, Any]:
         """
         Load tool definitions from JSON file.
         
@@ -2863,6 +3255,10 @@ class ToolExecutor:
             # Load basic tool definitions
             tool_definitions = {}
             
+            # Use default path if none provided
+            if json_file_path is None:
+                json_file_path = os.path.join(self.prompts_folder, "tool_prompt.json")
+            
             # Try to load from the provided path
             if os.path.exists(json_file_path):
                 with open(json_file_path, 'r', encoding='utf-8') as f:
@@ -2877,8 +3273,8 @@ class ToolExecutor:
             multi_agent_enabled = self._is_multi_agent_enabled()
             
             if multi_agent_enabled:
-                # Load multi-agent tool definitions
-                multiagent_file_path = "prompts/multiagent_tool_prompt.json"
+                # Load multi-agent tool definitions from custom prompts folder
+                multiagent_file_path = os.path.join(self.prompts_folder, "multiagent_tool_prompt.json")
                 if os.path.exists(multiagent_file_path):
                     with open(multiagent_file_path, 'r', encoding='utf-8') as f:
                         multiagent_tools = json.load(f)
@@ -3148,6 +3544,274 @@ class ToolExecutor:
                 pass
         
         return final_message
+
+    def enhanced_tool_help(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+        """
+        Enhanced tool_help that supports both built-in tools and MCP tools.
+        
+        Args:
+            tool_name: The tool name to get help for
+            
+        Returns:
+            Dictionary containing comprehensive tool usage information
+        """
+        # Ignore additional parameters
+        if kwargs:
+            print_current(f"⚠️ Ignoring additional parameters: {list(kwargs.keys())}")
+        
+        # First check if it's a built-in tool
+        try:
+            builtin_help = self.tools.tool_help(tool_name)
+            if 'error' not in builtin_help:
+                builtin_help['tool_type'] = 'built-in'
+                return builtin_help
+        except Exception as e:
+            print_current(f"⚠️ Error getting built-in tool help: {e}")
+        
+        # Check if it's an MCP tool
+        mcp_tool_def = self._get_mcp_tool_definition(tool_name)
+        if mcp_tool_def:
+            help_info = {
+                "tool_name": tool_name,
+                "tool_type": mcp_tool_def.get("tool_type", "mcp"),
+                "description": mcp_tool_def["description"],
+                "parameters": mcp_tool_def["parameters"],
+                "usage_example": self._generate_mcp_usage_example(tool_name, mcp_tool_def),
+                "parameter_template": self._generate_parameter_template(mcp_tool_def["parameters"]),
+                "notes": mcp_tool_def.get("notes", "这是一个MCP (Model Context Protocol) 工具。"),
+                "mcp_format_warning": "⚠️ MCP工具通常使用camelCase参数格式（如 entityType），而不是snake_case（如 entity_type）。请参考usage_example中的正确格式。"
+            }
+            
+            return help_info
+        
+        # Tool not found - get all available tools including MCP tools
+        all_tools = self._get_all_available_tools()
+        available_tools = list(all_tools.keys())
+        
+        return {
+            "error": f"Tool '{tool_name}' not found",
+            "available_tools": available_tools,
+            "all_tools_with_descriptions": all_tools,
+            "message": f"Available tools are: {', '.join(available_tools)}",
+            "suggestion": "Use list_available_tools() to see all available tools with descriptions"
+        }
+
+    def _get_mcp_tool_definition(self, tool_name: str) -> Optional[Dict[str, Any]]:
+        """Get MCP tool definition from MCP clients"""
+        try:
+            # Check if it's a cli-mcp tool
+            if hasattr(self, 'cli_mcp_client') and self.cli_mcp_client and self.cli_mcp_initialized:
+                cli_mcp_tools = self.cli_mcp_client.get_available_tools()
+                if tool_name in cli_mcp_tools:
+                    tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
+                    if tool_def:
+                        return {
+                            "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
+                            "parameters": tool_def.get("input_schema", {}),
+                            "notes": f"MCP工具 (cli-mcp): {tool_name}. 请注意使用正确的参数格式（通常为camelCase）。",
+                            "tool_type": "cli-mcp"
+                        }
+            
+            # Check if it's a direct MCP tool
+            if hasattr(self, 'direct_mcp_client') and self.direct_mcp_client and self.direct_mcp_initialized:
+                direct_mcp_tools = self.direct_mcp_client.get_available_tools()
+                if tool_name in direct_mcp_tools:
+                    tool_def = self.direct_mcp_client.get_tool_definition(tool_name)
+                    if tool_def:
+                        return {
+                            "description": tool_def.get("description", f"SSE MCP tool: {tool_name}"),
+                            "parameters": tool_def.get("inputSchema", tool_def.get("input_schema", {})),
+                            "notes": f"MCP工具 (SSE): {tool_name}. 这是通过SSE协议连接的MCP工具。",
+                            "tool_type": "direct-mcp"
+                        }
+            
+        except Exception as e:
+            print_current(f"⚠️ 获取MCP工具定义时出错: {e}")
+        
+        return None
+
+    def _get_all_available_tools(self) -> Dict[str, str]:
+        """Get all available tools including MCP tools"""
+        all_tools = {}
+        
+        # Add built-in tools
+        for tool_name in self.tool_map.keys():
+            # Skip MCP tools here, we'll add them separately
+            tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
+            if tool_source == 'regular':
+                try:
+                    help_info = self.tools.tool_help(tool_name)
+                    if 'error' not in help_info:
+                        description = help_info["description"]
+                        first_sentence = description.split(".")[0] + "." if "." in description else description
+                        if len(first_sentence) > 100:
+                            first_sentence = first_sentence[:97] + "..."
+                        all_tools[tool_name] = f"[内置] {first_sentence}"
+                    else:
+                        all_tools[tool_name] = f"[内置] {tool_name}"
+                except:
+                    all_tools[tool_name] = f"[内置] {tool_name}"
+        
+        # Add MCP tools
+        try:
+            # Add cli-mcp tools
+            if hasattr(self, 'cli_mcp_client') and self.cli_mcp_client and self.cli_mcp_initialized:
+                cli_mcp_tools = self.cli_mcp_client.get_available_tools()
+                for tool_name in cli_mcp_tools:
+                    try:
+                        tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
+                        description = tool_def.get("description", f"cli-mcp tool: {tool_name}") if tool_def else f"cli-mcp tool: {tool_name}"
+                        first_sentence = description.split(".")[0] + "." if "." in description else description
+                        if len(first_sentence) > 100:
+                            first_sentence = first_sentence[:97] + "..."
+                        all_tools[tool_name] = f"[MCP/CLI] {first_sentence}"
+                    except Exception as e:
+                        all_tools[tool_name] = f"[MCP/CLI] {tool_name} (error getting definition)"
+            
+            # Add direct MCP tools
+            if hasattr(self, 'direct_mcp_client') and self.direct_mcp_client and self.direct_mcp_initialized:
+                direct_mcp_tools = self.direct_mcp_client.get_available_tools()
+                for tool_name in direct_mcp_tools:
+                    try:
+                        tool_def = self.direct_mcp_client.get_tool_definition(tool_name)
+                        description = tool_def.get("description", f"SSE MCP tool: {tool_name}") if tool_def else f"SSE MCP tool: {tool_name}"
+                        first_sentence = description.split(".")[0] + "." if "." in description else description
+                        if len(first_sentence) > 100:
+                            first_sentence = first_sentence[:97] + "..."
+                        all_tools[tool_name] = f"[MCP/SSE] {first_sentence}"
+                    except Exception as e:
+                        all_tools[tool_name] = f"[MCP/SSE] {tool_name} (error getting definition)"
+        
+        except Exception as e:
+            print_current(f"⚠️ 获取MCP工具列表时出错: {e}")
+        
+        return all_tools
+
+    def _generate_mcp_usage_example(self, tool_name: str, tool_def: Dict[str, Any]) -> str:
+        """Generate usage example for MCP tools"""
+        parameters = tool_def.get("parameters", {})
+        properties = parameters.get("properties", {})
+        required = parameters.get("required", [])
+        
+        # Build example arguments
+        example_args = {}
+        for param_name, param_info in properties.items():
+            param_type = param_info.get("type", "string")
+            
+            # Generate appropriate example values
+            if param_type == "array":
+                if "entities" in param_name.lower():
+                    example_args[param_name] = [{
+                        "name": "示例实体",
+                        "entityType": "Person",
+                        "observations": ["相关观察信息"]
+                    }]
+                else:
+                    example_args[param_name] = ["example1", "example2"]
+            elif param_type == "boolean":
+                example_args[param_name] = True
+            elif param_type == "integer":
+                example_args[param_name] = 1
+            elif param_type == "object":
+                if "parameters" in param_name.lower():
+                    example_args[param_name] = {"query": "搜索关键词"}
+                else:
+                    example_args[param_name] = {"key": "value"}
+            else:
+                # String type
+                if "query" in param_name.lower():
+                    example_args[param_name] = "搜索关键词"
+                elif "path" in param_name.lower() or "file" in param_name.lower():
+                    example_args[param_name] = "/path/to/file.txt"
+                elif "content" in param_name.lower():
+                    example_args[param_name] = "文件内容"
+                elif "name" in param_name.lower():
+                    example_args[param_name] = "示例名称"
+                elif "type" in param_name.lower():
+                    example_args[param_name] = "Person"
+                else:
+                    example_args[param_name] = "示例值"
+        
+        # Special handling for known MCP tools
+        if tool_name == "create_entities":
+            example_args = {
+                "entities": [{
+                    "name": "用户",
+                    "entityType": "Person",
+                    "observations": ["喜欢吃xieo冰棍"]
+                }]
+            }
+        elif tool_name == "write_file" or "write" in tool_name.lower():
+            example_args = {
+                "path": "/home/user/example.txt",
+                "content": "这是一个示例文件内容\n包含多行文本"
+            }
+        elif tool_name == "read_file" or "read" in tool_name.lower():
+            example_args = {
+                "path": "/home/user/example.txt"
+            }
+        elif "search" in tool_name.lower():
+            example_args = {
+                "query": "搜索关键词",
+                "language": "zh",
+                "num_results": 10
+            }
+        
+        import json
+        example_json = json.dumps(example_args, ensure_ascii=False, indent=2)
+        
+        return f'''{{
+  "name": "{tool_name}",
+  "arguments": {example_json}
+}}
+
+📝 MCP工具调用格式注意事项:
+- 参数名通常使用camelCase格式 (如: entityType, numResults)
+- 避免使用snake_case格式 (如: entity_type, num_results)
+- 确保参数类型正确匹配工具定义'''
+
+    def _generate_parameter_template(self, parameters: Dict[str, Any]) -> str:
+        """Generate a parameter template showing how to call the tool."""
+        template_lines = []
+        properties = parameters.get("properties", {})
+        required_params = parameters.get("required", [])
+        
+        for param_name, param_info in properties.items():
+            param_type = param_info.get("type", "string")
+            description = param_info.get("description", "")
+            is_required = param_name in required_params
+            
+            # Generate appropriate example values
+            if param_type == "array":
+                example_value = '["example1", "example2"]'
+            elif param_type == "boolean":
+                example_value = "true"
+            elif param_type == "integer":
+                example_value = "1"
+            else:
+                if "path" in param_name.lower() or "file" in param_name.lower():
+                    example_value = "path/to/file.py"
+                elif "command" in param_name.lower():
+                    example_value = "ls -la"
+                elif "query" in param_name.lower() or "search" in param_name.lower():
+                    example_value = "search query"
+                elif "url" in param_name.lower():
+                    example_value = "https://example.com"
+                elif "edit_mode" in param_name.lower():
+                    example_value = '"replace_lines"'
+                elif "start_line" in param_name.lower():
+                    example_value = "10"
+                elif "end_line" in param_name.lower():
+                    example_value = "15"
+                elif "position" in param_name.lower():
+                    example_value = "15"
+                else:
+                    example_value = "value"
+            
+            required_marker = " (REQUIRED)" if is_required else " (OPTIONAL)"
+            template_lines.append(f'"{param_name}": {example_value}  // {description}{required_marker}')
+        
+        return "{\n  " + ",\n  ".join(template_lines) + "\n}"
 
 
 def main():

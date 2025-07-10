@@ -101,7 +101,7 @@ class StatusUpdateMessage:
         return {
             "round_number": round_number,
             "task_completed": task_completed,
-            "llm_response_preview": llm_response_preview[:200],  # Limit to 200 characters
+            "llm_response_preview": llm_response_preview,  # 不再截断，显示完整内容
             "tool_calls_summary": tool_calls_summary,
             "current_task_description": current_task_description,
             "error_message": error_message,
@@ -286,7 +286,19 @@ class MessageRouter:
             cleanup_on_init: Whether to cleanup old mailboxes on initialization
         """
         self.workspace_root = workspace_root
-        self.mailbox_root = mailbox_root or os.path.join(workspace_root, "mailboxes")
+        
+        # 🔧 修复：mailboxes应该在outdir下，与workspace同级
+        if mailbox_root is None:
+            # 如果workspace_root以workspace结尾，mailboxes在其父目录（outdir）
+            if os.path.basename(workspace_root) == "workspace":
+                outdir = os.path.dirname(workspace_root)
+                self.mailbox_root = os.path.join(outdir, "mailboxes")
+            else:
+                # 否则假设workspace_root就是outdir，mailboxes在其中
+                self.mailbox_root = os.path.join(workspace_root, "mailboxes")
+        else:
+            self.mailbox_root = mailbox_root
+            
         self.mailboxes = {}
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -656,7 +668,7 @@ class MessageRouter:
 
     def broadcast_message(self, sender_id: str, content: Dict[str, Any], 
                          exclude_agents: Optional[List[str]] = None) -> int:
-        """Broadcast message to all agents"""
+        """Broadcast message to all agents including sender"""
         exclude_agents = exclude_agents or []
         sent_count = 0
         
@@ -667,7 +679,8 @@ class MessageRouter:
                 return 0
                 
             for agent_id in self.mailboxes.keys():
-                if agent_id != sender_id and agent_id not in exclude_agents:
+                # 移除 agent_id != sender_id 条件，让发送者也能收到广播消息
+                if agent_id not in exclude_agents:
                     message = Message(
                         sender_id=sender_id,
                         receiver_id=agent_id,
@@ -787,10 +800,8 @@ class MessageFormatter:
             parts.append(f"  Current Task: {content['current_task_description']}")
         
         if content.get('llm_response_preview'):
-            preview = content['llm_response_preview'][:100]
-            if len(content['llm_response_preview']) > 100:
-                preview += "..."
-            parts.append(f"  LLM Response Preview: {preview}")
+            # 不再截断 LLM 响应预览，显示完整内容
+            parts.append(f"  LLM Response Preview: {content['llm_response_preview']}")
         
         if content.get('tool_calls_summary'):
             tools = ", ".join(content['tool_calls_summary'])
@@ -848,6 +859,7 @@ class MessageFormatter:
         """Format broadcast message"""
         parts = []
         
+        # 处理常见的广播消息字段
         if content.get('announcement'):
             parts.append(f"  📢 Announcement: {content['announcement']}")
         
@@ -860,6 +872,17 @@ class MessageFormatter:
                     parts.append(f"  {key}: {value}")
             else:
                 parts.append(f"  Content: {content['content']}")
+        
+        # 处理其他所有字段（不截断内容）
+        handled_keys = {'announcement', 'type', 'content'}
+        for key, value in content.items():
+            if key not in handled_keys and key not in ['timestamp', 'message_id']:
+                if isinstance(value, dict):
+                    parts.append(f"  {key}:")
+                    for sub_key, sub_value in value.items():
+                        parts.append(f"    {sub_key}: {sub_value}")
+                else:
+                    parts.append(f"  {key}: {value}")
         
         return "\n".join(parts)
     
@@ -899,10 +922,8 @@ class MessageFormatter:
             parts.append(f"  Error Type: {content['error_type']}")
         
         if content.get('stack_trace'):
-            trace = content['stack_trace'][:200]
-            if len(content['stack_trace']) > 200:
-                trace += "..."
-            parts.append(f"  Stack Trace: {trace}")
+            # 不再截断堆栈跟踪信息，显示完整内容
+            parts.append(f"  Stack Trace: {content['stack_trace']}")
         
         if content.get('suggested_action'):
             parts.append(f"  Suggested Action: {content['suggested_action']}")
@@ -918,8 +939,17 @@ class MessageFormatter:
             if key in ['timestamp', 'message_id']:  # Skip metadata
                 continue
             
+            # 不再截断内容，显示完整信息
             if isinstance(value, (dict, list)):
-                parts.append(f"  {key}: {str(value)[:100]}...")
+                # 对于字典和列表，使用更好的格式化
+                if isinstance(value, dict):
+                    # 字典格式化为多行显示
+                    parts.append(f"  {key}:")
+                    for sub_key, sub_value in value.items():
+                        parts.append(f"    {sub_key}: {sub_value}")
+                else:
+                    # 列表格式化
+                    parts.append(f"  {key}: {str(value)}")
             else:
                 parts.append(f"  {key}: {value}")
         

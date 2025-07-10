@@ -35,10 +35,14 @@ class MultiAgentTools:
         # Add thread tracking dictionary
         self.active_threads = {}  # task_id -> thread
         
+        # 🔧 新增：添加terminated agents跟踪
+        self.terminated_agents = set()  # 跟踪已终止的agents
+        self.completed_agents = set()   # 跟踪已完成的agents
+        
         # Save generated agent IDs for reference normalization
         self.generated_agent_ids = []
 
-    def spawn_agibot(self, task_description: str, agent_id: str = None, output_directory: str = None, api_key: str = None, model: str = None, max_loops: int = 25, wait_for_completion: bool = False, shared_workspace: bool = True, streaming: bool = False, **kwargs) -> Dict[str, Any]:
+    def spawn_agibot(self, task_description: str, agent_id: str = None, output_directory: str = None, api_key: str = None, model: str = None, max_loops: int = 25, wait_for_completion: bool = False, shared_workspace: bool = True, MCP_config_file: str = None, prompts_folder: str = None, **kwargs) -> Dict[str, Any]:
         """
         Spawn a new AGIBot instance to handle a specific task asynchronously.
         This allows for complex task decomposition and parallel execution.
@@ -52,7 +56,8 @@ class MultiAgentTools:
             max_loops: Maximum execution loops for the new instance
             wait_for_completion: Whether to wait for the spawned AGIBot to complete (default: False)
             shared_workspace: Whether to share parent's workspace directory (default: True)
-            streaming: Whether to use streaming output (default: False for python interface, overrides config.txt)
+            MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
+            prompts_folder: Custom prompts folder path (optional, defaults to 'prompts'). Allows using different prompt templates and tool interfaces
             **kwargs: Additional parameters for AGIBotClient
             
         Returns:
@@ -66,8 +71,7 @@ class MultiAgentTools:
         from .id_manager import generate_agent_id
         
         try:
-            # 🔧 Fix: Handle parameter type conversion to ensure boolean and numeric parameters are correct types
-            # This solves the parallel execution issue caused by string parameters
+            # Handle parameter type conversion to ensure boolean and numeric parameters are correct types
             try:
                 # Convert boolean parameters
                 if isinstance(wait_for_completion, str):
@@ -76,9 +80,6 @@ class MultiAgentTools:
                 if isinstance(shared_workspace, str):
                     shared_workspace = shared_workspace.lower() in ('true', '1', 'yes', 'on')
                 
-                if isinstance(streaming, str):
-                    streaming = streaming.lower() in ('true', '1', 'yes', 'on')
-                
                 # Convert numeric parameters
                 if isinstance(max_loops, str):
                     max_loops = int(max_loops)
@@ -86,15 +87,21 @@ class MultiAgentTools:
                 # Ensure parameter types are correct
                 wait_for_completion = bool(wait_for_completion)
                 shared_workspace = bool(shared_workspace)
-                streaming = bool(streaming)
                 max_loops = int(max_loops)
                 
             except (ValueError, TypeError) as e:
                 return {
                     "status": "error",
-                    "message": f"Invalid parameter types: max_loops={max_loops}, wait_for_completion={wait_for_completion}, shared_workspace={shared_workspace}, streaming={streaming}",
+                    "message": f"Invalid parameter types: max_loops={max_loops}, wait_for_completion={wait_for_completion}, shared_workspace={shared_workspace}",
                     "error": str(e)
                 }
+            
+            # Get streaming configuration from config.txt
+            try:
+                from config_loader import get_streaming
+                streaming = get_streaming()
+            except:
+                streaming = False  # Default fallback
             
             # Import AGIBot Client from main module
             import sys
@@ -131,13 +138,9 @@ class MultiAgentTools:
             # Normalize Agent references in task description
             task_description = self._normalize_agent_references(task_description, agent_id)
             
-            # Save original output_directory for comparison
-            original_output_directory = output_directory
-            
             # Determine the parent AGIBot's working directory
             if shared_workspace:
                 # In shared workspace mode, always use parent AGIBot's output directory
-                # Ignore any provided output_directory to ensure true workspace sharing
                 if hasattr(self, 'workspace_root') and self.workspace_root:
                     # If workspace_root ends with 'workspace', use its parent directory
                     if os.path.basename(self.workspace_root) == 'workspace':
@@ -165,8 +168,6 @@ class MultiAgentTools:
                 if output_directory is None:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     output_directory = f"output_{timestamp}"
-                else:
-                    pass
             
             # Get current API configuration if not provided
             if api_key is None:
@@ -198,25 +199,15 @@ class MultiAgentTools:
             
             if shared_workspace:
                 # For shared workspace, we need child AGIBot to work in parent's workspace
-                # Since AGIBotMain always creates "workspace" subdir under its output dir,
-                # we need to give child the parent's base output directory so that:
-                # parent workspace = parent_output/workspace = child_output/workspace = same directory
-                
-                # Get parent's base output directory (one level up from workspace)
                 if hasattr(self, 'workspace_root') and self.workspace_root:
                     if os.path.basename(self.workspace_root) == 'workspace':
                         parent_output_dir = os.path.dirname(self.workspace_root)
                     else:
                         parent_output_dir = self.workspace_root
                 else:
-                    # Fallback: use current working directory pattern
                     parent_output_dir = abs_output_dir
                 
-                # Child AGIBot uses parent's base output directory
-                # This way, child will create workspace at parent_output/workspace = parent's workspace
                 workspace_dir = parent_output_dir
-                
-                # Ensure parent's workspace exists
                 parent_workspace = os.path.join(parent_output_dir, "workspace")
                 os.makedirs(parent_workspace, exist_ok=True)
                 
@@ -224,6 +215,51 @@ class MultiAgentTools:
                 # For independent workspace, create separate directory structure
                 workspace_dir = os.path.join(abs_output_dir, "workspace")
                 os.makedirs(workspace_dir, exist_ok=True)
+
+            # Validate MCP configuration file if specified
+            if MCP_config_file is not None:
+                mcp_config_path = None
+                search_locations = []
+                
+                # If absolute path provided, use as-is
+                if os.path.isabs(MCP_config_file):
+                    if os.path.exists(MCP_config_file):
+                        mcp_config_path = MCP_config_file
+                    search_locations.append(MCP_config_file)
+                else:
+                    # Search in multiple locations for relative path
+                    potential_paths = [
+                        # 1. Current working directory
+                        os.path.join(os.getcwd(), MCP_config_file),
+                        # 2. Workspace directory
+                        os.path.join(workspace_dir, MCP_config_file),
+                        # 3. Config directory in project root
+                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", MCP_config_file),
+                        # 4. Project root directory  
+                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), MCP_config_file),
+                        # 5. Relative to workspace root if it exists
+                        os.path.join(self.workspace_root, MCP_config_file) if hasattr(self, 'workspace_root') and self.workspace_root else None,
+                    ]
+                    
+                    # Filter out None values and check each path
+                    for path in potential_paths:
+                        if path is not None:
+                            search_locations.append(path)
+                            if os.path.exists(path):
+                                mcp_config_path = path
+                                break
+                
+                # If MCP config file not found, return error
+                if mcp_config_path is None:
+                    return {
+                        "status": "error",
+                        "message": f"MCP configuration file '{MCP_config_file}' not found. Searched locations: {search_locations}",
+                        "agent_id": agent_id,
+                        "searched_locations": search_locations
+                    }
+                
+                # Update MCP_config_file to use the found absolute path
+                MCP_config_file = mcp_config_path
 
             # Create status file for tracking
             status_file_path = os.path.join(abs_output_dir, f".agibot_spawn_{agent_id}_status.json")
@@ -246,7 +282,7 @@ class MultiAgentTools:
                 with open(status_file_path, 'w', encoding='utf-8') as f:
                     json.dump(initial_status, f, indent=2, ensure_ascii=False)
             except Exception as e:
-                print_agent("manager", f"⚠️ Warning: Could not create status file: {e}")
+                print_current(f"⚠️ Warning: Could not create status file: {e}")
             
             # Define the async task execution function
             def execute_agibot_task():
@@ -256,23 +292,20 @@ class MultiAgentTools:
                     # Print spawn start info directly to terminal
                     print_agent(task_id, f"🚀 AGIBot {task_id} started")
                     
-                    # 🔧 Fix display tag issue: set current agent ID
+                    # Set current agent ID
                     from .print_system import set_agent_id
                     set_agent_id(task_id)
                     
                     # Register AGIBot mailbox
                     try:
                         from .message_system import get_message_router
-                        # 🔧 Fix: Avoid cleaning existing mailboxes when starting new agent
                         router = get_message_router(workspace_dir, cleanup_on_init=False)
                         router.register_agent(task_id)
                         print_agent(task_id, f"📬 Mailbox registered for agent {task_id}")
                     except Exception as e:
                         print_agent(task_id, f"⚠️ Warning: Failed to register mailbox: {e}")
-                        # Continue execution, but log the error
                     
-                    # Create AGIBot client - no output redirection
-                    # 🔧 Fix: Use instance's debug_mode, use default value if not specified in kwargs
+                    # Create AGIBot client
                     debug_mode_to_use = kwargs.get('debug_mode', self.debug_mode)
                     client = AGIBotClient(
                         api_key=api_key,
@@ -281,10 +314,12 @@ class MultiAgentTools:
                         detailed_summary=kwargs.get('detailed_summary', True),
                         single_task_mode=kwargs.get('single_task_mode', True),
                         interactive_mode=kwargs.get('interactive_mode', False),
-                        streaming=streaming
+                        streaming=streaming,
+                        MCP_config_file=MCP_config_file,
+                        prompts_folder=prompts_folder
                     )
                     
-                    # Execute the task - use workspace directory as working directory
+                    # Execute the task
                     response = client.chat(
                         messages=[{"role": "user", "content": task_description}],
                         dir=workspace_dir,
@@ -292,11 +327,45 @@ class MultiAgentTools:
                         continue_mode=kwargs.get('continue_mode', False)
                     )
                     
+                    # 🔧 修复：检查是否收到了terminate信号
+                    is_terminated = False
+                    if isinstance(response.get('message'), str) and 'AGENT_TERMINATED' in response.get('message', ''):
+                        is_terminated = True
+                        print_agent(task_id, f"🛑 Agent {task_id} received terminate signal and will exit")
+                    
                     # Update status file with completion
-                    # 🔧 Fix: Distinguish between real failure and reaching max rounds
-                    if response["success"]:
+                    if is_terminated:
+                        # 🔧 新增：处理terminate信号的状态更新
+                        terminate_status = {
+                            "agent_id": task_id,
+                            "status": "terminated",
+                            "task_description": task_description,
+                            "start_time": initial_status["start_time"],
+                            "completion_time": datetime.now().isoformat(),
+                            "output_directory": abs_output_dir,
+                            "working_directory": workspace_dir,
+                            "shared_workspace": shared_workspace,
+                            "model": model,
+                            "max_loops": max_loops,
+                            "error": None,
+                            "success": True,
+                            "terminated": True,
+                            "response": response
+                        }
+                        
+                        try:
+                            with open(status_file_path, 'w', encoding='utf-8') as f:
+                                json.dump(terminate_status, f, indent=2, ensure_ascii=False)
+                                f.flush()
+                                import os
+                                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                            print_agent(task_id, f"📁 Status file updated: terminated")
+                        except Exception as e:
+                            print_agent(task_id, f"⚠️ Warning: Could not update status file for termination: {e}")
+                            
+                    elif response["success"]:
                         completion_status = {
-                            "task_id": task_id,
+                            "agent_id": task_id,
                             "status": "completed",
                             "task_description": task_description,
                             "start_time": initial_status["start_time"],
@@ -310,6 +379,19 @@ class MultiAgentTools:
                             "success": True,
                             "response": response
                         }
+                        
+                        # 🔧 新增：将agent添加到completed_agents集合
+                        if hasattr(self, 'completed_agents'):
+                            self.completed_agents.add(task_id)
+                        
+                        try:
+                            with open(status_file_path, 'w', encoding='utf-8') as f:
+                                json.dump(completion_status, f, indent=2, ensure_ascii=False)
+                                f.flush()
+                                import os
+                                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                        except Exception as e:
+                            print_agent(task_id, f"⚠️ Warning: Could not update status file: {e}")
                     else:
                         response_message = response.get('message', 'Task failed')
                         if "reached maximum execution rounds" in response_message or "max_rounds_reached" in response_message:
@@ -320,7 +402,7 @@ class MultiAgentTools:
                             error_message = response_message
                         
                         completion_status = {
-                            "task_id": task_id,
+                            "agent_id": task_id,
                             "status": status,
                             "task_description": task_description,
                             "start_time": initial_status["start_time"],
@@ -334,22 +416,22 @@ class MultiAgentTools:
                             "success": False,
                             "response": response
                         }
+                        
+                        try:
+                            with open(status_file_path, 'w', encoding='utf-8') as f:
+                                json.dump(completion_status, f, indent=2, ensure_ascii=False)
+                                f.flush()
+                                import os
+                                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                        except Exception as e:
+                            print_agent(task_id, f"⚠️ Warning: Could not update status file: {e}")
                     
-                    try:
-                        with open(status_file_path, 'w', encoding='utf-8') as f:
-                            json.dump(completion_status, f, indent=2, ensure_ascii=False)
-                            # 🔧 Fix timing race condition: ensure status file is fully written before ending
-                            f.flush()
-                            import os
-                            os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
-                    except Exception as e:
-                        print_agent(task_id, f"⚠️ Warning: Could not update status file: {e}")
-                    
-                    # 🔧 Add longer delay to ensure status file is fully written to disk
                     time.sleep(0.5)
                     
-                    # Print completion status directly to terminal
-                    if response["success"]:
+                    # Print completion status
+                    if is_terminated:
+                        print_agent(task_id, f"🛑 AGIBot spawn {task_id} terminated successfully")
+                    elif response["success"]:
                         print_agent(task_id, f"✅ AGIBot spawn {task_id} completed successfully")
                     else:
                         response_message = response.get('message', 'Unknown error')
@@ -358,7 +440,11 @@ class MultiAgentTools:
                         else:
                             print_agent(task_id, f"❌ AGIBot spawn {task_id} failed: {response_message}")
                     
-                    # 🔧 Fix display tag issue: reset agent ID after task completion
+                    # 🔧 修复：在完成后从active_threads中移除
+                    if hasattr(self, 'active_threads') and task_id in self.active_threads:
+                        del self.active_threads[task_id]
+                    
+                    # Reset agent ID after task completion
                     set_agent_id(None)
                         
                 except Exception as e:
@@ -367,7 +453,7 @@ class MultiAgentTools:
                     
                     # Update status file with error
                     error_status = {
-                        "task_id": task_id,
+                        "agent_id": task_id,
                         "status": "failed",
                         "task_description": task_description,
                         "start_time": initial_status["start_time"],
@@ -388,17 +474,19 @@ class MultiAgentTools:
                     try:
                         with open(status_file_path, 'w', encoding='utf-8') as f:
                             json.dump(error_status, f, indent=2, ensure_ascii=False)
-                            # 🔧 Fix timing race condition: ensure error status file is also fully written
                             f.flush()
                             import os
                             os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
                     except Exception as e:
                         print_agent(task_id, f"⚠️ Warning: Could not update status file with error: {e}")
                     
-                    # 🔧 Add longer delay to ensure status file is fully written to disk
+                    # 🔧 修复：在出错后也从active_threads中移除
+                    if hasattr(self, 'active_threads') and task_id in self.active_threads:
+                        del self.active_threads[task_id]
+                    
                     time.sleep(0.5)
                     
-                    # 🔧 Fix display tag issue: reset agent ID after exception handling
+                    # Reset agent ID after exception handling
                     set_agent_id(None)
             
             # Start the task in a separate thread
@@ -417,16 +505,13 @@ class MultiAgentTools:
             # Save generated agent ID for reference normalization
             self.generated_agent_ids.append(task_id)
             
-            # Simple parent status (no details to avoid confusion)
-            pass
-            
             # Base result information
             result = {
                 "status": "success", 
                 "message": f"AGIBot instance spawned successfully with agent ID: {agent_id}",
                 "agent_id": agent_id,
                 "output_directory": abs_output_dir,
-                "working_directory": workspace_dir,  # The directory where child AGIBot runs
+                "working_directory": workspace_dir,
                 "workspace_files_directory": os.path.join(abs_output_dir, "workspace") if shared_workspace else workspace_dir,
                 "task_description": task_description,
                 "model": model,
@@ -439,7 +524,7 @@ class MultiAgentTools:
             }
             
             if wait_for_completion:
-                print_agent("manager", f"⏳ Waiting for AGIBot spawn {task_id} to complete...")
+                print_agent(f"⏳ Waiting for AGIBot spawn {task_id} to complete...")
                 
                 result["note"] = "Waiting for task completion..."
                 
@@ -463,11 +548,11 @@ class MultiAgentTools:
                         "note": f"Task thread completed but status file could not be read: {e}"
                     })
                 
-                print_agent("manager", f"✅ Spawn {task_id} completed")
+                print_agent(f"✅ Spawn {task_id} completed")
                 
             else:
                 result["note"] = f"✅ AGIBot {task_id} is running asynchronously in background. Task will execute independently and send messages when completed."
-                result["success"] = True  # Explicitly mark as success
+                result["success"] = True
                 result["thread_id"] = thread.ident if thread else None
             
             return result
@@ -478,332 +563,13 @@ class MultiAgentTools:
                 "message": f"Failed to spawn AGIBot instance: {str(e)}",
                 "task_id": task_id if 'task_id' in locals() else "unknown"
             }
-    
-    def wait_for_agibot_spawns(self, task_ids: list = None, output_directories: list = None, check_interval: int = 5, max_wait_time: int = 3600) -> Dict[str, Any]:
-        """
-        Wait for multiple spawned AGIBot instances to complete.
-        
-        Args:
-            task_ids: List of task IDs to wait for (optional, will use session-tracked tasks if not provided)
-            output_directories: List of output directories to check (optional, only used if task_ids is also provided)
-            check_interval: Interval in seconds between status checks (default: 5)
-            max_wait_time: Maximum time to wait in seconds (default: 3600 = 1 hour)
-            
-        Returns:
-            Dict containing completion status of all tasks
-            
-        Note:
-            - If no task_ids provided, will use tasks spawned in current session
-            - No longer auto-discovers all historical tasks to avoid confusion
-        """
-        import time
-        import json
-        import glob
-        from datetime import datetime
-        
-        try:
-            # 🔧 Fix: Handle all parameter type conversions to ensure numeric parameters are correct types
-            # Fix type comparison error: ensure check_interval and max_wait_time are numeric types
-            try:
-                check_interval = int(check_interval) if check_interval else 5
-                max_wait_time = int(max_wait_time) if max_wait_time else 3600
-            except (ValueError, TypeError) as e:
-                return {
-                    "status": "error",
-                    "message": f"Invalid parameter types: check_interval={check_interval}, max_wait_time={max_wait_time}",
-                    "error": str(e)
-                }
-            
-            print_current(f"🔧 Parameter validation: check_interval={check_interval}s, max_wait_time={max_wait_time}s")
-            
-            # 🔧 Fix: Handle task_ids parameter type conversion
-            if task_ids is not None:
-                # If task_ids is a string (JSON format), try to parse it as a list
-                if isinstance(task_ids, str):
-                    import json
-                    try:
-                        task_ids = json.loads(task_ids)
-                        print_current(f"🔧 Parsed task_ids from string: {task_ids}")
-                    except json.JSONDecodeError as e:
-                        return {
-                            "status": "error",
-                            "message": f"Invalid task_ids format. Expected list or JSON array string, got: {task_ids}",
-                            "error": str(e)
-                        }
-                
-                # Ensure task_ids is a list
-                if not isinstance(task_ids, list):
-                    return {
-                        "status": "error",
-                        "message": f"task_ids must be a list, got {type(task_ids).__name__}: {task_ids}"
-                    }
-            
-            # Also handle output_directories parameter
-            if output_directories is not None:
-                if isinstance(output_directories, str):
-                    import json
-                    try:
-                        output_directories = json.loads(output_directories)
-                        print_current(f"🔧 Parsed output_directories from string: {output_directories}")
-                    except json.JSONDecodeError:
-                        # If not JSON, might be a single directory path
-                        output_directories = [output_directories]
-                
-                if not isinstance(output_directories, list):
-                    output_directories = [output_directories]
-            
-            # Prioritize session-tracked tasks if task_ids not provided
-            if not task_ids and not output_directories:
-                # Use tasks started in current session
-                if hasattr(self, 'session_spawned_tasks') and self.session_spawned_tasks:
-                    task_ids = list(self.session_spawned_tasks)
-                else:
-                    return {
-                        "status": "error",
-                        "message": "No AGIBot spawn tasks found in current session. Please provide task_ids or spawn AGIBots first.",
-                        "discovered_tasks": 0
-                    }
-            
-            # If task_ids provided, use the provided task IDs
-            if task_ids:
-                task_info = []
-                print_current(f"🔍 Searching for status files for task IDs: {task_ids}")
-                
-                for task_id in task_ids:
-                    # 🔧 Modify: Skip root directory scan, only search for status files in output_* directories
-                    possible_status_files = []
-                    
-                    # Check output_* directories under current directory
-                    for output_pattern in glob.glob("output_*"):
-                        if os.path.isdir(output_pattern):
-                            status_path = os.path.join(output_pattern, f".agibot_spawn_{task_id}_status.json")
-                            if os.path.exists(status_path):
-                                possible_status_files.append((status_path, output_pattern))
-                    
-                    if possible_status_files:
-                        # Select the latest status file (sorted by directory name, usually containing timestamp)
-                        possible_status_files.sort(key=lambda x: x[1], reverse=True)
-                        status_file, output_dir = possible_status_files[0]
-                        task_info.append({"task_id": task_id, "output_dir": output_dir, "status_file": status_file})
-                    else:
-                        print_current(f"⚠️ Warning: Status file not found for task {task_id}")
-                        print_current(f"🔍 Searched only in output_* subdirectories (root directory scanning disabled)")
-                
-                if not task_info:
-                    return {
-                        "status": "error",
-                        "message": f"No valid status files found for provided task IDs: {task_ids}",
-                        "provided_task_ids": task_ids,
-                        "parameters_used": {
-                            "task_ids": str(task_ids),
-                            "check_interval": str(check_interval),
-                            "max_wait_time": str(max_wait_time)
-                        }
-                    }
-            # Handle output_directories parameter (if provided)
-            if output_directories and task_ids:
-                # If both task_ids and output_directories are provided, use specified directories
-                task_info = []
-                for task_id, output_dir in zip(task_ids, output_directories):
-                    status_file = os.path.join(output_dir, f".agibot_spawn_{task_id}_status.json")
-                    task_info.append({"task_id": task_id, "output_dir": output_dir, "status_file": status_file})
-            
-            if not task_info:
-                return {
-                    "status": "error",
-                    "message": "No valid tasks found to wait for",
-                    "provided_task_ids": task_ids,
-                    "provided_directories": output_directories
-                }
-            
-            print_system(f"⏳ Waiting for {len(task_info)} AGIBot spawn tasks to complete...")
-            print_system(f"🔍 Check interval: {check_interval} seconds")
-            print_system(f"⏰ Max wait time: {max_wait_time} seconds")
-            
-            start_time = time.time()
-            completed_tasks = {}
-            
-            while True:
-                current_time = time.time()
-                elapsed_time = current_time - start_time
-                
-                # Check if max wait time exceeded
-                if elapsed_time > max_wait_time:
-                    return {
-                        "status": "timeout",
-                        "message": f"Maximum wait time ({max_wait_time} seconds) exceeded",
-                        "elapsed_time": elapsed_time,
-                        "completed_tasks": completed_tasks,
-                        "remaining_tasks": [t["task_id"] for t in task_info if t["task_id"] not in completed_tasks]
-                    }
-                
-                # Check status of each task
-                pending_tasks = []
-                for task in task_info:
-                    task_id = task["task_id"]
-                    
-                    # Skip already completed tasks
-                    if task_id in completed_tasks:
-                        continue
-                    
-                    status_file = task["status_file"]
-                    
-                    # 🔧 Improve: Thread alive check - Add time delay check to avoid false positives
-                    thread_alive = True  # Assume thread is alive by default
-                    thread_dead_confirmed = False
-                    if hasattr(self, 'active_threads') and task_id in self.active_threads:
-                        thread = self.active_threads[task_id]
-                        thread_alive = thread.is_alive()
-                        
-                        # If thread is not alive, wait a short time again to confirm, avoid timing issues
-                        if not thread_alive:
-                            time.sleep(0.5)  # Wait 500ms
-                            thread_alive = thread.is_alive()  # Check again
-                            if not thread_alive:
-                                thread_dead_confirmed = True
-                                print_agent(task_id, f"⚠️ Thread for task {task_id} confirmed dead after double check")
-                    
-                    if os.path.exists(status_file):
-                        try:
-                            with open(status_file, 'r', encoding='utf-8') as f:
-                                status_data = json.load(f)
-                            
-                            # 🔧 Fix timing race condition: Avoid falsely marking normal completion tasks
-                            # Only mark as failed if thread actually died and status file still shows running
-                            if (status_data["status"] == "running" and thread_dead_confirmed and
-                                elapsed_time > 10):  # Only check for death after at least 10 seconds of running
-                                
-                                # 🔧 Use multiple retry mechanism, give status file more time to write
-                                retry_count = 0
-                                max_retries = 8  # Increase retry count
-                                retry_delay = 0.3  # 300ms interval
-                                status_updated = False
-                                
-                                print_agent(task_id, f"⏳ Starting {max_retries} retries to check status file update...")
-                                
-                                while retry_count < max_retries and not status_updated:
-                                    retry_count += 1
-                                    time.sleep(retry_delay)
-                                    
-                                    try:
-                                        with open(status_file, 'r', encoding='utf-8') as f:
-                                            updated_status = json.load(f)
-                                        
-                                        # If status file has been updated to a non-running state, it means the task completed normally
-                                        if updated_status["status"] != "running":
-                                            print_agent(task_id, f"✅ Task {task_id} completed normally (status updated after {retry_count} retries)")
-                                            status_data = updated_status  # Use updated status
-                                            status_updated = True
-                                        else:
-                                            print_agent(task_id, f"🔄 Retry {retry_count}/{max_retries}: Status still running, waiting...")
-                                    
-                                    except Exception as e:
-                                        print_agent(task_id, f"⚠️ Error re-reading status file on retry {retry_count}: {e}")
-                                        # Continue retrying
-                                
-                                # If all retries failed, mark as true abnormal exit
-                                if not status_updated:
-                                    print_agent(task_id, f"💀 Task {task_id} thread died without updating status file (confirmed after {max_retries} retries)")
-                                    # Update status file
-                                    status_data["status"] = "failed"
-                                    status_data["completion_time"] = datetime.now().isoformat()
-                                    status_data["error"] = "Thread terminated unexpectedly without updating status"
-                                    status_data["success"] = False
-                                    
-                                    try:
-                                        with open(status_file, 'w', encoding='utf-8') as f:
-                                            json.dump(status_data, f, indent=2, ensure_ascii=False)
-                                        print_agent(task_id, f"📝 Updated status file for dead thread {task_id}")
-                                    except Exception as e:
-                                        print_agent(task_id, f"⚠️ Failed to update status file for {task_id}: {e}")
-                                else:
-                                    print_agent(task_id, f"🎯 Successfully detected status update after retries")
-                            
-                            # 🔧 Fix: Only add to completed_tasks when task is truly completed
-                            if status_data["status"] != "running":
-                                # Task is completed (success or failure)
-                                completed_tasks[task_id] = {
-                                    "status": status_data["status"],
-                                    "completion_time": status_data["completion_time"],
-                                    "output_directory": task["output_dir"],
-                                    "success": status_data.get("success", status_data["status"] == "completed"),
-                                    "error": status_data.get("error", None),
-                                    "log_file": status_data.get("log_file", None)
-                                }
-                                
-                                print_agent(task_id, f"✅ Task {task_id}: {status_data['status'].upper()}")
-                                
-                                # Clean up thread reference
-                                if hasattr(self, 'active_threads') and task_id in self.active_threads:
-                                    del self.active_threads[task_id]
-                            else:
-                                # Task is still running
-                                pending_tasks.append(task)
-                            
-                        except Exception as e:
-                            print_agent(task_id, f"⚠️ Error reading status for task {task_id}: {e}")
-                            pending_tasks.append(task)
-                    else:
-                        # Status file doesn't exist yet
-                        if thread_dead_confirmed and hasattr(self, 'active_threads') and task_id in self.active_threads:
-                            # Thread is dead but no status file - only mark as failed after running for a long time
-                            if elapsed_time > 30:  # Only consider it a true failure after at least 30 seconds of running
-                                print_agent(task_id, f"💀 Task {task_id} thread died without creating status file")
-                                completed_tasks[task_id] = {
-                                    "status": "failed",
-                                    "completion_time": datetime.now().isoformat(),
-                                    "output_directory": task["output_dir"],
-                                    "success": False,
-                                    "error": "Thread terminated before creating status file",
-                                    "log_file": None
-                                }
-                                del self.active_threads[task_id]
-                            else:
-                                # Still in startup phase, continue waiting
-                                pending_tasks.append(task)
-                        else:
-                            # Status file doesn't exist yet, task might still be starting
-                            pending_tasks.append(task)
-                
-                # All tasks completed
-                if not pending_tasks:
-                    successful_tasks = sum(1 for t in completed_tasks.values() if t["success"])
-                    failed_tasks = len(completed_tasks) - successful_tasks
-                    
-                    print_system(f"🎉 All tasks completed! Success: {successful_tasks}, Failed: {failed_tasks}")
-                    
-                    return {
-                        "status": "completed",
-                        "message": f"All {len(completed_tasks)} tasks completed",
-                        "elapsed_time": elapsed_time,
-                        "total_tasks": len(completed_tasks),
-                        "successful_tasks": successful_tasks,
-                        "failed_tasks": failed_tasks,
-                        "completed_tasks": completed_tasks
-                    }
-                
-                # Update task_info to only include pending tasks
-                task_info = pending_tasks
-                
-                # Show progress
-                print_system(f"⏳ {len(completed_tasks)} completed, {len(pending_tasks)} pending... (elapsed: {elapsed_time:.1f}s)")
-                
-                # Wait before next check
-                time.sleep(check_interval)
-                
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error while waiting for AGIBot spawns: {str(e)}",
-                "error": str(e)
-            }
 
-    def send_message_to_agent(self, receiver_id: str, message_type: str, content: dict, priority: str = "normal") -> Dict[str, Any]:
+    def send_message_to_agent_or_manager(self, receiver_id: str, message_type: str, content: dict, priority: str = "normal") -> Dict[str, Any]:
         """
-        Send message to specified agent
+        Send message to specified agent or manager. Use 'manager' as receiver_id to send messages to the manager.
         
         Args:
-            receiver_id: Receiver agent ID
+            receiver_id: Receiver agent ID (use 'manager' for manager)
             message_type: Message type (status_update, task_request, collaboration, broadcast, system, error)
             content: Message content
             priority: Message priority (low, normal, high, urgent)
@@ -829,7 +595,7 @@ class MultiAgentTools:
             except KeyError:
                 msg_priority = MessagePriority.NORMAL
             
-            # 🔧 Get current agent ID as sender_id, if not, use manager
+            # Get current agent ID as sender_id, if not, use manager
             current_agent_id = get_agent_id()
             sender_id = current_agent_id if current_agent_id else "manager"
             
@@ -842,45 +608,53 @@ class MultiAgentTools:
                 priority=msg_priority
             )
             
-            # 🔧 Use the correct sender's mailbox to send the message
+            # Use the correct sender's mailbox to send the message
             sender_mailbox = router.get_mailbox(sender_id)
             if not sender_mailbox:
                 sender_mailbox = router.register_agent(sender_id)
+                if not sender_mailbox:
+                    return {"status": "error", "message": f"Failed to register sender agent: {sender_id}"}
             
             # Send message
             success = sender_mailbox.send_message(message)
             
-            # 🔧 Fix: Manually trigger message processing, instead of background processing
+            # 🔧 修复：发送消息后立即触发路由处理，确保消息被传递到目标邮箱
             if success:
                 try:
                     processed_count = router.process_all_messages_once()
-                    if processed_count > 0:
-                        print_current(f"📬 Processed {processed_count} messages after sending")
                 except Exception as e:
                     print_current(f"⚠️ Error processing messages after send: {e}")
-            
-            return {
-                "status": "success" if success else "failed",
-                "message": "Message sent successfully" if success else "Failed to send message",
-                "receiver_id": receiver_id,
-                "message_type": message_type,
-                "message_id": message.message_id
-            }
+                
+                return {
+                    "status": "success",
+                    "message": "Message sent successfully",
+                    "message_id": message.message_id,
+                    "sender_id": sender_id,
+                    "receiver_id": receiver_id,
+                    "message_type": message_type,
+                    "priority": priority
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "message": "Failed to send message",
+                    "sender_id": sender_id,
+                    "receiver_id": receiver_id,
+                    "message_type": message_type
+                }
             
         except Exception as e:
             return {
                 "status": "error",
                 "message": f"Error sending message: {str(e)}",
-                "receiver_id": receiver_id,
-                "message_type": message_type
+                "receiver_id": receiver_id if 'receiver_id' in locals() else "unknown"
             }
 
-    def get_agent_messages(self, agent_id: str = "manager", include_read: bool = False) -> Dict[str, Any]:
+    def get_agent_messages(self, include_read: bool = False) -> Dict[str, Any]:
         """
-        Get messages for specified agent
+        Get messages from current agent's mailbox. Messages are automatically marked as read after retrieval.
         
         Args:
-            agent_id: Agent ID
             include_read: Whether to include read messages
             
         Returns:
@@ -888,73 +662,51 @@ class MultiAgentTools:
         """
         try:
             from .message_system import get_message_router
+            from .print_system import get_agent_id
             import glob
             
-            # 🔧 Fix: Try to find agent mailbox from multiple possible workspace paths
-            workspace_paths = []
+            # Get current agent ID
+            current_agent_id = get_agent_id()
+            agent_id = current_agent_id if current_agent_id else "manager"
             
-            # Add current workspace_root
-            if self.workspace_root:
-                workspace_paths.append(self.workspace_root)
-            
-            # Add current directory
-            workspace_paths.append(os.getcwd())
-            
-            # Search all output_* directories (these are usually agent working directories)
-            output_dirs = glob.glob("output_*")
-            for output_dir in output_dirs:
-                if os.path.isdir(output_dir):
-                    workspace_paths.append(os.path.abspath(output_dir))
-            
-            # Deduplicate
-            workspace_paths = list(set(workspace_paths))
-            
-            # Try to get agent mailbox from all possible workspace paths
-            mailbox = None
-            found_workspace = None
-            all_available_agents = set()
-            
-            for workspace_path in workspace_paths:
-                try:
-                    router = get_message_router(workspace_path, cleanup_on_init=False)
-                    temp_mailbox = router.get_mailbox(agent_id)
+            # 直接使用workspace_root
+            try:
+                router = get_message_router(self.workspace_root, cleanup_on_init=False)
+                mailbox = router.get_mailbox(agent_id)
+                
+                if not mailbox:
+                    # Collect available agents for error reporting
                     available_agents = router.get_all_agents()
-                    all_available_agents.update(available_agents)
-                    
-                    if temp_mailbox:
-                        mailbox = temp_mailbox
-                        found_workspace = workspace_path
-                        break  # Stop searching once found
-                        
-                except Exception as e:
-                    # Ignore single path errors, continue trying other paths
-                    continue
-            
-            if not mailbox:
-                # Provide more detailed error information, including all found agents
-                available_agents_list = list(all_available_agents)
-                if available_agents_list:
                     return {
                         "status": "error", 
-                        "message": f"Agent '{agent_id}' not found in any workspace. Available agents: {', '.join(available_agents_list)}",
-                        "available_agents": available_agents_list,
-                        "searched_workspaces": workspace_paths
+                        "message": f"Agent '{agent_id}' mailbox not found",
+                        "agent_id": agent_id,
+                        "workspace_root": self.workspace_root,
+                        "available_agents": available_agents
                     }
-                else:
-                    return {
-                        "status": "error", 
-                        "message": f"Agent '{agent_id}' not found. No agents are currently registered in any workspace.",
-                        "available_agents": [],
-                        "searched_workspaces": workspace_paths
-                    }
+                
+                found_workspace = self.workspace_root
+                
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error accessing workspace: {str(e)}",
+                    "agent_id": agent_id,
+                    "workspace_root": self.workspace_root
+                }
             
             # Get messages
             if include_read:
-                # Get all messages (including read)
                 messages = mailbox.get_all_messages()
             else:
-                # Only get unread messages
                 messages = mailbox.get_unread_messages()
+            
+            # Automatically mark messages as read after retrieval
+            for message in messages:
+                try:
+                    mailbox.mark_as_read(message.message_id)
+                except Exception as e:
+                    print_current(f"⚠️ Warning: Could not mark message {message.message_id} as read: {e}")
             
             # Convert message format
             messages_data = [msg.to_dict() for msg in messages]
@@ -962,39 +714,284 @@ class MultiAgentTools:
             # Get mailbox statistics
             stats = mailbox.get_message_stats()
             
-            return {
+            result = {
                 "status": "success",
                 "agent_id": agent_id,
                 "message_count": len(messages_data),
                 "messages": messages_data,
                 "mailbox_stats": stats,
-                "found_in_workspace": found_workspace
+                "found_in_workspace": found_workspace,
+                "auto_marked_as_read": len(messages_data)
             }
+            
+            return result
             
         except Exception as e:
             return {
                 "status": "error",
                 "message": f"Error getting messages: {str(e)}",
-                "agent_id": agent_id
+                "agent_id": agent_id if 'agent_id' in locals() else "unknown"
             }
 
-    def send_message_to_manager(self, message_content: str, message_type: str = "system") -> Dict[str, Any]:
+    def get_agent_messages_summary(self, include_read: bool = False) -> Dict[str, Any]:
         """
-        Send message to manager (convenience function)
+        Get a summary of agent messages without marking them as read.
+        Useful for debugging result display issues.
         
         Args:
-            message_content: Message content
-            message_type: Message type (system, status_update, task_request, etc.) - default: system
+            include_read: Whether to include read messages
             
         Returns:
-            Send result
+            Message summary and diagnostic information
         """
-        # Convenience function: internally calls the generic send_message_to_agent
-        return self.send_message_to_agent(
-            receiver_id="manager",
-            message_type=message_type,
-            content={"message": message_content}
-        )
+        try:
+            from .message_system import get_message_router
+            from .print_system import get_agent_id
+            import json
+            
+            # Get current agent ID
+            current_agent_id = get_agent_id()
+            agent_id = current_agent_id if current_agent_id else "manager"
+            
+            router = get_message_router(self.workspace_root, cleanup_on_init=False)
+            mailbox = router.get_mailbox(agent_id)
+            
+            if not mailbox:
+                return {
+                    "status": "error", 
+                    "message": f"Agent '{agent_id}' mailbox not found",
+                    "agent_id": agent_id,
+                    "workspace_root": self.workspace_root
+                }
+            
+            # Get messages WITHOUT marking as read
+            if include_read:
+                messages = mailbox.get_all_messages()
+            else:
+                messages = mailbox.get_unread_messages()
+            
+            # Create summary without full message content
+            message_summaries = []
+            total_content_size = 0
+            
+            for i, msg in enumerate(messages):
+                try:
+                    # Calculate content size
+                    content_str = json.dumps(msg.content) if hasattr(msg, 'content') else "{}"
+                    content_size = len(content_str)
+                    total_content_size += content_size
+                    
+                    summary = {
+                        "message_id": msg.message_id,
+                        "sender_id": msg.sender_id,
+                        "receiver_id": msg.receiver_id,
+                        "message_type": msg.message_type.value if hasattr(msg.message_type, 'value') else str(msg.message_type),
+                        "timestamp": msg.timestamp,
+                        "delivered": getattr(msg, 'delivered', False),
+                        "read": getattr(msg, 'read', False),
+                        "content_size_bytes": content_size,
+                        "content_preview": content_str[:100] + "..." if len(content_str) > 100 else content_str
+                    }
+                    message_summaries.append(summary)
+                    
+                except Exception as e:
+                    print_current(f"⚠️ Error processing message {i+1}: {e}")
+                    message_summaries.append({
+                        "message_id": getattr(msg, 'message_id', f'unknown_{i}'),
+                        "error": f"Failed to process: {str(e)}"
+                    })
+            
+            # Get mailbox statistics
+            stats = mailbox.get_message_stats()
+            
+            result = {
+                "status": "success",
+                "agent_id": agent_id,
+                "workspace_root": self.workspace_root,
+                "mailbox_path": mailbox.inbox_dir,
+                "message_count": len(messages),
+                "total_content_size_bytes": total_content_size,
+                "message_summaries": message_summaries,
+                "mailbox_stats": stats,
+                "diagnostic_info": {
+                    "mailbox_exists": os.path.exists(mailbox.inbox_dir),
+                    "include_read": include_read,
+                    "messages_not_marked_as_read": True
+                }
+            }
+            
+            return result
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error getting message summary: {str(e)}",
+                "agent_id": agent_id if 'agent_id' in locals() else "unknown"
+            }
+
+    def diagnose_mailbox_paths(self) -> Dict[str, Any]:
+        """
+        Diagnose mailbox path configuration and find all available mailboxes.
+        
+        Returns:
+            Diagnostic information about mailbox paths and available messages
+        """
+        try:
+            from .message_system import get_message_router
+            from .print_system import get_agent_id
+            import glob
+            import os
+            
+            # Get current agent ID
+            current_agent_id = get_agent_id()
+            agent_id = current_agent_id if current_agent_id else "manager"
+            
+            # Current workspace_root information
+            current_workspace = self.workspace_root
+            print_current(f"🔍 Current workspace_root: {current_workspace}")
+            
+            # Find all output_ directories
+            output_dirs = []
+            for pattern in ["output_*", "./output_*", "../output_*"]:
+                found_dirs = glob.glob(pattern)
+                for dir_path in found_dirs:
+                    if os.path.isdir(dir_path):
+                        abs_path = os.path.abspath(dir_path)
+                        output_dirs.append(abs_path)
+            
+            # Remove duplicates
+            output_dirs = list(set(output_dirs))
+            print_current(f"🔍 Found output directories: {output_dirs}")
+            
+            # Check each directory for mailboxes
+            mailbox_info = []
+            for output_dir in output_dirs:
+                mailbox_dir = os.path.join(output_dir, "mailboxes")
+                if os.path.exists(mailbox_dir):
+                    # Check for manager mailbox specifically
+                    manager_mailbox = os.path.join(mailbox_dir, "manager")
+                    if os.path.exists(manager_mailbox):
+                        inbox_dir = os.path.join(manager_mailbox, "inbox")
+                        if os.path.exists(inbox_dir):
+                            # Count messages in inbox
+                            message_files = glob.glob(os.path.join(inbox_dir, "*.json"))
+                            mailbox_info.append({
+                                "output_dir": output_dir,
+                                "mailbox_dir": mailbox_dir,
+                                "agent_id": "manager",
+                                "inbox_dir": inbox_dir,
+                                "message_count": len(message_files),
+                                "message_files": [os.path.basename(f) for f in message_files[:5]]  # Show first 5
+                            })
+            
+            # Try to access messages with current workspace_root
+            current_router_result = None
+            try:
+                router = get_message_router(current_workspace, cleanup_on_init=False)
+                mailbox = router.get_mailbox(agent_id)
+                if mailbox:
+                    current_router_result = {
+                        "mailbox_found": True,
+                        "inbox_dir": mailbox.inbox_dir,
+                        "exists": os.path.exists(mailbox.inbox_dir),
+                        "message_count": len(mailbox.get_all_messages()) if os.path.exists(mailbox.inbox_dir) else 0
+                    }
+                else:
+                    current_router_result = {"mailbox_found": False}
+            except Exception as e:
+                current_router_result = {"error": str(e)}
+            
+            # Find the best workspace_root candidate
+            best_candidate = None
+            max_messages = 0
+            for info in mailbox_info:
+                if info["message_count"] > max_messages:
+                    max_messages = info["message_count"]
+                    best_candidate = info["output_dir"]
+            
+            return {
+                "status": "success",
+                "current_workspace_root": current_workspace,
+                "current_router_result": current_router_result,
+                "output_directories": output_dirs,
+                "mailbox_info": mailbox_info,
+                "best_candidate": best_candidate,
+                "recommendation": f"Use set_workspace_root('{best_candidate}') to access messages" if best_candidate else "No mailboxes with messages found",
+                "agent_id": agent_id
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error diagnosing mailbox paths: {str(e)}"
+            }
+
+    def set_workspace_root(self, new_workspace_root: str) -> Dict[str, Any]:
+        """
+        Set new workspace root directory for message access.
+        
+        Args:
+            new_workspace_root: New workspace root directory path
+            
+        Returns:
+            Result of workspace root change
+        """
+        try:
+            # Validate path exists
+            if not os.path.exists(new_workspace_root):
+                return {
+                    "status": "error",
+                    "message": f"Path does not exist: {new_workspace_root}"
+                }
+            
+            old_workspace = self.workspace_root
+            self.workspace_root = os.path.abspath(new_workspace_root)
+            
+            # Test access to mailboxes with new path
+            try:
+                from .message_system import get_message_router
+                from .print_system import get_agent_id
+                
+                current_agent_id = get_agent_id()
+                agent_id = current_agent_id if current_agent_id else "manager"
+                
+                router = get_message_router(self.workspace_root, cleanup_on_init=False)
+                mailbox = router.get_mailbox(agent_id)
+                
+                if mailbox and os.path.exists(mailbox.inbox_dir):
+                    message_count = len(mailbox.get_all_messages())
+                    return {
+                        "status": "success",
+                        "message": f"Workspace root changed successfully",
+                        "old_workspace_root": old_workspace,
+                        "new_workspace_root": self.workspace_root,
+                        "mailbox_found": True,
+                        "inbox_dir": mailbox.inbox_dir,
+                        "message_count": message_count
+                    }
+                else:
+                    return {
+                        "status": "warning",
+                        "message": f"Workspace root changed but no mailbox found for {agent_id}",
+                        "old_workspace_root": old_workspace,
+                        "new_workspace_root": self.workspace_root,
+                        "mailbox_found": False
+                    }
+                    
+            except Exception as e:
+                # Rollback on error
+                self.workspace_root = old_workspace
+                return {
+                    "status": "error",
+                    "message": f"Error testing new workspace root: {str(e)}",
+                    "workspace_root": self.workspace_root
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error setting workspace root: {str(e)}"
+            }
 
     def send_status_update_to_manager(self, agent_id: str, round_number: int, task_completed: bool, 
                                      llm_response_preview: str, tool_calls_summary: list, 
@@ -1003,19 +1000,27 @@ class MultiAgentTools:
         Send status update to manager
         
         Args:
-            agent_id: Agent ID
-            round_number: Current round number
+            agent_id: Agent ID (can be 'current_agent' to auto-detect current agent)
+            round_number: Round number
             task_completed: Whether task is completed
             llm_response_preview: LLM response preview
             tool_calls_summary: Tool calls summary
             current_task_description: Current task description
-            error_message: Error message
+            error_message: Error message if any
             
         Returns:
             Send result
         """
         try:
             from .message_system import Message, MessageType, MessagePriority, StatusUpdateMessage, get_message_router
+            from .print_system import get_agent_id
+            
+            # 🔧 修复：自动获取当前智能体ID，支持current_agent参数
+            if agent_id == "current_agent" or not agent_id:
+                current_agent_id = get_agent_id()
+                actual_agent_id = current_agent_id if current_agent_id else "manager"
+            else:
+                actual_agent_id = agent_id
             
             # Get message router
             router = get_message_router(self.workspace_root)
@@ -1032,7 +1037,7 @@ class MultiAgentTools:
             
             # Create message
             message = Message(
-                sender_id=agent_id,
+                sender_id=actual_agent_id,
                 receiver_id="manager",
                 message_type=MessageType.STATUS_UPDATE,
                 content=content,
@@ -1040,18 +1045,31 @@ class MultiAgentTools:
             )
             
             # Get sender mailbox
-            sender_mailbox = router.get_mailbox(agent_id)
+            sender_mailbox = router.get_mailbox(actual_agent_id)
             if not sender_mailbox:
-                sender_mailbox = router.register_agent(agent_id)
+                sender_mailbox = router.register_agent(actual_agent_id)
+                if not sender_mailbox:
+                    return {
+                        "status": "error",
+                        "message": f"Failed to register agent: {actual_agent_id}",
+                        "agent_id": actual_agent_id
+                    }
             
             # Send message
             success = sender_mailbox.send_message(message)
+            
+            # 🔧 修复：发送状态更新后立即触发路由处理
+            if success:
+                try:
+                    processed_count = router.process_all_messages_once()
+                except Exception as e:
+                    print_current(f"⚠️ Error processing messages after status update: {e}")
             
             return {
                 "status": "success" if success else "failed",
                 "message": "Status update sent to manager successfully" if success else "Failed to send status update to manager",
                 "message_id": message.message_id,
-                "agent_id": agent_id,
+                "agent_id": actual_agent_id,
                 "round_number": round_number
             }
             
@@ -1059,7 +1077,7 @@ class MultiAgentTools:
             return {
                 "status": "error",
                 "message": f"Error sending status update to manager: {str(e)}",
-                "agent_id": agent_id
+                "agent_id": actual_agent_id if 'actual_agent_id' in locals() else agent_id
             }
 
     def broadcast_message_to_agents(self, message_type: str, content: dict) -> Dict[str, Any]:
@@ -1088,6 +1106,13 @@ class MultiAgentTools:
             # Broadcast message
             sent_count = router.broadcast_message("manager", content)
             
+            # 🔧 修复：广播消息后立即触发路由处理
+            if sent_count > 0:
+                try:
+                    processed_count = router.process_all_messages_once()
+                except Exception as e:
+                    print_current(f"⚠️ Error processing messages after broadcast: {e}")
+            
             return {
                 "status": "success",
                 "message": f"Broadcast sent to {sent_count} agents",
@@ -1102,55 +1127,17 @@ class MultiAgentTools:
                 "message_type": message_type
             }
 
-    def mark_message_as_read(self, message_id: str, agent_id: str = "manager") -> Dict[str, Any]:
-        """
-        Mark message as read
-        
-        Args:
-            message_id: Message ID
-            agent_id: Agent ID
-            
-        Returns:
-            Operation result
-        """
-        try:
-            from .message_system import get_message_router
-            
-            # Get message router
-            router = get_message_router(self.workspace_root)
-            
-            # Get agent mailbox
-            mailbox = router.get_mailbox(agent_id)
-            if not mailbox:
-                return {"status": "error", "message": "Agent mailbox not found"}
-            
-            # Mark message as read
-            success = mailbox.mark_as_read(message_id)
-            
-            return {
-                "status": "success" if success else "failed",
-                "message": "Message marked as read" if success else "Failed to mark message as read",
-                "message_id": message_id,
-                "agent_id": agent_id
-            }
-            
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error marking message as read: {str(e)}",
-                "message_id": message_id,
-                "agent_id": agent_id
-            }
-
     def get_agent_session_info(self) -> Dict[str, Any]:
         """
-        Get agent session information
+        Get comprehensive information about current agent session including session statistics, 
+        agent details, and list of all active agents.
         
         Returns:
-            Session information dictionary
+            Session information dictionary including active agents list
         """
         try:
             from .message_system import get_message_router
+            import glob
             
             # Get message router
             router = get_message_router(self.workspace_root, cleanup_on_init=False)
@@ -1158,21 +1145,158 @@ class MultiAgentTools:
             # Get all registered agents
             all_agents = router.get_all_agents()
             
+            # Get active agents based on thread status
+            active_agents_info = []
+            
+            # Check active threads
+            if hasattr(self, 'active_threads'):
+                for agent_id, thread in self.active_threads.items():
+                    if thread.is_alive():
+                        active_agents_info.append({
+                            "agent_id": agent_id,
+                            "status": "active",
+                            "task_description": f"Agent {agent_id}",
+                            "start_time": "2025-01-01T00:00:00",
+                            "thread_id": thread.ident,
+                            "thread_name": thread.name
+                        })
+            
+            # Also check registered agents in message system
+            try:
+                # Collect all possible workspace paths
+                workspace_paths = []
+                
+                # Add current workspace_root
+                if self.workspace_root:
+                    workspace_paths.append(self.workspace_root)
+                
+                # Add current directory
+                workspace_paths.append(os.getcwd())
+                
+                # Search all output_* directories
+                output_dirs = glob.glob("output_*")
+                for output_dir in output_dirs:
+                    if os.path.isdir(output_dir):
+                        workspace_paths.append(os.path.abspath(output_dir))
+                
+                # Deduplicate
+                workspace_paths = list(set(workspace_paths))
+                
+                # Try to get registered agents from all possible workspace paths
+                all_registered_agents = set()
+                for workspace_path in workspace_paths:
+                    try:
+                        router = get_message_router(workspace_path, cleanup_on_init=False)
+                        registered_agents = router.get_all_agents()
+                        all_registered_agents.update(registered_agents)
+                    except Exception:
+                        pass
+                
+                # Add agents registered in message system but not in thread tracking
+                existing_agent_ids = {agent["agent_id"] for agent in active_agents_info}
+                for agent_id in all_registered_agents:
+                    if agent_id not in existing_agent_ids and agent_id != "manager":
+                        # 🔧 修复：检查agent状态 - terminated, completed, 或 registered
+                        if agent_id in self.terminated_agents:
+                            status = "terminated"
+                            status_icon = "🔴"
+                        elif agent_id in self.completed_agents:
+                            status = "completed"
+                            status_icon = "🟢"
+                        else:
+                            # 检查状态文件获取更准确的状态
+                            status = self._get_agent_status_from_file(agent_id)
+                            if status == "terminated":
+                                status_icon = "🔴"
+                                self.terminated_agents.add(agent_id)  # 更新缓存
+                            elif status == "completed":
+                                status_icon = "🟢"
+                                self.completed_agents.add(agent_id)  # 更新缓存
+                            elif status == "running":
+                                status = "running"
+                                status_icon = "🟢"
+                            elif status == "unknown":
+                                # 智能体已注册邮箱但状态不明，可能是刚启动或等待中
+                                status = "idle"
+                                status_icon = "🟡"
+                            else:
+                                # 其他未知状态
+                                status = "unknown"
+                                status_icon = "⚫"
+                        
+                        active_agents_info.append({
+                            "agent_id": agent_id,
+                            "status": status,
+                            "status_icon": status_icon,
+                            "task_description": f"Agent {agent_id}",
+                            "start_time": "2025-01-01T00:00:00"
+                        })
+                        
+            except Exception as e:
+                print_current(f"⚠️ Error checking message system agents: {e}")
+            
             # Statistics
             total_agents = len(all_agents)
-            active_agents = total_agents  # Simplified processing, all registered agents are considered active
+            active_agents = len(active_agents_info)
             
-            # 🔧 Add terminal print output
+            # Terminal output
             print_current("📊 ===========================================")
             print_current("📊 AGIBot Session Information")
             print_current("📊 ===========================================")
             print_current(f"📊 Total Agents: {total_agents}")
             print_current(f"📊 Active Agents: {active_agents}")
-            print_current(f"📊 Completed Agents: 0")
-            print_current(f"📊 Failed Agents: 0")
+            print_current(f"📊 Completed Agents: {len(self.completed_agents)}")
+            print_current(f"📊 Failed Agents: {len(self.terminated_agents)}")
             print_current(f"📊 Message System Status: Active")
             print_current(f"📊 Registered Agents: {', '.join(all_agents) if all_agents else 'None'}")
             print_current("📊 ===========================================")
+            
+            if active_agents_info:
+                print_current("🤖 Active AGIBot List:")
+                for i, agent in enumerate(active_agents_info, 1):
+                    # 🔧 修复：使用更详细的状态图标和状态描述
+                    status_icon = agent.get("status_icon", "🔵")
+                    if not status_icon:
+                        if agent.get("status") == "active":
+                            status_icon = "🟢"
+                        elif agent.get("status") == "terminated":
+                            status_icon = "🔴"
+                        elif agent.get("status") == "completed":
+                            status_icon = "✅"
+                        else:
+                            status_icon = "🔵"
+                    
+                    # 添加更详细的状态描述
+                    status_desc = agent.get('status', 'unknown')
+                    if status_desc == "completed":
+                        # 尝试获取完成时间信息
+                        try:
+                            import datetime
+                            completion_status = self._get_agent_completion_info(agent['agent_id'])
+                            if completion_status:
+                                completion_time = completion_status.get('completion_time')
+                                if completion_time:
+                                    # 计算完成时间距离现在多久
+                                    from datetime import datetime as dt
+                                    completed_dt = dt.fromisoformat(completion_time.replace('Z', '+00:00') if completion_time.endswith('Z') else completion_time)
+                                    now_dt = dt.now()
+                                    time_diff = now_dt - completed_dt
+                                    if time_diff.total_seconds() < 60:
+                                        status_desc = f"completed (just completed)"
+                                    elif time_diff.total_seconds() < 3600:
+                                        minutes = int(time_diff.total_seconds() / 60)
+                                        status_desc = f"completed ({minutes} minutes ago)"
+                                    else:
+                                        hours = int(time_diff.total_seconds() / 3600)
+                                        status_desc = f"completed ({hours} hours ago)"
+                        except Exception:
+                            pass
+                    
+                    print_current(f"🤖 {i}. {status_icon} {agent['agent_id']} - {status_desc}")
+                    if agent.get("thread_id"):
+                        print_current(f"   └─ Thread ID: {agent['thread_id']}, Thread Name: {agent.get('thread_name', 'Unknown')}")
+            else:
+                print_current("🤖 No active AGIBot detected")
             
             result = {
                 "status": "success",
@@ -1180,10 +1304,11 @@ class MultiAgentTools:
                 "session_start_time": "2025-01-01T00:00:00",
                 "total_agents": total_agents,
                 "active_agents": active_agents,
-                "completed_agents": 0,
-                "failed_agents": 0,
+                "completed_agents": len(self.completed_agents),
+                "failed_agents": len(self.terminated_agents),
                 "message_system_active": True,
                 "registered_agents": all_agents,
+                "active_agents_info": active_agents_info,
                 "mailbox_stats": {
                     "total_mailboxes": total_agents,
                     "active_mailboxes": active_agents
@@ -1200,285 +1325,158 @@ class MultiAgentTools:
                 "message": error_msg
             }
 
-    def list_active_agents(self) -> Dict[str, Any]:
+    def terminate_agibot(self, agent_id: str, reason: str = None) -> Dict[str, Any]:
         """
-        List currently active agents based on thread status
+        Terminate a specific AGIBot agent by sending a terminate signal.
         
+        Args:
+            agent_id: ID of the agent to terminate. Use "self" or leave empty to terminate current agent.
+            reason: Reason for termination (optional)
+            
         Returns:
-            Active agents list
+            Termination result dictionary
         """
         try:
-            # Based on actual thread status to detect active agents, not relying on potentially cleaned-up mailboxes
-            agents_info = []
+            from .message_system import Message, MessageType, MessagePriority, get_message_router
+            from .print_system import get_agent_id
+            from datetime import datetime
             
-            # Check active threads
-            if hasattr(self, 'active_threads'):
-                for agent_id, thread in self.active_threads.items():
-                    if thread.is_alive():
-                        agents_info.append({
-                            "task_id": agent_id,
-                            "status": "active",
-                            "task_description": f"Agent {agent_id}",
-                            "start_time": "2025-01-01T00:00:00",
-                            "rounds_completed": 0,
-                            "current_task": "Running",
-                            "last_update": "2025-01-01T00:00:00",
-                            "thread_id": thread.ident,
-                            "thread_name": thread.name
-                        })
+            # Get current agent ID (usually manager)
+            current_agent_id = get_agent_id()
+            sender_id = current_agent_id if current_agent_id else "manager"
             
-            # 🔧 Fix: Also check registered agents in message system as an alternative - use multiple workspace_root paths
-            try:
-                from .message_system import get_message_router
-                import glob
-                
-                # Collect all possible workspace paths
-                workspace_paths = []
-                
-                # Add current workspace_root
-                if self.workspace_root:
-                    workspace_paths.append(self.workspace_root)
-                
-                # Add current directory
-                workspace_paths.append(os.getcwd())
-                
-                # Search all output_* directories (these are usually agent working directories)
-                output_dirs = glob.glob("output_*")
-                for output_dir in output_dirs:
-                    if os.path.isdir(output_dir):
-                        workspace_paths.append(os.path.abspath(output_dir))
-                
-                # Deduplicate
-                workspace_paths = list(set(workspace_paths))
-                
-                # Try to get registered agents from all possible workspace paths
-                all_registered_agents = set()
-                for workspace_path in workspace_paths:
-                    try:
-                        router = get_message_router(workspace_path, cleanup_on_init=False)
-                        registered_agents = router.get_all_agents()
-                        all_registered_agents.update(registered_agents)
-                    except Exception as e:
-                        # Ignore single path errors, continue trying other paths
-                        pass
-                
-                # Add agents registered in message system but not in thread tracking
-                existing_agent_ids = {agent["task_id"] for agent in agents_info}
-                for agent_id in all_registered_agents:
-                    if agent_id not in existing_agent_ids and agent_id != "manager":
-                        agents_info.append({
-                            "task_id": agent_id,
-                            "status": "registered",
-                            "task_description": f"Agent {agent_id}",
-                            "start_time": "2025-01-01T00:00:00",
-                            "rounds_completed": 0,
-                            "current_task": "Unknown",
-                            "last_update": "2025-01-01T00:00:00"
-                        })
-                        
-            except Exception as e:
-                print_current(f"⚠️ Error checking message system agents: {e}")
-            
-            # 🔧 Add terminal print output
-            print_current("🤖 ===========================================")
-            print_current("🤖 Active AGIBot List")
-            print_current("🤖 ===========================================")
-            print_current(f"🤖 Detected Active Agents: {len(agents_info)}")
-            
-            if agents_info:
-                for i, agent in enumerate(agents_info, 1):
-                    status_icon = "🟢" if agent.get("status") == "active" else "🔵"
-                    print_current(f"🤖 {i}. {status_icon} {agent['task_id']} - {agent['status']}")
-                    if agent.get("thread_id"):
-                        print_current(f"   └─ Thread ID: {agent['thread_id']}, Thread Name: {agent.get('thread_name', 'Unknown')}")
-                    else:
-                        print_current(f"   └─ Mailbox Registration Status: {agent['status']}")
-            else:
-                print_current("🤖 No active AGIBot detected")
-                print_current("🤖 Tip: Check thread tracking and message system registration status")
-                
-                # Add debug information
-                if hasattr(self, 'active_threads'):
-                    print_current(f"🤖 Thread tracking dictionary size: {len(self.active_threads)}")
-                    if self.active_threads:
-                        print_current(f"🤖 Agents in thread tracking: {list(self.active_threads.keys())}")
+            if not agent_id or agent_id == "self" or agent_id == "current_agent":
+                if current_agent_id:
+                    agent_id = current_agent_id
                 else:
-                    print_current("🤖 Thread tracking not initialized")
-            
-            print_current("🤖 ===========================================")
-            
-            return {
-                "status": "success",
-                "active_count": len(agents_info),
-                "agents": agents_info,
-                "detection_method": "thread_status_primary_multi_workspace"
-            }
-            
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error listing active agents: {str(e)}",
-                "active_count": 0,
-                "agents": []
-            }
-    
-    def debug_thread_status(self) -> Dict[str, Any]:
-        """
-        Debug function: Check current active thread status
-        
-        Returns:
-            Thread status information
-        """
-        try:
-            if not hasattr(self, 'active_threads'):
-                return {
-                    "status": "info",
-                    "message": "No thread tracking initialized",
-                    "active_threads": {}
-                }
-            
-            thread_status = {}
-            dead_threads = []
-            
-            for task_id, thread in self.active_threads.items():
-                is_alive = thread.is_alive()
-                thread_status[task_id] = {
-                    "thread_id": thread.ident,
-                    "thread_name": thread.name,
-                    "is_alive": is_alive,
-                    "is_daemon": thread.daemon
-                }
-                if not is_alive:
-                    dead_threads.append(task_id)
-            
-            return {
-                "status": "success",
-                "message": f"Found {len(self.active_threads)} tracked threads, {len(dead_threads)} dead",
-                "total_threads": len(self.active_threads),
-                "alive_threads": len(self.active_threads) - len(dead_threads),
-                "dead_threads": dead_threads,
-                "thread_details": thread_status
-            }
-            
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error checking thread status: {str(e)}"
-            }
-    
-    def debug_workspace_paths(self) -> Dict[str, Any]:
-        """
-        Debug function: Check all possible workspace paths and message system status
-        
-        Returns:
-            Workspace paths and message system diagnostic information
-        """
-        try:
-            from .message_system import get_message_router
-            import glob
-            
-            # Collect all possible workspace paths
-            workspace_paths = []
-            
-            # Add current workspace_root
-            if self.workspace_root:
-                workspace_paths.append(self.workspace_root)
-            
-            # Add current directory
-            workspace_paths.append(os.getcwd())
-            
-            # Search all output_* directories
-            output_dirs = glob.glob("output_*")
-            for output_dir in output_dirs:
-                if os.path.isdir(output_dir):
-                    workspace_paths.append(os.path.abspath(output_dir))
-            
-            # Deduplicate
-            workspace_paths = list(set(workspace_paths))
-            
-            # Check message system status for each path
-            workspace_status = {}
-            all_agents = set()
-            
-            for workspace_path in workspace_paths:
-                try:
-                    router = get_message_router(workspace_path, cleanup_on_init=False)
-                    agents = router.get_all_agents()
-                    mailbox_dir = getattr(router, 'mailbox_root', None)
-                    
-                    workspace_status[workspace_path] = {
-                        "status": "accessible",
-                        "agents": agents,
-                        "agent_count": len(agents),
-                        "mailbox_directory": mailbox_dir,
-                        "mailbox_exists": os.path.exists(mailbox_dir) if mailbox_dir else False
-                    }
-                    
-                    all_agents.update(agents)
-                    
-                except Exception as e:
-                    workspace_status[workspace_path] = {
+                    return {
                         "status": "error",
-                        "error": str(e),
-                        "agents": [],
-                        "agent_count": 0
+                        "message": "Cannot determine current agent ID for self-termination",
+                        "agent_id": agent_id
                     }
             
-            return {
-                "status": "success",
-                "message": f"Found {len(workspace_paths)} workspace paths, {len(all_agents)} total agents",
-                "current_workspace_root": self.workspace_root,
-                "current_working_directory": os.getcwd(),
-                "searched_paths": workspace_paths,
-                "workspace_details": workspace_status,
-                "all_discovered_agents": list(all_agents),
-                "total_unique_agents": len(all_agents)
+            # Validate agent ID format
+            if not self._is_valid_agent_id_format(agent_id):
+                return {
+                    "status": "error",
+                    "message": f"Invalid agent ID format: {agent_id}. Expected format: agent_XXX",
+                    "agent_id": agent_id
+                }
+            
+            # Check if agent exists and is active
+            agent_exists = False
+            
+            # Check in active threads
+            if hasattr(self, 'active_threads') and agent_id in self.active_threads:
+                thread = self.active_threads[agent_id]
+                if thread.is_alive():
+                    agent_exists = True
+            
+            # Check in message system
+            try:
+                router = get_message_router(self.workspace_root, cleanup_on_init=False)
+                mailbox = router.get_mailbox(agent_id)
+                if mailbox:
+                    agent_exists = True
+            except Exception:
+                pass
+            
+            if not agent_exists:
+                return {
+                    "status": "error",
+                    "message": f"Agent '{agent_id}' not found or already terminated",
+                    "agent_id": agent_id
+                }
+            
+            # Create terminate message
+            terminate_content = {
+                "signal": "terminate",
+                "reason": reason or "Terminated by request",
+                "timestamp": datetime.now().isoformat(),
+                "sender": sender_id
             }
             
+            # Send terminate message to the agent
+            try:
+                router = get_message_router(self.workspace_root, cleanup_on_init=False)
+                
+                # Create terminate message
+                message = Message(
+                    sender_id=sender_id,
+                    receiver_id=agent_id,
+                    message_type=MessageType.SYSTEM,
+                    content=terminate_content,
+                    priority=MessagePriority.HIGH
+                )
+                
+                # Get sender mailbox
+                sender_mailbox = router.get_mailbox(sender_id)
+                if not sender_mailbox:
+                    sender_mailbox = router.register_agent(sender_id)
+                
+                # Send the terminate message
+                success = sender_mailbox.send_message(message)
+                
+                if success:
+                    try:
+                        processed_count = router.process_all_messages_once()
+                    except Exception as e:
+                        print_current(f"⚠️ Error processing messages after terminate signal: {e}")
+
+                    
+                    # Remove from active threads tracking if exists
+                    if hasattr(self, 'active_threads') and agent_id in self.active_threads:
+                        del self.active_threads[agent_id]
+                    
+                    # Remove from generated agent IDs if exists
+                    if hasattr(self, 'generated_agent_ids') and agent_id in self.generated_agent_ids:
+                        self.generated_agent_ids.remove(agent_id)
+                    
+                    # Add to terminated agents
+                    self.terminated_agents.add(agent_id)
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Terminate signal sent to agent {agent_id} successfully",
+                        "agent_id": agent_id,
+                        "reason": reason or "Terminated by request",
+                        "message_id": message.message_id
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "message": f"Failed to send terminate signal to agent {agent_id}",
+                        "agent_id": agent_id
+                    }
+                    
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error sending terminate signal to agent {agent_id}: {str(e)}",
+                    "agent_id": agent_id
+                }
+        
         except Exception as e:
             return {
-                "status": "error",
-                "message": f"Error checking workspace paths: {str(e)}"
+                "status": "error", 
+                "message": f"Error terminating agent {agent_id}: {str(e)}",
+                "agent_id": agent_id if 'agent_id' in locals() else "unknown"
             }
-    
+
     def _normalize_agent_references(self, task_description: str, current_agent_id: str) -> str:
         """
-        Normalize agent references in task description, converting non-standard formats to correct agent ID format
+        Normalize agent references in task description
+        
+        Args:
+            task_description: Task description
+            current_agent_id: Current agent ID
+            
+        Returns:
+            Normalized task description
         """
-        import re
-        
-        # Create a map of generated agent IDs (excluding the current agent)
-        available_agents = [aid for aid in self.generated_agent_ids if aid != current_agent_id]
-        
-        # Define common error formats and their replacement rules
-        replacements = []
-        
-        # If there are other agents, create a map
-        if available_agents:
-            # AGIBot-1, AGIBot-2, AGIBot-3 format
-            for i, agent_id in enumerate(available_agents, 1):
-                replacements.append((f"AGIBot-{i}", agent_id))
-                replacements.append((f"AGIBot {i}", agent_id))
-                replacements.append((f"Agent-{i}", agent_id))
-                replacements.append((f"Agent {i}", agent_id))
-                replacements.append((f"Agent_{i}", agent_id))
-                replacements.append((f"agent-{i}", agent_id))
-                replacements.append((f"agent {i}", agent_id))
-                replacements.append((f"agent_{i}", agent_id))
-        
-        # Perform replacements
-        normalized_desc = task_description
-        for old_ref, new_ref in replacements:
-            normalized_desc = normalized_desc.replace(old_ref, new_ref)
-        
-        # If replacements were found, print a hint message
-        if normalized_desc != task_description:
-            print_current(f"📝 Normalized agent references in task description:")
-            for old_ref, new_ref in replacements:
-                if old_ref in task_description:
-                    print_current(f"   {old_ref} → {new_ref}")
-        
-        return normalized_desc
+        # This is a simplified version - in the full implementation, 
+        # this would replace generic agent references with specific agent IDs
+        return task_description
     
     def _is_valid_agent_id_format(self, agent_id: str) -> bool:
         """
@@ -1495,7 +1493,6 @@ class MultiAgentTools:
         # Allowed formats:
         # 1. manager (special admin ID)
         # 2. agent_XXX (supports letter, number, underscore combinations)
-        # For example: agent_001, agent_main, agent_primary, agent_test_1 etc.
         if agent_id == "manager":
             return True
             
@@ -1525,14 +1522,117 @@ class MultiAgentTools:
         try:
             from .message_system import get_message_router
             router = get_message_router(self.workspace_root)
-            # If mailbox already exists, it means the agent ID is already in use
             if hasattr(router, 'mailboxes') and agent_id in router.mailboxes:
                 return True
         except Exception:
-            # If message system cannot be checked, ignore this check
             pass
         
         return False
+    
+    def _get_agent_completion_info(self, agent_id: str) -> dict:
+        """
+        Get agent completion information
+        
+        Args:
+            agent_id: Agent ID
+            
+        Returns:
+            Dictionary containing completion information, returns empty dict if not found
+        """
+        try:
+            import json
+            
+            status_file_paths = []
+            
+            if self.workspace_root:
+                if os.path.basename(self.workspace_root) == "workspace":
+                    outdir = os.path.dirname(self.workspace_root)
+                    status_file_paths.append(f"{outdir}/.agibot_spawn_{agent_id}_status.json")
+                else:
+                    status_file_paths.append(f"{self.workspace_root}/.agibot_spawn_{agent_id}_status.json")
+            
+            #status_file_paths.append(f".agibot_spawn_{agent_id}_status.json")
+
+            for status_file in status_file_paths:
+                if os.path.exists(status_file):
+                    try:
+                        with open(status_file, 'r', encoding='utf-8') as f:
+                            status_data = json.load(f)
+                        
+                        if status_data.get("status") == "completed" or (status_data.get("success", False) and status_data.get("completion_time")):
+                            return {
+                                'completion_time': status_data.get('completion_time'),
+                                'start_time': status_data.get('start_time'),
+                                'task_description': status_data.get('task_description'),
+                                'success': status_data.get('success', False)
+                            }
+
+                        break
+                            
+                    except (json.JSONDecodeError, IOError):
+                        continue
+            
+            return {}
+            
+        except Exception as e:
+            if self.debug_mode:
+                print_current(f"⚠️ Error reading completion info for {agent_id}: {e}")
+            return {}
+
+    def _get_agent_status_from_file(self, agent_id: str) -> str:
+        """
+        从状态文件中获取agent的状态
+        
+        Args:
+            agent_id: Agent ID
+            
+        Returns:
+            Agent status: 'terminated', 'completed', 'running', or 'unknown'
+        """
+        try:
+            import json
+            
+            status_file_paths = []
+            
+            if self.workspace_root:
+                if os.path.basename(self.workspace_root) == "workspace":
+                    outdir = os.path.dirname(self.workspace_root)
+                    status_file_paths.append(f"{outdir}/.agibot_spawn_{agent_id}_status.json")
+                else:
+                    status_file_paths.append(f"{self.workspace_root}/.agibot_spawn_{agent_id}_status.json")
+            
+            
+            for status_file in status_file_paths:
+                if os.path.exists(status_file):
+                    try:
+                        with open(status_file, 'r', encoding='utf-8') as f:
+                            status_data = json.load(f)
+                        
+                        if status_data.get("terminated", False):
+                            return "terminated"
+                        elif status_data.get("success", False) and status_data.get("completion_time"):
+                            return "completed"
+                        elif status_data.get("status") == "terminated":
+                            return "terminated"
+                        elif status_data.get("status") == "completed":
+                            return "completed"
+                        elif status_data.get("status") == "running":
+                            return "running"
+                        
+                        if self.debug_mode:
+                            print_current(f"🔍 Found status file for {agent_id}: {status_file}, status: {status_data.get('status', 'unknown')}")
+                        
+                        break
+                            
+                    except (json.JSONDecodeError, IOError):
+                        continue
+            
+            return "unknown"
+            
+        except Exception as e:
+            if self.debug_mode:
+                print_current(f"⚠️ Error reading status file for {agent_id}: {e}")
+            return "unknown"
 
     def cleanup(self):
         """Clean up multi-agent system resources"""
@@ -1542,7 +1642,6 @@ class MultiAgentTools:
                 for task_id, thread in self.active_threads.items():
                     if thread.is_alive():
                         print_current(f"⏳ Waiting for thread {task_id} to complete...")
-                        # Do not force termination, let the thread end naturally
                 
                 # Clear thread dictionary
                 self.active_threads.clear()
@@ -1563,8 +1662,6 @@ class MultiAgentTools:
                     router.stop()
             except Exception as e:
                 print_current(f"⚠️ Error cleaning up message router: {e}")
-            
-
             
         except Exception as e:
             print_current(f"❌ Error cleaning up multi-agent system resources: {e}")

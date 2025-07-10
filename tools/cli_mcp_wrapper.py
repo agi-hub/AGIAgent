@@ -9,8 +9,31 @@ import json
 import subprocess
 import os
 import asyncio
+import threading
+import shutil
 from typing import Dict, Any, List, Optional, Union
 from .print_system import print_current
+
+def find_cli_mcp_path():
+    """Find the cli-mcp executable path"""
+    # First try to find it using shutil.which (respects PATH)
+    cli_mcp_path = shutil.which('cli-mcp')
+    if cli_mcp_path:
+        return cli_mcp_path
+    
+    # If not found in PATH, try common installation locations
+    common_paths = [
+        os.path.expanduser('~/.local/bin/cli-mcp'),
+        '/usr/local/bin/cli-mcp',
+        '/usr/bin/cli-mcp',
+    ]
+    
+    for path in common_paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    
+    # If still not found, return the default name and let subprocess handle it
+    return 'cli-mcp'
 
 class CliMcpWrapper:
     """cli-mcp wrapper, providing MCP functionality for AGIBot"""
@@ -143,8 +166,9 @@ class CliMcpWrapper:
             env.update(server_config.get('env', {}))
             
             # Use subprocess to call cli-mcp
+            cli_mcp_path = find_cli_mcp_path()
             result = await asyncio.create_subprocess_exec(
-                "cli-mcp", "list", server_name,
+                cli_mcp_path, "list", server_name,
                 "--configpath", self.config_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -250,8 +274,9 @@ class CliMcpWrapper:
             args_json = json.dumps(arguments)
             
             # Call cli-mcp using the original tool name
+            cli_mcp_path = find_cli_mcp_path()
             result = await asyncio.create_subprocess_exec(
-                "cli-mcp", "call", server_name, actual_tool_name, args_json,
+                cli_mcp_path, "call", server_name, actual_tool_name, args_json,
                 "--configpath", self.config_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -403,7 +428,7 @@ class CliMcpWrapper:
             "config_path": self.config_path
         }
     
-    def cleanup(self):
+    async def cleanup(self):
         """Cleanup resources"""
         try:
             # Close any open connections
@@ -420,22 +445,73 @@ class CliMcpWrapper:
         print_current("🔌 cli-mcp client cleaned up")
 
 
-# Global instance
+# Global instance with thread safety
 _cli_mcp_wrapper = None
 _cli_mcp_config_path = None
+_cli_mcp_lock = threading.RLock()  # Reentrant lock for thread safety
 
 def get_cli_mcp_wrapper(config_path: str = "mcp.json") -> CliMcpWrapper:
-    """Get cli-mcp wrapper instance"""
+    """Get cli-mcp wrapper instance (thread-safe)"""
     global _cli_mcp_wrapper, _cli_mcp_config_path
-    if _cli_mcp_wrapper is None or _cli_mcp_config_path != config_path:
-        _cli_mcp_wrapper = CliMcpWrapper(config_path)
-        _cli_mcp_config_path = config_path
-    return _cli_mcp_wrapper
+    
+    with _cli_mcp_lock:
+        if _cli_mcp_wrapper is None or _cli_mcp_config_path != config_path:
+            _cli_mcp_wrapper = CliMcpWrapper(config_path)
+            _cli_mcp_config_path = config_path
+            print_current(f"🔧 Created new cli-mcp wrapper instance for config: {config_path}")
+        return _cli_mcp_wrapper
 
 async def initialize_cli_mcp_wrapper(config_path: str = "mcp.json") -> bool:
-    """Initialize cli-mcp wrapper"""
-    wrapper = get_cli_mcp_wrapper(config_path)
-    return await wrapper.initialize()
+    """Initialize cli-mcp wrapper (thread-safe)"""
+    global _cli_mcp_wrapper
+    
+    with _cli_mcp_lock:
+        wrapper = get_cli_mcp_wrapper(config_path)
+        
+        # Check if already initialized
+        if wrapper.initialized:
+            print_current(f"✅ cli-mcp wrapper already initialized, reusing existing instance")
+            return True
+        
+        # Initialize if not already done
+        try:
+            result = await wrapper.initialize()
+            if result:
+                print_current(f"✅ cli-mcp wrapper initialized successfully in thread {threading.current_thread().name}")
+            else:
+                print_current(f"⚠️ cli-mcp wrapper initialization failed in thread {threading.current_thread().name}")
+            return result
+        except Exception as e:
+            print_current(f"❌ cli-mcp wrapper initialization error in thread {threading.current_thread().name}: {e}")
+            return False
+
+def is_cli_mcp_initialized(config_path: str = "mcp.json") -> bool:
+    """Check if cli-mcp wrapper is initialized (thread-safe)"""
+    global _cli_mcp_wrapper
+    
+    with _cli_mcp_lock:
+        if _cli_mcp_wrapper is None:
+            return False
+        return _cli_mcp_wrapper.initialized
+
+def get_cli_mcp_status(config_path: str = "mcp.json") -> Dict[str, Any]:
+    """Get cli-mcp wrapper status (thread-safe)"""
+    global _cli_mcp_wrapper
+    
+    with _cli_mcp_lock:
+        if _cli_mcp_wrapper is None:
+            return {
+                "initialized": False,
+                "thread": threading.current_thread().name,
+                "wrapper_exists": False
+            }
+        
+        status = _cli_mcp_wrapper.get_status()
+        status.update({
+            "thread": threading.current_thread().name,
+            "wrapper_exists": True
+        })
+        return status
 
 async def cleanup_cli_mcp_wrapper():
     """Cleanup cli-mcp wrapper"""
@@ -453,10 +529,14 @@ def cleanup_cli_mcp_wrapper_sync():
             # Try to get the current event loop
             loop = asyncio.get_running_loop()
             # If there's a running loop, schedule the cleanup
-            loop.create_task(_cli_mcp_wrapper.cleanup())
+            async def async_cleanup():
+                if _cli_mcp_wrapper:  # Check again inside async function
+                    await _cli_mcp_wrapper.cleanup()
+            loop.create_task(async_cleanup())
         except RuntimeError:
             # No event loop running, use synchronous cleanup
-            _cli_mcp_wrapper.cleanup_sync()
+            if _cli_mcp_wrapper:  # Check before cleanup_sync call
+                _cli_mcp_wrapper.cleanup_sync()
         
         _cli_mcp_wrapper = None
         _cli_mcp_config_path = None
@@ -465,22 +545,25 @@ def safe_cleanup_cli_mcp_wrapper():
     """Safely cleanup cli-mcp wrapper in any context"""
     global _cli_mcp_wrapper, _cli_mcp_config_path
     if _cli_mcp_wrapper:
+        wrapper_instance = _cli_mcp_wrapper  # Store reference before clearing
         try:
             # Try to get the current event loop
             loop = asyncio.get_running_loop()
             # If there's a running loop, schedule the cleanup
-            loop.create_task(_cli_mcp_wrapper.cleanup())
+            async def async_cleanup():
+                await wrapper_instance.cleanup()
+            loop.create_task(async_cleanup())
         except RuntimeError:
             # No event loop running, try to create one for cleanup
             try:
-                asyncio.run(_cli_mcp_wrapper.cleanup())
+                asyncio.run(wrapper_instance.cleanup())
             except RuntimeError:
                 # If that fails too, use synchronous cleanup
-                _cli_mcp_wrapper.cleanup_sync()
+                wrapper_instance.cleanup_sync()
         except Exception as e:
             # If all else fails, just clean up the references
             print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
-            _cli_mcp_wrapper.cleanup_sync()
+            wrapper_instance.cleanup_sync()
         
         _cli_mcp_wrapper = None
         _cli_mcp_config_path = None

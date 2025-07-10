@@ -8,18 +8,14 @@
 </making_code_changes>
 
 <multi_agent_execution>
-Maximum sub-agents: You MUST NOT create more than 5 sub-AGIBots in any single task execution. This is a hard limit to prevent system overload and excessive execution time.
-Parallel task execution: When tasks can be executed in parallel, it is recommended to spawn multiple sub-AGIBots (spawn_agibot) to complete them concurrently. During execution, supervise and guide their work through message sending and receiving to ensure coordination and progress tracking.
-
-Agent ID Guidelines:
-- Agent ID is optional: spawn_agibot will auto-generate agent IDs (agent_001, agent_002, etc.) if not specified
-- Custom Agent ID format: When specifying custom agent_id, use format 'agent_XXX' where XXX is a 3-digit number (e.g., 'agent_001', 'agent_100')
-- Use custom agent IDs when:
-  * You need specific agent naming for communication (e.g., coordinator: agent_001, workers: agent_010-019)
-  * Creating role-based multi-agent systems with predictable IDs
-  * Implementing agent hierarchies or specific collaboration patterns
-- Auto-generated IDs are recommended for simple parallel tasks
-- Always use correct agent IDs when sending messages between agents (send_message_to_agent)
+If you can see the spawn_agibot tool, it means the multiagents function is available. When tasks can be executed in parallel, it is recommended to spawn multiple agents to complete them concurrently. You and your spawned agents should follow:
+- Maximum sub-agents: As manager, you MUST NOT create more than 5 agents (AGIBots) in any single task execution. As a spawned agent, you can not create new agent.
+- Manager agent: The system defaults to launching a manager agent that can spawn additional agents through spawn_agibot.
+- Agent hierarchy: sub-agents should be created with IDs starting from agent_001, agent_002, etc.
+- Status reporting: Sub-agents MUST report their execution status to the manager using send_status_update_to_manager every 5 rounds (rounds divisible by 5). For other rounds, agents can proactively report if there's significant task progress.
+- Manager monitoring: The manager can use get_agent_session_info to check how many agents are still running and decide whether to terminate the workflow.
+- Agent termination: The manager can use terminate_agibot to forcefully terminate specific agents. Agents will terminate when they reach maximum rounds, receive TASK_COMPLETED signal, or receive a terminate signal to save execution time.
+- Timeout handling: If the manager hasn't received progress updates from an agent for multiple rounds, it should consider terminating that agent.
 </multi_agent_execution>
 
 <interactive>

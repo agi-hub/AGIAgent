@@ -304,6 +304,13 @@ class MCPClient:
             
             for server_name, server_config in servers_config.items():
                 try:
+                    # Skip NPX/NPM format servers - they should be handled by cli_mcp_wrapper
+                    if server_config.get("command") and not server_config.get("url"):
+                        # This is a command-based server (NPX/NPM format)
+                        # Skip it as it should be handled by cli-mcp wrapper
+                        print_current(f"⏭️  Skipping NPX/NPM server {server_name}, will be handled by cli-mcp wrapper")
+                        continue
+                    
                     # Determine transport type based on configuration
                     if server_config.get("url"):
                         # Check if URL contains SSE identifier
@@ -314,7 +321,10 @@ class MCPClient:
                         else:
                             transport_type = MCPTransportType.HTTP
                     elif server_config.get("command"):
+                        # This branch should rarely be reached now due to the filter above
+                        # But keeping for any edge cases
                         transport_type = MCPTransportType.STDIO
+                        print_current(f"⚠️  {server_name} using STDIO transport (unexpected)")
                     else:
                         transport_type = MCPTransportType(server_config.get("transport", "stdio"))
                     
@@ -359,8 +369,10 @@ class MCPClient:
             
             if len(self.servers) > 0:
                 print_current(f"📋 MCP client loaded {len(self.servers)} servers")
+            else:
+                print_current(f"📋 MCP client found no applicable servers (NPX/NPM servers handled by cli-mcp wrapper)")
                 
-            return len(self.servers) > 0
+            return len(self.servers) >= 0  # Allow zero servers as NPX/NPM servers are handled elsewhere
             
         except Exception as e:
             logger.error(f"Failed to load MCP configuration: {e}")
@@ -471,6 +483,11 @@ class MCPClient:
                 }
             }
             
+            # Debug logging
+            print_current(f"🔧 STDIO MCP call: {tool_name}")
+            print_current(f"💻 Command: {' '.join(cmd)}")
+            print_current(f"📤 Request: {json.dumps(request, indent=2)}")
+            
             # Start process
             process = subprocess.Popen(
                 cmd,
@@ -485,25 +502,66 @@ class MCPClient:
             request_json = json.dumps(request)
             stdout, stderr = process.communicate(input=request_json, timeout=server.timeout)
             
+            # Debug logging for response
+            print_current(f"📥 STDOUT length: {len(stdout)} chars")
+            print_current(f"🚨 STDERR length: {len(stderr)} chars")
+            
+            if stderr.strip():
+                print_current(f"🚨 STDERR content: {stderr.strip()}")
+            
             if process.returncode != 0:
-                return {"error": f"MCP tool execution failed: {stderr}"}
+                error_msg = f"MCP tool execution failed (exit code: {process.returncode})"
+                if stderr.strip():
+                    error_msg += f", stderr: {stderr.strip()}"
+                if stdout.strip():
+                    error_msg += f", stdout: {stdout.strip()}"
+                return {"error": error_msg}
+            
+            # Debug logging for stdout content
+            if len(stdout) > 500:
+                print_current(f"📥 STDOUT (first 200 chars): {stdout[:200]}...")
+                print_current(f"📥 STDOUT (last 200 chars): ...{stdout[-200:]}")
+            else:
+                print_current(f"📥 STDOUT content: {stdout}")
             
             # Parse response
             try:
+                if not stdout.strip():
+                    return {"error": "Empty response from MCP server"}
+                
                 response = json.loads(stdout)
                 if "result" in response:
+                    print_current(f"✅ Successfully parsed MCP response with result")
                     return response["result"]
                 elif "error" in response:
+                    print_current(f"❌ MCP server returned error: {response['error']}")
                     return {"error": response["error"]}
                 else:
-                    return {"error": "Unknown response format"}
-            except json.JSONDecodeError:
-                return {"error": f"Cannot parse response: {stdout}"}
+                    print_current(f"⚠️ Unknown response format: {list(response.keys())}")
+                    return {"error": f"Unknown response format, keys: {list(response.keys())}"}
+            except json.JSONDecodeError as e:
+                error_msg = f"Cannot parse JSON response. Error: {str(e)}"
+                if len(stdout) <= 1000:
+                    error_msg += f"\nFull response: {repr(stdout)}"
+                else:
+                    error_msg += f"\nResponse preview (first 500 chars): {repr(stdout[:500])}"
+                    error_msg += f"\nResponse preview (last 500 chars): {repr(stdout[-500:])}"
+                
+                # Also include stderr if available
+                if stderr.strip():
+                    error_msg += f"\nSTDERR: {stderr.strip()}"
+                
+                print_current(f"🚨 JSON parsing failed: {error_msg}")
+                return {"error": error_msg}
             
         except subprocess.TimeoutExpired:
-            return {"error": "MCP tool call timeout"}
+            error_msg = f"MCP tool call timeout (>{server.timeout}s)"
+            print_current(f"⏰ {error_msg}")
+            return {"error": error_msg}
         except Exception as e:
-            return {"error": str(e)}
+            error_msg = f"MCP tool call exception: {str(e)}"
+            print_current(f"💥 {error_msg}")
+            return {"error": error_msg}
     
     async def _call_http_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call tool via HTTP"""
@@ -608,6 +666,10 @@ class MCPClient:
     async def _call_sse_with_adapter(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any], adapter: ProtocolAdapter) -> Dict[str, Any]:
         """Call SSE tool using protocol adapter"""
         try:
+            # Check if URL exists
+            if not server.url:
+                return {"error": "MCP server URL not configured for adapter"}
+            
             # Parse URL, remove query parameters to get base URL
             url_parts = server.url.split("?")
             base_url = url_parts[0]
@@ -681,6 +743,10 @@ class MCPClient:
     async def _call_generic_sse(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Generic SSE protocol handling"""
         try:
+            # Check if URL exists
+            if not server.url:
+                return {"error": "MCP server URL not configured for generic SSE"}
+            
             # Parse URL, remove query parameters to get base URL
             url_parts = server.url.split("?")
             base_url = url_parts[0]

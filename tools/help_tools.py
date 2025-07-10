@@ -17,12 +17,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class HelpTools:
-    def __init__(self):
+    def __init__(self, tool_executor=None):
         """Initialize help tools with current tool definitions."""
+        # Store reference to tool executor for MCP tool access
+        self.tool_executor = tool_executor
+        
         # Updated tool definitions matching current AGIBot tool structure
         self.tool_definitions = {
             # Core Tools
@@ -103,44 +106,43 @@ class HelpTools:
                             "type": "integer"
                         }
                     },
-                    "required": ["target_file", "edit_mode", "code_edit"],
+                    "required": ["target_file", "edit_mode", "code_edit", "instructions"],
                     "type": "object"
                 },
-                "notes": "SAFETY FIRST: Read file before editing. Default mode is now 'append' (SAFEST). Avoid 'auto' mode without existing code markers.",
-                "warning": "NEVER use auto mode on existing files without proper existing code markers (// ... existing code ...)"
+                "notes": "CRITICAL: Always read files before editing to understand context. Use append mode when possible for safety."
             },
             "list_dir": {
-                "description": "List contents of a directory. Useful for exploring file structure before using more targeted tools.",
+                "description": "List the contents of a directory. Returns files and subdirectories with basic information.",
                 "parameters": {
                     "properties": {
                         "relative_workspace_path": {
-                            "description": "Directory path to list (relative to workspace root)",
+                            "description": "Path to list contents of, relative to the workspace root",
                             "type": "string"
                         }
                     },
                     "required": ["relative_workspace_path"],
                     "type": "object"
-                }
+                },
+                "notes": "Use '.' for current directory or empty string for workspace root"
             },
-            
-            # Search Tools
             "codebase_search": {
-                "description": "Semantic search to find relevant code snippets from the codebase. Uses AI-powered understanding to match query intent.",
+                "description": "Semantic search that finds code by meaning, not exact text. Best for exploring unfamiliar codebases and understanding code behavior.",
                 "parameters": {
                     "properties": {
                         "query": {
-                            "description": "Search query for semantic code search",
+                            "description": "Complete question about what you want to understand (e.g., 'How does user authentication work?')",
                             "type": "string"
                         },
                         "target_directories": {
-                            "description": "Array of directory patterns to search (optional)",
+                            "description": "Single directory path to limit search scope, or empty array for entire codebase",
                             "type": "array",
                             "items": {"type": "string"}
                         }
                     },
-                    "required": ["query"],
+                    "required": ["query", "target_directories"],
                     "type": "object"
-                }
+                },
+                "notes": "Start with broad queries like 'authentication flow' then narrow down. Ask complete questions, not just keywords."
             },
             "grep_search": {
                 "description": "Fast regex-based text search using ripgrep engine. Finds exact pattern matches in files.",
@@ -242,26 +244,26 @@ class HelpTools:
                     },
                     "max_loops": {
                         "type": "integer",
-                        "description": "Maximum execution loops for the new instance (default: 10)",
-                        "required": False
-                    },
-                    "wait_for_completion": {
-                        "type": "boolean",
-                        "description": "Whether to wait for the spawned AGIBot to complete before returning (default: false)",
+                        "description": "Maximum number of loops for the new instance (optional, defaults to 30)",
                         "required": False
                     },
                     "shared_workspace": {
                         "type": "boolean",
-                        "description": "Whether to share parent's workspace directory (default: true)",
+                        "description": "Whether to share workspace with parent (optional, defaults to true)",
                         "required": False
                     },
-                    "streaming": {
+                    "single_task_mode": {
                         "type": "boolean",
-                        "description": "Whether to use streaming output (default: false for python interface, overrides config.txt setting)",
+                        "description": "Whether to run in single task mode (optional, defaults to true)",
+                        "required": False
+                    },
+                    "wait_for_completion": {
+                        "type": "boolean",
+                        "description": "Whether to wait for completion before returning (optional, defaults to false)",
                         "required": False
                     }
                 },
-                "note": "Runs asynchronously in separate thread (unless wait_for_completion=true), output redirected to logs/ directory. All spawned AGIBots share the same workspace/ directory for collaboration by default. Returns detailed status information. Check the .agibot_spawn_[task_id]_status.json file in the output directory for completion status. Output is redirected to logs/ directory to avoid conflicts. When shared_workspace=true, all spawned AGIBots work in the same workspace directory. When streaming=false (default for python interface), the spawned AGIBot will use batch mode instead of streaming output to reduce log fragmentation."
+                "notes": "Returns task_id for tracking. Use wait_for_agibot_spawns to check completion status."
             },
             "wait_for_agibot_spawns": {
                 "description": "Wait for multiple spawned AGIBot instances to complete. Useful for synchronizing after launching multiple parallel tasks.",
@@ -342,6 +344,91 @@ class HelpTools:
             }
         }
 
+    def _get_mcp_tool_definition(self, tool_name: str) -> Optional[Dict[str, Any]]:
+        """Get MCP tool definition from tool executor"""
+        if not self.tool_executor:
+            return None
+        
+        try:
+            # Check if it's a cli-mcp tool
+            if hasattr(self.tool_executor, 'cli_mcp_client') and self.tool_executor.cli_mcp_client:
+                cli_mcp_tools = self.tool_executor.cli_mcp_client.get_available_tools()
+                if tool_name in cli_mcp_tools:
+                    tool_def = self.tool_executor.cli_mcp_client.get_tool_definition(tool_name)
+                    if tool_def:
+                        return {
+                            "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
+                            "parameters": tool_def.get("input_schema", {}),
+                            "notes": f"MCP工具 (cli-mcp): {tool_name}. 请注意使用正确的参数格式（通常为camelCase）。",
+                            "tool_type": "cli-mcp"
+                        }
+            
+            # Check if it's a direct MCP tool
+            if hasattr(self.tool_executor, 'direct_mcp_client') and self.tool_executor.direct_mcp_client:
+                direct_mcp_tools = self.tool_executor.direct_mcp_client.get_available_tools()
+                if tool_name in direct_mcp_tools:
+                    tool_def = self.tool_executor.direct_mcp_client.get_tool_definition(tool_name)
+                    if tool_def:
+                        return {
+                            "description": tool_def.get("description", f"SSE MCP tool: {tool_name}"),
+                            "parameters": tool_def.get("inputSchema", tool_def.get("input_schema", {})),
+                            "notes": f"MCP工具 (SSE): {tool_name}. 这是通过SSE协议连接的MCP工具。",
+                            "tool_type": "direct-mcp"
+                        }
+            
+        except Exception as e:
+            print_current(f"⚠️ 获取MCP工具定义时出错: {e}")
+        
+        return None
+
+    def _get_all_available_tools(self) -> Dict[str, str]:
+        """Get all available tools including MCP tools"""
+        all_tools = {}
+        
+        # Add built-in tools
+        for tool_name, tool_def in self.tool_definitions.items():
+            description = tool_def["description"]
+            first_sentence = description.split(".")[0] + "." if "." in description else description
+            if len(first_sentence) > 100:
+                first_sentence = first_sentence[:97] + "..."
+            all_tools[tool_name] = f"[内置] {first_sentence}"
+        
+        # Add MCP tools if tool_executor is available
+        if self.tool_executor:
+            try:
+                # Add cli-mcp tools
+                if hasattr(self.tool_executor, 'cli_mcp_client') and self.tool_executor.cli_mcp_client:
+                    cli_mcp_tools = self.tool_executor.cli_mcp_client.get_available_tools()
+                    for tool_name in cli_mcp_tools:
+                        try:
+                            tool_def = self.tool_executor.cli_mcp_client.get_tool_definition(tool_name)
+                            description = tool_def.get("description", f"cli-mcp tool: {tool_name}") if tool_def else f"cli-mcp tool: {tool_name}"
+                            first_sentence = description.split(".")[0] + "." if "." in description else description
+                            if len(first_sentence) > 100:
+                                first_sentence = first_sentence[:97] + "..."
+                            all_tools[tool_name] = f"[MCP/CLI] {first_sentence}"
+                        except Exception as e:
+                            all_tools[tool_name] = f"[MCP/CLI] {tool_name} (error getting definition)"
+                
+                # Add direct MCP tools
+                if hasattr(self.tool_executor, 'direct_mcp_client') and self.tool_executor.direct_mcp_client:
+                    direct_mcp_tools = self.tool_executor.direct_mcp_client.get_available_tools()
+                    for tool_name in direct_mcp_tools:
+                        try:
+                            tool_def = self.tool_executor.direct_mcp_client.get_tool_definition(tool_name)
+                            description = tool_def.get("description", f"SSE MCP tool: {tool_name}") if tool_def else f"SSE MCP tool: {tool_name}"
+                            first_sentence = description.split(".")[0] + "." if "." in description else description
+                            if len(first_sentence) > 100:
+                                first_sentence = first_sentence[:97] + "..."
+                            all_tools[tool_name] = f"[MCP/SSE] {first_sentence}"
+                        except Exception as e:
+                            all_tools[tool_name] = f"[MCP/SSE] {tool_name} (error getting definition)"
+            
+            except Exception as e:
+                print_current(f"⚠️ 获取MCP工具列表时出错: {e}")
+        
+        return all_tools
+
     def tool_help(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
         Provides detailed usage information for a specific tool.
@@ -354,36 +441,141 @@ class HelpTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️ Ignoring additional parameters: {list(kwargs.keys())}")
         
-        if tool_name not in self.tool_definitions:
-            available_tools = list(self.tool_definitions.keys())
-            return {
-                "error": f"Tool '{tool_name}' not found",
-                "available_tools": available_tools,
-                "message": f"Available tools are: {', '.join(available_tools)}",
-                "suggestion": "Use list_available_tools() to see all available tools with descriptions"
+        # Check if it's a built-in tool
+        if tool_name in self.tool_definitions:
+            tool_def = self.tool_definitions[tool_name]
+            
+            # Format the comprehensive help information
+            help_info = {
+                "tool_name": tool_name,
+                "tool_type": "built-in",
+                "description": tool_def["description"],
+                "parameters": tool_def["parameters"],
+                "usage_example": self._generate_usage_example(tool_name),
+                "parameter_template": self._generate_parameter_template(tool_def["parameters"])
+            }
+            
+            # Add additional information if available
+            if "notes" in tool_def:
+                help_info["notes"] = tool_def["notes"]
+            if "warning" in tool_def:
+                help_info["warning"] = tool_def["warning"]
+            
+            return help_info
+        
+        # Check if it's an MCP tool
+        mcp_tool_def = self._get_mcp_tool_definition(tool_name)
+        if mcp_tool_def:
+            help_info = {
+                "tool_name": tool_name,
+                "tool_type": mcp_tool_def.get("tool_type", "mcp"),
+                "description": mcp_tool_def["description"],
+                "parameters": mcp_tool_def["parameters"],
+                "usage_example": self._generate_mcp_usage_example(tool_name, mcp_tool_def),
+                "parameter_template": self._generate_parameter_template(mcp_tool_def["parameters"]),
+                "notes": mcp_tool_def.get("notes", "这是一个MCP (Model Context Protocol) 工具。"),
+                "mcp_format_warning": "⚠️ MCP工具通常使用camelCase参数格式（如 entityType），而不是snake_case（如 entity_type）。请参考usage_example中的正确格式。"
+            }
+            
+            return help_info
+        
+        # Tool not found
+        all_tools = self._get_all_available_tools()
+        available_tools = list(all_tools.keys())
+        
+        return {
+            "error": f"Tool '{tool_name}' not found",
+            "available_tools": available_tools,
+            "all_tools_with_descriptions": all_tools,
+            "message": f"Available tools are: {', '.join(available_tools)}",
+            "suggestion": "Use list_available_tools() to see all available tools with descriptions"
+        }
+
+    def _generate_mcp_usage_example(self, tool_name: str, tool_def: Dict[str, Any]) -> str:
+        """Generate usage example for MCP tools"""
+        parameters = tool_def.get("parameters", {})
+        properties = parameters.get("properties", {})
+        required = parameters.get("required", [])
+        
+        # Build example arguments
+        example_args = {}
+        for param_name, param_info in properties.items():
+            param_type = param_info.get("type", "string")
+            
+            # Generate appropriate example values
+            if param_type == "array":
+                if "entities" in param_name.lower():
+                    example_args[param_name] = [{
+                        "name": "示例实体",
+                        "entityType": "Person",
+                        "observations": ["相关观察信息"]
+                    }]
+                else:
+                    example_args[param_name] = ["example1", "example2"]
+            elif param_type == "boolean":
+                example_args[param_name] = True
+            elif param_type == "integer":
+                example_args[param_name] = 1
+            elif param_type == "object":
+                if "parameters" in param_name.lower():
+                    example_args[param_name] = {"query": "搜索关键词"}
+                else:
+                    example_args[param_name] = {"key": "value"}
+            else:
+                # String type
+                if "query" in param_name.lower():
+                    example_args[param_name] = "搜索关键词"
+                elif "path" in param_name.lower() or "file" in param_name.lower():
+                    example_args[param_name] = "/path/to/file.txt"
+                elif "content" in param_name.lower():
+                    example_args[param_name] = "文件内容"
+                elif "name" in param_name.lower():
+                    example_args[param_name] = "示例名称"
+                elif "type" in param_name.lower():
+                    example_args[param_name] = "Person"
+                else:
+                    example_args[param_name] = "示例值"
+        
+        # Special handling for known MCP tools
+        if tool_name == "create_entities":
+            example_args = {
+                "entities": [{
+                    "name": "用户",
+                    "entityType": "Person",
+                    "observations": ["喜欢吃xieo冰棍"]
+                }]
+            }
+        elif tool_name == "write_file" or "write" in tool_name.lower():
+            example_args = {
+                "path": "/home/user/example.txt",
+                "content": "这是一个示例文件内容\n包含多行文本"
+            }
+        elif tool_name == "read_file" or "read" in tool_name.lower():
+            example_args = {
+                "path": "/home/user/example.txt"
+            }
+        elif "search" in tool_name.lower():
+            example_args = {
+                "query": "搜索关键词",
+                "language": "zh",
+                "num_results": 10
             }
         
-        tool_def = self.tool_definitions[tool_name]
+        import json
+        example_json = json.dumps(example_args, ensure_ascii=False, indent=2)
         
-        # Format the comprehensive help information
-        help_info = {
-            "tool_name": tool_name,
-            "description": tool_def["description"],
-            "parameters": tool_def["parameters"],
-            "usage_example": self._generate_usage_example(tool_name),
-            "parameter_template": self._generate_parameter_template(tool_def["parameters"])
-        }
-        
-        # Add additional information if available
-        if "notes" in tool_def:
-            help_info["notes"] = tool_def["notes"]
-        if "warning" in tool_def:
-            help_info["warning"] = tool_def["warning"]
-        
-        return help_info
-    
+        return f'''{{
+  "name": "{tool_name}",
+  "arguments": {example_json}
+}}
+
+📝 MCP工具调用格式注意事项:
+- 参数名通常使用camelCase格式 (如: entityType, numResults)
+- 避免使用snake_case格式 (如: entity_type, num_results)
+- 确保参数类型正确匹配工具定义'''
+
     def _generate_parameter_template(self, parameters: Dict[str, Any]) -> str:
         """Generate a parameter template showing how to call the tool."""
         template_lines = []
@@ -426,7 +618,7 @@ class HelpTools:
             template_lines.append(f'"{param_name}": {example_value}  // {description}{required_marker}')
         
         return "{\n  " + ",\n  ".join(template_lines) + "\n}"
-    
+
     def _generate_usage_example(self, tool_name: str) -> str:
         """Generate a practical usage example for the tool."""
         examples = {
@@ -447,12 +639,15 @@ class HelpTools:
         }
         
         return examples.get(tool_name, f'{{\n  "name": "{tool_name}",\n  "arguments": {{\n    // See parameter template above\n  }}\n}}')
-    
+
     def list_available_tools(self, **kwargs) -> Dict[str, Any]:
         """List all available tools with brief descriptions and categories."""
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_current(f"⚠️ Ignoring additional parameters: {list(kwargs.keys())}")
+        
+        # Get all available tools
+        all_tools = self._get_all_available_tools()
         
         # Organize tools by category
         categories = {
@@ -464,21 +659,40 @@ class HelpTools:
         }
         
         tools_by_category = {}
+        
+        # Add built-in tools
         for category, tool_names in categories.items():
             tools_by_category[category] = {}
             for tool_name in tool_names:
-                if tool_name in self.tool_definitions:
-                    # Get the first sentence of the description
-                    description = self.tool_definitions[tool_name]["description"]
-                    first_sentence = description.split(".")[0] + "." if "." in description else description
-                    if len(first_sentence) > 100:
-                        first_sentence = first_sentence[:97] + "..."
-                    tools_by_category[category][tool_name] = first_sentence
+                if tool_name in all_tools:
+                    tools_by_category[category][tool_name] = all_tools[tool_name]
+        
+        # Add MCP tools as separate categories
+        mcp_cli_tools = {}
+        mcp_sse_tools = {}
+        
+        for tool_name, description in all_tools.items():
+            if "[MCP/CLI]" in description:
+                mcp_cli_tools[tool_name] = description
+            elif "[MCP/SSE]" in description:
+                mcp_sse_tools[tool_name] = description
+        
+        if mcp_cli_tools:
+            tools_by_category["MCP Tools (CLI)"] = mcp_cli_tools
+        if mcp_sse_tools:
+            tools_by_category["MCP Tools (SSE)"] = mcp_sse_tools
+        
+        # Calculate totals
+        builtin_count = sum(len(tools) for category, tools in tools_by_category.items() if "MCP" not in category)
+        mcp_count = len(mcp_cli_tools) + len(mcp_sse_tools)
         
         return {
             "tools_by_category": tools_by_category,
-            "total_count": len(self.tool_definitions),
-            "available_tools": list(self.tool_definitions.keys()),
+            "total_count": len(all_tools),
+            "builtin_count": builtin_count,
+            "mcp_count": mcp_count,
+            "available_tools": list(all_tools.keys()),
             "message": "Use tool_help('<tool_name>') to get detailed information about any specific tool",
-            "categories": list(categories.keys())
+            "categories": list(tools_by_category.keys()),
+            "mcp_note": "MCP工具支持动态加载的外部工具。请注意MCP工具通常使用camelCase参数格式。"
         }

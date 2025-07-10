@@ -257,7 +257,9 @@ class AGIBotMain:
                  single_task_mode: bool = True,
                  interactive_mode: bool = False,
                  continue_mode: bool = False,
-                 streaming: bool = None):
+                 streaming: bool = None,
+                 MCP_config_file: str = None,
+                 prompts_folder: str = None):
 
         """
         Initialize AGI Bot main program
@@ -273,6 +275,8 @@ class AGIBotMain:
             interactive_mode: Whether to enable interactive mode, ask user confirmation at each step
             continue_mode: Whether to continue from last output directory
             streaming: Whether to use streaming output
+            MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
+            prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
         """
         # Handle continue mode - load last output directory if requested
         if continue_mode:
@@ -342,6 +346,8 @@ class AGIBotMain:
         self.single_task_mode = single_task_mode
         self.interactive_mode = interactive_mode
         self.streaming = streaming
+        self.MCP_config_file = MCP_config_file
+        self.prompts_folder = prompts_folder
         
         # Ensure output directory exists
         os.makedirs(out_dir, exist_ok=True)
@@ -483,7 +489,9 @@ class AGIBotMain:
                 model=self.model,
                 api_base=self.api_base,
                 detailed_summary=self.detailed_summary,
-                interactive_mode=self.interactive_mode
+                interactive_mode=self.interactive_mode,
+                MCP_config_file=self.MCP_config_file,
+                prompts_folder=self.prompts_folder
             )
             
             # Execute all tasks
@@ -548,7 +556,9 @@ class AGIBotMain:
                 api_base=self.api_base,
                 detailed_summary=self.detailed_summary,
                 interactive_mode=self.interactive_mode,
-                streaming=self.streaming
+                streaming=self.streaming,
+                MCP_config_file=self.MCP_config_file,
+                prompts_folder=self.prompts_folder
             )
             
             # 🔧 确保executor使用正确的agent_id
@@ -1240,7 +1250,7 @@ Please generate a markdown format detailed summary report, retaining all importa
         Returns:
             Whether successfully completed
         """
-        track_operation("主程序执行")
+        track_operation("Main Program Execution")
         
         workspace_dir = os.path.join(self.out_dir, "workspace")
         
@@ -1248,9 +1258,9 @@ Please generate a markdown format detailed summary report, retaining all importa
             print_current(f"📋 Task File: {os.path.abspath(self.todo_csv_path)}")
         
         # Step 1: Get user requirement
-        track_operation("获取用户需求")
+        track_operation("Get User Requirement")
         requirement = self.get_user_requirement(user_requirement)
-        finish_operation("获取用户需求")
+        finish_operation("Get User Requirement")
         
         if not requirement:
             print_current("❌ Invalid user requirement")
@@ -1259,35 +1269,35 @@ Please generate a markdown format detailed summary report, retaining all importa
         # Choose execution path based on mode
         if self.single_task_mode:
             # Single task mode: directly execute user requirement
-            track_operation("单任务执行")
+            track_operation("Single Task Execution")
             if not self.execute_single_task(requirement, loops):
-                print_current("⚠️ Single task execution reached maximum rounds")  # 🔧 修复：区分失败和达到最大轮数
-                finish_operation("单任务执行")
-                finish_operation("主程序执行")
+                print_current("⚠️ Single task execution reached maximum rounds")  # Fix: distinguish between failure and reaching max rounds
+                finish_operation("Single Task Execution")
+                finish_operation("Main Program Execution")
                 return False
-            finish_operation("单任务执行")
+            finish_operation("Single Task Execution")
                 
         else:
             # Step 2: Task decomposition
-            track_operation("任务分解")
+            track_operation("Task Decomposition")
             if not self.decompose_task(requirement):
                 print_current("❌ Task decomposition failed, program terminated")
-                finish_operation("任务分解")
-                finish_operation("主程序执行")
+                finish_operation("Task Decomposition")
+                finish_operation("Main Program Execution")
                 return False
-            finish_operation("任务分解")
+            finish_operation("Task Decomposition")
             
             # Interactive mode confirmation is handled by individual task execution
             # No need for pre-execution confirmation here
             
             # Step 3: Execute tasks
-            track_operation("多任务执行")
+            track_operation("Multi-Task Execution")
             if not self.execute_tasks(loops):
                 print_current("❌ Task execution failed")
-                finish_operation("多任务执行")
-                finish_operation("主程序执行")
+                finish_operation("Multi-Task Execution")
+                finish_operation("Main Program Execution")
                 return False
-            finish_operation("多任务执行")
+            finish_operation("Multi-Task Execution")
         
         # Task execution completed
         print_current(f"📁 All output files saved at: {os.path.abspath(self.out_dir)}")
@@ -1296,8 +1306,8 @@ Please generate a markdown format detailed summary report, retaining all importa
         # Save current output directory for future continue operations
         save_last_output_dir(self.out_dir)
         
-        print_current("\n🎉 Workflow completed!")
-        finish_operation("主程序执行")
+        print_current("🎉 Workflow completed!")
+        finish_operation("Main Program Execution")
         return True
 
 
@@ -1333,7 +1343,9 @@ class AGIBotClient:
                  detailed_summary: bool = True,
                  single_task_mode: bool = True,
                  interactive_mode: bool = False,
-                 streaming: bool = None):
+                 streaming: bool = None,
+                 MCP_config_file: str = None,
+                 prompts_folder: str = None):
         """
         Initialize AGI Bot Client
         
@@ -1346,6 +1358,8 @@ class AGIBotClient:
             single_task_mode: Whether to use single task mode (default: True)
             interactive_mode: Whether to enable interactive mode
             streaming: Whether to use streaming output (None to use config.txt)
+            MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
+            prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
         """
         if not api_key:
             raise ValueError("api_key is required")
@@ -1360,6 +1374,8 @@ class AGIBotClient:
         self.single_task_mode = single_task_mode
         self.interactive_mode = interactive_mode
         self.streaming = streaming
+        self.MCP_config_file = MCP_config_file
+        self.prompts_folder = prompts_folder
         
     def chat(self, 
              messages: list,
@@ -1442,7 +1458,9 @@ class AGIBotClient:
                 single_task_mode=self.single_task_mode,
                 interactive_mode=self.interactive_mode,
                 continue_mode=continue_mode,
-                streaming=self.streaming
+                streaming=self.streaming,
+                MCP_config_file=self.MCP_config_file,
+                prompts_folder=self.prompts_folder
             )
             
             # 🔧 如果有agent_id，设置到主线程中

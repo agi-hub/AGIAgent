@@ -229,5 +229,22 @@
       },
       "required": ["query"]
     }
+  },
+  "idle": {
+    "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Optional message explaining why the agent is idling"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'task_completed', 'no_action_needed')"
+        }
+      },
+      "required": []
+    }
   }
 } 

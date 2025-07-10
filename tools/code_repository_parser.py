@@ -86,6 +86,48 @@ except ImportError:
     FAISS_AVAILABLE = False
     # print_current("Warning: faiss not available. Will use numpy for vector storage.")  # Moved warning display to main.py
 
+# Add global code index manager
+_global_parsers = {}  # workspace_root -> CodeRepositoryParser instance
+_global_parsers_lock = threading.Lock()
+
+def get_global_code_parser(workspace_root: str, **kwargs) -> 'CodeRepositoryParser':
+    """
+    Get global code parser instance, ensuring only one instance per workspace
+    
+    Args:
+        workspace_root: Workspace root directory
+        **kwargs: Additional parameters passed to CodeRepositoryParser constructor
+        
+    Returns:
+        CodeRepositoryParser instance
+    """
+    workspace_root = os.path.abspath(workspace_root)
+    
+    with _global_parsers_lock:
+        if workspace_root not in _global_parsers:
+            # Create new parser instance
+            parser = CodeRepositoryParser(
+                root_path=workspace_root,
+                **kwargs
+            )
+            _global_parsers[workspace_root] = parser
+            print_current(f"🔧 Created new global code parser for workspace: {workspace_root}")
+        else:
+            print_current(f"🔄 Reusing existing global code parser for workspace: {workspace_root}")
+        
+        return _global_parsers[workspace_root]
+
+def cleanup_global_parsers():
+    """Clean up all global code parsers"""
+    with _global_parsers_lock:
+        for workspace_root, parser in _global_parsers.items():
+            try:
+                parser.cleanup()
+                print_current(f"🧹 Cleaned up global code parser for: {workspace_root}")
+            except Exception as e:
+                print_current(f"⚠️ Error cleaning up parser for {workspace_root}: {e}")
+        _global_parsers.clear()
+
 @dataclass
 class CodeSegment:
     """Code segment data structure"""
@@ -130,12 +172,18 @@ class IncrementalUpdateThread:
         self.total_updates = 0
         self.successful_updates = 0
         
+        # Add anti-duplicate mechanism
+        self.last_changes_hash = None
+        self.last_successful_update_time = 0
+        self.min_update_interval = 2.0
+        
         # Statistics
         self.stats = {
             'total_checks': 0,
             'total_updates': 0,
             'successful_updates': 0,
             'failed_updates': 0,
+            'skipped_updates': 0,
             'last_update_time': None,
             'last_error': None
         }
@@ -159,12 +207,6 @@ class IncrementalUpdateThread:
         self.running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)  # Wait up to 5 seconds
-        
-        # Stop the incremental update thread
-        if self.update_thread and self.update_thread.is_alive():
-            self.stop_update_event.set()
-            self.update_thread.join(timeout=2.0)  # Wait up to 2 seconds
-            # print_current(f"⏹️ Incremental update thread stopped (total checks: {self.stats['total_checks']}, total updates: {self.stats['total_updates']})")
     
     def _update_loop(self):
         """Main update loop"""
@@ -176,36 +218,56 @@ class IncrementalUpdateThread:
                 
                 # Use lock to ensure thread safety
                 with self.lock:
-                    if self.code_parser and hasattr(self.code_parser, 'check_repository_changes'):
-                        # Check for changes
-                        changes = self.code_parser.check_repository_changes()
+                    if self.code_parser and hasattr(self.code_parser, 'incremental_update'):
                         self.stats['total_checks'] += 1
                         
-                        # If there are changes, perform incremental update
-                        if any(changes.values()):
-                            self.stats['total_updates'] += 1
+                        try:
+                            # Execute incremental update
+                            update_result = self.code_parser.incremental_update()
                             
-                            try:
-                                # Execute incremental update
-                                update_result = self.code_parser.incremental_update()
+                            # Check if there were actual changes
+                            has_changes = any(count > 0 for count in update_result.values())
+                            
+                            if has_changes:
+                                # Calculate changes hash for anti-duplicate
+                                import hashlib
+                                changes_str = f"{update_result['files_added']}_{update_result['files_modified']}_{update_result['files_deleted']}"
+                                current_changes_hash = hashlib.md5(changes_str.encode()).hexdigest()
+                                current_time = time.time()
                                 
-                                # If there are actual updates, save database
-                                if any(count > 0 for count in update_result.values()):
+                                # Check if this is a duplicate update
+                                time_since_last_update = current_time - self.last_successful_update_time
+                                is_duplicate = (self.last_changes_hash == current_changes_hash and 
+                                              time_since_last_update < self.min_update_interval)
+                                
+                                if is_duplicate:
+                                    self.stats['skipped_updates'] += 1
+                                    # Don't print message for skipped duplicate updates
+                                else:
+                                    # This is a valid update
+                                    self.stats['total_updates'] += 1
+                                    
+                                    # Save database if needed
                                     db_path = self.code_parser._get_code_index_path()
                                     self.code_parser.save_database(db_path)
-                                
-                                self.stats['successful_updates'] += 1
-                                self.stats['last_update_time'] = datetime.now().isoformat()
-                                
-                                # Silent update, only print when there are important changes
-                                total_changes = sum(len(changes[key]) for key in changes)
-                                if total_changes > 0:
-                                    print_current(f"📁 Code repository update completed: {total_changes} file changes")
                                     
-                            except Exception as e:
-                                self.stats['failed_updates'] += 1
-                                self.stats['last_error'] = str(e)
-                                print_current(f"❌ Incremental update failed: {e}")
+                                    self.stats['successful_updates'] += 1
+                                    self.stats['last_update_time'] = datetime.now().isoformat()
+                                    
+                                    # Update anti-duplicate tracking
+                                    self.last_changes_hash = current_changes_hash
+                                    self.last_successful_update_time = current_time
+                                    
+                                    # Print update message
+                                    total_changes = sum(update_result.values())
+
+                                    workspace_name = os.path.basename(self.code_parser.root_path)
+                                    #print_current(f"🔄 Background thread ({workspace_name}): Code repository update completed: {total_changes} file changes")
+                            
+                        except Exception as e:
+                            self.stats['failed_updates'] += 1
+                            self.stats['last_error'] = str(e)
+                            print_current(f"❌ Incremental update failed: {e}")
                 
                 # Calculate update time for this iteration
                 elapsed = time.time() - start_time
@@ -269,6 +331,8 @@ class CodeRepositoryParser:
         """
         self.root_path = Path(root_path)
         self.segment_size = segment_size
+        
+        self._agibot_initialized = False
         
         # Default supported code file extensions
         if supported_extensions is None:
@@ -617,15 +681,68 @@ class CodeRepositoryParser:
     
     def check_repository_changes(self) -> Dict[str, List[str]]:
         """
-        Check file changes in code repository (thread-safe version)
+        Check file changes in code repository (without internal locking)
+        
+        Note: This method does not use internal locks. If thread safety is required,
+        the caller should handle locking.
         
         Returns:
             Change information dictionary containing lists of added, modified, deleted files
         """
-        # Use lock to ensure thread safety
+        logger.info("Checking repository changes...")
+        
+        changes = {
+            'added': [],
+            'modified': [],
+            'deleted': []
+        }
+        
+        # Get all current code files
+        current_files = set()
+        for file_path in self.root_path.rglob('*'):
+            if file_path.is_file() and self._is_code_file(file_path):
+                current_files.add(str(file_path.relative_to(self.root_path)))
+        
+        # Check changes in known files
+        for file_path in current_files:
+            full_path = self.root_path / file_path
+            if self._has_file_changed(full_path):
+                if file_path in self.file_timestamps:
+                    changes['modified'].append(file_path)
+                else:
+                    changes['added'].append(file_path)
+        
+        # Check deleted files
+        stored_files = set(self.file_timestamps.keys())
+        for file_path in stored_files:
+            if file_path not in current_files:
+                changes['deleted'].append(file_path)
+        
+        logger.info(f"Repository changes: {len(changes['added'])} added, "
+                   f"{len(changes['modified'])} modified, {len(changes['deleted'])} deleted")
+        
+        return changes
+    
+    def incremental_update(self) -> Dict[str, int]:
+        """
+        Incremental update of code repository (thread-safe version)
+        
+        Returns:
+            Update statistics
+        """
+        logger.info("Starting incremental update...")
+        
+        stats = {
+            'files_added': 0,
+            'files_modified': 0,
+            'files_deleted': 0,
+            'segments_added': 0,
+            'segments_removed': 0
+        }
+        
+        # Perform all operations under a single lock to ensure atomicity
         with self._update_lock:
-            logger.info("Checking repository changes...")
-            
+            # Check changes within the same lock scope
             changes = {
                 'added': [],
                 'modified': [],
@@ -656,37 +773,11 @@ class CodeRepositoryParser:
             logger.info(f"Repository changes: {len(changes['added'])} added, "
                        f"{len(changes['modified'])} modified, {len(changes['deleted'])} deleted")
             
-            return changes
-    
-    def incremental_update(self) -> Dict[str, int]:
-        """
-        Incremental update of code repository (thread-safe version)
-        
-        Returns:
-            Update statistics
-        """
-        # Use lock to ensure thread safety, but check_repository_changes already uses lock internally
-        # Here we only need to ensure atomicity of update operations
-        logger.info("Starting incremental update...")
-        
-        # Check changes (already uses lock internally)
-        changes = self.check_repository_changes()
-        
-        stats = {
-            'files_added': 0,
-            'files_modified': 0,
-            'files_deleted': 0,
-            'segments_added': 0,
-            'segments_removed': 0
-        }
-        
-        # If no changes, return directly
-        if not any(changes.values()):
-            logger.info("No changes detected, indexes unchanged")
-            return stats
-        
-        # Use lock to ensure atomicity of update operations
-        with self._update_lock:
+            # If no changes, return directly
+            if not any(changes.values()):
+                logger.info("No changes detected, indexes unchanged")
+                return stats
+            
             # Handle deleted files
             for file_path in changes['deleted']:
                 self._remove_file_segments(file_path)
@@ -1149,13 +1240,15 @@ class CodeRepositoryParser:
         
         return db_path
 
-    def init_code_parser(self, workspace_root: str = None, supported_extensions: List[str] = None) -> bool:
+    def init_code_parser(self, workspace_root: str = None, supported_extensions: List[str] = None, 
+                         skip_initial_update: bool = True) -> bool:
         """
         Initialize code repository parser with database loading
         
         Args:
             workspace_root: Workspace root directory (optional, uses self.root_path if not provided)
             supported_extensions: Supported file extensions (optional)
+            skip_initial_update: Whether to skip initial synchronous update (default: True)
             
         Returns:
             True if initialization successful, False otherwise
@@ -1179,13 +1272,16 @@ class CodeRepositoryParser:
                 try:
                     self.load_database(db_path)
                     
-                    # Check for repository changes (perform initial check synchronously)
-                    changes = self.check_repository_changes()
-                    if any(changes.values()):
-                        # Perform incremental update
-                        update_result = self.incremental_update()
-                        if any(count > 0 for count in update_result.values()):
-                            self.save_database(db_path)
+                    # Skip initial synchronous update - let background thread handle it
+                    if not skip_initial_update:
+                        # Check for repository changes (perform initial check synchronously)
+                        changes = self.check_repository_changes()
+                        if any(changes.values()):
+                            # Perform incremental update
+                            update_result = self.incremental_update()
+                            if any(count > 0 for count in update_result.values()):
+                                self.save_database(db_path)
+                    
                     initialization_success = True
                 except Exception as e:
                     print_current(f"⚠️ Failed to load code index database: {e}, will recreate")
@@ -1197,7 +1293,10 @@ class CodeRepositoryParser:
             # If initialization successful, start background update thread
             if initialization_success:
                 self.start_background_update()
-                print_current(f"✅ Code repository parser initialization completed, background update {'enabled' if self._background_update_enabled else 'disabled'}")
+                if skip_initial_update:
+                    print_current(f"✅ Code repository parser initialization completed, background update enabled (updates handled by background thread)")
+                else:
+                    print_current(f"✅ Code repository parser initialization completed, background update {'enabled' if self._background_update_enabled else 'disabled'}")
             
             return initialization_success
                 

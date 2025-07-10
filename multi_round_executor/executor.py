@@ -48,7 +48,8 @@ class MultiRoundTaskExecutor:
                  debug_mode: bool = False, api_key: str = None, 
                  model: str = DEFAULT_MODEL, api_base: str = None, 
                  detailed_summary: bool = DEFAULT_DETAILED_SUMMARY,
-                 interactive_mode: bool = False, streaming: bool = None):
+                 interactive_mode: bool = False, streaming: bool = None,
+                 MCP_config_file: str = None, prompts_folder: str = None):
         """
         Initialize multi-round task executor
         
@@ -63,6 +64,8 @@ class MultiRoundTaskExecutor:
             detailed_summary: Whether to generate detailed summary
             interactive_mode: Whether to enable interactive mode
             streaming: Whether to use streaming output (None to use config.txt)
+            MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
+            prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
         """
         # Ensure subtask_loops is an integer to prevent type comparison errors
         self.subtask_loops = int(subtask_loops) if subtask_loops is not None else DEFAULT_SUBTASK_LOOPS
@@ -82,6 +85,8 @@ class MultiRoundTaskExecutor:
         self.detailed_summary = detailed_summary
         self.interactive_mode = interactive_mode
         self.streaming = streaming
+        self.MCP_config_file = MCP_config_file
+        self.prompts_folder = prompts_folder
         self.task_summaries = []  # Store summaries of all tasks
         
         # Extract session timestamp
@@ -102,7 +107,9 @@ class MultiRoundTaskExecutor:
             logs_dir=logs_dir,
             session_timestamp=session_timestamp,
             interactive_mode=interactive_mode,
-            streaming=streaming
+            streaming=streaming,
+            MCP_config_file=MCP_config_file,
+            prompts_folder=prompts_folder
         )
         
         # Initialize module components
@@ -377,6 +384,21 @@ class MultiRoundTaskExecutor:
                     print_current(f"🛑 Task execution stopped by user at task round {task_round}")
                     break
                 
+                # 🔧 New: Check if terminate signal is received
+                if "AGENT_TERMINATED:" in result:
+                    # Record the termination
+                    round_record = {
+                        "task_round": task_round, 
+                        "prompt": current_prompt,
+                        "result": result,
+                        "task_completed": True,  # 🔧 Mark as completed to avoid showing as failed
+                        "agent_terminated": True,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    task_history.append(round_record)
+                    print_current(f"🛑 Task execution terminated at task round {task_round}")
+                    task_completed = True  # 🔧 Set task completion flag to ensure loop exit
+                    break
                 # Check task completion
                 task_completed = self.task_checker.check_task_completion(result)
                 

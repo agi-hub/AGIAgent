@@ -90,7 +90,9 @@ def example_with_custom_config():
         model="claude-3-haiku-20240307",  # Faster, cheaper model
         debug_mode=True,  # Enable detailed logging
         detailed_summary=True,  # Generate detailed reports
-        interactive_mode=False  # Non-interactive execution
+        interactive_mode=False,  # Non-interactive execution
+        MCP_config_file="config/custom_mcp_servers.json",  # Custom MCP configuration
+        prompts_folder="custom_prompts"  # Custom prompts folder
     )
     
     # Check current configuration
@@ -110,6 +112,36 @@ def example_with_custom_config():
     )
     
     print(f"Task result: {'Success' if response['success'] else 'Failed'}")
+
+def example_with_custom_mcp_and_prompts():
+    """Example using custom MCP configuration and prompts folder"""
+    print("\n=== Custom MCP and Prompts Example ===")
+    
+    client = AGIBotClient(
+        api_key="your_api_key_here",
+        model="claude-3-sonnet-20240229",
+        debug_mode=False,
+        MCP_config_file="config/specialized_mcp_servers.json",  # Use specialized MCP tools
+        prompts_folder="specialized_prompts"  # Use specialized prompts for different domains
+    )
+    
+    # This allows you to:
+    # 1. Use different MCP server configurations for different projects
+    # 2. Use different prompt templates and tool interfaces
+    # 3. Create domain-specific AGIBot instances (e.g., for data science, web development, etc.)
+    
+    response = client.chat(
+        messages=[
+            {"role": "user", "content": "Create a machine learning pipeline for time series forecasting"}
+        ],
+        dir="ml_pipeline_project"
+    )
+    
+    if response["success"]:
+        print("✅ ML pipeline created with specialized tools and prompts!")
+        print(f"📁 Output: {response['output_dir']}")
+    else:
+        print(f"❌ Failed: {response['message']}")
 
 def example_batch_processing():
     """Example of processing multiple tasks in batch"""
@@ -169,6 +201,7 @@ if __name__ == "__main__":
     example_basic_usage()
     example_with_continue_mode()
     example_with_custom_config()
+    example_with_custom_mcp_and_prompts()
     example_batch_processing()
     
     print("Examples ready to run! Uncomment the function calls above to test.") 

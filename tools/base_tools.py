@@ -52,24 +52,18 @@ class BaseTools:
     def _init_code_parser(self):
         """Initialize code repository parser with background update enabled"""
         try:
-            from .code_repository_parser import CodeRepositoryParser
+            from .global_code_index_manager import get_global_code_index_manager
             
-            # Create parser instance with background update enabled
-            self.code_parser = CodeRepositoryParser(
-                root_path=self.workspace_root or os.getcwd(),
-                supported_extensions=SUPPORTED_EXTENSIONS,
-                enable_background_update=True,  # 启用后台更新
-                update_interval=1.0  # 1秒更新间隔
-            )
+            # Use global code index manager
+            manager = get_global_code_index_manager()
             
-            # Initialize with database loading
-            success = self.code_parser.init_code_parser(
-                workspace_root=self.workspace_root,
+            self.code_parser = manager.get_parser(
+                workspace_root=self.workspace_root or os.getcwd(),
                 supported_extensions=SUPPORTED_EXTENSIONS
             )
             
-            if not success:
-                self.code_parser = None
+            if self.code_parser is None:
+                print_current("❌ Failed to get code parser from global manager")
                 
         except Exception as e:
             print_current(f"❌ Failed to initialize code repository parser: {e}")
@@ -78,7 +72,8 @@ class BaseTools:
     def _get_code_index_path(self) -> str:
         """Get the path to the code index database (proxy method)"""
         if self.code_parser:
-            return self.code_parser._get_code_index_path(self.workspace_root or os.getcwd())
+            workspace_root = self.workspace_root or os.getcwd()
+            return self.code_parser._get_code_index_path(workspace_root)
         return ""
 
     def _rebuild_code_index(self):
@@ -139,4 +134,39 @@ class BaseTools:
                 'response_time': 'error',
                 'error': 'Terminal tools not initialized'
             }
+
+    def idle(self, message: str = None, reason: str = None) -> Dict[str, Any]:
+        """
+        Idle tool - represents doing nothing in this round, mainly used for multi-agent synchronization.
+        
+        Args:
+            message: Optional message explaining why idling (default: None)
+            reason: Optional reason for idling (default: None)
+            
+        Returns:
+            Dict containing idle status and optional message
+        """
+        result = {
+            'status': 'idle',
+            'action': 'no_action_taken',
+            'description': 'This round is idle - no operations performed'
+        }
+        
+        if message:
+            result['message'] = message
+        
+        if reason:
+            result['reason'] = reason
+        
+        # Add timestamp for synchronization purposes
+        import datetime
+        result['timestamp'] = datetime.datetime.now().isoformat()
+        
+        print_current("💤 Idle - No action taken this round")
+        if message:
+            print_current(f"   Message: {message}")
+        if reason:
+            print_current(f"   Reason: {reason}")
+        
+        return result
 
