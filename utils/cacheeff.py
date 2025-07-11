@@ -19,13 +19,15 @@ limitations under the License.
 from typing import Dict, Any, List
 
 
-def estimate_token_count(text: str) -> int:
+def estimate_token_count(text: str, has_images: bool = False, model: str = "gpt-4") -> int:
     """
-    Estimate token count for given text.
+    Estimate token count for given text, including image tokens if present.
     This is a rough approximation based on character count and common tokenization patterns.
     
     Args:
         text: Input text to estimate tokens for
+        has_images: Whether the input contains images
+        model: Model name (affects token calculation)
         
     Returns:
         Estimated token count
@@ -51,6 +53,33 @@ def estimate_token_count(text: str) -> int:
     else:
         # Primarily English/Latin text
         estimated_tokens = int(total_chars / 4)
+    
+    # Add image tokens if present
+    if has_images:
+        import re
+        # Look for base64 image data patterns
+        base64_pattern = r'[A-Za-z0-9+/]{100,}={0,2}'
+        base64_matches = re.findall(base64_pattern, text)
+        
+        if base64_matches:
+            base64_chars = sum(len(match) for match in base64_matches)
+            image_count = len(base64_matches)
+            
+            if "claude" in model.lower():
+                # Claude: base64 encoded images use approximately 1.4 tokens per character
+                image_tokens = int(base64_chars * 1.4)
+            elif "gpt-4" in model.lower():
+                # GPT-4 Vision: estimate based on image size and detail
+                # For base64 images, estimate ~1.2 tokens per character
+                image_tokens = int(base64_chars * 1.2)
+            else:
+                # For other models, use conservative estimate
+                image_tokens = int(base64_chars * 1.0)
+            
+            estimated_tokens += image_tokens
+            
+            # Optional debug info (commented out to avoid import issues)
+            # print(f"🖼️ Added {image_tokens} tokens for {image_count} images ({base64_chars} base64 chars)")
     
     # Ensure minimum of 1 token for non-empty text
     return max(1, estimated_tokens)
@@ -107,6 +136,8 @@ def analyze_cache_potential(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     Returns:
         Dictionary containing cache analysis results
     """
+    import re
+    
     try:
         # For safety, import print_current here to avoid circular imports
         try:
@@ -136,10 +167,13 @@ def analyze_cache_potential(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
             else:
                 new_content += content
         
-        # Calculate token estimates
-        total_tokens = estimate_token_count(total_content)
-        history_tokens = estimate_token_count(history_content)
-        new_tokens = estimate_token_count(new_content)
+        # Detect if content contains images (base64 data)
+        has_images = bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', total_content))
+        
+        # Calculate token estimates including image tokens
+        total_tokens = estimate_token_count(total_content, has_images=has_images)
+        history_tokens = estimate_token_count(history_content, has_images=bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', history_content)))
+        new_tokens = estimate_token_count(new_content, has_images=bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', new_content)))
         
         # Estimate cache hit potential based on history ratio
         cache_hit_potential = history_tokens / total_tokens if total_tokens > 0 else 0

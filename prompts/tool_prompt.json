@@ -246,5 +246,41 @@
       },
       "required": []
     }
+  },
+  "get_sensor_data": {
+    "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "integer",
+          "description": "Data type to acquire: 1=image, 2=video (5 seconds), 3=audio, 4=sensor data",
+          "enum": [1, 2, 3, 4]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source identifier: file path for existing files, or device path for cameras/microphones/sensors (e.g., '/dev/video0', '/dev/audio0', or file paths)"
+        },
+        "para": {
+          "type": "object",
+          "description": "Parameters in JSON format. For images/cameras: {\"resolution\": \"640x320\"}. For videos: {\"resolution\": \"640x320\", \"duration\": 5}. For audio: {\"sampling_rate\": 16000, \"duration\": 5}. For sensors: varies by sensor type.",
+          "properties": {
+            "resolution": {
+              "type": "string",
+              "description": "Resolution for image/video capture (e.g., '640x320', '1920x1080')"
+            },
+            "duration": {
+              "type": "integer",
+              "description": "Duration in seconds for video/audio capture"
+            },
+            "sampling_rate": {
+              "type": "integer",
+              "description": "Sampling rate for audio capture (default: 16000 Hz)"
+            }
+          }
+        }
+      },
+      "required": ["type", "source"]
+    }
   }
 } 

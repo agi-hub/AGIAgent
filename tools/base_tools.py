@@ -22,7 +22,7 @@ import subprocess
 import threading
 import time
 import queue
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from .code_repository_parser import CodeRepositoryParser
 
@@ -48,6 +48,10 @@ class BaseTools:
         # Initialize terminal tools
         self.terminal_tools = None
         self._init_terminal_tools()
+
+        # Initialize sensor data collector
+        self.sensor_collector = None
+        self._init_sensor_collector()
 
     def _init_code_parser(self):
         """Initialize code repository parser with background update enabled"""
@@ -111,6 +115,38 @@ class BaseTools:
         except Exception as e:
             print_current(f"❌ Failed to initialize terminal tools: {e}")
             self.terminal_tools = None
+
+    def _init_sensor_collector(self):
+        """Initialize sensor data collector"""
+        try:
+            from .sensor_tools import SensorDataCollector
+            self.sensor_collector = SensorDataCollector(workspace_root=self.workspace_root)
+        except Exception as e:
+            print_current(f"❌ Failed to initialize sensor data collector: {e}")
+            self.sensor_collector = None
+
+    def get_sensor_data(self, type: int, source: str, para: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Acquire physical world information including images, videos, audio, and sensor data.
+        
+        Args:
+            type: Data type (1=image, 2=video, 3=audio, 4=sensor)
+            source: Source identifier (file path or device path)
+            para: Parameters dictionary
+            
+        Returns:
+            Dictionary containing sensor data acquisition results
+        """
+        if self.sensor_collector:
+            return self.sensor_collector.get_sensor_data(type, source, para)
+        else:
+            return {
+                'success': False,
+                'data': None,
+                'dataformat': None,
+                'error': 'Sensor data collector not initialized',
+                'timestamp': None
+            }
 
     def talk_to_user(self, query: str, timeout: int = 10) -> Dict[str, Any]:
         """

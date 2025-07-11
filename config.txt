@@ -3,10 +3,10 @@
 LANG=zh
 
 # OpenAI API configuration 
-# api_key=your key
-# api_base=https://api.openai-proxy.org/v1
-# model=gpt-4.1
-# max_tokens=8192
+api_key=your key
+api_base=https://api.openai-proxy.org/v1
+model=gpt-4.1
+max_tokens=8192
 
 
 # SiliconFlow API configuration 
@@ -18,11 +18,11 @@ LANG=zh
 # max_tokens=4096
 
 # Anthropic models
-api_key=your key
-api_base=https://api.openai-proxy.org/anthropic
-model=claude-sonnet-4-0
+# api_key=your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
 # model=claude-3-haiku-20240307
-max_tokens=16384
+# max_tokens=16384
 
 # Google gemini model
 # api_key=your key

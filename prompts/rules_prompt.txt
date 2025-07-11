@@ -70,6 +70,27 @@ Examples of efficient execution:
 - Perform comprehensive analysis by gathering all needed information in parallel
 </task_execution_efficiency>
 
+<sensor_data_usage>
+Sensor Data Acquisition:
+When using get_sensor_data tool for physical world information:
+1. **Data Types**: 
+   - type=1: Image data (from camera or file)
+   - type=2: Video data (from camera or file)
+   - type=3: Audio data (from microphone or file)
+   - type=4: Sensor data (from various sensors or files)
+2. **Source Types**:
+   - File paths: For loading existing files (e.g., "/path/to/image.jpg")
+   - Device paths: For capturing from devices (e.g., "/dev/video0", "0", "video0")
+   - Sensor paths: For reading sensor data (e.g., "/dev/sensor", "/sys/class/thermal/thermal_zone0/temp")
+3. **Parameters**:
+   - Images/Videos: {"resolution": "640x320"} (default), {"resolution": "1920x1080"}
+   - Videos: {"resolution": "640x320", "duration": 5} (duration in seconds)
+   - Audio: {"sampling_rate": 16000, "duration": 5} (sampling rate in Hz, duration in seconds)
+   - Sensors: varies by sensor type
+4. **Return Values**: Always check 'success' field first, then use 'data' (base64 for images, file path for videos/audio) and 'dataformat' for processing
+5. **Error Handling**: If sensor acquisition fails, check the 'error' field for specific failure reasons
+</sensor_data_usage>
+
 <task_completion>
 Task Completion Signal:
 When you've fully completed a task and believe no further iterations are needed, you MUST send this singal to exit the task execution:

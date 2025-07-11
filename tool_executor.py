@@ -108,17 +108,17 @@ def get_anthropic_client():
 
 
 class ToolExecutor:
-    def __init__(self, api_key: str = None, 
-                 model: str = None, 
-                 api_base: str = None, 
-                 workspace_dir: str = None,
+    def __init__(self, api_key: Optional[str] = None, 
+                 model: Optional[str] = None, 
+                 api_base: Optional[str] = None, 
+                 workspace_dir: Optional[str] = None,
                  debug_mode: bool = False,
                  logs_dir: str = "logs",
-                 session_timestamp: str = None,
-                 streaming: bool = None,
+                 session_timestamp: Optional[str] = None,
+                 streaming: Optional[bool] = None,
                  interactive_mode: bool = False,
-                 MCP_config_file: str = None,
-                 prompts_folder: str = None):
+                 MCP_config_file: Optional[str] = None,
+                 prompts_folder: Optional[str] = None):
         """
         Initialize the ToolExecutor
         
@@ -244,6 +244,15 @@ class ToolExecutor:
             out_dir=out_dir
         )
         
+        # Initialize history optimizer for image data optimization
+        try:
+            from tools.history_optimizer import HistoryOptimizer
+            self.history_optimizer = HistoryOptimizer(workspace_root=self.workspace_dir)
+            # print_current("✅ History optimizer initialized for image data optimization")
+        except ImportError as e:
+            print_current(f"⚠️ Failed to import HistoryOptimizer: {e}")
+            self.history_optimizer = None
+        
         # Initialize multi-agent tools directly if enabled
         if self.multi_agent:
             from tools.multiagents import MultiAgentTools
@@ -251,6 +260,9 @@ class ToolExecutor:
             self.multi_agent_tools = MultiAgentTools(self.workspace_dir, debug_mode=self.debug_mode)
         else:
             self.multi_agent_tools = None
+        
+        # Store current round's image data for next round vision API
+        self.current_round_images = []
 
         
         # Initialize summary generator for conversation history summarization
@@ -285,6 +297,7 @@ class ToolExecutor:
             "get_background_update_status": self.tools.get_background_update_status,
             "talk_to_user": self.tools.talk_to_user,
             "idle": self.tools.idle,
+            "get_sensor_data": self.tools.get_sensor_data,
         }
         
         # Add multi-agent tools if enabled, otherwise add error handlers
@@ -963,292 +976,328 @@ class ToolExecutor:
             self.last_summarized_history_length = 0
 
     def execute_subtask(self, prompt: str, prompts_file: str = "", 
-                       task_history: List[Dict[str, Any]] = None, 
-                       execution_round: int = 1) -> str:
+                       task_history: Optional[List[Dict[str, Any]]] = None, 
+                       execution_round: int = 1) -> Union[str, Tuple[str, List[Dict[str, Any]]]]:
         """
-        Execute a subtask with multiple tool calling rounds.
+        Execute a subtask with potential multiple rounds (if tools need to be called)
         
         Args:
-            prompt: Task prompt
-            prompts_file: File containing prompts (unused)
-            task_history: Previous task execution history (optional)
-            execution_round: Current execution round (for logging)
+            prompt: User prompt
+            prompts_file: Prompt file to load (currently not used, loads default system prompt)
+            task_history: Historical messages from previous rounds (to maintain conversation context)
+            execution_round: Current execution round number
             
         Returns:
-            Final result string
+            Execution result (str) or tuple (result, optimized_task_history) if history was optimized
         """
-        try:
-            # 🔧 新增：在任务开始时检查terminate消息
-            terminate_signal = self._check_terminate_messages()
-            if terminate_signal:
-                return terminate_signal
-            
-            # Initialize execution state
-            conversation_history = []
-            accumulated_results = ""
-            round_counter = 1  # Initialize tool call round counter
-            max_rounds = 30  # Maximum rounds for tool calling
-            
-            # Add task history as context if provided
-            if task_history:
-                for record in task_history:
-                    if "prompt" in record:
-                        conversation_history.append({"role": "user", "content": record["prompt"]})
-                    if "result" in record:
-                        conversation_history.append({"role": "assistant", "content": record["result"]})
-            
-            # Add current prompt
-            conversation_history.append({"role": "user", "content": prompt})
-            
-            while round_counter <= max_rounds:
-                try:
-                    # 🔧 新增：在每轮工具调用前检查terminate消息
-                    terminate_signal = self._check_terminate_messages()
-                    if terminate_signal:
-                        return terminate_signal
+        track_operation(f"executing task (prompt length: {len(prompt)})")
+        
+        # Initialize task history if not provided
+        if task_history is None:
+            task_history = []
+        
+        original_history_id = id(task_history)  # Track if we modify the history
+        history_was_optimized = False
+        
+        max_rounds = 10  # Maximum number of rounds to prevent infinite loops
+        round_counter = 1
+        
+        # 🔧 Initialize current_round_images if not exists
+        if not hasattr(self, 'current_round_images'):
+            self.current_round_images = []
+        
+        # �� NEW: Track if get_sensor_data was called in current round
+        current_round_has_sensor_data = False
+        
+        while round_counter <= max_rounds:
+            try:
+                # Enhancement: Check for terminate messages before each tool call in every round
+                terminate_signal = self._check_terminate_messages()
+                if terminate_signal:
+                    return terminate_signal
+                
+                # Load system prompt (only core system_prompt.txt content)
+                system_prompt = self.load_system_prompt()
+                
+                # Build user message with new architecture
+                user_message = self._build_new_user_message(prompt, task_history, round_counter)
+                
+                # Prepare messages for the LLM with proper system/user separation
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ]
+                
+                # Save debug log for this call's input (before LLM call)
+                if self.debug_mode:
+                    try:
+                        initial_call_info = {
+                            "is_single_call": True,
+                            "call_type": "standard_tools_execution",
+                            "user_prompt": prompt
+                        }
+                    except Exception as e:
+                        print_current(f"⚠️ Debug preparation failed: {e}")
+                
+                # Execute LLM call with standard tools
+                content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
+                
+                # 🔧 DEBUG: Check current_round_images status
+                #print_current(f"🔍 DEBUG: After LLM call, current_round_images status: {len(self.current_round_images) if self.current_round_images else 0} images")
+                
+                # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
+                print_current(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
+                if task_history and hasattr(self, 'history_optimizer') and self.history_optimizer:
+                    print_current("🔄 Vision analysis complete, optimizing history to remove analyzed image data...")
+                    try:
+                        # Immediately optimize the history, removing all image data (keep_recent_images=0)
+                        # Since the vision API has already provided a text description, the original image data is no longer needed
+                        #print_current(f"🔍 Starting optimization with {len(task_history)} history records...")
+                        optimized_history = self.history_optimizer.optimize_history_for_context(
+                            task_history, keep_recent_images=0
+                        )
+                        # Update the history reference to ensure subsequent rounds use the optimized history
+                        original_count = len(task_history)
+                        task_history.clear()
+                        task_history.extend(optimized_history)
+                        history_was_optimized = True
+                        #print_current(f"✅ History optimization complete: {original_count} → {len(optimized_history)} records")
+                    except Exception as e:
+                        print_current(f"❌ History optimization failed: {e}")
+                else:
+                    print_current("⚠️ Skipping history optimization - conditions not met")
+                # Show raw model response for debugging
+                if self.debug_mode and content:
+                    print_current("🤖 Raw model response:")
+                    print_current(content)
+                
+                # Calculate and display token and character statistics
+                self._display_llm_statistics(messages, content, tool_calls)
+                
+                # Check for TASK_COMPLETED flag and detect conflicts
+                has_task_completed = "TASK_COMPLETED:" in content
+                has_tool_calls = len(tool_calls) > 0
+                
+                # Check for TASK_COMPLETED flag and detect conflicts
+                has_task_completed = "TASK_COMPLETED:" in content
+                has_tool_calls = len(tool_calls) > 0
+                
+                # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
+                conflict_detected = has_tool_calls and has_task_completed
+                if conflict_detected:
+                    print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
+                    # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                    content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                    has_task_completed = False # Ensure the flag is updated after removal
+                
+                # If TASK_COMPLETED but no tool calls, complete the task
+                if has_task_completed and not has_tool_calls:
+                    print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                    # Extract the completion message
+                    task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                    if task_completed_match:
+                        completion_message = task_completed_match.group(1).strip()
                     
-                    # Load system prompt (only core system_prompt.txt content)
-                    system_prompt = self.load_system_prompt()
-                    
-                    # Build user message with new architecture
-                    user_message = self._build_new_user_message(prompt, task_history, round_counter)
-                    
-                    # Prepare messages for the LLM with proper system/user separation
-                    messages = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ]
-                    
-                    # Save debug log for this call's input (before LLM call)
+                    # Save final debug log
                     if self.debug_mode:
                         try:
-                            initial_call_info = {
-                                "is_single_call": True,
-                                "call_type": "standard_tools_execution",
-                                "user_prompt": prompt
+                            completion_info = {
+                                "has_tool_calls": False,
+                                "task_completed": True,
+                                "completion_detected": True,
+                                "execution_result": "task_completed_flag"
                             }
-                        except Exception as e:
-                            print_current(f"⚠️ Debug preparation failed: {e}")
-                    
-                    # Execute LLM call with standard tools
-                    content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
-                    
-                    # Show raw model response for debugging
-                    if self.debug_mode and content:
-                        print_current("🤖 Raw model response:")
-                        print_current(content)
-                    
-                    # Calculate and display token and character statistics
-                    self._display_llm_statistics(messages, content, tool_calls)
-                    
-                    # Check for TASK_COMPLETED flag and detect conflicts
-                    has_task_completed = "TASK_COMPLETED:" in content
-                    has_tool_calls = len(tool_calls) > 0
-                    
-                    # Check for TASK_COMPLETED flag and detect conflicts
-                    has_task_completed = "TASK_COMPLETED:" in content
-                    has_tool_calls = len(tool_calls) > 0
-                    
-                    # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
-                    conflict_detected = has_tool_calls and has_task_completed
-                    if conflict_detected:
-                        print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
-                        # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
-                        content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
-                        has_task_completed = False # Ensure the flag is updated after removal
-                    
-                    # If TASK_COMPLETED but no tool calls, complete the task
-                    if has_task_completed and not has_tool_calls:
-                        print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
-                        # Extract the completion message
-                        task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
-                        if task_completed_match:
-                            completion_message = task_completed_match.group(1).strip()
-                        
-                        # Save final debug log
-                        if self.debug_mode:
-                            try:
-                                completion_info = {
-                                    "has_tool_calls": False,
-                                    "task_completed": True,
-                                    "completion_detected": True,
-                                    "execution_result": "task_completed_flag"
-                                }
-                                
-                                self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
-                            except Exception as log_error:
-                                print_current(f"❌ Completion debug log save failed: {log_error}")
-                        
-                        finish_operation(f"executing task (round {round_counter})")
-                        return content
-                    
-                    # Execute tools if present
-                    if tool_calls:
-                        print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
-                        print_current("=" * 50)
-                        
-                        # Print tool calls for terminal display with better formatting
-                        tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
-                        if tool_calls_formatted:
-                            # Remove the "**Tool Calls:**" header since we already printed our own
-                            display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
-                            print_current(display_content)
-                        
-                        print_current("=" * 50)
-                        print_current("🚀 Starting tool execution...")
-                        print_current("")
-                        
-                        # Execute all tool calls and collect results
-                        all_tool_results = []
-                        successful_executions = 0
-                        
-                        for i, tool_call in enumerate(tool_calls, 1):
-                            # Handle standard format tool calls (both OpenAI and Anthropic)
-                            tool_name = self._get_tool_name_from_call(tool_call)
-                            tool_params = self._get_tool_params_from_call(tool_call)
                             
-                            # Print tool execution start with clear formatting
-                            print_current(f"🔧 Executing tool {i}: {tool_name}")
-                            print_current(f"   Parameters: {tool_params}")
-                            print_current(f"   Results:")
+                            self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
+                        except Exception as log_error:
+                            print_current(f"❌ Completion debug log save failed: {log_error}")
+                    
+                    finish_operation(f"executing task (round {round_counter})")
+                    # Return optimized history if available
+                    if history_was_optimized:
+                        return (content, task_history)
+                    return content
+                
+                # Execute tools if present
+                if tool_calls:
+                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                    print_current("=" * 50)
+                    
+                    # Print tool calls for terminal display with better formatting
+                    tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
+                    if tool_calls_formatted:
+                        # Remove the "**Tool Calls:**" header since we already printed our own
+                        display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                        print_current(display_content)
+                    
+                    print_current("=" * 50)
+                    print_current("🚀 Starting tool execution...")
+                    print_current("")
+                    
+                    # Execute all tool calls and collect results
+                    all_tool_results = []
+                    successful_executions = 0
+                    
+                    for i, tool_call in enumerate(tool_calls, 1):
+                        # Handle standard format tool calls (both OpenAI and Anthropic)
+                        tool_name = self._get_tool_name_from_call(tool_call)
+                        tool_params = self._get_tool_params_from_call(tool_call)
+                        
+                        # 🔧 NEW: Track if get_sensor_data was called in current round
+                        if tool_name == 'get_sensor_data':
+                            current_round_has_sensor_data = True
+                        
+                        # Print tool execution start with clear formatting
+                        print_current(f"🔧 Executing tool {i}: {tool_name}")
+                        print_current(f"   Parameters: {tool_params}")
+                        print_current(f"   Results:")
+                        
+                        try:
+                            # Convert to standard format for execute_tool
+                            standard_tool_call = {
+                                "name": tool_name,
+                                "arguments": tool_params
+                            }
+                            tool_result = self.execute_tool(standard_tool_call)
                             
-                            try:
-                                # Convert to standard format for execute_tool
-                                standard_tool_call = {
-                                    "name": tool_name,
-                                    "arguments": tool_params
-                                }
-                                tool_result = self.execute_tool(standard_tool_call)
-                                
-                                all_tool_results.append({
-                                    'tool_name': tool_name,
-                                    'tool_params': tool_params,
-                                    'tool_result': tool_result
-                                })
-                                successful_executions += 1
-                                
-                                # Real-time print of each tool's execution result with proper indentation
-                                if isinstance(tool_result, dict):
-                                    # Use simplified formatting for search tools if enabled in config
-                                    if (self.simplified_search_output and 
-                                        tool_name in ['codebase_search', 'web_search']):
-                                        formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
-                                    else:
-                                        formatted_result = self._format_dict_as_text(tool_result)
-                                    # Add indentation to each line
-                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                                    print_current(indented_result)
+                            all_tool_results.append({
+                                'tool_name': tool_name,
+                                'tool_params': tool_params,
+                                'tool_result': tool_result
+                            })
+                            successful_executions += 1
+                            
+                            # Real-time print of each tool's execution result with proper indentation
+                            if isinstance(tool_result, dict):
+                                # Use simplified formatting for search tools if enabled in config
+                                if (self.simplified_search_output and 
+                                    tool_name in ['codebase_search', 'web_search']):
+                                    formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
                                 else:
-                                    # Add indentation to the result
-                                    result_str = str(tool_result)
-                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                                    print_current(indented_result)
-                                
-                            except Exception as e:
-                                error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                                print_current(f"   ❌ {error_msg}")
-                                all_tool_results.append({
-                                    'tool_name': tool_name,
-                                    'tool_params': tool_params,
-                                    'tool_result': f"Error: {error_msg}"
-                                })
+                                    formatted_result = self._format_dict_as_text(tool_result)
+                                # Add indentation to each line
+                                indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                                print_current(indented_result)
+                            else:
+                                # Add indentation to the result
+                                result_str = str(tool_result)
+                                indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                                print_current(indented_result)
                             
-                            # Add separator between tools
-                            if i < len(tool_calls):
-                                print_current("-" * 30)
+                        except Exception as e:
+                            error_msg = f"Tool {tool_name} execution failed: {str(e)}"
+                            print_current(f"   ❌ {error_msg}")
+                            all_tool_results.append({
+                                'tool_name': tool_name,
+                                'tool_params': tool_params,
+                                'tool_result': f"Error: {error_msg}"
+                            })
                         
+                        # Add separator between tools
+                        if i < len(tool_calls):
+                            print_current("-" * 30)
+                    
 
-                        
-                        # Format tool results for response
-                        tool_results_message = self._format_tool_results_for_llm(all_tool_results)
-                        
-                        # Save debug log with tool execution info
-                        if self.debug_mode:
-                            try:
-                                tool_execution_info = {
-                                    "has_tool_calls": True,
-                                    "parsed_tool_calls": tool_calls,
-                                    "tool_results": all_tool_results,
-                                    "formatted_tool_results": tool_results_message,
-                                    "successful_executions": successful_executions,
-                                    "total_tool_calls": len(tool_calls),
-                                    "conflict_detected": conflict_detected
-                                }
-                                
-                                self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
-                            except Exception as log_error:
-                                print_current(f"❌ Debug log save failed: {log_error}")
-                        
-                        # Return combined response with tool calls and tool results
-                        result_parts = [content]
-                        if tool_calls_formatted:
-                            result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
-                        result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
-                        
-                        finish_operation(f"executing task (round {round_counter})")
-                        return "".join(result_parts)
                     
-                    else:
-                        # No tool calls, return LLM response directly
-                        print_current("📝 No tool calls found, returning LLM response")
-                        
-                        # Save debug log for response without tools
-                        if self.debug_mode:
-                            try:
-                                no_tools_info = {
-                                    "has_tool_calls": False,
-                                    "task_completed": has_task_completed,
-                                    "execution_result": "llm_response_only"
-                                }
-                                
-                                self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
-                            except Exception as log_error:
-                                print_current(f"❌ Final debug log save failed: {log_error}")
-                        
-                        finish_operation(f"executing task (round {round_counter})")
-                        return content
+                    # 🔧 MODIFIED: Store image data but don't use vision API
+                    self._extract_current_round_images(all_tool_results)
                     
-                except json.JSONDecodeError as e:
-                    error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
-                    print_current(error_msg)
-                    print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
-                    print_current(f"💡 Try regenerating the response or check the model's tool calling format")
-                    finish_operation(f"executing task (round {round_counter})")
-                    return error_msg
-                except Exception as e:
-                    error_msg = f"❌ Error executing subtask: {str(e)}"
-                    print_current(error_msg)
+                    # 🔧 NEW: Format tool results with base64 data detection
+                    tool_results_message = self._format_tool_results_for_llm(all_tool_results, include_base64_info=current_round_has_sensor_data)
                     
-                    # Add more specific error information for common issues
-                    if "Expecting ',' delimiter" in str(e):
-                        print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
-                        print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
-                    elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
-                        print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+                    # Save debug log with tool execution info
+                    if self.debug_mode:
+                        try:
+                            tool_execution_info = {
+                                "has_tool_calls": True,
+                                "parsed_tool_calls": tool_calls,
+                                "tool_results": all_tool_results,
+                                "formatted_tool_results": tool_results_message,
+                                "successful_executions": successful_executions,
+                                "total_tool_calls": len(tool_calls),
+                                "conflict_detected": conflict_detected
+                            }
+                            
+                            self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
+                        except Exception as log_error:
+                            print_current(f"❌ Debug log save failed: {log_error}")
+                    
+                    # Return combined response with tool calls and tool results
+                    result_parts = [content]
+                    if tool_calls_formatted:
+                        result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
+                    result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
                     
                     finish_operation(f"executing task (round {round_counter})")
-                    return error_msg
+                    # Return optimized history if available, even with tool calls
+                    if history_was_optimized:
+                        return ("".join(result_parts), task_history)
+                    return "".join(result_parts)
                 
-                # Add current result to accumulated results
-                accumulated_results += content
+                else:
+                    # No tool calls, return LLM response directly
+                    print_current("📝 No tool calls found, returning LLM response")
+                    
+                    # 🔧 NEW: Add base64 data status information when no tools are called
+                    base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
+                    content = content + base64_status_info
+                    
+                    # Save debug log for response without tools
+                    if self.debug_mode:
+                        try:
+                            no_tools_info = {
+                                "has_tool_calls": False,
+                                "task_completed": has_task_completed,
+                                "execution_result": "llm_response_only"
+                            }
+                            
+                            self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
+                        except Exception as log_error:
+                            print_current(f"❌ Final debug log save failed: {log_error}")
+                    
+                    finish_operation(f"executing task (round {round_counter})")
+                    # Return optimized history if available
+                    if history_was_optimized:
+                        return (content, task_history)
+                    return content
                 
-                # Add tool calls to conversation history
-                conversation_history.append({"role": "assistant", "content": content})
+            except json.JSONDecodeError as e:
+                error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
+                print_current(error_msg)
+                print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
+                print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+                finish_operation(f"executing task (round {round_counter})")
+                return error_msg
+            except Exception as e:
+                error_msg = f"❌ Error executing subtask: {str(e)}"
+                print_current(error_msg)
                 
-                # Add tool calls to tool_calls list
-                tool_calls_list.extend(tool_calls)
+                # Add more specific error information for common issues
+                if "Expecting ',' delimiter" in str(e):
+                    print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
+                    print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
+                elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
+                    print_current(f"💡 JSON parsing error detected - check tool argument formatting")
                 
-                round_counter += 1
+                finish_operation(f"executing task (round {round_counter})")
+                return error_msg
             
-            # If we reach here, it means we've completed all tool calls
-            print_current("🎉 All tool calls completed successfully!")
+            # Add current result to accumulated results
+            accumulated_results += content
             
-            # Return final accumulated results
-            return accumulated_results
+            # Add tool calls to conversation history
+            conversation_history.append({"role": "assistant", "content": content})
+            
+            # Add tool calls to tool_calls list
+            tool_calls_list.extend(tool_calls)
+            
+            round_counter += 1
         
-        except Exception as e:
-            print_current(f"❌ Error executing subtask: {str(e)}")
-            return f"Error: {str(e)}"
+        # If we reach here, it means we've completed all tool calls
+        print_current("🎉 All tool calls completed successfully!")
+        
+        # Return final accumulated results
+        return accumulated_results
     
     def _check_terminate_messages(self) -> Optional[str]:
         """
@@ -2307,7 +2356,7 @@ class ToolExecutor:
 
 
 
-    def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, tool_call_round: int = 0, tool_calls_info: Dict[str, Any] = None) -> None:
+    def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, tool_call_round: int = 0, tool_calls_info: Optional[Dict[str, Any]] = None) -> None:
         """
         Save detailed debug log for LLM call.
         
@@ -2333,6 +2382,9 @@ class ToolExecutor:
                 log_filename = f"llm_call_{self.llm_call_counter:03d}_{timestamp}.json"
             log_path = os.path.join(self.llm_logs_dir, log_filename)
             
+            # 🔧 Apply message optimization to remove base64 data from logs
+            optimized_messages = self._optimize_messages_for_logging(messages)
+            
             # Prepare debug data - including detailed tool call information
             debug_data = {
                 "call_info": {
@@ -2341,7 +2393,7 @@ class ToolExecutor:
                     "model": self.model,
                     "tool_call_round": tool_call_round  # Track which tool call round this is
                 },
-                "messages": messages,
+                "messages": optimized_messages,
                 "response_content": content
             }
             
@@ -2368,7 +2420,91 @@ class ToolExecutor:
         except Exception as e:
             print_current(f"⚠️ Debug log save failed: {e}")
 
-    def _display_llm_statistics(self, messages: List[Dict[str, Any]], response_content: str, tool_calls: List[Dict[str, Any]] = None) -> None:
+    def _optimize_messages_for_logging(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Optimize messages by replacing base64 data with references for logging purposes.
+        
+        Args:
+            messages: Original messages list
+            
+        Returns:
+            Optimized messages list with base64 data replaced by references
+        """
+        if not hasattr(self, 'history_optimizer') or not self.history_optimizer:
+            return messages
+        
+        optimized_messages = []
+        
+        for message in messages:
+            optimized_message = message.copy()
+            
+            # Check and optimize content field
+            if 'content' in message and isinstance(message['content'], str):
+                optimized_content = self._optimize_text_for_logging(message['content'])
+                optimized_message['content'] = optimized_content
+            
+            optimized_messages.append(optimized_message)
+        
+        return optimized_messages
+    
+    def _optimize_text_for_logging(self, text: str) -> str:
+        """
+        Optimize text content by replacing base64 data with lightweight references for logging.
+        
+        Args:
+            text: Original text content
+            
+        Returns:
+            Optimized text with base64 data replaced by references
+        """
+        if not text or not isinstance(text, str):
+            return text
+        
+        import re
+        import hashlib
+        
+        # Detect base64 image data patterns
+        base64_pattern = r'[A-Za-z0-9+/]{500,}={0,2}'
+        matches = list(re.finditer(base64_pattern, text))
+        
+        if not matches:
+            return text
+        
+        optimized_text = text
+        offset = 0
+        
+        for match in matches:
+            base64_data = match.group()
+            
+            # Calculate image hash for reference
+            image_hash = hashlib.md5(base64_data.encode()).hexdigest()[:16]
+            
+            # Extract file path info if present
+            file_marker_pattern = r'\[FILE_(?:SOURCE|SAVED):([^\]]+)\]'
+            file_match = re.search(file_marker_pattern, base64_data)
+            file_info = f"|{file_match.group(1)}" if file_match else ""
+            
+            # Estimate size
+            estimated_size_kb = len(base64_data) * 3 // 4 // 1024
+            
+            # Create compact reference
+            reference_text = f"[IMAGE_DATA_REF:{image_hash}|{estimated_size_kb}KB{file_info}]"
+            
+            # Calculate position in adjusted text
+            start_pos = match.start() + offset
+            end_pos = match.end() + offset
+            
+            # Replace base64 data with reference
+            optimized_text = (optimized_text[:start_pos] + 
+                            reference_text + 
+                            optimized_text[end_pos:])
+            
+            # Update offset
+            offset += len(reference_text) - len(base64_data)
+        
+        return optimized_text
+
+    def _display_llm_statistics(self, messages: List[Dict[str, Any]], response_content: str, tool_calls: Optional[List[Dict[str, Any]]] = None) -> None:
         """
         Display LLM input/output statistics including token count and character count.
         
@@ -2385,9 +2521,13 @@ class ToolExecutor:
                 content = message.get("content", "")
                 input_text += f"[{role}] {content}\n"
             
-            # Estimate token counts for response content
-            input_tokens_est = estimate_token_count(input_text)
-            output_tokens_est = estimate_token_count(response_content)
+            # Detect if input contains images (base64 data)
+            import re
+            has_images = bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', input_text))
+            
+            # Estimate token counts for response content, including image tokens
+            input_tokens_est = estimate_token_count(input_text, has_images=has_images, model=self.model)
+            output_tokens_est = estimate_token_count(response_content, has_images=False, model=self.model)
             
             # Estimate token counts for tool calls if present
             tool_calls_tokens = 0
@@ -2475,7 +2615,7 @@ class ToolExecutor:
     
 
 
-    def _format_tool_results_for_llm(self, tool_results: List[Dict[str, Any]]) -> str:
+    def _format_tool_results_for_llm(self, tool_results: List[Dict[str, Any]], include_base64_info: bool = False) -> str:
         """
         Format tool execution results for the LLM to understand.
         
@@ -2492,7 +2632,6 @@ class ToolExecutor:
         truncation_length = get_truncation_length()
         
         message_parts = ["Tool execution results:\n"]
-        
         for i, result in enumerate(tool_results, 1):
             tool_name = result.get('tool_name', 'unknown')
             tool_params = result.get('tool_params', {})
@@ -2517,30 +2656,35 @@ class ToolExecutor:
             is_read_entire_file = (tool_name == 'read_file' and 
                                  tool_params.get('should_read_entire_file', False) is True)
             
+            # Check if this is a get_sensor_data operation (should not truncate image data)
+            is_sensor_data = (tool_name == 'get_sensor_data')
+            
             # Format the result
             message_parts.append("**Result:**")
             if isinstance(tool_result, dict):
-                # Handle different types of tool results
-                if 'error' in tool_result and tool_result['error'] is not None and tool_result['error'] != '':
-                    message_parts.append(f"❌ Error: {tool_result['error']}")
-                elif 'status' in tool_result:
-                    status = tool_result['status']
-                    if status == 'completed' or status == 'success':
-                        message_parts.append(f"✅ {status.title()}")
-                    elif status == 'error':
-                        message_parts.append(f"❌ {status.title()}")
-                    else:
-                        message_parts.append(f"ℹ️ {status.title()}")
+                if tool_result.get('success') is not None:
+                    # Structured result format
+                    status = "✅ Success" if tool_result.get('success') else "❌ Failed"
+                    message_parts.append(status)
                     
-                    # Add additional result details
                     for key, value in tool_result.items():
                         if key not in ['status', 'command', 'working_directory']:
                             # For read_entire_file operations, don't truncate content
                             if is_read_entire_file and key == 'content':
                                 message_parts.append(f"- {key}: {value}")
                                 print_current(f"📄 Full file content passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
+                            # For get_sensor_data operations, show a summary instead of full base64 to avoid overwhelming LLM
+                            elif is_sensor_data and key == 'data':
+                                if isinstance(value, str) and len(value) > 1000:
+                                    # Show base64 data summary
+                                    data_preview = value[:100] + "..." + value[-20:] if len(value) > 120 else value
+                                    message_parts.append(f"- {key}: [BASE64_DATA] {data_preview} [Total length: {len(value)} characters]")
+                                    print_current(f"📸 Base64 data summary passed to LLM, original length: {len(value)} characters")
+                                else:
+                                    message_parts.append(f"- {key}: {value}")
+                                    print_current(f"📸 Full sensor data passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
                             elif isinstance(value, str) and len(value) > truncation_length:
-                                # Truncate very long content for non-read-entire-file operations
+                                # Truncate very long content for other operations
                                 value = value[:truncation_length] + f"... [Content truncated, total length: {len(value)} characters]"
                                 message_parts.append(f"- {key}: {value}")
                             else:
@@ -2548,10 +2692,13 @@ class ToolExecutor:
                 else:
                     # Fallback formatting
                     formatted_result = self._format_dict_as_text(tool_result)
-                    # For read_entire_file operations, don't truncate the formatted result
-                    if is_read_entire_file:
+                    # For read_entire_file and get_sensor_data operations, don't truncate
+                    if is_read_entire_file or is_sensor_data:
                         message_parts.append(formatted_result)
-                        print_current(f"📄 Full file content formatted and passed to LLM")
+                        if is_read_entire_file:
+                            print_current(f"📄 Full file content formatted and passed to LLM")
+                        else:
+                            print_current(f"📸 Full sensor data formatted and passed to LLM")
                     elif len(formatted_result) > truncation_length:
                         formatted_result = formatted_result[:truncation_length] + "... [Content truncated]"
                         message_parts.append(formatted_result)
@@ -2560,9 +2707,11 @@ class ToolExecutor:
             else:
                 # Handle non-dict results
                 result_str = str(tool_result)
-                # For read_entire_file operations, don't truncate
-                if is_read_entire_file:
+                # For read_entire_file and get_sensor_data operations, don't truncate
+                if is_read_entire_file or is_sensor_data:
                     message_parts.append(result_str)
+                    if is_sensor_data:
+                        print_current(f"📸 Full sensor data (non-dict) passed to LLM, length: {len(result_str)} characters")
                 elif len(result_str) > truncation_length:
                     result_str = result_str[:truncation_length] + "... [Content truncated]"
                     message_parts.append(result_str)
@@ -2573,7 +2722,112 @@ class ToolExecutor:
             if i < len(tool_results):
                 message_parts.append("")  # Empty line for separation
         
+        # 🔧 NEW: Add base64 data detection information
+        if include_base64_info:
+            message_parts.append("")
+            message_parts.append("## Base64 Data Status")
+            message_parts.append("✅ Base64 encoded image data has been successfully acquired in this round.")
+        
         return '\n'.join(message_parts)
+    
+    def _format_tool_results_with_vision(self, tool_results: List[Dict[str, Any]], vision_images: List[Dict[str, Any]]) -> Any:
+        """
+        Format tool results that contain vision data for LLM.
+        Returns the proper format for vision-capable models.
+        
+        Args:
+            tool_results: List of tool execution results
+            vision_images: List of vision image data
+            
+        Returns:
+            Properly formatted content for vision models (content array format)
+        """
+        truncation_length = get_truncation_length()
+        
+        # Build text content first
+        message_parts = ["Tool execution results:\n"]
+        
+        for i, result in enumerate(tool_results, 1):
+            tool_name = result.get('tool_name', 'unknown')
+            tool_params = result.get('tool_params', {})
+            tool_result = result.get('tool_result', '')
+            
+            # Format the tool result section
+            message_parts.append(f"## Tool {i}: {tool_name}")
+            
+            # Add parameters if meaningful
+            if tool_params:
+                key_params = []
+                for key, value in tool_params.items():
+                    if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
+                        # Truncate long values for readability
+                        if isinstance(value, str) and len(value) > truncation_length:
+                            value = value[:truncation_length] + "..."
+                        key_params.append(f"{key}={value}")
+                if key_params:
+                    message_parts.append(f"**Parameters:** {', '.join(key_params)}")
+            
+            # Format the result
+            message_parts.append("**Result:**")
+            if isinstance(tool_result, dict):
+                if tool_result.get('success') is not None:
+                    # Structured result format
+                    status = "✅ Success" if tool_result.get('success') else "❌ Failed"
+                    message_parts.append(status)
+                    
+                    for key, value in tool_result.items():
+                        # For image data in get_sensor_data, show metadata but reference image below
+                        if (tool_name == 'get_sensor_data' and key == 'data' and 
+                            any(img['tool_index'] == i for img in vision_images)):
+                            message_parts.append(f"- {key}: [IMAGE DATA - See image below]")
+                            print_current(f"📸 Image data formatted for vision API, tool {i}")
+                        elif key not in ['status', 'command', 'working_directory']:
+                            if isinstance(value, str) and len(value) > truncation_length:
+                                # Truncate very long content for other operations
+                                value = value[:truncation_length] + f"... [Content truncated, total length: {len(value)} characters]"
+                                message_parts.append(f"- {key}: {value}")
+                            else:
+                                message_parts.append(f"- {key}: {value}")
+            
+            # Add separator between tools
+            if i < len(tool_results):
+                message_parts.append("")  # Empty line for separation
+        
+        # Build content array with text and images
+        text_content = '\n'.join(message_parts)
+        
+        # Create content array format for vision models
+        content_parts = []
+        
+        # Add text part
+        content_parts.append({
+            "type": "text",
+            "text": text_content
+        })
+        
+        # Add image parts
+        for img_data in vision_images:
+            if self.is_claude:
+                # Claude format
+                content_parts.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img_data['mime_type'],
+                        "data": img_data['data']
+                    }
+                })
+            else:
+                # OpenAI format
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{img_data['mime_type']};base64,{img_data['data']}"
+                    }
+                })
+        
+        print_current(f"🖼️ Formatted {len(vision_images)} images for vision API ({self.model})")
+        return content_parts
 
 
     
@@ -3026,7 +3280,7 @@ class ToolExecutor:
             if is_retryable:
                 print_current(f"⚠️ OpenAI API temporarily unavailable: {e}")
                 print_current(f"💡 Consider switching to a different model or trying again later")
-                print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                print_current(f"�� You can change the model in config.txt and restart AGIBot")
             else:
                 print_current(f"❌ OpenAI API call failed: {e}")
             
@@ -3507,8 +3761,11 @@ class ToolExecutor:
             message_parts.append("---")
             message_parts.append("")
             
+            # Use task_history directly since image optimization is now handled after vision API analysis
+            processed_history = task_history
+            
             # Calculate total history length (consistent with upstream calculation)
-            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in task_history)
+            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in processed_history)
             
             # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
             if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
@@ -3516,12 +3773,12 @@ class ToolExecutor:
                 print_system("⚠️ History is very long. Using recent history subset to keep context manageable.")
                 
                 # Use recent history subset as fallback when history is still too long
-                recent_history = self._get_recent_history_subset(task_history, max_length=self.summary_trigger_length // 2)
+                recent_history = self._get_recent_history_subset(processed_history, max_length=self.summary_trigger_length // 2)
                 self._add_full_history_to_message(message_parts, recent_history)
-                print_system(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(task_history)} records")
+                print_system(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(processed_history)} records")
             else:
-                # History is manageable, use full history
-                self._add_full_history_to_message(message_parts, task_history)
+                # History is manageable, use processed history
+                self._add_full_history_to_message(message_parts, processed_history)
         
         # 6. Execution instructions (last)
         message_parts.append("---")
@@ -3812,6 +4069,158 @@ class ToolExecutor:
             template_lines.append(f'"{param_name}": {example_value}  // {description}{required_marker}')
         
         return "{\n  " + ",\n  ".join(template_lines) + "\n}"
+
+    def _extract_current_round_images(self, tool_results: List[Dict[str, Any]]) -> None:
+        """
+        Extract image data from current round tool results for next round vision API.
+        
+        Args:
+            tool_results: List of tool execution results
+        """
+        # Only clear if we actually have new image data to process
+        new_images = []
+        
+        for result in tool_results:
+            tool_name = result.get('tool_name', '')
+            tool_result = result.get('tool_result', {})
+            
+            # Check if this is get_sensor_data with image data
+            if tool_name == 'get_sensor_data' and isinstance(tool_result, dict):
+                data_field = tool_result.get('data', '')
+                dataformat = tool_result.get('dataformat', '')
+                
+                # Check if it's image data
+                if (isinstance(data_field, str) and 
+                    len(data_field) > 1000 and  # Likely base64 data
+                    'base64 encoded image/' in dataformat):
+                    
+                    # Clean the base64 data (remove any file markers)
+                    import re
+                    clean_base64 = re.sub(r'\[FILE_(?:SOURCE|SAVED):[^\]]+\]', '', data_field)
+                    
+                    # Extract MIME type from dataformat
+                    if 'image/jpeg' in dataformat:
+                        mime_type = 'image/jpeg'
+                    elif 'image/png' in dataformat:
+                        mime_type = 'image/png'
+                    else:
+                        mime_type = 'image/jpeg'  # default
+                    
+                    # Store image data for next round
+                    new_images.append({
+                        'data': clean_base64,
+                        'mime_type': mime_type
+                    })
+                    
+                    print_current(f"🖼️ Stored image data for next round vision API (MIME: {mime_type}, size: {len(clean_base64)} chars)")
+        
+        # Only update the array if we found new images
+        if new_images:
+            self.current_round_images = new_images
+    
+    def _build_vision_message(self, text_content: str) -> List[Dict[str, Any]]:
+        """
+        Build vision message content array from text and stored images.
+        
+        Args:
+            text_content: Text content to include
+            
+        Returns:
+            Content array for vision API
+        """
+        content_parts = []
+        
+        # Add text part
+        content_parts.append({
+            "type": "text",
+            "text": text_content
+        })
+        
+        # Add image parts
+        for img_data in self.current_round_images:
+            if self.is_claude:
+                # Claude format
+                content_parts.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img_data['mime_type'],
+                        "data": img_data['data']
+                    }
+                })
+            else:
+                # OpenAI format
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{img_data['mime_type']};base64,{img_data['data']}"
+                    }
+                })
+        
+        return content_parts
+    
+    def _perform_vision_analysis(self, vision_content: List[Dict[str, Any]], original_content: str) -> str:
+        """
+        Perform immediate vision analysis using the vision-capable model.
+        
+        Args:
+            vision_content: Content array with text and images for vision API
+            original_content: Original LLM response content
+            
+        Returns:
+            Vision analysis result as string
+        """
+        try:
+            # Prepare system prompt for vision analysis
+            vision_system_prompt = "You are an AI assistant with vision capabilities. Analyze the images provided and give detailed descriptions of what you see."
+            
+            # Prepare messages for vision analysis
+            vision_messages = [
+                {"role": "system", "content": vision_system_prompt},
+                {"role": "user", "content": vision_content}
+            ]
+            
+            print_current("🔍 Performing vision analysis...")
+            
+            # Call LLM with vision data
+            if self.is_claude:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    system=vision_system_prompt,
+                    messages=[{"role": "user", "content": vision_content}],
+                    temperature=0.7
+                )
+                
+                vision_analysis = ""
+                for content_block in response.content:
+                    if content_block.type == "text":
+                        vision_analysis += content_block.text
+                        
+            else:
+                # OpenAI format
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=vision_messages,
+                    max_tokens=self._get_max_tokens_for_model(self.model),
+                    temperature=0.7,
+                    top_p=0.8
+                )
+                
+                vision_analysis = response.choices[0].message.content or ""
+            
+            print_current(f"✅ Vision analysis completed: {len(vision_analysis)} characters")
+            return f"## Vision Analysis Results:\n\n{vision_analysis}"
+            
+        except Exception as e:
+            print_current(f"❌ Vision analysis failed: {e}")
+            # Fall back to text description
+            text_content = ""
+            for item in vision_content:
+                if item.get("type") == "text":
+                    text_content = item.get("text", "")
+                    break
+            return f"## Tool Results (Vision analysis failed):\n\n{text_content}"
 
 
 def main():

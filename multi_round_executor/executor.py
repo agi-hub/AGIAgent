@@ -368,6 +368,20 @@ class MultiRoundTaskExecutor:
                     execution_round=task_round
                 )
                 
+                # Handle possible optimized history return
+                optimized_history = None
+                if isinstance(result, tuple):
+                    result, optimized_history = result
+                    print_current(f"🔄 Received optimized history from single-round executor: {len(optimized_history)} records")
+                    
+                    # Update main task_history with optimized version
+                    # Keep non-LLM records (system messages) and replace LLM history
+                    non_llm_records = [record for record in task_history 
+                                     if not ("prompt" in record and ("result" in record or "error" in record))]
+                    task_history.clear()
+                    task_history.extend(non_llm_records + optimized_history)
+                    print_current(f"✅ Main task history updated with optimized records")
+                
                 # Check if user interrupted execution
                 if result.startswith("USER_INTERRUPTED:"):
                     print_current(f"🛑 User interrupted execution: {result}")
