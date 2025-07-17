@@ -8,16 +8,16 @@ command-line tool. The library provides an OpenAI-like chat interface.
 """
 
 # Import the AGI Bot client
-from main import AGIBotClient, create_client
+from src.main import AGIBotClient, create_client
 
 def example_basic_usage():
     """Basic usage example"""
     print("=== Basic Usage Example ===")
     
-    # Initialize the client with your API credentials
+    # Initialize the client (will automatically read from config/config.txt)
     client = AGIBotClient(
-        api_key="your_api_key_here",  # Replace with your actual API key
-        model="claude-sonnet-4-0",  # or "gpt-4", "gpt-3.5-turbo", etc.
+        # api_key and model will be read from config/config.txt automatically
+        # You can also specify them explicitly: api_key="your_api_key", model="claude-sonnet-4-0"
         debug_mode=False,  # Enable debug logging
         single_task_mode=True  # Use single task mode (recommended)
     )
@@ -46,8 +46,7 @@ def example_with_continue_mode():
     print("\n=== Continue Mode Example ===")
     
     client = AGIBotClient(
-        api_key="your_api_key_here",
-        model="claude-3-sonnet-20240229"
+        # Will read from config/config.txt automatically
     )
     
     # First task: Create basic web app
@@ -84,10 +83,10 @@ def example_with_custom_config():
     """Example with custom configuration"""
     print("\n=== Custom Configuration Example ===")
     
-    # Using the convenience function
+    # Using the convenience function (will read api_key and model from config/config.txt)
     client = create_client(
-        api_key="your_api_key_here",
-        model="claude-3-haiku-20240307",  # Faster, cheaper model
+        # api_key and model will be read from config/config.txt automatically
+        # You can override with: model="claude-3-haiku-20240307"  # Faster, cheaper model
         debug_mode=True,  # Enable detailed logging
         detailed_summary=True,  # Generate detailed reports
         interactive_mode=False,  # Non-interactive execution
@@ -118,8 +117,7 @@ def example_with_custom_mcp_and_prompts():
     print("\n=== Custom MCP and Prompts Example ===")
     
     client = AGIBotClient(
-        api_key="your_api_key_here",
-        model="claude-3-sonnet-20240229",
+        # api_key and model will be read from config/config.txt automatically
         debug_mode=False,
         MCP_config_file="config/specialized_mcp_servers.json",  # Use specialized MCP tools
         prompts_folder="specialized_prompts"  # Use specialized prompts for different domains
@@ -148,8 +146,7 @@ def example_batch_processing():
     print("\n=== Batch Processing Example ===")
     
     client = AGIBotClient(
-        api_key="your_api_key_here",
-        model="claude-3-sonnet-20240229"
+        # Will read from config/config.txt automatically
     )
     
     tasks = [
@@ -188,12 +185,12 @@ if __name__ == "__main__":
     print("=" * 50)
     
     # Note: Before running these examples, make sure to:
-    # 1. Replace "your_api_key_here" with your actual API key
+    # 1. Set your API key and model in config/config.txt
     # 2. Install required dependencies
-    # 3. Have the main.py file in the same directory
+    # 3. Have the src/ directory with the AGIBot source code
     
-    print("⚠️  Note: These examples use placeholder API keys.")
-    print("   Please replace 'your_api_key_here' with your actual API key before running.")
+    print("ℹ️  Note: These examples will automatically read API key and model from config/config.txt")
+    print("   Make sure your config/config.txt file contains valid API_KEY and MODEL settings.")
     print()
     
     # Uncomment the examples you want to run:

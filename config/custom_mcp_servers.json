@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": [
+        "@modelcontextprotocol/server-filesystem",
+        "/home/zhenzhi.wu/AGIBot"
+      ],
+      "env": {}
+    }
+  }
+}

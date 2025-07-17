@@ -1,0 +1,46 @@
+{
+  "recall_memories": {
+    "description": "Search and recall relevant memories from long-term memory based on semantic similarity. This tool implements RAG-like functionality to retrieve past experiences and knowledge.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The query to search for relevant memories. Can be a question, topic, or description of what you're looking for."
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of most relevant memories to retrieve. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "recall_memories_by_time": {
+    "description": "Search and recall memories from a specific time period. Useful for finding what happened 'yesterday', 'last week', or on a specific date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "time_query": {
+          "type": "string",
+          "description": "Time-based query such as 'yesterday', 'last week', 'this month', or specific dates like '2024-01-01'"
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of memories to retrieve from that time period. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["time_query"]
+    }
+  },
+  "get_memory_summary": {
+    "description": "Get a summary of the long-term memory system status, including total number of memories, storage information, and system health.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+} 

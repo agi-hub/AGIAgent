@@ -121,7 +121,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "agibot=main:main",
+            "agibot=agibot:main",
         ],
     },
     include_package_data=True,

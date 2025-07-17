@@ -31,7 +31,7 @@ import re
 
 # Add parent directory to path to import config_loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config_loader import get_language, get_gui_default_data_directory
+from src.config_loader import get_language, get_gui_default_data_directory
 
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
@@ -50,9 +50,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Application name macro definition
 APP_NAME = "AGI Bot"
 
-from main import AGIBotMain
+from src.main import AGIBotMain
 
-app = Flask(__name__)
+# Determine template directory - always relative to this app.py file
+app_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(app_dir, 'templates')
+
+print(f"📁 Template directory: {template_dir}")
+print(f"📁 Template exists: {os.path.exists(template_dir)}")
+
+app = Flask(__name__, template_folder=template_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
                    ping_timeout=60, ping_interval=25)
@@ -146,6 +153,17 @@ I18N_TEXTS = {
         'tool_success': '成功',
         'tool_error': '错误',
         'function_calling': '调用中',
+        
+        # Configuration options
+        'config_options': '配置选项',
+        'show_config_options': '显示配置选项',
+        'hide_config_options': '隐藏配置选项',
+        'enable_web_search': '搜索网络',
+        'enable_knowledge_base': '搜索知识库',
+        'enable_multi_agent': '启动多智能体',
+        'enable_long_term_memory': '启动长期记忆',
+        'enable_mcp': '启动MCP',
+        'enable_jieba': '启用中文分词',
         
         # Others
         'deleting': '删除中...',
@@ -289,6 +307,17 @@ I18N_TEXTS = {
         'tool_error': 'Error',
         'function_calling': 'Calling',
         
+        # Configuration options
+        'config_options': 'Configuration Options',
+        'show_config_options': 'Show Configuration',
+        'hide_config_options': 'Hide Configuration',
+        'enable_web_search': 'Web Search',
+        'enable_knowledge_base': 'Knowledge Base',
+        'enable_multi_agent': 'Multi-Agent',
+        'enable_long_term_memory': 'Long-term Memory',
+        'enable_mcp': 'Enable MCP',
+        'enable_jieba': 'Chinese Segmentation',
+        
         # Others
         'deleting': 'Deleting...',
         'renaming': 'Renaming...',
@@ -350,7 +379,7 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False):
+def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None):
     # Get i18n texts for this process
     i18n = get_i18n_texts()
     """
@@ -363,7 +392,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         
         if not out_dir:
             # Get GUI default data directory from config for new directories
-            from config_loader import get_gui_default_data_directory
+            from src.config_loader import get_gui_default_data_directory
             config_data_dir = get_gui_default_data_directory()
             if config_data_dir:
                 base_dir = config_data_dir
@@ -378,6 +407,43 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         else:
             output_queue.put({'event': 'output', 'data': {'message': f"Creating output directory: {out_dir}", 'type': 'info'}})
         
+        # Process GUI configuration options
+        if gui_config is None:
+            gui_config = {}
+        
+        # Set default values based on user requirements
+        enable_web_search = gui_config.get('enable_web_search', False)
+        enable_knowledge_base = gui_config.get('enable_knowledge_base', False)
+        enable_multi_agent = gui_config.get('enable_multi_agent', False)
+        enable_long_term_memory = gui_config.get('enable_long_term_memory', False)
+        enable_mcp = gui_config.get('enable_mcp', False)
+        enable_jieba = gui_config.get('enable_jieba', True)
+        
+        # Log GUI configuration
+        output_queue.put({'event': 'output', 'data': {'message': f"GUI Configuration:", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Web Search: {enable_web_search}", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Knowledge Base: {enable_knowledge_base}", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Multi-Agent: {enable_multi_agent}", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Long-term Memory: {enable_long_term_memory}", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - MCP: {enable_mcp}", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Chinese Segmentation: {enable_jieba}", 'type': 'info'}})
+        
+        # Create a temporary configuration that overrides config.txt for GUI mode
+        # We'll use environment variables to pass these settings to the AGIBot system
+        original_env = {}
+        if enable_web_search:
+            original_env['AGIBOT_WEB_SEARCH'] = os.environ.get('AGIBOT_WEB_SEARCH', '')
+            os.environ['AGIBOT_WEB_SEARCH'] = 'true'
+        if enable_multi_agent:
+            original_env['AGIBOT_MULTI_AGENT'] = os.environ.get('AGIBOT_MULTI_AGENT', '')
+            os.environ['AGIBOT_MULTI_AGENT'] = 'true'
+        if enable_jieba:
+            original_env['AGIBOT_ENABLE_JIEBA'] = os.environ.get('AGIBOT_ENABLE_JIEBA', '')
+            os.environ['AGIBOT_ENABLE_JIEBA'] = 'true'
+        if enable_long_term_memory:
+            original_env['AGIBOT_LONG_TERM_MEMORY'] = os.environ.get('AGIBOT_LONG_TERM_MEMORY', '')
+            os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'true'
+        
         # Set parameters based on mode
         if plan_mode:
             output_queue.put({'event': 'output', 'data': {'message': f"Plan mode enabled: Using task decomposition (--todo)", 'type': 'info'}})
@@ -386,13 +452,20 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             output_queue.put({'event': 'output', 'data': {'message': f"Normal mode: Direct execution (single task)", 'type': 'info'}})
             single_task_mode = True   # Default mode executes directly
         
+        # Determine MCP config file based on GUI setting
+        mcp_config_file = None
+        if enable_mcp:
+            mcp_config_file = "config/mcp_servers.json"  # Use default MCP config when enabled
+            output_queue.put({'event': 'output', 'data': {'message': f"MCP enabled with config: {mcp_config_file}", 'type': 'info'}})
+        
         agibot = AGIBotMain(
             out_dir=out_dir,
             debug_mode=False,
             detailed_summary=True,
             single_task_mode=single_task_mode,  # Set based on plan_mode
             interactive_mode=False,  # Disable interactive mode
-            continue_mode=continue_mode
+            continue_mode=continue_mode,
+            MCP_config_file=mcp_config_file  # Set based on GUI MCP option
         )
         
         output_queue.put({'event': 'output', 'data': {'message': f"Initialized {APP_NAME} with output directory: {out_dir}", 'type': 'info'}})
@@ -405,25 +478,63 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
                 self.socket_type = socket_type
                 self.buffer = ""
             
+            def filter_code_edit_content(self, line):
+                """Filter code_edit content in tool execution parameters for GUI display"""
+                # Check if line contains Parameters with code_edit field
+                if "Parameters:" in line and "'code_edit':" in line:
+                    # Find the start of code_edit content
+                    code_edit_start = line.find("'code_edit': '")
+                    if code_edit_start != -1:
+                        # Find the position after 'code_edit': '
+                        content_start = code_edit_start + len("'code_edit': '")
+                        
+                        # Find the next ', which should end the code_edit field
+                        # We need to be careful about escaped quotes
+                        content_end = content_start
+                        quote_count = 0
+                        while content_end < len(line):
+                            if line[content_end] == "'":
+                                # Check if it's escaped
+                                if content_end > 0 and line[content_end-1] != "\\":
+                                    quote_count += 1
+                                    if quote_count == 1:  # Found the closing quote
+                                        break
+                            content_end += 1
+                        
+                        if content_end < len(line):
+                            # Extract the content between quotes
+                            content = line[content_start:content_end]
+                            
+                            # If content is longer than 10 characters, truncate it
+                            if len(content) > 10:
+                                truncated_content = content[:10] + "..."
+                                filtered_line = line[:content_start] + truncated_content + line[content_end:]
+                                return filtered_line
+                
+                return line
+            
             def write(self, message):
                 self.buffer += message
                 if '\n' in self.buffer:
                     *lines, self.buffer = self.buffer.split('\n')
                     for line in lines:
                         if line.strip():
+                            # Filter code_edit content for GUI display
+                            filtered_line = self.filter_code_edit_content(line.strip())
+                            
                             # Check if it's warning or progress info, if so display as normal info instead of error
-                            line_lower = line.lower()
+                            line_lower = filtered_line.lower()
                             if ('warning' in line_lower or 
                                 'progress' in line_lower or 
                                 'processing files' in line_lower or
-                                line.strip().startswith('Processing files:') or
+                                filtered_line.startswith('Processing files:') or
                                 'userwarning' in line_lower or
                                 'warnings.warn' in line_lower):
                                 message_type = 'info'
                             else:
                                 message_type = self.socket_type
                             # Display warning and progress info as normal info
-                            self.q.put({'event': 'output', 'data': {'message': line.strip(), 'type': message_type}})
+                            self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type}})
 
             def flush(self):
                 pass
@@ -1146,6 +1257,7 @@ def handle_execute_task(data):
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
     plan_mode = data.get('plan_mode', False)  # Whether to use plan mode (task decomposition)
     selected_directory = data.get('selected_directory')  # Directory name from frontend
+    gui_config = data.get('gui_config', {})  # GUI configuration options
     
     # Debug logging
     print(f"🔍 Execute task debug info:")
@@ -1193,7 +1305,7 @@ def handle_execute_task(data):
     
     gui_instance.current_process = multiprocessing.Process(
                     target=execute_agibot_task_process_target,
-        args=(user_requirement, gui_instance.output_queue, out_dir, continue_mode, plan_mode)
+        args=(user_requirement, gui_instance.output_queue, out_dir, continue_mode, plan_mode, gui_config)
     )
     gui_instance.current_process.daemon = True
     gui_instance.current_process.start()
