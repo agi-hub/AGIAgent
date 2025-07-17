@@ -11,7 +11,7 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 由于AGI Bot定位为通用任务智能体，因此可能会调用系统终端命令，一般不会操作工作目录外的文件，大模型有时候会调用软件安装命令（pip，apt等），无论如何，请谨慎使用本软件，有必要时可以采用沙盒运行。
 
 <div align="center">
-      <img src="fig/AGIBot.png" alt="AGI Bot - L3级自主编程系统" width="800"/>
+      <img src="md/images/AGIBot.png" alt="AGI Bot - L3级自主编程系统" width="800"/>
   
   **🚀 自主编程与任务执行系统**
   
@@ -22,7 +22,7 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 
 ## 🎬 演示视频
 
-[![观看演示视频](./fig/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![观看演示视频](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 > 如果无法直接播放，请[点击这里观看演示视频](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
@@ -97,7 +97,7 @@ python main.py -d "my_dir" -l 10 -r "需求描述"
 > **说明**：轮数不等于模型调用次数。每轮通常调用一次大模型，但在聊天历史过长时会额外调用一次进行总结，任务完成后也可能进行总结。
 
 #### 🔧 自定义模型配置
-直接通过命令行指定API配置，但建议在`config.txt`中配置以便重复使用。
+直接通过命令行指定API配置，但建议在`config/config.txt`中配置以便重复使用。
 
 ```bash
 python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
@@ -168,7 +168,7 @@ AGI Bot 提供现代化、直观的网页界面，提升用户体验：
 - **交互式任务管理**：通过网页界面启动、停止和监控任务
 - **文件管理**：直接在浏览器中上传、下载和管理项目文件
 - **目录操作**：创建、重命名和组织项目目录
-- **多语言支持**：包含中英文界面，请在config.txt中配置语言
+- **多语言支持**：包含中英文界面，请在config/config.txt中配置语言
 
 ### 启动 GUI
 ```bash
@@ -177,7 +177,7 @@ python app.py
 
 # 通过浏览器访问 http://localhost:5001
 ```
-Web GUI会显示文件列表，默认带有workspace子目录的文件夹都会被列出，否则不会被列出。根目录位置可以在config.txt中配置。
+Web GUI会显示文件列表，默认带有workspace子目录的文件夹都会被列出，否则不会被列出。根目录位置可以在config/config.txt中配置。
 注：目前Web GUI处于实验阶段，仅提供单用户开发版本（不适合工业部署）。
 
 
@@ -226,7 +226,7 @@ AGI Bot 支持多种AI模型，满足不同用户需求和预算。选择最适�
 
 ### 🔧 模型配置
 
-在 `config.txt` 文件中配置您偏好的模型，或使用命令行参数：
+在 `config/config.txt` 文件中配置您偏好的模型，或使用命令行参数：
 
 ```bash
 # 使用 Claude Sonnet 4
@@ -242,9 +242,9 @@ python main.py --model deepseek-chat --api-base https://api.deepseek.com --api-k
 python main.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "您的任务"
 ```
 
-## ⚙️ 配置文件 (config.txt)
+## ⚙️ 配置文件 (config/config.txt)
 
-AGI Bot 使用 `config.txt` 文件进行系统配置。以下是主要配置选项：
+AGI Bot 使用 `config/config.txt` 文件进行系统配置。以下是主要配置选项：
 
 ### API 配置
 ```ini
@@ -333,4 +333,4 @@ playwright install chromium
 
 ```
 
-安装完成后，请不要忘记到config.txt中配置api key, api base和model, 以及语言设置LANG=zh.
+安装完成后，请不要忘记到config/config.txt中配置api key, api base和model, 以及语言设置LANG=zh.

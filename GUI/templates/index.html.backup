@@ -9,6 +9,10 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- xterm.js for terminal -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <style>
         * {
             margin: 0;
@@ -948,6 +952,70 @@
                 transform: translateY(-2px);
             }
         }
+        /* Tab styles */
+        .chat-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .tab-button {
+            padding: 8px 16px;
+            background: #3e3e42;
+            color: #cccccc;
+            border: none;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-button:hover {
+            background: #4e4e52;
+            color: #ffffff;
+        }
+
+        .tab-button.active {
+            background: #569cd6;
+            color: #ffffff;
+            border-bottom: 2px solid #007acc;
+        }
+
+        .tab-content {
+            position: relative;
+            height: calc(100% - 50px);
+        }
+
+        .tab-pane {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        /* Terminal styles */
+        .terminal-container {
+            height: 100%;
+            background: #1e1e1e;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Override xterm.js default styles */
+        .terminal-container .xterm {
+            height: 100% !important;
+        }
+
+        .terminal-container .xterm-screen {
+            background: #1e1e1e !important;
+        }
     </style>
 </head>
 <body>
@@ -960,16 +1028,30 @@
 
             <div class="chat-container">
                 <div class="chat-header">
-                    <h3>
-                        <i class="fas fa-comments"></i>
-                        {{ i18n.chat_title }}
-                    </h3>
+                    <div class="chat-tabs">
+                        <div class="tab-button active" data-tab="logs">
+                            <i class="fas fa-comments"></i>
+                            {{ i18n.chat_title }}
+                        </div>
+                        <div class="tab-button" data-tab="terminal">
+                            <i class="fas fa-terminal"></i>
+                            {{ i18n.get('terminal_title', '终端' if lang == 'zh' else 'Terminal') }}
+                        </div>
+                    </div>
                     <div class="status-indicator" id="statusIndicator"></div>
                 </div>
-                <div class="chat-messages scrollbar-custom" id="chatMessages">
+                <div class="tab-content">
+                    <div class="tab-pane active" id="logs-tab">
+                        <div class="chat-messages scrollbar-custom" id="chatMessages">
                     <div class="message system">
                         <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
                         {{ i18n.get('welcome_message', '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Bot! Please enter your requirements below, and the system will automatically process tasks for you.') }}
+                        </div>
+                    </div>
+                    <div class="tab-pane" id="terminal-tab">
+                        <div class="terminal-container" id="terminalContainer">
+                            <!-- Terminal will be initialized here -->
+                        </div>
                     </div>
                 </div>
                 
@@ -3419,6 +3501,136 @@
         document.addEventListener('DOMContentLoaded', function() {
             updateTaskModeInfo(); // 确保任务模式信息正确显示
             updateAutoScrollIndicator(); // 初始化自动滚动状态指示器
+            initializeTabs(); // 初始化标签页
+        });
+
+        // Terminal functionality - temporarily disabled for debugging
+        /*
+        let terminal = null;
+        let fitAddon = null;
+        let terminalInitialized = false;
+
+        function initializeTabs() {
+            // Tab switching functionality
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-tab');
+                    switchTab(tabId);
+                });
+            });
+        }
+
+        function switchTab(tabId) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+
+            // Update tab panes
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.remove('active');
+            });
+            document.getElementById(`${tabId}-tab`).classList.add('active');
+
+            // Initialize terminal if switching to terminal tab
+            if (tabId === 'terminal' && !terminalInitialized) {
+                initializeTerminal();
+            }
+        }
+
+        function initializeTerminal() {
+            if (typeof Terminal === 'undefined') {
+                console.error('xterm.js not loaded');
+                return;
+            }
+
+            try {
+                // Create terminal instance
+                terminal = new Terminal({
+                    cursorBlink: true,
+                    theme: {
+                        background: '#1e1e1e',
+                        foreground: '#cccccc',
+                        cursor: '#ffffff',
+                        selection: '#3399ff33'
+                    },
+                    fontSize: 14,
+                    fontFamily: 'Consolas, "Courier New", monospace',
+                    scrollback: 1000
+                });
+
+                // Create fit addon - 兼容不同版本的写法
+                if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+                    fitAddon = new FitAddon.FitAddon();
+                } else if (typeof FitAddon !== 'undefined') {
+                    fitAddon = new FitAddon();
+                } else {
+                    console.warn('FitAddon not available, terminal sizing may not work properly');
+                }
+                
+                if (fitAddon) {
+                    terminal.loadAddon(fitAddon);
+                }
+
+            // Open terminal in container
+            const container = document.getElementById('terminalContainer');
+            terminal.open(container);
+            fitAddon.fit();
+
+            // Handle terminal input
+            terminal.onData(data => {
+                socket.emit('terminal_input', {
+                    session_id: 'default',
+                    data: data
+                });
+            });
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                    socket.emit('terminal_resize', {
+                        session_id: 'default',
+                        cols: terminal.cols,
+                        rows: terminal.rows
+                    });
+                }
+            });
+
+                // Start terminal session
+                socket.emit('terminal_start', { session_id: 'default' });
+                
+                terminalInitialized = true;
+                
+            } catch (error) {
+                console.error('Terminal initialization failed:', error);
+            }
+        }
+
+        // Socket events for terminal
+        socket.on('terminal_started', function(data) {
+            if (data.success) {
+                console.log('Terminal started successfully');
+            } else {
+                console.error('Failed to start terminal');
+                if (terminal) {
+                    terminal.write('\r\n\x1b[31mFailed to start terminal session\x1b[0m\r\n');
+                }
+            }
+        });
+
+        socket.on('terminal_output', function(data) {
+            if (terminal && data.session_id === 'default') {
+                terminal.write(data.data);
+            }
+        });
+
+        socket.on('terminal_closed', function(data) {
+            console.log('Terminal session closed');
+            if (terminal) {
+                terminal.write('\r\n\x1b[33mTerminal session closed\x1b[0m\r\n');
+            }
         });
 
     </script>

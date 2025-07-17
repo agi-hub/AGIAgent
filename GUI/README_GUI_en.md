@@ -33,6 +33,6 @@ After task execution is completed or interrupted, you can continue the task by s
 - Other dependencies see requirements.txt
 
 ### Configuration File
-The GUI reads the `config.txt` configuration from the main directory:
+The GUI reads the `config/config.txt` configuration from the main directory:
 - `language`: Interface language (zh/en)
 - `gui_default_data_directory`: GUI data directory path 

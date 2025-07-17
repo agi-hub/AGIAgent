@@ -20,7 +20,7 @@
     }
   },
   "read_file": {
-    "description": "Read the contents of a file. The output will be the 1-indexed file contents from start_line_one_indexed to end_line_one_indexed_inclusive, together with a summary of the lines outside that range.",
+    "description": "Read the contents of a file. When should_read_entire_file=true, the entire file is read regardless of line parameters. When should_read_entire_file=false, only the specified line range is read.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -30,18 +30,18 @@
         },
         "should_read_entire_file": {
           "type": "boolean",
-          "description": "Whether to read the entire file. Defaults to false."
+          "description": "Whether to read the entire file. When true, line parameters are ignored. When false, line parameters are required. Defaults to false."
         },
         "start_line_one_indexed": {
           "type": "integer",
-          "description": "The one-indexed line number to start reading from (inclusive)."
+          "description": "The one-indexed line number to start reading from (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
         },
         "end_line_one_indexed_inclusive": {
           "type": "integer",
-          "description": "The one-indexed line number to end reading at (inclusive)."
+          "description": "The one-indexed line number to end reading at (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
         }
       },
-      "required": ["target_file", "should_read_entire_file", "start_line_one_indexed", "end_line_one_indexed_inclusive"]
+      "required": ["target_file", "should_read_entire_file"]
     }
   },
   "run_terminal_cmd": {
@@ -75,7 +75,7 @@
     }
   },
   "grep_search": {
-    "description": "Fast text-based regex search that finds exact pattern matches within files or directories, utilizing the ripgrep command for efficient searching. This is best for finding exact text matches or regex patterns.",
+    "description": "Fast text-based regex search that finds exact pattern matches within files. **PERFORMANCE GUIDELINES**: For complex searches, use multiple simple queries instead of one complex query with many '|' operators. Limit queries to 3-5 terms maximum. Use exclude_pattern to skip common directories like 'output_*/*|__pycache__/*|*.egg-info/*|cache/*' for better performance.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -110,27 +110,16 @@
         },
         "edit_mode": {
           "type": "string",
-          "description": "Editing mode - 'replace_lines', 'insert_lines', 'append', 'full_replace'"
+          "description": "Editing mode: 'lines_replace' (Smart merge mode - use existing code markers for precise insertion, or directly replace the entire file), 'append' (safest - append to the end of the file), 'full_replace' (completely replace file content). **For short files (under 100 lines), prefer 'full_replace' over 'lines_replace' for better reliability.** Note: 'append' only adds content to the end, while 'full_replace' completely overwrites the file.",
+          "enum": ["lines_replace", "append", "full_replace"]
         },
         "code_edit": {
           "type": "string",
-          "description": "Specify ONLY the precise lines of code that you wish to edit. NEVER specify or write out unchanged code. Instead, represent all unchanged code using the comment of the language you're editing in - example: `// ... existing code ...`"
+          "description": "Edit content instructions:\n1. lines_replace mode has two usages:\n   a) Smart merge: Use '// ... existing code ...' or '# ... existing code ...' markers to indicate where to preserve original code, and the system will merge precisely based on context\n      **IMPORTANT for precise matching**: When using existing code markers, always include at least 3 lines of original code BEFORE the content to be replaced, then the replacement content, then at least 3 lines of original code AFTER. This provides sufficient context for accurate anchor detection and prevents ambiguous matches in files with similar code blocks.\n      Example format:\n      ```\n      # ... existing code ...\n      function_call_before()\n      another_line_before()\n      previous_context_line()\n      old_buggy_line()  // This line will be replaced\n      next_context_line()\n      following_line_after()\n      final_line_after()\n      # ... existing code ...\n      ```\n   b) Full replacement: Provide the complete new file content (without existing code markers), equivalent to full_replace\n2. append mode: Directly provide the content to append to the end of the file\n3. full_replace mode: Provide the complete new file content, fully replacing the original file"
         },
         "instructions": {
           "type": "string",
           "description": "A single sentence instruction describing what you are going to do for the sketched edit."
-        },
-        "start_line_one_indexed": {
-          "type": "integer",
-          "description": "Starting line number for replace_lines mode (1-indexed, inclusive)"
-        },
-        "end_line_one_indexed_inclusive": {
-          "type": "integer",
-          "description": "Ending line number for replace_lines mode (1-indexed, inclusive)"
-        },
-        "insert_position": {
-          "type": "integer",
-          "description": "Line number to insert before for insert_lines mode (1-indexed)"
         }
       },
       "required": ["target_file", "edit_mode", "code_edit"]
@@ -259,7 +248,7 @@
         },
         "source": {
           "type": "string",
-          "description": "Source identifier: file path for existing files, or device path for cameras/microphones/sensors (e.g., '/dev/video0', '/dev/audio0', or file paths)"
+          "description": "Source identifier: file path for existing files, or device number for cameras/microphones/sensors (e.g. '0' for camera 0)"
         },
         "para": {
           "type": "object",

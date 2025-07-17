@@ -11,7 +11,7 @@ AGI Bot runs in the terminal by default. For users with GUI or web access needs,
 Since AGI Bot is positioned as a general-purpose task agent, it may call system terminal commands. It generally does not operate files outside the working directory, though the LLM may sometimes call software installation commands (pip, apt, etc.). Please use this software with caution and consider sandbox execution when necessary.
 
 <div align="center">
-      <img src="fig/AGIBot.png" alt="AGI Bot - L3 Autonomous Programming System" width="800"/>
+      <img src="md/images/AGIBot.png" alt="AGI Bot - L3 Autonomous Programming System" width="800"/>
   
   **🚀 Autonomous Programming & Task Execution System**
   
@@ -22,7 +22,7 @@ Since AGI Bot is positioned as a general-purpose task agent, it may call system 
 
 ## 🎬 Demo Video
 
-[![Watch the demo video](./fig/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![Watch the demo video](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 > If you cannot play the video directly, [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
@@ -97,7 +97,7 @@ python main.py -d "my_dir" -l 10 -r "Task description"
 > **Info**: Rounds don't equal model calls. Each round typically calls the LLM once, but additional calls may occur for history summarization when chat logs become too long, plus optional task summarization at completion.
 
 #### 🔧 Custom Model Configuration
-Specify API configuration directly via command line, though we recommend configuring in `config.txt` for reusability.
+Specify API configuration directly via command line, though we recommend configuring in `config/config.txt` for reusability.
 
 ```bash
 python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
@@ -167,7 +167,7 @@ AGI Bot provides a modern, intuitive web interface to enhance user experience:
 - **Interactive Task Management**: Start, stop, and monitor tasks through the web interface
 - **File Management**: Upload, download, and manage project files directly in the browser
 - **Directory Operations**: Create, rename, and organize project directories
-- **Multi-Language Support**: Chinese and English interfaces available (configure in config.txt)
+- **Multi-Language Support**: Chinese and English interfaces available (configure in config/config.txt)
 
 ### Launch GUI
 ```bash
@@ -226,7 +226,7 @@ AGI Bot supports multiple AI models to meet different user needs and budgets. Ch
 
 ### 🔧 Model Configuration
 
-Configure your preferred model in the `config.txt` file or use command line parameters:
+Configure your preferred model in the `config/config.txt` file or use command line parameters:
 
 ```bash
 # Using Claude Sonnet 4
@@ -242,9 +242,9 @@ python main.py --model deepseek-chat --api-base https://api.deepseek.com --api-k
 python main.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "Your task"
 ```
 
-## ⚙️ Configuration File (config.txt)
+## ⚙️ Configuration File (config/config.txt)
 
-AGI Bot uses a `config.txt` file for system configuration. Below are the main configuration options:
+AGI Bot uses a `config/config.txt` file for system configuration. Below are the main configuration options:
 
 ### API Configuration
 ```ini

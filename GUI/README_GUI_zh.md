@@ -34,7 +34,7 @@ python GUI/app.py
 - 其他依赖见 requirements.txt
 
 ### 配置文件
-GUI会读取主目录的 `config.txt` 配置：
+GUI会读取主目录的 `config/config.txt` 配置：
 - `language`: 界面语言 (zh/en)
 - `gui_default_data_directory`: GUI数据目录路径
 
