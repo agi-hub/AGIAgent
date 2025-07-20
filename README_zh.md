@@ -2,21 +2,95 @@
 
 **中文** | [**English**](README.md)
 
-**AGI Bot** 是一个基于AI的智能代码生成和自主任务执行系统，能够自动分解复杂任务并通过多轮迭代与工具调用完成任务。
+## 🚀 项目简介
 
-AGI Bot 的输入为用户提示词及一个工作目录，输出为编辑过的工作目录，在工作目录内部，大模型将代码、文档等输出文件放置在workspace文件夹。AGI Bot的执行过程为多轮迭代模式，每轮是大模型与工具交互的一个过程，首先，程序会将系统提示词、用户提示词、历史聊天记录、上一轮次的工具执行结果发送给大模型，大模型自行决定下一轮的工具调用，例如编写文件、搜索代码仓库、调用终端命令等，这些调用以大模型本身支持的tool_call格式或JSON格式描述，之后工具执行模块会解析这些工具调用并执行，执行结果将在下一轮传递给大模型。大模型认为本任务已经执行完毕后，会下发任务结束信号，则程序可选的进行任务总结。大模型的所有编辑操作都在用户定义的工作目录（dir）的workspace目录下完成。此外，为了控制上下文长度，如果超过了聊天上下文阈值会触发聊天历史总结。网络搜索结果可选的会进行总结。
+**AGI Bot** 是一个由大语言模型（LLM）驱动的L3级别全流程自动化通用智能体。其采用多轮迭代的工作机制，大模型可在每轮进行工具调用并收到反馈结果。用于根据用户需求，更新工作区的文件或通过工具改变外部环境。AGIBot可以自主调用广泛的MCP工具及操作系统工具，具有多智能体协同、多层次长期记忆、具身智能感知等特色。强调智能体的通用性及自主决策能力。AGIBot广泛的操作系统支持、大模型支持、多种运行模态支持，可用于构建拟人的通用智能系统，实现复杂报告调研与生成、项目级代码编写、计算机自动运行、多智能体研究（如竞争、辩论、协作）等应用。
 
-AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用户，我们也提供了Web GUI。Web GUI中提供了任务执行所需要的所有功能，此外提供了文件的上传下载功能、文件预览功能、任务执行状态监视等功能。
-
-由于AGI Bot定位为通用任务智能体，因此可能会调用系统终端命令，一般不会操作工作目录外的文件，大模型有时候会调用软件安装命令（pip，apt等），无论如何，请谨慎使用本软件，有必要时可以采用沙盒运行。
 
 <div align="center">
-      <img src="md/images/AGIBot.png" alt="AGI Bot - L3级自主编程系统" width="800"/>
-  
-  **🚀 自主编程与任务执行系统**
-  
-  *基于LLM驱动的自主代码生成，具备智能任务分解和多轮迭代执行能力*
+      <img src="md/images/AGIBot.png" alt="AGI Bot" width="800"/>
 </div>
+
+## ✨ 核心特性
+
+### 🤖 自主多智能体协作
+- **智能体自主创建**：系统可自主决定创建新的专业智能体，为每个智能体配置独特的提示词、模型类型和专用工具库
+- **角色专业化**：构建不同角色、术业专攻的子智能体，在共享工作空间下高效协同工作
+- **通信机制**：智能体间具备点对点及广播消息通信能力，集成邮箱信件查看机制，实现无缝互联互通
+
+### 🔧 广泛的工具调用能力
+- **内置工具库**：集成文件检索、网页浏览、文件修改等10余种常用开发工具
+- **MCP协议支持**：支持模型上下文协议（MCP），可外接GitHub、Slack等数千种扩展工具
+- **系统集成**：全面支持终端命令、Python包管理、操作系统软件包等通用工具
+- **自主安装**：智能体可根据任务需求自动安装系统软件、pip包和MCP工具
+
+### 🧠 长程记忆与学习
+- **持久化记忆**：解决传统智能体只关注当前任务的局限，将历史执行情况摘要存储形成长期记忆
+- **智能检索**：通过RAG（检索增强生成）方式提取对当前工作有价值的历史记忆元素
+- **上下文管理**：集成长上下文总结机制，确保记忆的连续性和相关性
+
+### 👁️ 具身智能与多模态
+- **多模态感知**：内置视觉、传感器等多模态能力，不局限于文本世界
+- **物理世界交互**：可处理丰富的物理世界信息场景
+- **多路信息处理**：通过多智能体架构实现并行信息感知与交互
+
+### 🔗 灵活的部署方式
+- **独立运行**：可作为完整的自主系统独立运行
+- **嵌入式集成**：作为Python组件嵌入其他软件流程
+- **模块化设计**：采用搭积木方式构建强大的智能系统
+- **轻量级部署**：仅依赖少量核心库，软件包小巧，系统兼容性强
+
+## 🔄 工作原理
+
+### 输入输出机制
+AGI Bot接收**用户提示词**和**工作目录**作为输入，输出**处理后的工作目录**，所有生成的代码、文档等文件都统一放置在workspace文件夹中。
+
+### 多轮迭代流程
+1. **任务分析阶段**：系统将用户提示词、历史聊天记录、上轮工具执行结果发送给大模型
+2. **决策制定阶段**：大模型自主决定下一轮的工具调用策略（文件编写、代码搜索、终端命令等）
+3. **工具执行阶段**：工具执行模块解析并执行大模型的指令（支持tool_call和JSON格式）
+4. **结果反馈阶段**：执行结果在下一轮传递给大模型，形成闭环反馈
+5. **任务完成阶段**：大模型判断任务完成后发出结束信号，可选择性生成任务总结
+
+### 智能优化特性
+- **上下文管理**：当聊天历史超过阈值时自动触发历史总结，保持高效运行
+- **网络搜索优化**：搜索结果可选择性总结，提取关键信息
+- **安全边界**：所有编辑操作限制在用户定义的工作目录内，确保系统安全
+
+## ⚠️ 安全提醒
+
+AGI Bot作为通用任务智能体，具备调用系统终端命令的能力。虽然通常不会操作工作目录外的文件，但大模型可能会执行软件安装命令（如pip、apt等）。请在使用时注意：
+- 仔细审查执行的命令
+- 建议在沙盒环境中运行重要任务
+- 定期备份重要数据
+
+## 🌐 平台兼容性
+
+### 操作系统支持
+- ✅ **Linux** - 完全支持
+- ✅ **Windows** - 完全支持  
+- ✅ **MacOS** - 完全支持
+
+### 大模型支持
+- **Anthropic Claude** - Claude 3.5 Sonnet、Claude 3 Opus等
+- **OpenAI GPT** - GPT-4、GPT-4 Turbo、GPT-3.5等
+- **Google Gemini** - Gemini Pro、Gemini Ultra等
+- **国产模型** - Kimi K2、DeepSeek、火山大模型、Qwen3（8B及以上）
+
+### 接口与模式
+- **API接口**：支持Anthropic接口和OpenAI兼容接口
+- **输出模式**：支持流式（Streaming）输出和批量输出
+- **调用模式**：支持Tool Calling模式和传统Chat模式（工具调用模式效果更佳）
+
+### 运行界面
+- **终端模式**：纯命令行界面，适合服务器和自动化场景
+- **Python库模式**：作为组件嵌入其他Python应用
+- **Web界面模式**：现代化网页界面，提供可视化操作体验
+
+### 交互模式
+- **全自动模式**：完全自主执行，无需人工干预
+- **交互模式**：支持用户确认和指导，提供更多控制权
+
 
 <br/>
 
@@ -29,6 +103,28 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 ## 📋 演示案例
 
 想要了解 AGI Bot 在各种场景下的综合能力展示，请查看我们的[演示案例](md/DEMO_zh.md)。这包括真实的使用案例、输出文件和 AGI Bot 能够完成的详细示例。
+
+## 🔗 扩展功能
+
+### 🐍 Python 库接口
+AGI Bot 现在支持作为 Python 库直接在代码中调用，提供类似 OpenAI Chat API 的编程接口。
+
+**📖 [查看 Python 库使用指南 →](md/README_python_lib_zh.md)**
+
+- 🐍 纯 Python 接口，无需命令行
+- 💬 OpenAI 风格 API，易于集成
+- 🔧 编程式配置，灵活控制
+- 📊 详细返回信息和状态
+
+### 🔌 MCP 协议支持
+支持 Model Context Protocol (MCP) 协议，可与外部工具服务器通信，大大扩展系统工具生态。
+
+**📖 [查看 MCP 集成指南 →](md/README_MCP_zh.md)**
+
+- 🌐 标准化工具调用协议
+- 🔧 支持官方和第三方 MCP 服务器
+- 📁 文件系统、GitHub、Slack 等服务集成
+- ⚡ 动态工具发现和注册
 
 ## 🚀 立即体验
 
@@ -44,54 +140,54 @@ AGI Bot 默认在终端下执行，对于有GUI需求或网络访问需求的用
 适合Bug修复、功能优化等单一目标任务。如果没有指定`-r`参数，程序会提示您输入任务描述，支持多行复杂提示词。
 
 ```bash
-python main.py --requirement "搜索今日新闻"
-python main.py -r "写一个笑话"
+python agibot.py --requirement "搜索今日新闻"
+python agibot.py -r "写一个笑话"
 
 # 图像输入支持
-python main.py -r "分析这张图表：[img=chart.png]"
+python agibot.py -r "分析这张图表：[img=chart.png]"
 
 # MCP工具集成
-python main.py -r "使用AISearch_search搜索AI新闻"
+python agibot.py -r "使用AISearch_search搜索AI新闻"
 ```
 
 #### 📋 任务分解模式
 适合复杂的多步骤任务，系统会自动将大任务分解为子任务逐步执行。
 
 ```bash
-python main.py --todo --requirement "开发一个完整的博客系统"
+python agibot.py --todo --requirement "开发一个完整的博客系统"
 ```
 
 #### 💬 交互模式
 提供更灵活的交互体验，系统会引导您输入任务需求。
 
 ```bash
-python main.py -i
-python main.py --interactive --todo
+python agibot.py -i
+python agibot.py --interactive 
 ```
 
 #### 📁 指定输出目录
 自定义项目输出位置。如果不指定，系统会自动创建带时间戳的`output_`目录。
 
 ```bash
-python main.py --dir "my_dir"
+python agibot.py --dir "my_dir"
 ```
 
 #### 🔄 继续执行任务
 恢复之前的任务继续执行。AGI Bot会记住最后一次使用的输出目录。
 
 ```bash
-python main.py -c
-python main.py --continue
+python agibot.py -c
+python agibot.py --continue
 ```
 
-> **注意**：继续执行不会恢复聊天历史和之前的需求提示词，但可以继续操作工作目录中的文件。
+> **注意**：继续执行仅恢复工作目录和上一次的需求提示词，不会恢复大模型的上下文。
 
 #### ⚡ 设置执行轮数
 控制任务执行的最大轮数，避免无限循环。
 
 ```bash
-python main.py --loops 5 -r "需求描述"
-python main.py -d "my_dir" -l 10 -r "需求描述"
+python agibot.py --loops 5 -r "需求描述"
+python agibot.py -d "my_dir" -l 10 -r "需求描述"
 ```
 
 > **说明**：轮数不等于模型调用次数。每轮通常调用一次大模型，但在聊天历史过长时会额外调用一次进行总结，任务完成后也可能进行总结。
@@ -100,13 +196,13 @@ python main.py -d "my_dir" -l 10 -r "需求描述"
 直接通过命令行指定API配置，但建议在`config/config.txt`中配置以便重复使用。
 
 ```bash
-python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
+python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
 ```
 
 ## 🎯 核心特性
 
 - **🧠 智能任务分解**：AI自动将复杂需求分解为可执行子任务
-- **🔄 多轮迭代执行**：每个任务支持多轮优化，确保质量（默认25轮）
+- **🔄 多轮迭代执行**：每个任务支持多轮优化，确保质量（默认50轮）
 - **🔍 智能代码搜索**：语义搜索 + 关键词搜索，快速定位代码
 - **🌐 网络搜索集成**：实时网络搜索获取最新信息和解决方案
 - **📚 代码库检索**：高级代码仓库分析和智能代码索引
@@ -183,142 +279,44 @@ Web GUI会显示文件列表，默认带有workspace子目录的文件夹都会�
 
 ## 🤖 模型选择
 
-AGI Bot 支持多种AI模型，满足不同用户需求和预算。选择最适合您需求的模型：
+AGI Bot 支持多种主流AI模型，包括Claude、GPT-4、DeepSeek V3、Kimi K2等，满足不同用户的需求和预算。
 
-### 🌟 推荐模型
+**🎯 [查看详细模型选择指南 →](md/MODELS_zh.md)**
 
-#### Claude Sonnet 4 (推荐使用)
-**适合：需要高准确性和详细回答的复杂任务**
-- ✅ **优点**：智能程度高、准确度高、回复详细
-- ❌ **缺点**：价格较贵、速度一般、有时候有幻觉
-- 💰 **价格**：高端定价
-- 🎯 **使用场景**：复杂代码生成、详细分析、高级问题解决
+### 快速推荐
 
-#### OpenAI GPT-4.1
-**适合：需要快速可靠性能的用户**
-- ✅ **优点**：较准确、速度快
-- ❌ **缺点**：价格较贵（但比Claude Sonnet 4便宜）
-- 💰 **价格**：高端定价（比Claude更经济）
-- 🎯 **使用场景**：通用开发任务、快速迭代、平衡性能需求
+- **🏆 追求质量**：Claude Sonnet 4 - 最佳智能程度和代码质量
+- **⚡ 平衡性能**：GPT-4 Turbo - 速度与质量的完美平衡  
+- **💰 性价比高**：DeepSeek V3 - 极佳的成本效益比
+- ** Agent 优化**：Kimi K2 - 优秀的Agent和编码性能
+- **🆓 免费试用**：Qwen2.5-7B - 零成本学习和简单任务
 
-#### DeepSeek V3
-**适合：注重成本和准确性的用户**
-- ✅ **优点**：准确、无幻觉、谨慎、便宜
-- ❌ **缺点**：输出内容较为概括、解释不够详细
-- 💰 **价格**：经济实惠
-- 🎯 **使用场景**：代码优化、错误修复、直接的实现任务
+> 💡 **提示**：详细的模型对比、配置方法、性能优化建议请参考 [MODELS_zh.md](md/MODELS_zh.md)
 
-#### Qwen2.5-7B-Instruct (SiliconFlow)
-**适合：免费试用用户和简单任务**
-- ✅ **优点**：非常便宜（免费）、能用来做一些简单的任务
-- ❌ **缺点**：经常搜索网络、策略选择有时候不够准确、任务处理效果一般
-- 💰 **价格**：免费
-- 🎯 **使用场景**：学习实验、基础代码生成、简单任务处理
+## ⚙️ 配置文件
 
-### 💡 模型选择指南
+AGI Bot 使用 `config/config.txt` 和 `config/config_memory.txt` 文件进行系统配置。
 
-| 模型 | 智能程度 | 响应速度 | 成本 | 最佳用途 |
-|------|---------|---------|------|----------|
-| Claude Sonnet 4 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | 💰💰💰💰 | 复杂项目 |
-| GPT-4.1 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | 💰💰💰 | 通用开发 |
-| DeepSeek V3 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 💰💰 | 预算项目 |
-| Qwen2.5-7B | ⭐⭐⭐ | ⭐⭐⭐ | 免费 | 简单任务 |
 
-### 🔧 模型配置
+### 快速配置
+安装完成后，请配置以下基本选项：
 
-在 `config/config.txt` 文件中配置您偏好的模型，或使用命令行参数：
-
-```bash
-# 使用 Claude Sonnet 4
-python main.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "您的任务"
-
-# 使用 OpenAI GPT-4.1
-python main.py --model gpt-4 --api-key your_key -r "您的任务"
-
-# 使用 DeepSeek V3
-python main.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "您的任务"
-
-# 使用 SiliconFlow (免费)
-python main.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "您的任务"
-```
-
-## ⚙️ 配置文件 (config/config.txt)
-
-AGI Bot 使用 `config/config.txt` 文件进行系统配置。以下是主要配置选项：
-
-### API 配置
 ```ini
-# 选择您偏好的AI服务提供商
-# OpenAI API
-api_key=your_openai_api_key
+# 必需配置：API密钥和模型
+api_key=your_api_key
 api_base=https://api.openai.com/v1
 model=gpt-4
 
-# Anthropic Claude
-api_key=your_anthropic_api_key
-api_base=https://api.anthropic.com
-model=claude-3-sonnet-20240229
-
-# 其他支持的提供商：SiliconFlow, DeepSeek, 火山引擎豆包, Ollama
-```
-
-### 语言设置
-```ini
-# 界面语言：en 为英文，zh 为中文
+# 语言设置
 LANG=zh
 ```
 
-### 输出控制
-```ini
-# 流式输出：True 为实时输出，False 为批量输出
-streaming=True
-
-# 简化搜索结果显示
-simplified_search_output=True
-
-# 生成摘要报告
-summary_report=False
-```
-
-### 内容截断设置
-```ini
-# 主要工具结果截断长度（默认：10000字符）
-truncation_length=10000
-
-# 历史记录截断长度（默认：10000字符）
-history_truncation_length=10000
-
-# 网络内容截断长度（默认：50000字符）
-web_content_truncation_length=50000
-```
-
-### 历史摘要功能
-```ini
-# 启用AI驱动的对话历史摘要
-summary_history=True
-
-# 摘要最大长度（默认：5000字符）
-summary_max_length=5000
-
-# 当历史记录超过此长度时触发摘要
-summary_trigger_length=30000
-
-
-# 静默模式
-# 在sudo，pip等命令执行时加入-quiet或者-y标志，默认不开启
-auto_fix_interactive_commands=False
-# 注：如果希望大模型成功调用sudo，请采用非静默模式并手工输入sudo密码，或采用静默模式，并在sudoers文件授权静默同意某些程序（例如your_username ALL=(ALL) NOPASSWD: /usr/bin/apt-get），
-```
-### GUI 配置
-```ini
-# GUI文件管理的默认目录
-gui_default_data_directory=~
-```
+> 💡 **提示**：详细的配置选项、使用建议和故障排除请参考 [CONFIG_zh.md](md/CONFIG_zh.md)
 
 ## 🔧 环境要求与安装
 
 ### 系统要求
-- **Python 3.8+**
+- **Python 3.6+**
 - **网络连接**：用于API调用和网络搜索功能
 
 ### 安装步骤
@@ -327,7 +325,7 @@ gui_default_data_directory=~
 # 从源码安装
 pip install -r requirements.txt
 
-# 安装网页抓取工具
+# 安装网页抓取工具(如果需要网页抓取)
 playwright install-deps
 playwright install chromium
 

@@ -231,6 +231,15 @@ def save_last_output_dir(out_dir: str, requirement: str = None):
         requirement: User requirement (optional)
     """
     try:
+        # Check if current agent is manager - only manager should update the file
+        from src.tools.print_system import get_agent_id
+        current_agent_id = get_agent_id()
+        
+        # Only allow manager (None or "manager") to update the configuration file
+        if current_agent_id is not None and current_agent_id != "manager":
+            print_current(f"🔒 Agent {current_agent_id} skipping .agibot_last_output.json update (only manager can update)")
+            return
+        
         config = {
             "last_output_dir": os.path.abspath(out_dir),
             "last_requirement": requirement,
@@ -353,7 +362,7 @@ Usage Examples:
     parser.add_argument(
         "--dir", "-d",
         default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        help="Output directory for storing todo.csv and logs (default: output_timestamp)"
+        help="Output directory for storing todo.md and logs (default: output_timestamp)"
     )
     
     parser.add_argument(

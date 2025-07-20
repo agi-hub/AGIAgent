@@ -21,7 +21,7 @@ AGI Bot Main Program
 
 A complete automated task processing workflow:
 1. Receive user requirement input
-2. Call task decomposer to create todo.csv
+2. Call task decomposer to create todo.md
 3. Call multi-round task executor to execute tasks
 4. Package working directory to tar.gz file
 """
@@ -102,6 +102,15 @@ def save_last_output_dir(out_dir: str, requirement: str = None):
         requirement: User requirement (optional)
     """
     try:
+        # Check if current agent is manager - only manager should update the file
+        from src.tools.print_system import get_agent_id
+        current_agent_id = get_agent_id()
+        
+        # Only allow manager (None or "manager") to update the configuration file
+        if current_agent_id is not None and current_agent_id != "manager":
+            print_current(f"🔒 Agent {current_agent_id} skipping .agibot_last_output.json update (only manager can update)")
+            return
+        
         config = {
             "last_output_dir": os.path.abspath(out_dir),
             "last_requirement": requirement,
@@ -253,7 +262,7 @@ class AGIBotMain:
         os.makedirs(out_dir, exist_ok=True)
         
         # Set paths
-        self.todo_csv_path = os.path.join(out_dir, "todo.csv")
+        self.todo_md_path = os.path.join(out_dir, "todo.md")
         self.logs_dir = os.path.join(out_dir, "logs")  # Simplified: direct logs directory
         
         # Ensure logs directory exists  
@@ -389,35 +398,37 @@ class AGIBotMain:
         
         print_system(f"=== {APP_NAME} Automated Task Processing System ===")
         print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
-        print_system("(Supports multi-line input, enter two empty lines to finish)")
+        print_system("(Press Enter on empty line to finish, supports multi-line paste)")
         print_system("-" * 50)
         
         lines = []
-        empty_line_count = 0
-        
-        while True:
-            try:
-                line = input()
-                if line.strip() == "":
-                    empty_line_count += 1
-                    if empty_line_count >= 2:
+        try:
+            while True:
+                try:
+                    line = input("" if lines else "Enter your requirement: ")
+                    if line.strip() == "":
+                        # Empty line - check if we have content
+                        if lines:
+                            break  # End input if we have content
+                        else:
+                            print_current("❌ No valid requirement entered")
+                            sys.exit(1)
+                    else:
+                        lines.append(line)
+                except EOFError:
+                    # Handle Ctrl+D or end of input
+                    if lines:
                         break
-                    lines.append("")
-                else:
-                    empty_line_count = 0
-                    lines.append(line)
-            except KeyboardInterrupt:
-                print_current("\nUser cancelled input")
-                sys.exit(0)
-            except EOFError:
-                break
-        
-        requirement = "\n".join(lines).strip()
-        
-        if not requirement:
-            print_current("❌ No valid requirement entered")
-            sys.exit(1)
+                    else:
+                        print_current("❌ No valid requirement entered")
+                        sys.exit(1)
             
+            requirement = "\n".join(lines).strip()
+            
+        except KeyboardInterrupt:
+            print_current("\nUser cancelled input")
+            sys.exit(0)
+        
         return requirement
     
     def decompose_task(self, user_requirement: str) -> bool:
@@ -428,7 +439,7 @@ class AGIBotMain:
             user_requirement: User requirement
             
         Returns:
-            Whether todo.csv was successfully created
+            Whether todo.md was successfully created
         """
         print_manager("🔧 Starting task decomposition...")
         
@@ -439,15 +450,26 @@ class AGIBotMain:
             # Execute task decomposition, pass working directory information
             result = self.task_decomposer.decompose_task(
                 user_requirement, 
-                self.todo_csv_path,
+                self.todo_md_path,
                 workspace_dir=workspace_dir
             )
             print_current(f"Task decomposition result: {result}")
             
-            # Check if CSV file was successfully created
-            # First check expected location
-            if not os.path.exists(self.todo_csv_path):
-                print_current("❌ Task decomposition failed: Failed to create todo.csv file")
+            # Check if todo.md file was successfully created
+            if not os.path.exists(self.todo_md_path):
+                # Check if file was created in current directory instead (fallback recovery)
+                local_file = "todo.md"
+                if os.path.exists(local_file):
+                    print_current(f"⚠️ File was created in current directory, moving to correct location...")
+                    try:
+                        import shutil
+                        shutil.move(local_file, self.todo_md_path)
+                        print_current(f"✅ File moved to: {self.todo_md_path}")
+                        return True
+                    except Exception as move_error:
+                        print_current(f"❌ Failed to move file: {move_error}")
+                
+                print_current("❌ Task decomposition failed: Failed to create todo.md file")
                 return False
             
             return True
@@ -487,7 +509,7 @@ class AGIBotMain:
             )
             
             # Execute all tasks
-            report = executor.execute_all_tasks(self.todo_csv_path)
+            report = executor.execute_all_tasks(self.todo_md_path)
             
             if "error" in report:
                 print_current(f"❌ Task execution failed: {report['error']}")
@@ -1247,7 +1269,7 @@ Please generate a markdown format detailed summary report, retaining all importa
         workspace_dir = os.path.join(self.out_dir, "workspace")
         
         if not self.single_task_mode:
-            print_current(f"📋 Task File: {os.path.abspath(self.todo_csv_path)}")
+            print_current(f"📋 Task File: {os.path.abspath(self.todo_md_path)}")
         
         # Step 1: Get user requirement
         track_operation("Get User Requirement")
@@ -1651,7 +1673,7 @@ Usage Examples:
     parser.add_argument(
         "--dir", "-d",
         default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        help="Output directory for storing todo.csv and logs (default: output_timestamp)"
+        help="Output directory for storing todo.md and logs (default: output_timestamp)"
     )
     
     parser.add_argument(

@@ -23,7 +23,6 @@ Task Decomposer - Decompose complex tasks into executable subtasks
 import os
 import re
 import json
-import csv
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from tool_executor import ToolExecutor
@@ -61,13 +60,13 @@ class TaskDecomposer:
         
         self.executor = ToolExecutor(api_key, model, api_base)
         
-    def decompose_task(self, user_requirement: str, output_file: str = "todo.csv", workspace_dir: str = None) -> str:
+    def decompose_task(self, user_requirement: str, output_file: str = "todo.md", workspace_dir: str = None) -> str:
         """
-        Decompose user requirements into subtasks and create todo.csv file
+        Decompose user requirements into subtasks and create todo.md file
         
         Args:
             user_requirement: User requirement description
-            output_file: Output CSV file name
+            output_file: Output file path (supports .md and .csv)
             workspace_dir: Workspace directory path
             
         Returns:
@@ -143,10 +142,18 @@ class TaskDecomposer:
             tasks = self._extract_tasks_from_response(content)
             
             
-            # Create CSV file
-            self._create_csv_file(tasks, output_file)
+            # Create todo file in Markdown format
+            if output_file.endswith('.csv'):
+                md_file = output_file.replace('.csv', '.md')
+            elif output_file.endswith('.md'):
+                md_file = output_file
+            else:
+                # If no extension, assume it's a base name and add .md
+                md_file = output_file + '.md'
             
-            return f"Task decomposition completed successfully, decomposed into {len(tasks)} subtasks, saved to {output_file}"
+            file_path = self.create_todo_file(tasks, md_file)
+            
+            return f"Task decomposition completed successfully, decomposed into {len(tasks)} subtasks, saved to {file_path}"
             
         except Exception as e:
             error_msg = f"Task decomposition failed: {str(e)}"
@@ -193,8 +200,7 @@ class TaskDecomposer:
                     'id': task_num,
                     'name': task_name,
                     'description': task_name,  # Default description is task name
-                    'status': 0,
-                    'dependencies': ''
+                    'status': 0
                 }
                 continue
             
@@ -206,13 +212,7 @@ class TaskDecomposer:
                         current_task['description'] = desc_part
                 continue
             
-            # If current line contains dependency information
-            if current_task and ('Dependency' in line or 'dependency' in line or 'Depends' in line or 'depends' in line):
-                if ':' in line or '：' in line:
-                    dep_part = line.split(':')[-1].split('：')[-1].strip()
-                    if dep_part and dep_part != 'None' and dep_part != 'No dependencies':
-                        current_task['dependencies'] = dep_part
-                continue
+
         
         # Add the last task
         if current_task and 'name' in current_task:
@@ -241,67 +241,76 @@ class TaskDecomposer:
                 'id': 1,
                 'name': 'Requirement Analysis',
                 'description': 'Analyze and understand user requirements, clarify project goals',
-                'status': 0,
-                'dependencies': ''
+                'status': 0
             },
             {
                 'id': 2,
                 'name': 'Technology Selection',
                 'description': 'Select appropriate technology stack and tools',
-                'status': 0,
-                'dependencies': '1'
+                'status': 0
             },
             {
                 'id': 3,
                 'name': 'Project Design',
                 'description': 'Design project architecture and module structure',
-                'status': 0,
-                'dependencies': '2'
+                'status': 0
             },
             {
                 'id': 4,
                 'name': 'Core Feature Implementation',
                 'description': 'Implement core functional modules of the project',
-                'status': 0,
-                'dependencies': '3'
+                'status': 0
             },
             {
                 'id': 5,
                 'name': 'Testing and Validation',
                 'description': 'Test and validate implemented features',
-                'status': 0,
-                'dependencies': '4'
+                'status': 0
             }
         ]
         
         return default_tasks
     
-    def _create_csv_file(self, tasks: List[Dict[str, Any]], csv_path: str) -> None:
+
+
+    def _create_markdown_file(self, tasks: List[Dict[str, Any]], md_path: str) -> None:
         """
-        Create CSV file
+        Create Markdown todo file compatible with modern AI tools
         
         Args:
             tasks: Task list
-            csv_path: CSV file path
+            md_path: Markdown file path
         """
-        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Task ID', 'Task Name', 'Task Description', 'Status', 'Dependencies']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        with open(md_path, 'w', encoding='utf-8') as mdfile:
+            mdfile.write("# Todo Task List\n\n")
+            mdfile.write("Generated by AGI Bot Task Decomposer\n\n")
             
-            # Write header
-            writer.writeheader()
-            
-            # Write task data
             for task in tasks:
-                writer.writerow({
-                    'Task ID': task.get('id', ''),
-                    'Task Name': task.get('name', ''),
-                    'Task Description': task.get('description', ''),
-                    'Status': task.get('status', 0),
-                    'Dependencies': task.get('dependencies', '')
-                })
+                status_symbol = "✅" if task.get('status', 0) == 1 else "📝"
+                checkbox = "[x]" if task.get('status', 0) == 1 else "[ ]"
+                
+                mdfile.write(f"## {status_symbol} Task {task.get('id', '')}: {task.get('name', '')}\n\n")
+                mdfile.write(f"- **Task Name**: {task.get('name', '')}\n")
+                mdfile.write(f"- **Description**: {task.get('description', '')}\n")
+                mdfile.write(f"- {checkbox} **Status**: {'Completed' if task.get('status', 0) == 1 else 'Pending'}\n\n")
+                mdfile.write("---\n\n")
         
-        print(f"📝 CSV file created: {csv_path}")
+        print(f"📋 Markdown todo file created: {md_path}")
+
+    def create_todo_file(self, tasks: List[Dict[str, Any]], md_path: str = "todo.md") -> str:
+        """
+        Create Markdown format todo file
+        
+        Args:
+            tasks: Task list
+            md_path: Markdown file path
+            
+        Returns:
+            Path to created markdown file
+        """
+        self._create_markdown_file(tasks, md_path)
+        return md_path
 
     def _create_task_decomposition_prompt(self) -> str:
         """
@@ -315,7 +324,7 @@ class TaskDecomposer:
 Your task is to:
 1. Analyze the requirements provided by the user
 2. Decompose requirements into specific, executable subtasks
-3. Provide clear descriptions and dependencies for each subtask
+3. Provide clear descriptions for each subtask
 
 Please output the task decomposition results in the following format:
 
@@ -323,23 +332,27 @@ Please output the task decomposition results in the following format:
 
 1. Task Name 1
    Description: Specific execution content and objectives
-   Dependencies: None (or dependent task numbers)
 
 2. Task Name 2
    Description: Specific execution content and objectives
-   Dependencies: 1 (if dependent on task 1)
 
 3. Task Name 3
    Description: Specific execution content and objectives
-   Dependencies: 1/2 (if dependent on tasks 1 and 2)
 
 Task decomposition principles:
-1. Subtasks should be specific and executable, avoiding being too abstract
-2. Each subtask should have clear inputs and outputs
-3. There should be reasonable dependencies between subtasks
-4. Task granularity should be moderate, not too coarse or too fine
-5. Ensure that executing all subtasks achieves the final goal
-6. Consider actual development processes and arrange in reasonable order
+1. **Reasonable Granularity**: Carefully balance task granularity - avoid over-decomposition of tasks that can be completed in a single phase or by one person in a reasonable timeframe
+2. **Natural Boundaries**: Split tasks only at natural completion points where there are clear deliverables or milestone achievements
+3. **Atomic Completeness**: Each subtask should represent a complete, meaningful unit of work that produces tangible outcomes
+4. **Practical Feasibility**: Consider realistic execution scenarios - if a task naturally flows into the next without clear stopping points, keep them together
+5. **Clear Scope Definition**: Each subtask should have specific, executable content with clear inputs and outputs
+6. **Logical Sequence**: Arrange tasks in a logical order that reflects actual development and execution processes
+7. **Avoid Micro-Management**: Don't break down tasks into overly detailed steps that would be better handled as implementation details within a larger task
+
+Guidelines for appropriate task granularity:
+- ✅ Good: "Design and implement user authentication system" (complete functional module)
+- ❌ Avoid: "Design login form", "Design registration form", "Implement login validation", "Implement registration validation" (over-fragmented)
+- ✅ Good: "Conduct market research and competitive analysis" (cohesive research phase)
+- ❌ Avoid: "Search for competitors", "Analyze competitor A", "Analyze competitor B", "Write research summary" (unnecessarily fragmented)
 
 Please strictly follow the above format for output so I can correctly parse and process the task information.
 """
@@ -372,15 +385,17 @@ def main():
     print("\nTask decomposition result:")
     print(result)
     
-    # Check if CSV file was created
-    if os.path.exists("todo.csv"):
-        print("\n✅ todo.csv file successfully created")
-        with open("todo.csv", 'r', encoding='utf-8') as f:
+    # Check if todo file was created
+    if os.path.exists("todo.md"):
+        print("\n✅ Todo file successfully created:")
+        print("   📋 todo.md - AI-friendly Markdown format")
+        
+        print("\n📋 Markdown file preview:")
+        with open("todo.md", 'r', encoding='utf-8') as f:
             content = f.read()
-            print("File content preview:")
             print(content[:get_truncation_length()] + "..." if len(content) > get_truncation_length() else content)
     else:
-        print("\n❌ todo.csv file not created")
+        print("\n❌ Todo file not created")
 
 if __name__ == "__main__":
     main() 
