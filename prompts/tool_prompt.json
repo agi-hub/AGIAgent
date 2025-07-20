@@ -271,5 +271,33 @@
       },
       "required": ["type", "source"]
     }
+  },
+  "todo_update": {
+    "description": "Update todo task status in todo.md file and return the complete updated file content. This tool allows you to mark tasks as completed, in progress, blocked, or pending, and provides real-time progress tracking.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "integer",
+          "description": "The ID of the task to update (1, 2, 3, etc.)"
+        },
+        "status": {
+          "type": "string",
+          "description": "New status for the task",
+          "enum": ["pending", "in_progress", "completed", "blocked", "skipped"]
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description explaining the status change or completion details"
+        },
+        "action": {
+          "type": "string",
+          "description": "Action to perform",
+          "enum": ["update_status", "get_progress", "list_tasks", "get_next_task"],
+          "default": "update_status"
+        }
+      },
+      "required": ["task_id"]
+    }
   }
 } 

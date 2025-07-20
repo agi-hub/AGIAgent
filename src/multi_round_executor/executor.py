@@ -525,34 +525,53 @@ class MultiRoundTaskExecutor:
             history_length=history_length
         )
     
-    def execute_all_tasks(self, csv_file: str) -> Dict[str, Any]:
+    def execute_all_tasks(self, todo_file: str) -> Dict[str, Any]:
         """
-        Process todo.csv as a single comprehensive task
+        Process todo file (CSV or Markdown) as a single comprehensive task
         
         Args:
-            csv_file: CSV file path
+            todo_file: Todo file path (CSV or Markdown)
             
         Returns:
             Execution report
         """
-        # Validate CSV file
-        if not self.task_loader.validate_csv_file(csv_file):
-            return {"error": f"CSV file validation failed: {csv_file}"}
+        # Determine file type and validate
+        file_ext = os.path.splitext(todo_file)[1].lower()
         
-        # Read CSV content
-        try:
-            csv_content = self.task_loader.read_csv_content(csv_file)
-        except Exception as e:
-            return {"error": str(e)}
+        if file_ext == '.csv':
+            # Handle CSV file
+            if not self.task_loader.validate_csv_file(todo_file):
+                return {"error": f"CSV file validation failed: {todo_file}"}
+            
+            try:
+                file_content = self.task_loader.read_csv_content(todo_file)
+                file_type = "CSV"
+            except Exception as e:
+                return {"error": str(e)}
+                
+        elif file_ext == '.md':
+            # Handle Markdown file
+            if not os.path.exists(todo_file):
+                return {"error": f"Markdown file not found: {todo_file}"}
+            
+            try:
+                with open(todo_file, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+                file_type = "Markdown"
+            except Exception as e:
+                return {"error": f"Failed to read Markdown file: {e}"}
+        else:
+            return {"error": f"Unsupported file type: {file_ext}. Only .csv and .md files are supported."}
         
         print_manager(f"\n🚀 Starting task execution")
-        print_manager(f"📄 Task file: {csv_file}")
+        print_manager(f"📄 Task file: {todo_file} ({file_type})")
 
         
         # Initialize execution report
         execution_report = {
             "start_time": datetime.now().isoformat(),
-            "todo_file": csv_file,
+            "todo_file": todo_file,
+            "file_type": file_type,
             "subtask_loops": self.subtask_loops,
             "task_result": None,
             "task_history": [],
@@ -564,11 +583,11 @@ class MultiRoundTaskExecutor:
         # Construct overall task description
         task_info = {
             "Task ID": "TODO_FILE",
-            "Task Name": f"Process todo file: {os.path.basename(csv_file)}",
+            "Task Name": f"Process todo file: {os.path.basename(todo_file)}",
             "Task Description": f"""
-Please process all tasks in the following todo.csv file. File content:
+Please process all tasks in the following todo {file_type.lower()} file. File content:
 
-{csv_content}
+{file_content}
 
 Please execute all tasks listed in the file in a reasonable order. You can use various tools to complete these tasks, including but not limited to:
 - Creating files and directories
@@ -576,6 +595,11 @@ Please execute all tasks listed in the file in a reasonable order. You can use v
 - Running commands
 - Searching content
 - Editing files
+- Updating task status using the todo_update tool
+
+For Markdown todo files, you can use the todo_update tool to mark tasks as completed:
+- todo_update(task_id=1, status="in_progress", description="Starting task")  
+- todo_update(task_id=1, status="completed", description="Task finished")
 
 Please ensure all tasks are properly handled. If some tasks have dependencies, please execute them in the correct order.
 """

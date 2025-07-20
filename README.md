@@ -2,153 +2,249 @@
 
 [**中文**](README_zh.md) | **English**
 
-**AGI Bot** is an AI-powered intelligent code generation and autonomous task execution system that automatically decomposes complex tasks and completes them through multi-round iterations with tool calls.
+## 🚀 Project Introduction
 
-AGI Bot takes user prompts and a working directory as input, and outputs an edited working directory where the LLM places code, documentation, and other output files in the workspace folder. AGI Bot operates in a multi-round iterative mode, where each round represents an interaction process between the LLM and tools. The system sends system prompts, user prompts, chat history, and previous tool execution results to the LLM, which then autonomously decides on the next round of tool calls (such as writing files, searching code repositories, executing terminal commands, etc.). These calls are described in LLM tool call format or JSON format, and then parsed and executed by the tool execution module. The execution results are passed to the LLM in the next round. When the LLM determines that the task is complete, it sends a task completion signal, and the program can optionally perform task summarization. All LLM editing operations are completed in the workspace directory under the user-defined working directory (--dir). Additionally, to control context length, chat history summarization is triggered when the chat context threshold is exceeded. Web search results can optionally be summarized.
+**AGI Bot** is an L3-level fully automated general-purpose intelligent agent powered by Large Language Models (LLM). It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIBot can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIBot's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
 
-AGI Bot runs in the terminal by default. For users with GUI or web access needs, we also provide a Web GUI that includes all the functionality needed for task execution, plus file upload/download, file preview, and task execution monitoring features.
-
-Since AGI Bot is positioned as a general-purpose task agent, it may call system terminal commands. It generally does not operate files outside the working directory, though the LLM may sometimes call software installation commands (pip, apt, etc.). Please use this software with caution and consider sandbox execution when necessary.
 
 <div align="center">
       <img src="md/images/AGIBot.png" alt="AGI Bot - L3 Autonomous Programming System" width="800"/>
-  
-  **🚀 Autonomous Programming & Task Execution System**
-  
-  *LLM-driven autonomous code generation with intelligent task decomposition and multi-round iterative execution capabilities*
 </div>
+
+## ✨ Core Features
+
+### 🤖 Autonomous Multi-Agent Collaboration
+- **Autonomous Agent Creation**: The system can autonomously decide to create new professional agents, configuring unique prompts, model types, and dedicated tool libraries for each agent
+- **Role Specialization**: Build sub-agents with different roles and specialized expertise working efficiently together in a shared workspace
+- **Communication Mechanism**: Agents have point-to-point and broadcast message communication capabilities, integrated with email viewing mechanisms for seamless interconnection
+
+### 🔧 Extensive Tool Calling Capabilities
+- **Built-in Tool Library**: Integrates over 10 common development tools including file retrieval, web browsing, and file modification
+- **MCP Protocol Support**: Supports Model Context Protocol (MCP) for connecting thousands of extended tools such as GitHub and Slack
+- **System Integration**: Full support for terminal commands, Python package management, and operating system software packages
+- **Autonomous Installation**: Agents can automatically install system software, pip packages, and MCP tools according to task requirements
+
+### 🧠 Long-term Memory and Learning
+- **Persistent Memory**: Solves the limitation of traditional agents that only focus on current tasks by storing historical execution summaries to form long-term memory
+- **Intelligent Retrieval**: Extracts valuable historical memory elements for current work through RAG (Retrieval-Augmented Generation)
+- **Context Management**: Integrates long-context summarization mechanisms to ensure memory continuity and relevance
+
+### 👁️ Embodied Intelligence and Multimodal
+- **Multimodal Perception**: Built-in vision, sensors, and other multimodal capabilities, not limited to the text world
+- **Physical World Interaction**: Can handle rich physical world information scenarios
+- **Multi-channel Information Processing**: Achieves parallel information perception and interaction through multi-agent architecture
+
+### 🔗 Flexible Deployment Methods
+- **Independent Operation**: Can run independently as a complete autonomous system
+- **Embedded Integration**: Can be embedded as a Python component into other software processes
+- **Modular Design**: Uses a building-block approach to construct powerful intelligent systems
+- **Lightweight Deployment**: Depends only on a few core libraries, with a compact software package and strong system compatibility
+
+## 🔄 Working Principle
+
+### Input-Output Mechanism
+AGI Bot receives **user prompts** and **working directory** as input, and outputs **processed working directory**. All generated code, documents, and other files are uniformly placed in the workspace folder.
+
+### Multi-round Iterative Process
+1. **Task Analysis Phase**: The system sends user prompts, historical chat records, and previous tool execution results to the large model
+2. **Decision Making Phase**: The large model autonomously decides the tool calling strategy for the next round (file writing, code search, terminal commands, etc.)
+3. **Tool Execution Phase**: The tool execution module parses and executes the large model's instructions (supports tool_call and JSON formats)
+4. **Result Feedback Phase**: Execution results are passed to the large model in the next round, forming a closed-loop feedback
+5. **Task Completion Phase**: The large model issues an end signal when it determines the task is complete, and can optionally generate a task summary
+
+### Intelligent Optimization Features
+- **Context Management**: Automatically triggers historical summarization when chat history exceeds the threshold to maintain efficient operation
+- **Network Search Optimization**: Search results can be selectively summarized to extract key information
+- **Security Boundaries**: All editing operations are limited within the user-defined working directory to ensure system security
+
+## ⚠️ Security Notice
+
+As a general-purpose task agent, AGI Bot has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
+- Carefully review executed commands
+- Recommend running important tasks in a sandbox environment
+- Regularly backup important data
+
+## 🌐 Platform Compatibility
+
+### Operating System Support
+- ✅ **Linux** - Full support
+- ✅ **Windows** - Full support  
+- ✅ **MacOS** - Full support
+
+### Large Model Support
+- **Anthropic Claude** - Claude 3.5 Sonnet, Claude 3 Opus, etc.
+- **OpenAI GPT** - GPT-4, GPT-4 Turbo, GPT-3.5, etc.
+- **Google Gemini** - Gemini Pro, Gemini Ultra, etc.
+- **Domestic Models** - Kimi K2, DeepSeek, Volcano Large Model, Qwen3 (8B and above)
+
+### Interfaces and Modes
+- **API Interface**: Supports Anthropic interface and OpenAI-compatible interface
+- **Output Mode**: Supports streaming output and batch output
+- **Calling Mode**: Supports Tool Calling mode and traditional Chat mode (tool calling mode works better)
+
+### Runtime Interfaces
+- **Terminal Mode**: Pure command-line interface, suitable for servers and automation scenarios
+- **Python Library Mode**: Embedded as a component in other Python applications
+- **Web Interface Mode**: Modern web interface providing visual operation experience
+
+### Interaction Modes
+- **Fully Automatic Mode**: Completely autonomous execution without human intervention
+- **Interactive Mode**: Supports user confirmation and guidance, providing more control
+
 
 <br/>
 
 ## 🎬 Demo Video
 
-[![Watch the demo video](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![Watch Demo Video](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
-> If you cannot play the video directly, [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
+> If you cannot play directly, please [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 ## 📋 Demo Cases
 
-For comprehensive examples showcasing AGI Bot's capabilities across various scenarios, see our [Demo Cases](md/DEMO.md). This includes real-world use cases, output files, and detailed examples of what AGI Bot can accomplish.
+To understand AGI Bot's comprehensive capabilities in various scenarios, please check our [Demo Cases](md/DEMO.md). This includes real use cases, output files, and detailed examples of what AGI Bot can accomplish.
 
-## 🚀 Try it Now
+## 🔗 Extended Features
 
-**Experience AGI Bot in Google Colab without any setup!**
+### 🐍 Python Library Interface
+AGI Bot now supports being called directly as a Python library in code, providing a programming interface similar to the OpenAI Chat API.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
+**📖 [View Python Library Usage Guide →](md/README_python_lib.md)**
 
-*Click the badge above to launch AGI Bot directly in your browser and start experimenting with autonomous AI programming.*
+- 🐍 Pure Python interface, no command line needed
+- 💬 OpenAI-style API, easy to integrate
+- 🔧 Programmatic configuration, flexible control
+- 📊 Detailed return information and status
 
-## Quick Start
+### 🔌 MCP Protocol Support
+Supports Model Context Protocol (MCP) for communication with external tool servers, greatly expanding the system's tool ecosystem.
+
+**📖 [View MCP Integration Guide →](md/README_MCP.md)**
+
+- 🌐 Standardized tool calling protocol
+- 🔧 Support for official and third-party MCP servers
+- 📁 File system, GitHub, Slack, and other service integrations
+- ⚡ Dynamic tool discovery and registration
+
+## 🚀 Quick Start
+
+**Experience AGI Bot for free in Google Colab with no configuration required!**
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc)
+
+*Click the badge above to launch AGI Bot directly in your browser and start experiencing autonomous AI programming.*
+
+### Basic Usage
 
 #### 🔥 Single Task Mode (Recommended)
-Perfect for bug fixes, feature optimizations, and focused objectives. If you don't specify the `-r` parameter, the program will prompt you to enter a task description, supporting multi-line complex prompts.
+Suitable for single-objective tasks such as bug fixes and feature optimization. If no `-r` parameter is specified, the program will prompt you to enter a task description, supporting multi-line complex prompts.
 
 ```bash
-python main.py --requirement "Search today's news"
-python main.py -r "Write a joke"
+python agibot.py --requirement "Search today's news"
+python agibot.py -r "Write a joke"
 
 # Image input support
-python main.py -r "Analyze this diagram: [img=chart.png]"
+python agibot.py -r "Analyze this chart: [img=chart.png]"
 
-# MCP tool integration, please configure the MCP tools in config/mcp_servers.json
-python main.py -r "Use AISearch to find AI news"
+# MCP tool integration
+python agibot.py -r "Use AISearch_search to search for AI news"
 ```
 
 #### 📋 Task Decomposition Mode
-Ideal for complex multi-step tasks where the system automatically breaks down large tasks into manageable subtasks.
+Suitable for complex multi-step tasks. The system will automatically decompose large tasks into subtasks for step-by-step execution.
 
 ```bash
-python main.py --todo --requirement "Develop a complete blog system"
+python agibot.py --todo --requirement "Develop a complete blog system"
 ```
 
 #### 💬 Interactive Mode
-Provides a more flexible interactive experience with guided task input.
+Provides a more flexible interactive experience where the system guides you to input task requirements.
 
 ```bash
-python main.py -i
-python main.py --interactive --todo
+python agibot.py -i
+python agibot.py --interactive 
 ```
 
-#### 📁 Custom Output Directory
-Specify custom project output location. If not specified, the system automatically creates a timestamped `output_` directory.
+#### 📁 Specify Output Directory
+Customize project output location. If not specified, the system will automatically create an `output_` directory with timestamp.
 
 ```bash
-python main.py --dir "my_project"
+python agibot.py --dir "my_dir"
 ```
 
-#### 🔄 Resume Task Execution
-Resume previous tasks for continued execution. AGI Bot remembers the last used output directory.
+#### 🔄 Continue Task Execution
+Resume previous task execution. AGI Bot remembers the last used output directory.
 
 ```bash
-python main.py -c
-python main.py --continue
+python agibot.py -c
+python agibot.py --continue
 ```
 
-> **Note**: Resuming execution doesn't restore chat history or previous requirement prompts, but can continue operating on files in the working directory.
+> **Note**: Continue execution only restores the working directory and the last requirement prompt, not the large model's context.
 
 #### ⚡ Set Execution Rounds
-Control the maximum number of task execution rounds to prevent infinite loops.
+Control the maximum number of task execution rounds to avoid infinite loops.
 
 ```bash
-python main.py --loops 5 -r "Task description"
-python main.py -d "my_dir" -l 10 -r "Task description"
+python agibot.py --loops 5 -r "Requirement description"
+python agibot.py -d "my_dir" -l 10 -r "Requirement description"
 ```
 
-> **Info**: Rounds don't equal model calls. Each round typically calls the LLM once, but additional calls may occur for history summarization when chat logs become too long, plus optional task summarization at completion.
+> **Note**: Rounds do not equal model call count. Each round usually calls the large model once, but may call it an additional time for summarization when chat history is too long, and may also summarize after task completion.
 
 #### 🔧 Custom Model Configuration
-Specify API configuration directly via command line, though we recommend configuring in `config/config.txt` for reusability.
+Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
 
 ```bash
-python main.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
+python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
 ```
 
 ## 🎯 Core Features
 
-- **🧠 Intelligent Task Decomposition**: AI automatically breaks down complex requirements into executable subtasks
-- **🔄 Multi-Round Iterative Execution**: Each task supports multiple optimization rounds ensuring quality (default 25 rounds)
-- **🔍 Smart Code Search**: Semantic search + keyword search for rapid code location
-- **🌐 Web Search Integration**: Real-time web search for latest information and solutions
+- **🧠 Intelligent Task Decomposition**: AI automatically decomposes complex requirements into executable subtasks
+- **🔄 Multi-round Iterative Execution**: Each task supports multi-round optimization to ensure quality (default 50 rounds)
+- **🔍 Intelligent Code Search**: Semantic search + keyword search for quick code location
+- **🌐 Network Search Integration**: Real-time network search for latest information and solutions
 - **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
-- **🛠️ Rich Tool Ecosystem**: Complete local tools + OS command invocation capabilities supporting full development workflows
-- **🖼️ Image Input Support**: Process images in requirements using `[img=path]` syntax, supports Claude and OpenAI vision models
-- **🔗 MCP Integration**: External tool integration via Model Context Protocol, includes AI search and other third-party services
+- **🛠️ Rich Tool Ecosystem**: Complete local tools + operating system command calling capabilities, supporting full development processes
+- **🖼️ Image Input Support**: Use `[img=path]` syntax to include images in requirements, supporting Claude and OpenAI vision models
+- **🔗 MCP Integration Support**: Integrate external tools through Model Context Protocol, including third-party services like AI search
 - **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
-- **📊 Dual-Format Reports**: JSON detailed logs + Markdown readable reports
-- **⚡ Real-Time Feedback**: Detailed execution progress and status display
+- **📊 Dual Format Reports**: JSON detailed logs + Markdown readable reports
+- **⚡ Real-time Feedback**: Detailed execution progress and status display
 - **🤝 Interactive Control**: Optional user confirmation mode with step-by-step control
-- **📁 Flexible Output**: Custom output directories with automatic timestamp naming for new projects
+- **📁 Flexible Output**: Custom output directory with automatic timestamp naming for new projects
 
-## 🌐 Web Search Functionality
+## 🌐 Network Search Function
 
-AGI Bot integrates powerful web search capabilities for real-time information retrieval:
+AGI Bot integrates powerful network search functionality to obtain real-time information:
 
-**Usage**: Include "search web" in your requirement prompt to enable searching, or "don't search web" to disable it. If not specified, the LLM will decide autonomously.
+Usage: Add "search web" in the requirement prompt to perform search, "don't search web" to avoid search. If not specified, the large model will decide autonomously.
 
 ## 📚 Codebase Retrieval System
 
-AGI Bot features real-time codebase vectorization and retrieval functionality. After each tool call round, it searches for newly modified files, performs dynamic incremental indexing, and supports the LLM's fuzzy semantic search capabilities. Additionally, the LLM can call commands like grep to observe workspace conditions.
+AGI Bot is equipped with real-time codebase vectorization and retrieval functionality. After each round of tool calls, it searches for newly modified files, performs dynamic incremental indexing, and supports the large model's fuzzy semantic retrieval capability. Additionally, the large model can call commands like grep to observe the workspace situation.
 
 ## 🛠️ Tool Library
 
-AGI Bot provides a comprehensive tool library:
+AGI Bot has a comprehensive tool library:
 
 ### File System Tools
 - **File Operations**: Create, read, update, delete files and directories
-- **Directory Management**: Navigate and organize project structures
-- **File Search**: Find files by name, content, or patterns
+- **Directory Management**: Navigate and organize project structure
+- **File Search**: Find files by name, content, or pattern
 
 ### Code Analysis Tools
-- **Syntax Analysis**: Parse and understand code structures
+- **Syntax Analysis**: Parse and understand code structure
 - **Dependency Analysis**: Map code relationships and imports
 - **Code Quality**: Identify issues and suggest improvements
 
-### Network & Web Tools
+### Network and Web Tools
 - **Web Search**: Real-time information retrieval
 - **API Testing**: Test and validate API endpoints
-- **Documentation Fetching**: Retrieve technical documentation
+- **Documentation Retrieval**: Retrieve technical documentation
 
-### Terminal & Execution Tools
+### Terminal and Execution Tools
 - **Command Execution**: Run system commands and scripts
 - **Process Management**: Monitor and control running processes
 - **Environment Setup**: Configure development environments
@@ -162,248 +258,73 @@ AGI Bot provides a comprehensive tool library:
 
 AGI Bot provides a modern, intuitive web interface to enhance user experience:
 
-### Key Features
-- **Real-Time Execution Monitoring**: Live observation of task execution and detailed logs
+### Main Features
+- **Real-time Execution Monitoring**: Real-time observation of task execution and detailed logs
 - **Interactive Task Management**: Start, stop, and monitor tasks through the web interface
 - **File Management**: Upload, download, and manage project files directly in the browser
 - **Directory Operations**: Create, rename, and organize project directories
-- **Multi-Language Support**: Chinese and English interfaces available (configure in config/config.txt)
+- **Multi-language Support**: Includes Chinese and English interfaces, configure language in config/config.txt
 
 ### Launch GUI
 ```bash
 cd GUI
 python app.py
 
-# Access via browser at http://localhost:5001
+# Access through browser at http://localhost:5001
 ```
-
-The Web GUI displays file lists. By default, folders with workspace subdirectories are listed, while others are not. The root directory location can be configured in config.txt.
-
-> **Note**: The Web GUI is currently experimental, providing only a single-user development version (not suitable for industrial deployment).
+Web GUI displays file lists. Folders with workspace subdirectories are listed by default, otherwise they won't be shown. The root directory location can be configured in config/config.txt.
+Note: Web GUI is currently experimental, providing only a single-user development version (not suitable for industrial deployment).
 
 ## 🤖 Model Selection
 
-AGI Bot supports multiple AI models to meet different user needs and budgets. Choose the model that best fits your requirements:
+AGI Bot supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets.
 
-### 🌟 Recommended Models
+**🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
 
-#### Claude Sonnet 4 (Recommended)
-**Best for: Complex tasks requiring high accuracy and detailed responses**
-- ✅ **Pros**: High intelligence, excellent accuracy, detailed responses
-- ❌ **Cons**: Expensive, moderate speed, occasional hallucinations
-- 💰 **Pricing**: Premium tier
-- 🎯 **Use Cases**: Complex code generation, detailed analysis, advanced problem-solving
+### Quick Recommendations
 
-#### OpenAI GPT-4.1
-**Best for: Users needing fast, reliable performance**
-- ✅ **Pros**: Good accuracy, fast speed
-- ❌ **Cons**: Expensive (but cheaper than Claude Sonnet 4)
-- 💰 **Pricing**: Premium tier (more economical than Claude)
-- 🎯 **Use Cases**: General development tasks, rapid iteration, balanced performance needs
+- **🏆 Quality First**: Claude Sonnet 4 - Best intelligence and code quality
+- **⚡ Balanced Performance**: GPT-4 Turbo - Perfect balance of speed and quality  
+- **💰 Cost-Effective**: DeepSeek V3 - Excellent cost-effectiveness ratio
+- **🤖 Agent Optimized**: Kimi K2 - Excellent Agent and coding performance
+- **🆓 Free Trial**: Qwen2.5-7B - Zero cost learning and simple tasks
 
-#### DeepSeek V3
-**Best for: Cost-conscious users prioritizing accuracy**
-- ✅ **Pros**: Accurate, minimal hallucinations, conservative, affordable
-- ❌ **Cons**: More concise output, less detailed explanations
-- 💰 **Pricing**: Budget-friendly
-- 🎯 **Use Cases**: Code optimization, bug fixes, direct implementation tasks
+> 💡 **Tip**: For detailed model comparisons, configuration methods, and performance optimization suggestions, please refer to [MODELS.md](md/MODELS.md)
 
-#### Qwen2.5-7B-Instruct (SiliconFlow)
-**Best for: Free trial users and simple tasks**
-- ✅ **Pros**: Very affordable (free), capable of handling simple tasks
-- ❌ **Cons**: Frequently searches web, sometimes inaccurate strategy selection, mediocre task handling
-- 💰 **Pricing**: Free
-- 🎯 **Use Cases**: Learning experiments, basic code generation, simple task processing
+## ⚙️ Configuration Files
 
-### 💡 Model Selection Guide
+AGI Bot uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
 
-| Model | Intelligence | Response Speed | Cost | Best For |
-|-------|-------------|----------------|------|----------|
-| Claude Sonnet 4 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | 💰💰💰💰 | Complex projects |
-| GPT-4.1 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | 💰💰💰 | General development |
-| DeepSeek V3 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 💰💰 | Budget projects |
-| Qwen2.5-7B | ⭐⭐⭐ | ⭐⭐⭐ | Free | Simple tasks |
+### Quick Configuration
+After installation, please configure the following basic options:
 
-### 🔧 Model Configuration
-
-Configure your preferred model in the `config/config.txt` file or use command line parameters:
-
-```bash
-# Using Claude Sonnet 4
-python main.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "Your task"
-
-# Using OpenAI GPT-4.1
-python main.py --model gpt-4 --api-key your_key -r "Your task"
-
-# Using DeepSeek V3
-python main.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "Your task"
-
-# Using SiliconFlow (Free)
-python main.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "Your task"
-```
-
-## ⚙️ Configuration File (config/config.txt)
-
-AGI Bot uses a `config/config.txt` file for system configuration. Below are the main configuration options:
-
-### API Configuration
 ```ini
-# Choose your preferred AI service provider
-# OpenAI API
-api_key=your_openai_api_key
+# Required configuration: API key and model
+api_key=your_api_key
 api_base=https://api.openai.com/v1
 model=gpt-4
 
-# Anthropic Claude
-api_key=your_anthropic_api_key
-api_base=https://api.anthropic.com
-model=claude-3-sonnet-20240229
-
-# Other supported providers: SiliconFlow, DeepSeek, Volcengine Doubao, Ollama
-```
-
-### Language Settings
-```ini
-# Interface language: en for English, zh for Chinese
+# Language setting
 LANG=en
 ```
 
-### Output Control
-```ini
-# Streaming output: True for real-time output, False for batch output
-streaming=True
+> 💡 **Tip**: For detailed configuration options, usage suggestions, and troubleshooting, please refer to [CONFIG.md](md/CONFIG.md)
 
-# Simplified search result display
-simplified_search_output=True
+## 🔧 Environment Requirements and Installation
 
-# Generate summary reports
-summary_report=False
-```
-
-### Content Truncation Settings
-```ini
-# Main tool result truncation length (default: 10000 characters)
-truncation_length=10000
-
-# History truncation length (default: 10000 characters)
-history_truncation_length=10000
-
-# Web content truncation length (default: 50000 characters)
-web_content_truncation_length=50000
-```
-
-### History Summary Feature
-```ini
-# Enable AI-powered conversation history summarization
-summary_history=True
-
-# Summary maximum length (default: 5000 characters)
-summary_max_length=5000
-
-# Trigger summary when history exceeds this length
-summary_trigger_length=30000
-
-# Silent mode
-# Add -quiet or -y flags to sudo, pip commands, disabled by default
-auto_fix_interactive_commands=False
-# Note: For successful sudo calls by LLM, use non-silent mode and manually enter sudo password, 
-# or use silent mode with sudoers file authorization (e.g., your_username ALL=(ALL) NOPASSWD: /usr/bin/apt-get)
-```
-
-### GUI Configuration
-```ini
-# Default directory for GUI file management
-gui_default_data_directory=~
-```
-
-## 🔧 System Requirements & Installation
-
-### Prerequisites
-- **Python 3.8+**
-- **Network Connection**: Required for API calls and web search functionality
+### System Requirements
+- **Python 3.6+**
+- **Network Connection**: For API calls and network search functionality
 
 ### Installation Steps
 
-#### Method 1: pip Installation (Recommended)
-
-AGI Bot can be installed directly as a Python package:
-
 ```bash
 # Install from source
-pip install .
+pip install -r requirements.txt
 
-# Or install from git repository (replace with actual repository URL)
-pip install git+https://github.com/agi-hub/AGIBot.git
-
-# If published to PyPI, install directly
-pip install agibot
+# Install web scraping tools (if web scraping is needed)
+playwright install-deps
+playwright install chromium
 ```
 
-After installation, you can use directly from command line:
-
-```bash
-agibot --requirement "Your task description"
-```
-
-Or use as a library in Python code:
-
-```python
-from agibot import AGIBotClient
-```
-
-#### Method 2: Manual Dependencies Installation
-
-1. **Install Python Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Install Core Dependencies** (if not using requirements.txt)
-   ```bash
-   pip install requests openai anthropic colorama pandoc
-   ```
-
-3. **Install GUI Dependencies** (optional, if you plan to use Web GUI)
-   ```bash
-   pip install flask flask-socketio
-   ```
-
-4. **Install Playwright for Web Automation** (required for certain web-related tasks)
-   ```bash
-   playwright install-deps
-   playwright install chromium
-   ```
-
-### Optional Enhancements
-- **Additional packages**: numpy, scikit-learn
-- **Note**: Some dependencies may be auto-installed when first used
-
-## 🎯 Best Practices
-
-### Requirement Description Tips
-- **Be Specific**: Describe concrete functionality rather than vague concepts
-- **Include Context**: Specify tech stack and environment requirements
-- **Layer Description**: Complex requirements can be described hierarchically
-
-### Mode Selection Guide
-- **Single Task Mode** (`--singletask`, default):
-  - Bug fixes, code optimization, feature improvements
-  - Targeted problem solving
-  - Quick implementation of simple requirements
-  
-- **Multi-Task Mode** (`--todo`):
-  - Complete project development
-  - Complex system design
-  - Multi-feature integration requirements
-
-- **Interactive Mode** (`-i`):
-  - Dynamic requirement adjustments needed
-  - Learning and exploration phases
-  - Fine-grained process control requirements
-
-### Parameter Configuration Recommendations
-- **Simple Tasks**: 1-5 execution rounds (`--loops 5`)
-- **Complex Tasks**: 10-25 execution rounds (default)
-- **Debug Phase**: Use `--debug` mode to output llm_call_* files for viewing detailed LLM conversations
-- **Large Projects**: Use custom output directory (`--dir project_name`)
-
+After installation, don't forget to configure api key, api base, model, and language setting LANG=en in config/config.txt. 

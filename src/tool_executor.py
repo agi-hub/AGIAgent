@@ -326,6 +326,7 @@ class ToolExecutor:
             "talk_to_user": self.tools.talk_to_user,
             "idle": self.tools.idle,
             "get_sensor_data": self.tools.get_sensor_data,
+            "todo_update": self.tools.todo_update,  # Add todo task status update tool
         }
         
         # Add long-term memory tools if available
