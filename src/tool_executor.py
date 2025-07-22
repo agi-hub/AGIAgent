@@ -1272,7 +1272,7 @@ class ToolExecutor:
                                     tool_name in ['codebase_search', 'web_search']):
                                     formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
                                 else:
-                                    formatted_result = self._format_dict_as_text(tool_result)
+                                    formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
                                 # Add indentation to each line
                                 indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
                                 print_current(indented_result)
@@ -2317,12 +2317,13 @@ class ToolExecutor:
             print_current(f"❌ Tool execution failed: {error_result}")
             return error_result
     
-    def _format_dict_as_text(self, data: Dict[str, Any]) -> str:
+    def _format_dict_as_text(self, data: Dict[str, Any], for_terminal_display: bool = False) -> str:
         """
         Format a dictionary result as readable text.
         
         Args:
             data: Dictionary to format
+            for_terminal_display: If True, skip stdout/stderr for terminal commands to avoid duplication
             
         Returns:
             Formatted text string
@@ -2535,13 +2536,18 @@ class ToolExecutor:
         if 'output' in data:
             lines.append(f"Output:\n{data['output']}")
         
-        # For terminal commands, skip displaying stdout/stderr again as they're already shown in real-time
-        # Only show them if there's an error and no real-time output was captured
-        if 'stdout' in data and not ('command' in data and 'working_directory' in data):
-            lines.append(f"Output:\n{data['stdout']}")
-        
-        if 'stderr' in data and data['stderr'] and not ('command' in data and 'working_directory' in data):
-            lines.append(f"Error Output:\n{data['stderr']}")
+        # Handle stdout/stderr based on context
+        if for_terminal_display and ('command' in data and 'working_directory' in data):
+            # For terminal display of terminal commands, skip stdout/stderr to avoid duplication
+            # (they were already shown in real-time)
+            pass
+        else:
+            # For LLM context or non-terminal commands, always include stdout/stderr
+            if 'stdout' in data and data['stdout']:
+                lines.append(f"Output:\n{data['stdout']}")
+            
+            if 'stderr' in data and data['stderr']:
+                lines.append(f"Error Output:\n{data['stderr']}")
         
         # If no specific formatting applied, show all key-value pairs
         if not lines:
@@ -3179,7 +3185,7 @@ class ToolExecutor:
         
         # For other tools or unrecognized search results, fall back to original formatting
         else:
-            return self._format_dict_as_text(data)
+            return self._format_dict_as_text(data, for_terminal_display=True)
         
         return '\n'.join(lines)
 
@@ -3340,93 +3346,138 @@ class ToolExecutor:
         Returns:
             Tuple of (content, tool_calls)
         """
-        try:
-            if self.is_claude:
-                # Use Anthropic Claude API for chat-based tool calling
-                claude_messages = [{"role": "user", "content": user_message}]
-                
-                if self.streaming:
-                    with streaming_context(show_start_message=True) as printer:
-                        with self.client.messages.stream(
+        # Retry logic for retryable errors
+        max_retries = 3
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
+            try:
+                if self.is_claude:
+                    # Use Anthropic Claude API for chat-based tool calling
+                    claude_messages = [{"role": "user", "content": user_message}]
+                    
+                    if self.streaming:
+                        with streaming_context(show_start_message=True) as printer:
+                            with self.client.messages.stream(
+                                model=self.model,
+                                max_tokens=self._get_max_tokens_for_model(self.model),
+                                system=system_message,
+                                messages=claude_messages,
+                                temperature=0.7
+                            ) as stream:
+                                content = ""
+                                for text in stream.text_stream:
+                                    printer.write(text)
+                                    content += text
+                    else:
+                        # print_current("🔄 LLM is thinking:")
+                        response = self.client.messages.create(
                             model=self.model,
                             max_tokens=self._get_max_tokens_for_model(self.model),
                             system=system_message,
                             messages=claude_messages,
                             temperature=0.7
-                        ) as stream:
-                            content = ""
-                            for text in stream.text_stream:
-                                printer.write(text)
-                                content += text
+                        )
+                        
+                        content = ""
+                        for content_block in response.content:
+                            if content_block.type == "text":
+                                content += content_block.text
                 else:
-                    # print_current("🔄 LLM is thinking:")
-                    response = self.client.messages.create(
-                        model=self.model,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        system=system_message,
-                        messages=claude_messages,
-                        temperature=0.7
-                    )
+                    # Use OpenAI API for chat-based tool calling
+                    api_messages = [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message}
+                    ]
                     
-                    content = ""
-                    for content_block in response.content:
-                        if content_block.type == "text":
-                            content += content_block.text
-            else:
-                # Use OpenAI API for chat-based tool calling
-                api_messages = [
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
-                ]
-                
-                if self.streaming:
-                    with streaming_context(show_start_message=True) as printer:
+                    if self.streaming:
+                        with streaming_context(show_start_message=True) as printer:
+                            response = self.client.chat.completions.create(
+                                model=self.model,
+                                messages=api_messages,
+                                max_tokens=self._get_max_tokens_for_model(self.model),
+                                temperature=0.7,
+                                top_p=0.8,
+                                stream=True
+                            )
+                            
+                            content = ""
+                            for chunk in response:
+                                if chunk.choices and len(chunk.choices) > 0:
+                                    delta = chunk.choices[0].delta
+                                    if delta.content is not None:
+                                        printer.write(delta.content)
+                                        content += delta.content
+                        
+                    else:
+                        # print_current("🔄 LLM is thinking:")
                         response = self.client.chat.completions.create(
                             model=self.model,
                             messages=api_messages,
                             max_tokens=self._get_max_tokens_for_model(self.model),
                             temperature=0.7,
-                            top_p=0.8,
-                            stream=True
+                            top_p=0.8
                         )
                         
-                        content = ""
-                        for chunk in response:
-                            if chunk.choices and len(chunk.choices) > 0:
-                                delta = chunk.choices[0].delta
-                                if delta.content is not None:
-                                    printer.write(delta.content)
-                                    content += delta.content
+                        content = response.choices[0].message.content or ""
+                
+                # Parse tool calls from the response content
+                tool_calls = self.parse_tool_calls(content)
+                
+                # Convert tool calls to standard format for compatibility
+                standardized_tool_calls = []
+                for tool_call in tool_calls:
+                    if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                        standardized_tool_calls.append({
+                            "name": tool_call["name"],
+                            "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                        })
+                
+                return content, standardized_tool_calls
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Check if this is a retryable error
+                retryable_errors = [
+                    'overloaded', 'rate limit', 'too many requests', 
+                    'service unavailable', 'timeout', 'temporary failure',
+                    'server error', '429', '503', '502', '500'
+                ]
+                
+                # Find which error keyword matched
+                matched_error_keyword = None
+                for error_keyword in retryable_errors:
+                    if error_keyword in error_str:
+                        matched_error_keyword = error_keyword
+                        break
+                
+                is_retryable = matched_error_keyword is not None
+                
+                if is_retryable and attempt < max_retries:
+                    # Calculate retry delay with exponential backoff
+                    retry_delay = min(2 ** attempt, 10)  # 1, 2, 4 seconds, max 10
+                    
+                    api_type = "Claude API" if self.is_claude else "OpenAI API"
+                    print_current(f"⚠️ {api_type} {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    print_current(f"💡 Consider switching to a different model or trying again later")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 Retrying in {retry_delay} seconds...")
+                    
+                    # Wait before retry
+                    import time
+                    time.sleep(retry_delay)
+                    continue  # Retry the loop
                     
                 else:
-                    # print_current("🔄 LLM is thinking:")
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=api_messages,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        temperature=0.7,
-                        top_p=0.8
-                    )
+                    # Non-retryable error or max retries exceeded
+                    api_type = "Claude API" if self.is_claude else "OpenAI API"
+                    if is_retryable:
+                        print_current(f"❌ {api_type} {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
+                        print_current(f"💡 Consider switching to a different model or trying again later")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    else:
+                        print_current(f"❌ Chat-based LLM API call failed: {e}")
                     
-                    content = response.choices[0].message.content or ""
-            
-            # Parse tool calls from the response content
-            tool_calls = self.parse_tool_calls(content)
-            
-            # Convert tool calls to standard format for compatibility
-            standardized_tool_calls = []
-            for tool_call in tool_calls:
-                if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
-                    standardized_tool_calls.append({
-                        "name": tool_call["name"],
-                        "input": tool_call["arguments"]  # Use "input" format like Anthropic
-                    })
-            
-            return content, standardized_tool_calls
-            
-        except Exception as e:
-            print_current(f"❌ Chat-based LLM API call failed: {e}")
-            raise e
+                    raise e
 
     def _call_openai_with_standard_tools(self, messages, user_message, system_message):
         """
@@ -3454,107 +3505,133 @@ class ToolExecutor:
                 {"role": "user", "content": user_message}
             ]
         
-        try:
-            if self.streaming:
-                with streaming_context(show_start_message=False) as printer:
-                    # print_current("🔄 Starting streaming generation with standard tools...")
+        # Retry logic for retryable errors
+        max_retries = 3
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
+            try:
+                if self.streaming:
+                    with streaming_context(show_start_message=False) as printer:
+                        # print_current("🔄 Starting streaming generation with standard tools...")
+                        response = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=api_messages,
+                            tools=tools,
+                            max_tokens=self._get_max_tokens_for_model(self.model),
+                            temperature=0.7,
+                            top_p=0.8,
+                            stream=True
+                        )
+                        
+                        content = ""
+                        tool_calls = []
+                        current_tool_call = None
+                        
+                        for chunk in response:
+                            if chunk.choices and len(chunk.choices) > 0:
+                                delta = chunk.choices[0].delta
+                                
+                                # Handle content
+                                if delta.content is not None:
+                                    printer.write(delta.content)
+                                    content += delta.content
+                            
+                            # Handle tool calls
+                            if delta.tool_calls:
+                                for tool_call_delta in delta.tool_calls:
+                                    if tool_call_delta.index is not None:
+                                        # Ensure we have enough tool calls in our list
+                                        while len(tool_calls) <= tool_call_delta.index:
+                                            tool_calls.append({
+                                                "id": "",
+                                                "type": "function",
+                                                "function": {"name": "", "arguments": ""}
+                                            })
+                                        
+                                        current_tool_call = tool_calls[tool_call_delta.index]
+                                        
+                                        if tool_call_delta.id:
+                                            current_tool_call["id"] = tool_call_delta.id
+                                        
+                                        if tool_call_delta.function:
+                                            if tool_call_delta.function.name:
+                                                current_tool_call["function"]["name"] = tool_call_delta.function.name
+                                            if tool_call_delta.function.arguments:
+                                                current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
+                    
+                    # print_current("\n✅ Streaming completed")
+                    return content, tool_calls
+                else:
+                    # print_current("🔄 Starting batch generation with standard tools...")
                     response = self.client.chat.completions.create(
                         model=self.model,
                         messages=api_messages,
                         tools=tools,
                         max_tokens=self._get_max_tokens_for_model(self.model),
                         temperature=0.7,
-                        top_p=0.8,
-                        stream=True
+                        top_p=0.8
                     )
                     
-                    content = ""
-                    tool_calls = []
-                    current_tool_call = None
+                    content = response.choices[0].message.content or ""
+                    raw_tool_calls = response.choices[0].message.tool_calls or []
                     
-                    for chunk in response:
-                        if chunk.choices and len(chunk.choices) > 0:
-                            delta = chunk.choices[0].delta
-                            
-                            # Handle content
-                            if delta.content is not None:
-                                printer.write(delta.content)
-                                content += delta.content
-                        
-                        # Handle tool calls
-                        if delta.tool_calls:
-                            for tool_call_delta in delta.tool_calls:
-                                if tool_call_delta.index is not None:
-                                    # Ensure we have enough tool calls in our list
-                                    while len(tool_calls) <= tool_call_delta.index:
-                                        tool_calls.append({
-                                            "id": "",
-                                            "type": "function",
-                                            "function": {"name": "", "arguments": ""}
-                                        })
-                                    
-                                    current_tool_call = tool_calls[tool_call_delta.index]
-                                    
-                                    if tool_call_delta.id:
-                                        current_tool_call["id"] = tool_call_delta.id
-                                    
-                                    if tool_call_delta.function:
-                                        if tool_call_delta.function.name:
-                                            current_tool_call["function"]["name"] = tool_call_delta.function.name
-                                        if tool_call_delta.function.arguments:
-                                            current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
+                    # Convert OpenAI tool_calls objects to dictionary format
+                    tool_calls = []
+                    for tool_call in raw_tool_calls:
+                        tool_calls.append({
+                            "id": tool_call.id,
+                            "type": tool_call.type,
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments
+                            }
+                        })
+                    
+                    # print_current("✅ Generation completed")
+                    return content, tool_calls
+                    
+            except Exception as e:
+                error_str = str(e).lower()
                 
-                # print_current("\n✅ Streaming completed")
-                return content, tool_calls
-            else:
-                # print_current("🔄 Starting batch generation with standard tools...")
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=api_messages,
-                    tools=tools,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    temperature=0.7,
-                    top_p=0.8
-                )
+                # Check if this is a retryable error
+                retryable_errors = [
+                    'overloaded', 'rate limit', 'too many requests', 
+                    'service unavailable', 'timeout', 'temporary failure',
+                    'server error', '429', '503', '502', '500'
+                ]
                 
-                content = response.choices[0].message.content or ""
-                raw_tool_calls = response.choices[0].message.tool_calls or []
+                # Find which error keyword matched
+                matched_error_keyword = None
+                for error_keyword in retryable_errors:
+                    if error_keyword in error_str:
+                        matched_error_keyword = error_keyword
+                        break
                 
-                # Convert OpenAI tool_calls objects to dictionary format
-                tool_calls = []
-                for tool_call in raw_tool_calls:
-                    tool_calls.append({
-                        "id": tool_call.id,
-                        "type": tool_call.type,
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments
-                        }
-                    })
+                is_retryable = matched_error_keyword is not None
                 
-                # print_current("✅ Generation completed")
-                return content, tool_calls
-                
-        except Exception as e:
-            error_str = str(e).lower()
-            
-            # Check if this is a retryable error
-            retryable_errors = [
-                'overloaded', 'rate limit', 'too many requests', 
-                'service unavailable', 'timeout', 'temporary failure',
-                'server error', '429', '503', '502', '500'
-            ]
-            
-            is_retryable = any(error_keyword in error_str for error_keyword in retryable_errors)
-            
-            if is_retryable:
-                print_current(f"⚠️ OpenAI API temporarily unavailable: {e}")
-                print_current(f"💡 Consider switching to a different model or trying again later")
-                print_current(f"�� You can change the model in config.txt and restart AGIBot")
-            else:
-                print_current(f"❌ OpenAI API call failed: {e}")
-            
-            raise e
+                if is_retryable and attempt < max_retries:
+                    # Calculate retry delay with exponential backoff
+                    retry_delay = min(2 ** attempt, 10)  # 1, 2, 4 seconds, max 10
+                    
+                    print_current(f"⚠️ OpenAI API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    print_current(f"💡 Consider switching to a different model or trying again later")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 Retrying in {retry_delay} seconds...")
+                    
+                    # Wait before retry
+                    import time
+                    time.sleep(retry_delay)
+                    continue  # Retry the loop
+                    
+                else:
+                    # Non-retryable error or max retries exceeded
+                    if is_retryable:
+                        print_current(f"❌ OpenAI API {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
+                        print_current(f"💡 Consider switching to a different model or trying again later")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    else:
+                        print_current(f"❌ OpenAI API call failed: {e}")
+                    
+                    raise e
 
     def _call_claude_with_standard_tools(self, messages, user_message, system_message):
         """
@@ -3576,84 +3653,110 @@ class ToolExecutor:
             # Prepare messages for Claude - user_message can be string or content array
             claude_messages = [{"role": "user", "content": user_message}]
         
-        try:
-            if self.streaming:
-                with streaming_context(show_start_message=True) as printer:
-                    with self.client.messages.stream(
+        # Retry logic for retryable errors
+        max_retries = 3
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
+            try:
+                if self.streaming:
+                    with streaming_context(show_start_message=True) as printer:
+                        with self.client.messages.stream(
+                            model=self.model,
+                            max_tokens=self._get_max_tokens_for_model(self.model),
+                            system=system_message,
+                            messages=claude_messages,
+                            tools=tools,
+                            temperature=0.7
+                        ) as stream:
+                            content = ""
+                            tool_calls = []
+                            
+                            for text in stream.text_stream:
+                                printer.write(text)
+                                content += text
+                        
+                        # Get final message to extract tool use blocks
+                        final_message = stream.get_final_message()
+                        
+                        # Extract tool use blocks
+                        for content_block in final_message.content:
+                            if content_block.type == "tool_use":
+                                tool_calls.append({
+                                    "id": content_block.id,
+                                    "name": content_block.name,
+                                    "input": content_block.input
+                                })
+                    
+                    return content, tool_calls
+                else:
+                    # print_current("🔄 LLM is thinking: ")
+                    response = self.client.messages.create(
                         model=self.model,
                         max_tokens=self._get_max_tokens_for_model(self.model),
                         system=system_message,
                         messages=claude_messages,
                         tools=tools,
                         temperature=0.7
-                    ) as stream:
-                        content = ""
-                        tool_calls = []
-                        
-                        for text in stream.text_stream:
-                            printer.write(text)
-                            content += text
+                    )
                     
-                    # Get final message to extract tool use blocks
-                    final_message = stream.get_final_message()
+                    content = ""
+                    tool_calls = []
                     
-                    # Extract tool use blocks
-                    for content_block in final_message.content:
-                        if content_block.type == "tool_use":
+                    # Extract content and tool use blocks
+                    for content_block in response.content:
+                        if content_block.type == "text":
+                            content += content_block.text
+                        elif content_block.type == "tool_use":
                             tool_calls.append({
                                 "id": content_block.id,
                                 "name": content_block.name,
                                 "input": content_block.input
                             })
+                    
+                    return content, tool_calls
+                    
+            except Exception as e:
+                error_str = str(e).lower()
                 
-                return content, tool_calls
-            else:
-                # print_current("🔄 LLM is thinking: ")
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    system=system_message,
-                    messages=claude_messages,
-                    tools=tools,
-                    temperature=0.7
-                )
+                # Check if this is a retryable error
+                retryable_errors = [
+                    'overloaded', 'rate limit', 'too many requests', 
+                    'service unavailable', 'timeout', 'temporary failure',
+                    'server error', '429', '503', '502', '500'
+                ]
                 
-                content = ""
-                tool_calls = []
+                # Find which error keyword matched
+                matched_error_keyword = None
+                for error_keyword in retryable_errors:
+                    if error_keyword in error_str:
+                        matched_error_keyword = error_keyword
+                        break
                 
-                # Extract content and tool use blocks
-                for content_block in response.content:
-                    if content_block.type == "text":
-                        content += content_block.text
-                    elif content_block.type == "tool_use":
-                        tool_calls.append({
-                            "id": content_block.id,
-                            "name": content_block.name,
-                            "input": content_block.input
-                        })
+                is_retryable = matched_error_keyword is not None
                 
-                return content, tool_calls
-                
-        except Exception as e:
-            error_str = str(e).lower()
-            
-            # Check if this is a retryable error
-            retryable_errors = [
-                'overloaded', 'rate limit', 'too many requests', 
-                'service unavailable', 'timeout', 'temporary failure',
-                'server error', '429', '503', '502', '500'
-            ]
-            
-            is_retryable = any(error_keyword in error_str for error_keyword in retryable_errors)
-            
-            if is_retryable:
-                print_current(f"⚠️ Claude API temporarily unavailable: {e}")
-                print_current(f"💡 Consider switching to a different model or trying again later")
-                print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
-            else:
-                print_current(f"❌ Claude API call failed: {e}")
-            
-            raise e
+                if is_retryable and attempt < max_retries:
+                    # Calculate retry delay with exponential backoff
+                    retry_delay = min(2 ** attempt, 10)  # 1, 2, 4 seconds, max 10
+                    
+                    print_current(f"⚠️ Claude API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    print_current(f"💡 Consider switching to a different model or trying again later")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 Retrying in {retry_delay} seconds...")
+                    
+                    # Wait before retry
+                    import time
+                    time.sleep(retry_delay)
+                    continue  # Retry the loop
+                    
+                else:
+                    # Non-retryable error or max retries exceeded
+                    if is_retryable:
+                        print_current(f"❌ Claude API {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
+                        print_current(f"💡 Consider switching to a different model or trying again later")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    else:
+                        print_current(f"❌ Claude API call failed: {e}")
+                    
+                    raise e
 
     def _get_tool_name_from_call(self, tool_call):
         """

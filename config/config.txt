@@ -3,10 +3,10 @@
 LANG=zh
 
 # OpenAI API configuration 
-# api_key=your key
-# api_base=https://api.openai-proxy.org/v1
-# model=gpt-4.1
-# max_tokens=8192
+api_key=your key
+api_base=https://api.openai-proxy.org/v1
+model=gpt-4.1
+max_tokens=8192
 
 # SiliconFlow API configuration 
 # api_key=your key
@@ -36,9 +36,9 @@ LANG=zh
 # max_tokens=8192
 
 # DeepSeek API configuration
-api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
 
 
 
