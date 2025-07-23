@@ -186,6 +186,20 @@ class HelpTools:
                 },
                 "notes": "Include version numbers or dates for technical queries"
             },
+            "search_img": {
+                "description": "通过输入的query获取多张相关图片（最多5张），图片保存到本地文件，返回图片文件列表的JSON格式。使用多搜索引擎策略：Google可用时按 Google->百度->Bing 顺序搜索，Google不可用时按 百度->Bing 顺序搜索。",
+                "parameters": {
+                    "properties": {
+                        "query": {
+                            "description": "图片搜索查询字符串，描述要查找的图片内容。请使用具体、清晰的描述词。",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["query"],
+                    "type": "object"
+                },
+                "notes": "一次搜索可保存多张相关图片，文件名包含序号区分。图片保存在workspace/web_search_result/images/目录下，返回包含所有图片信息的JSON列表。多引擎备份策略确保搜索成功率。"
+            },
             
             # Utility Tools
             "tool_help": {

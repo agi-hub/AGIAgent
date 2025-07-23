@@ -44,6 +44,7 @@ For Report Generation Tasks:
 5. Output format: Generate reports in Markdown format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
 6. Do not edit a document (fully replace) more than twice.  
 7. If user not specified, generate a word version of the report from markdown format using pandoc tool.
+8. Try to search or create some images or figures to the report.
 </reports>
 
 <image_processing>
@@ -79,4 +80,18 @@ When using get_sensor_data tool for physical world information:
 4. **Return Values**: Always check 'success' field first, then use 'data' (base64 for images, file path for videos/audio) and 'dataformat' for processing
 5. **Error Handling**: If sensor acquisition fails, check the 'error' field for specific failure reasons
 </sensor_data_usage>
+
+<image_search>
+Image Search Tool Usage:
+When using the search_img tool for image search:
+1. **Query Optimization**: Use specific, descriptive search terms for better results (e.g., "red rose flower", "blue sky landscape", "modern office building")
+2. **Response Format**: The tool saves multiple related images (up to 5) to local files and returns a JSON list with all image information
+3. **Search Engine Selection**: Uses multi-engine strategy - Google->Baidu->Bing when Google available, Baidu->Bing when Google unavailable
+4. **File Storage**: Multiple images are saved in the workspace/web_search_result/images/ directory with descriptive filenames including sequence numbers
+5. **Error Handling**: If image search fails, provide alternative suggestions or ask the user to refine their query
+6. **Content Filtering**: The tool automatically filters for appropriate, high-quality images (minimum 100x100 pixels)
+7. **Usage Guidelines**: Use this tool when users request images. The tool provides multiple related images giving users more choices
+8. **Performance**: Image search may take several seconds due to network requests and image processing
+9. **File Management**: Generated image files can be referenced by their relative paths for further processing
+</image_search>
 
