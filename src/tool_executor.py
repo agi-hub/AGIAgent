@@ -320,6 +320,7 @@ class ToolExecutor:
             "edit_file": self.tools.edit_file,
             "file_search": self.tools.file_search,
             "web_search": self.tools.web_search,
+            "search_img": self.tools.search_img,  # Add image search tool
             "tool_help": self.enhanced_tool_help,  # Use enhanced version that supports MCP tools
             "fetch_webpage_content": self.tools.fetch_webpage_content,
             "get_background_update_status": self.tools.get_background_update_status,

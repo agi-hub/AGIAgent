@@ -28,8 +28,10 @@ import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
 import datetime
+import base64
+import io
 
-# 导入config_loader以获取截断长度配置
+# Import config_loader to get truncation length configuration
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config_loader import get_web_content_truncation_length, get_truncation_length
@@ -88,13 +90,7 @@ class WebSearchTools:
         self.is_claude = False
         
         # Initialize web search result directory path but don't create it yet
-        if out_dir:
-            self.web_result_dir = os.path.join(out_dir, "workspace", "web_search_result")
-        else:
-            # Fallback to default if no out_dir provided
-            self.web_result_dir = os.path.join("workspace", "web_search_result")
-        # 移除默认创建目录的代码，改为按需创建
-        # self._ensure_result_directory()
+        self.web_result_dir = os.path.join(out_dir, "workspace", "web_search_result")
         
         if (enable_llm_filtering or enable_summary) and llm_api_key and llm_model and llm_api_base:
             try:
@@ -2672,3 +2668,465 @@ Please create a detailed, structured analysis that preserves important informati
                 optimized_term = f"{optimized_term} breaking news headlines"
         
         return optimized_term
+
+    def search_img(self, query: str, **kwargs) -> Dict[str, Any]:
+        """
+        Get multiple related images through input query, save to local files, return image file list.
+        
+        Args:
+            query: Image search query string
+            **kwargs: Other parameters (ignored)
+            
+        Returns:
+            Dictionary containing multiple image information, with images field as JSON list format
+        """
+        # Ignore extra parameters
+        if kwargs:
+            print_current(f"⚠️ Ignoring extra parameters: {list(kwargs.keys())}")
+        
+        print_current(f"🖼️ Starting image search: {query}")
+        
+        # Set timeout handling
+        old_handler = None
+        if not is_windows() and is_main_thread():
+            try:
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
+            except ValueError as e:
+                print_current(f"⚠️ Cannot set signal handler (not in main thread): {e}")
+                old_handler = None
+        
+        browser = None
+        try:
+            # 导入必要的库
+            try:
+                from playwright.sync_api import sync_playwright
+                import urllib.parse, re, os, io
+                from PIL import Image
+            except ImportError as e:
+                return {
+                    'query': query,
+                    'error': f'缺少必要的库: {e}',
+                    'suggestion': '请安装: pip install playwright pillow',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+            except Exception as e:
+                return {
+                    'query': query,
+                    'error': f'导入库时出错: {e}',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+            
+            # 确保图片保存目录存在
+            self._ensure_result_directory()
+            if not self.web_result_dir:
+                return {
+                    'query': query,
+                    'error': '无法创建图片保存目录',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+            
+            # 创建images子目录
+            images_dir = os.path.join(self.web_result_dir, "images")
+            try:
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir)
+            except Exception as e:
+                return {
+                    'query': query,
+                    'error': f'无法创建图片目录: {e}',
+                    'timestamp': datetime.datetime.now().isoformat()
+                }
+            
+            with sync_playwright() as p:
+                # 确保DISPLAY未设置以防止X11使用
+                original_display = os.environ.get('DISPLAY')
+                if 'DISPLAY' in os.environ:
+                    del os.environ['DISPLAY']
+                
+                try:
+                    browser = p.chromium.launch(
+                        headless=True,
+                        args=[
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-web-security',
+                            '--disable-features=VizDisplayCompositor,TranslateUI',
+                            '--disable-gpu',
+                            '--disable-gpu-sandbox',
+                            '--disable-software-rasterizer',
+                            '--disable-background-timer-throttling',
+                            '--disable-renderer-backgrounding',
+                            '--disable-extensions',
+                            '--disable-default-apps',
+                            '--disable-sync',
+                            '--no-first-run',
+                            '--no-default-browser-check',
+                            '--no-pings',
+                            '--disable-remote-debugging',
+                            '--ignore-ssl-errors',
+                            '--ignore-certificate-errors',
+                            '--disable-background-mode',
+                            '--force-color-profile=srgb',
+                            '--disable-ipc-flooding-protection'
+                        ]
+                    )
+                    
+                    context = browser.new_context(
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                        viewport={'width': 1366, 'height': 768},
+                        ignore_https_errors=True,
+                        java_script_enabled=True,
+                        bypass_csp=True
+                    )
+                finally:
+                    # Restore original DISPLAY
+                    if original_display is not None:
+                        os.environ['DISPLAY'] = original_display
+                
+                page = context.new_page()
+                page.set_default_timeout(10000)  # 10 second timeout
+                
+                # Build image search URL
+                encoded_query = urllib.parse.quote_plus(query)
+                
+                # Build search engine list, priority order: Google -> Baidu -> Bing
+                search_engines = []
+                
+                # Check Google connectivity to decide whether to include Google
+                if self._check_google_connectivity():
+                    print_current("✅ Google available, using Google -> Baidu -> Bing search order")
+                    search_engines = [
+                        {
+                            'name': 'Google Images',
+                            'url': f'https://www.google.com/search?q={encoded_query}&tbm=isch&safe=off',
+                            'image_selector': 'img[data-iurl], img[data-ou], img[data-src], img[src]',
+                            'container_selector': '.rg_bx, .isv-r, .ivg-i'
+                        },
+                        {
+                            'name': 'Baidu Images',
+                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&word={encoded_query}',
+                            'image_selector': 'img',
+                            'container_selector': '.imgitem, .card-wrap'
+                        },
+                        {
+                            'name': 'Bing Images', 
+                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
+                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img',
+                            'container_selector': '.imgpt, .iusc'
+                        }
+                    ]
+                else:
+                    print_current("⚠️ Google unavailable, using Baidu -> Bing search order")
+                    search_engines = [
+                        {
+                            'name': 'Baidu Images',
+                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&word={encoded_query}',
+                            'image_selector': 'img',
+                            'container_selector': '.imgitem, .card-wrap'
+                        },
+                        {
+                            'name': 'Bing Images', 
+                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
+                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img',
+                            'container_selector': '.imgpt, .iusc'
+                        }
+                    ]
+                
+                image_found = False
+                result_data = {
+                    'query': query,
+                    'timestamp': datetime.datetime.now().isoformat(),
+                    'search_engine_used': None,
+                    'image_found': False
+                }
+                
+                for engine in search_engines:
+                    try:
+                        print_current(f"🔍 Attempting to use {engine['name']} for image search...")
+                        
+                        # Visit search page  
+                        page.goto(engine['url'], timeout=8000, wait_until='domcontentloaded')
+                        page.wait_for_timeout(2000)  # Wait for images to load
+                        
+                        # Find image elements
+                        image_elements = page.query_selector_all(engine['image_selector'])
+                        print_current(f"🔍 {engine['name']} found {len(image_elements)} image elements")
+                        
+                        # Filter valid images
+                        valid_images = []
+                        processed_count = 0
+                        skipped_reasons = {}
+                        
+                        # For Baidu Images, skip first 3 images (usually ads or recommended content)
+                        start_index = 3 if engine['name'] == 'Baidu Images' else 0
+                        if start_index > 0:
+                            print_current(f"🔄 {engine['name']} skipping first {start_index} images (avoiding ads/recommendations)")
+                        
+                        for i, img in enumerate(image_elements[:20]):  # Increase check count to 20
+                            try:
+                                # For Baidu search, skip first 3 images
+                                if engine['name'] == 'Baidu Images' and i < start_index:
+                                    skipped_reasons['baidu_skip_first'] = skipped_reasons.get('baidu_skip_first', 0) + 1
+                                    continue
+                                
+                                processed_count += 1
+                                
+                                # Optimize URL retrieval strategy based on search engine
+                                if engine['name'] == 'Baidu Images':
+                                    src = img.get_attribute('data-imgurl') or img.get_attribute('src')
+                                elif engine['name'] == 'Google Images':
+                                    # Google Images special attribute priority
+                                    src = (img.get_attribute('data-iurl') or 
+                                           img.get_attribute('data-ou') or
+                                           img.get_attribute('data-src') or 
+                                           img.get_attribute('src'))
+                                else:
+                                    src = img.get_attribute('data-src') or img.get_attribute('src')
+                                
+                                if not src:
+                                    skipped_reasons['no_src'] = skipped_reasons.get('no_src', 0) + 1
+                                    continue
+                                    
+                                # Relax HTTP link check, support more URL formats
+                                if not (src.startswith('http') or src.startswith('//') or src.startswith('data:image')):
+                                    skipped_reasons['not_http'] = skipped_reasons.get('not_http', 0) + 1
+                                    continue
+                                
+                                # Handle protocol-relative URLs starting with //
+                                if src.startswith('//'):
+                                    src = 'https:' + src
+                                    
+                                if src.endswith('.svg'):
+                                    skipped_reasons['svg_format'] = skipped_reasons.get('svg_format', 0) + 1
+                                    continue
+                                
+                                # Get image dimension info if available
+                                width = img.get_attribute('width') or 'unknown'
+                                height = img.get_attribute('height') or 'unknown' 
+                                alt = img.get_attribute('alt') or ''
+                                
+                                # Relax filtering conditions - reduce keyword filtering
+                                src_lower = src.lower()
+                                alt_lower = alt.lower()
+                                
+                                # Only filter obvious logos and icons (keep some search engine keyword filtering)
+                                skip_keywords = [
+                                    'logo', 'favicon', 'watermark', 'advertisement', 'banner', 'button',
+                                    'sprite', 'avatar_default', 'placeholder', 'icon'
+                                ]
+                                
+                                if any(keyword in src_lower or keyword in alt_lower for keyword in skip_keywords):
+                                    skipped_reasons['keyword_filter'] = skipped_reasons.get('keyword_filter', 0) + 1
+                                    continue
+                                
+                                # Further relax size requirements
+                                if width != 'unknown' and height != 'unknown':
+                                    try:
+                                        w, h = int(width), int(height)
+                                        # Google Images search relaxed size limits
+                                        min_size = 50 if engine['name'] == 'Google Images' else 80
+                                        if w < min_size or h < min_size:
+                                            skipped_reasons['size_too_small'] = skipped_reasons.get('size_too_small', 0) + 1
+                                            continue
+                                        # Further relax aspect ratio limits  
+                                        ratio = max(w, h) / min(w, h)
+                                        max_ratio = 8 if engine['name'] == 'Google Images' else 6
+                                        if ratio > max_ratio:
+                                            skipped_reasons['aspect_ratio'] = skipped_reasons.get('aspect_ratio', 0) + 1
+                                            continue
+                                    except:
+                                        pass
+                                
+                                # For Baidu search, further validate image source
+                                if engine['name'] == 'Baidu Images':
+                                    # Skip Baidu's own image resources
+                                    if 'baidu.com' in src_lower and ('static' in src_lower or 'logo' in src_lower):
+                                        skipped_reasons['baidu_static'] = skipped_reasons.get('baidu_static', 0) + 1
+                                        continue
+                                
+                                valid_images.append({
+                                    'src': src,
+                                    'width': width,
+                                    'height': height,
+                                    'alt': alt
+                                })
+                            except Exception as e:
+                                skipped_reasons['exception'] = skipped_reasons.get('exception', 0) + 1
+                                continue
+                        
+                        # Output detailed filtering statistics
+                        total_checked = len(image_elements[:20])
+                        print_current(f"📊 {engine['name']} checked {total_checked} image elements total, processed {processed_count}")
+                        if skipped_reasons:
+                            skip_descriptions = {
+                                'baidu_skip_first': 'Skip first 3 (Baidu ads/recommendations)',
+                                'no_src': 'No image URL',
+                                'not_http': 'Non-HTTP URL',
+                                'svg_format': 'SVG format',
+                                'keyword_filter': 'Keyword filtered',
+                                'size_too_small': 'Size too small',
+                                'aspect_ratio': 'Abnormal aspect ratio',
+                                'baidu_static': 'Baidu static resources',
+                                'exception': 'Processing exception'
+                            }
+                            for reason, count in skipped_reasons.items():
+                                desc = skip_descriptions.get(reason, reason)
+                                print_current(f"   - {desc}: {count} items")
+                        print_current(f"✅ {engine['name']} found {len(valid_images)} valid images")
+                        
+                        if valid_images:
+                            # Save multiple valid images (max 5)
+                            max_images = min(5, len(valid_images))
+                            saved_images = []
+                            
+                            print_current(f"🖼️ Attempting to save {max_images} related images...")
+                            
+                            for i, selected_image in enumerate(valid_images[:max_images]):
+                                image_url = selected_image['src']
+                                print_current(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
+                                
+                                # Download and save image
+                                try:
+                                    # Get image data
+                                    image_data = None
+                                    
+                                    # Special handling for data:image format base64 images
+                                    if image_url.startswith('data:image'):
+                                        try:
+                                            # Parse data:image format: data:image/jpeg;base64,<base64_data>
+                                            header, base64_data = image_url.split(',', 1)
+                                            image_data = base64.b64decode(base64_data)
+                                            print_current(f"✅ Successfully parsed base64 image data, size: {len(image_data)} bytes")
+                                        except Exception as e:
+                                            print_current(f"⚠️ Failed to parse base64 image: {e}")
+                                            continue
+                                    else:
+                                        # Use page context to download regular HTTP images
+                                        response = page.request.get(image_url, timeout=15000)
+                                        if response.status == 200:
+                                            image_data = response.body()
+                                            print_current(f"✅ Successfully downloaded HTTP image, size: {len(image_data)} bytes")
+                                        else:
+                                            print_current(f"⚠️ Image {i+1} download failed, status code: {response.status}")
+                                            continue
+                                    
+                                    # Validate if it's a valid image and get format (unified processing for all image data)
+                                    if image_data:
+                                        try:
+                                            with io.BytesIO(image_data) as img_buffer:
+                                                img = Image.open(img_buffer)
+                                                img.verify()  # Verify image format
+                                                
+                                                # Reopen to get info (cannot use after verify)
+                                                img_buffer.seek(0)
+                                                img = Image.open(img_buffer)
+                                                
+                                                # Generate filename (including sequence number)
+                                                safe_query = re.sub(r'[^\w\s-]', '', query)[:30]
+                                                safe_query = re.sub(r'[-\s]+', '_', safe_query)
+                                                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                
+                                                # Determine file extension
+                                                format_ext = img.format.lower() if img.format else 'jpg'
+                                                if format_ext == 'jpeg':
+                                                    format_ext = 'jpg'
+                                                
+                                                filename = f"{safe_query}_{timestamp}_{i+1:02d}.{format_ext}"
+                                                filepath = os.path.join(images_dir, filename)
+                                                
+                                                # Save image file
+                                                with open(filepath, 'wb') as f:
+                                                    f.write(image_data)
+                                                
+                                                # Get relative path (relative to workspace_root)
+                                                relative_path = os.path.relpath(filepath, self.workspace_root or os.getcwd())
+                                                
+                                                # Add to saved images list
+                                                saved_images.append({
+                                                    'original_image_url': image_url,
+                                                    'local_image_path': filepath,
+                                                    'relative_image_path': relative_path,
+                                                    'image_format': img.format.lower() if img.format else 'unknown',
+                                                    'image_size_bytes': len(image_data),
+                                                    'image_dimensions': f"{img.width}x{img.height}",
+                                                    'alt_text': selected_image['alt'],
+                                                    'width': img.width,
+                                                    'height': img.height,
+                                                    'filename': filename,
+                                                    'index': i + 1
+                                                })
+                                                
+                                                print_current(f"✅ Image {i+1} saved: {relative_path} ({img.width}x{img.height}, {len(image_data)} bytes)")
+                                                
+                                        except Exception as e:
+                                            print_current(f"⚠️ Image {i+1} validation or save failed: {e}")
+                                            continue
+                                        
+                                except Exception as e:
+                                    print_current(f"⚠️ Error downloading image {i+1}: {e}")
+                                    continue
+                            
+                            # If images were successfully saved, update results
+                            if saved_images:
+                                result_data.update({
+                                    'search_engine_used': engine['name'],
+                                    'image_found': True,
+                                    'images': saved_images,
+                                    'total_images_saved': len(saved_images),
+                                    'total_images_available': len(valid_images)
+                                })
+                                image_found = True
+                                print_current(f"🎉 Successfully saved {len(saved_images)} images!")
+                                break
+                        else:
+                            print_current(f"❌ {engine['name']} found no valid images")
+                            
+                    except Exception as e:
+                        print_current(f"❌ {engine['name']} search failed: {e}")
+                        continue
+                
+                browser.close()
+                
+                if not image_found:
+                    result_data.update({
+                        'error': '未找到有效图片',
+                        'suggestion': '请尝试使用更具体的搜索关键词，或检查网络连接'
+                    })
+                    print_current(f"❌ 图片搜索失败: {query}")
+                else:
+                    print_current(f"🎉 图片搜索成功完成: {query}")
+                
+                return result_data
+                
+        except ImportError as import_error:
+            return {
+                'query': query,
+                'error': f'Playwright not installed: {import_error}',
+                'suggestion': 'Install command: pip install playwright && playwright install chromium',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                'query': query,
+                'error': f'Image search failed: {str(e)}',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            
+        finally:
+            # Reset timeout signal
+            if not is_windows() and is_main_thread() and old_handler is not None:
+                try:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                except ValueError:
+                    pass
+            
+            # Ensure browser is closed
+            if browser:
+                try:
+                    browser.close()
+                except:
+                    pass

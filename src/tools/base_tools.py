@@ -39,7 +39,7 @@ SUPPORTED_EXTENSIONS = [
 class BaseTools:
     def __init__(self, workspace_root: str = None, model: str = None):
         """Initialize tools with a workspace root directory."""
-        self.workspace_root = workspace_root or os.getcwd()
+        self.workspace_root = workspace_root
         self.model = model  # Store model name for vision API detection
         self.last_edit = None  # Store last edit info (used for debugging and context)
 

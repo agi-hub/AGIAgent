@@ -152,16 +152,29 @@
     }
   },
   "web_search": {
-    "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data.",
+    "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data, or when you need to verify current facts. The search results will include relevant snippets and URLs from web pages. This is particularly useful for questions about current events, technology updates, or any topic that requires recent information.",
     "parameters": {
       "type": "object",
       "properties": {
         "search_term": {
           "type": "string",
-          "description": "The search term to look up on the web. Be specific and include relevant keywords for better results."
+          "description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant."
         }
       },
       "required": ["search_term"]
+    }
+  },
+  "search_img": {
+    "description": "通过输入的query获取多张相关图片（最多5张），图片保存到本地文件，返回图片文件列表的JSON格式。使用多搜索引擎策略：Google可用时按 Google->百度->Bing 顺序搜索，Google不可用时按 百度->Bing 顺序搜索。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "图片搜索查询字符串，描述要查找的图片内容。请使用具体、清晰的描述词，例如'红色玫瑰花'、'蓝天白云风景'等。"
+        }
+      },
+      "required": ["query"]
     }
   },
   "tool_help": {

@@ -34,9 +34,9 @@ LANG=zh
 # max_tokens=8192
 
 # DeepSeek API configuration
-# api_key=your key
-# api_base=https://api.deepseek.com/v1
-# model=deepseek-chat
+api_key=your key
+api_base=https://api.deepseek.com/v1
+model=deepseek-chat
 
 # Volcengine Doubao API configuration
 # api_key=your key

@@ -58,7 +58,7 @@ if PLUGIN_TOOLS_AVAILABLE:
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root, llm_model)  # Pass model to BaseTools
             CodeSearchTools.__init__(self)
-            FileSystemTools.__init__(self)
+            FileSystemTools.__init__(self, workspace_root)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
@@ -108,7 +108,7 @@ else:
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root, llm_model)  # Pass model to BaseTools
             CodeSearchTools.__init__(self)
-            FileSystemTools.__init__(self)
+            FileSystemTools.__init__(self, workspace_root)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
