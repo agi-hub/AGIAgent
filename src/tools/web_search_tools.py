@@ -87,13 +87,14 @@ class WebSearchTools:
         self.llm_model = llm_model
         self.is_claude = False
         
-        # Initialize web search result directory
+        # Initialize web search result directory path but don't create it yet
         if out_dir:
             self.web_result_dir = os.path.join(out_dir, "workspace", "web_search_result")
         else:
             # Fallback to default if no out_dir provided
             self.web_result_dir = os.path.join("workspace", "web_search_result")
-        self._ensure_result_directory()
+        # 移除默认创建目录的代码，改为按需创建
+        # self._ensure_result_directory()
         
         if (enable_llm_filtering or enable_summary) and llm_api_key and llm_model and llm_api_base:
             try:
@@ -126,6 +127,19 @@ class WebSearchTools:
             print_current(f"⚠️ Failed to create result directory: {e}")
             self.web_result_dir = None
     
+    def _count_txt_files_in_result_dir(self) -> int:
+        """Count the number of txt files in the web search result directory"""
+        try:
+            if not self.web_result_dir or not os.path.exists(self.web_result_dir):
+                return 0
+            
+            txt_files = [f for f in os.listdir(self.web_result_dir) 
+                        if f.endswith('.txt') and os.path.isfile(os.path.join(self.web_result_dir, f))]
+            return len(txt_files)
+        except Exception as e:
+            print_current(f"⚠️ Failed to count txt files: {e}")
+            return 0
+    
     def _save_webpage_html(self, page, url: str, title: str, search_term: str = "") -> str:
         """
         Save webpage HTML content to file
@@ -139,6 +153,9 @@ class WebSearchTools:
         Returns:
             Path to saved file or empty string if failed
         """
+        # Ensure the web search result directory exists when needed
+        self._ensure_result_directory()
+        
         if not self.web_result_dir:
             return ""
         
@@ -208,6 +225,9 @@ class WebSearchTools:
         Returns:
             Tuple of (html_filepath, txt_filepath) or empty strings if failed
         """
+        # Ensure the web search result directory exists when needed
+        self._ensure_result_directory()
+        
         if not self.web_result_dir:
             return "", ""
         
@@ -681,7 +701,7 @@ Please create a detailed, structured analysis that preserves important informati
             print_current(f"❌ Search results summarization failed: {e}")
             return ""
 
-    def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 10, **kwargs) -> Dict[str, Any]:
+    def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 3, **kwargs) -> Dict[str, Any]:
         """
         Search the web for real-time information using Playwright.
         """
@@ -1215,6 +1235,9 @@ Please create a detailed, structured analysis that preserves important informati
             if fetch_content and self.enable_summary and results:
                 summary = self._summarize_search_results_with_llm(results, search_term)
             
+            # Check total txt files in web_search_result directory
+            total_txt_files = self._count_txt_files_in_result_dir()
+            
             result_data = {
                 'search_term': search_term,
                 'results': results,
@@ -1223,8 +1246,13 @@ Please create a detailed, structured analysis that preserves important informati
                 'content_fetched': fetch_content,
                 'results_with_content': len([r for r in results if r.get('has_full_content')]) if fetch_content else 0,
                 'saved_html_files': saved_html_count,
-                'saved_txt_files': saved_txt_count
+                'saved_txt_files': saved_txt_count,
+                'total_txt_files_in_directory': total_txt_files
             }
+            
+            # Add warning if there are too many txt files
+            if total_txt_files > 10:
+                result_data['search_material_warning'] = f"⚠️ Enough materials have been collected ({total_txt_files} text files). Please do not call the search again in the next round."
             
             # Add summary to result data if available
             if summary:
@@ -2495,13 +2523,21 @@ Please create a detailed, structured analysis that preserves important informati
                 # Clean content for better LLM processing
                 cleaned_content = self._clean_text_for_saving(content)
                 
+                # Check total txt files in web_search_result directory
+                total_txt_files = self._count_txt_files_in_result_dir()
+                
                 result_data = {
                     'title': title,
                     'content': cleaned_content if cleaned_content else content,
                     'content_length': len(cleaned_content if cleaned_content else content),
                     'timestamp': datetime.datetime.now().isoformat(),
-                    'status': 'success'
+                    'status': 'success',
+                    'total_txt_files_in_directory': total_txt_files
                 }
+                
+                # Add warning if there are too many txt files
+                if total_txt_files > 10:
+                    result_data['search_material_warning'] = f"⚠️ Enough materials have been collected ({total_txt_files} text files). Please do not call the search again in the next round."
                 
                 if saved_html_path or saved_txt_path:
                     if saved_html_path:

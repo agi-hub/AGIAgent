@@ -40,8 +40,16 @@ class SensorDataCollector:
         self.workspace_root = workspace_root or os.getcwd()
         self.output_dir = os.path.join(self.workspace_root, 'sensor_data')
         self.model = model  # Store model name for vision detection
-        os.makedirs(self.output_dir, exist_ok=True)
     
+    def _ensure_sensor_directory(self):
+        """Ensure the sensor data directory exists when needed"""
+        try:
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir, exist_ok=True)
+                print_current(f"📁 Created sensor_data directory: {self.output_dir}")
+        except Exception as e:
+            print_current(f"⚠️ Failed to create sensor_data directory: {e}")
+            
     def _resolve_file_path(self, source: str) -> Optional[str]:
         """
         Intelligently resolve file paths for sensor data sources.
@@ -131,7 +139,6 @@ class SensorDataCollector:
             # Check for vision mode optimization
             vision_mode = para.get('vision_mode', 'auto')  # auto, full, reference
             if vision_mode == 'auto':
-                # 🔧 智能检测：如果系统支持vision API，优化返回格式
                 vision_mode = self._detect_vision_api_support()
             
             # Validate type parameter
@@ -156,27 +163,27 @@ class SensorDataCollector:
     
     def _detect_vision_api_support(self) -> str:
         """
-        检测系统是否支持vision API
-        
+        Detect whether the system supports the vision API.
+
         Returns:
-            'reference' if vision API supported, 'full' otherwise
+            'reference' if vision API is supported, 'full' otherwise
         """
-        # 检测当前模型是否支持Vision API
+        # Check if the current model supports the Vision API
         try:
             model_name = ""
             
-            # 优先使用构造函数传入的模型信息
+            # Prefer model information passed in via the constructor
             if self.model:
                 model_name = str(self.model).lower()
             else:
-                # 其次检查环境变量
+                # Next, check environment variables
                 import os
                 model_name = os.environ.get('LLM_MODEL', '').lower()
                 
-                # 如果环境变量为空，尝试从tool_executor获取当前模型信息
+                # If the environment variable is empty, try to get the current model info from tool_executor
                 if not model_name:
                     try:
-                        # 检查是否在tool_executor上下文中
+                        # Check if in tool_executor context
                         import inspect
                         frame = inspect.currentframe()
                         while frame:
@@ -189,7 +196,7 @@ class SensorDataCollector:
                     except:
                         pass
             
-            # 支持vision的模型列表 - 扩展以包含更多模型
+            # List of models that support vision - extend to include more models as needed
             vision_models = [
                 'claude-3', 'claude-4', 'claude-sonnet', 'claude-opus', 'claude-haiku',
                 'gpt-4', 'gpt-4.1', 'gpt-4o', 'gpt-4-vision', 'gpt-4-turbo',
@@ -197,16 +204,15 @@ class SensorDataCollector:
             ]
             
             if any(vision_model in model_name for vision_model in vision_models):
-                print_current(f"🖼️ Vision API支持检测到 (模型: {model_name})，启用智能优化模式")
+                print_current(f"🖼️ Vision API support detected (model: {model_name}), enabling smart optimization mode")
                 return 'reference'
             else:
-                print_current(f"📄 Vision API未检测到 (模型: {model_name})，使用完整数据模式")
+                print_current(f"📄 Vision API not detected (model: {model_name}), using full data mode")
                 return 'full'
         except Exception as e:
-            # 默认返回完整模式以确保兼容性
-            print_current(f"📄 Vision API检测失败 ({str(e)})，使用完整数据模式")
+            # Default to full mode to ensure compatibility
+            print_current(f"📄 Vision API detection failed ({str(e)}), using full data mode")
             return 'full'
-    
     def _acquire_image_data(self, source: str, para: Dict[str, Any], vision_mode: str = 'full') -> Dict[str, Any]:
         """Acquire image data from camera or file with vision-aware optimization."""
         resolution = para.get('resolution', '640x320')
@@ -417,6 +423,9 @@ class SensorDataCollector:
     def _capture_image_from_camera(self, source: str, resolution: str, timestamp: str, vision_mode: str = 'full') -> Dict[str, Any]:
         """Capture image from camera using system tools with minimal dependencies."""
         try:
+            # Ensure sensor data directory exists when needed
+            self._ensure_sensor_directory()
+            
             # Parse resolution
             width, height = resolution.split('x')
             
@@ -590,6 +599,9 @@ class SensorDataCollector:
     def _capture_video_from_camera(self, source: str, resolution: str, duration: int, timestamp: str) -> Dict[str, Any]:
         """Capture video from camera using system tools with minimal dependencies."""
         try:
+            # Ensure sensor data directory exists when needed
+            self._ensure_sensor_directory()
+            
             # Parse resolution
             width, height = resolution.split('x')
             
@@ -677,6 +689,9 @@ class SensorDataCollector:
     def _capture_audio_from_microphone(self, source: str, sampling_rate: int, duration: int, timestamp: str) -> Dict[str, Any]:
         """Capture audio from microphone."""
         try:
+            # Ensure sensor data directory exists when needed
+            self._ensure_sensor_directory()
+            
             # Generate output filename
             output_file = os.path.join(self.output_dir, f"audio_{timestamp}.wav")
             

@@ -3,24 +3,20 @@
 LANG=zh
 
 # OpenAI API configuration 
-api_key=your key
-api_base=https://api.openai-proxy.org/v1
-model=gpt-4.1
-max_tokens=8192
-
-# SiliconFlow API configuration 
 # api_key=your key
-# api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-8B
-# model=Qwen/Qwen3-30B-A3B
-# model=Qwen/Qwen2.5-7B-Instruct
-# max_tokens=4096
+# api_base=https://api.openai-proxy.org/v1
+# model=gpt-4.1
+# max_tokens=8192
 
 # Bailian API configuration 
-# api_key=your key
-# api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
-# model=qwen-turbo
-# max_tokens=4096
+api_key=your key
+api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
+model=qwen3-coder-480b-a35b-instruct
+max_tokens=65536
+# model=qwen3-235b-a22b-instruct-2507
+# max_tokens=32768
+# model=qwen3-coder-plus
+# max_tokens=32768
 
 # Anthropic models
 # api_key=your key
@@ -40,13 +36,18 @@ max_tokens=8192
 # api_base=https://api.deepseek.com/v1
 # model=deepseek-chat
 
-
-
 # Volcengine Doubao API configuration
 # api_key=your key
 # api_base=https://ark.cn-beijing.volces.com/api/v3
 # model=doubao-1-5-pro-32k-250115
 
+# SiliconFlow API configuration 
+# api_key=your key
+# api_base=https://api.siliconflow.cn/v1
+# model=Qwen/Qwen3-8B
+# model=Qwen/Qwen3-30B-A3B
+# model=Qwen/Qwen2.5-7B-Instruct
+# max_tokens=4096
 
 # Ollama (local serve)
 # api_key=your key
