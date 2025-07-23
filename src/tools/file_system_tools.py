@@ -1633,10 +1633,17 @@ class FileSystemTools:
             processed_content = processed_content.replace('\\n', '\n')
             print_current(f"📝 Converted \\n markers to actual newlines in markdown file")
         
-        # Ensure file ends with newline if it doesn't already
-        if processed_content and not processed_content.endswith('\n'):
-            processed_content += '\n'
-            print_current(f"📝 Added newline at end of markdown file")
+        # Ensure file ends with two newlines (two empty lines) for markdown files
+        if processed_content:
+            if not processed_content.endswith('\n\n'):
+                if processed_content.endswith('\n'):
+                    # Has one newline, add another one
+                    processed_content += '\n'
+                    print_current(f"📝 Added second newline at end of markdown file")
+                else:
+                    # Has no newline, add two newlines
+                    processed_content += '\n\n'
+                    print_current(f"📝 Added two newlines at end of markdown file")
         
         return processed_content
 
