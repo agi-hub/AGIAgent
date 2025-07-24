@@ -130,7 +130,7 @@ Supports Model Context Protocol (MCP) for communication with external tool serve
 
 **Experience AGI Bot for free in Google Colab with no configuration required!**
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
 *Click the badge above to launch AGI Bot directly in your browser and start experiencing autonomous AI programming.*
 
