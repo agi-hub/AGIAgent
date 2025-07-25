@@ -1,0 +1,209 @@
+name: AGIBot Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # 每天凌晨2点运行完整测试
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: [3.8, 3.9, "3.10", "3.11"]
+        exclude:
+          # 减少矩阵大小，只在Ubuntu上测试所有Python版本
+          - os: windows-latest
+            python-version: 3.8
+          - os: windows-latest
+            python-version: 3.9
+          - os: macos-latest
+            python-version: 3.8
+          - os: macos-latest
+            python-version: 3.9
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-html pytest-xdist
+        pip install bandit safety flake8 black
+    
+    - name: Run linting
+      run: |
+        flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+        black --check src
+    
+    - name: Run security scan
+      run: |
+        bandit -r src -f json -o bandit-report.json || true
+        safety check --json --output safety-report.json || true
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest src/tests/unit -v --tb=short --junit-xml=junit-unit.xml
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest src/tests/integration -v --tb=short --junit-xml=junit-integration.xml
+    
+    - name: Run security tests
+      run: |
+        python -m pytest src/tests/security -v --tb=short --junit-xml=junit-security.xml
+    
+    - name: Run performance tests (Ubuntu only)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: |
+        python -m pytest src/tests/performance -v --tb=short --junit-xml=junit-performance.xml
+    
+    - name: Run E2E tests (Ubuntu only)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: |
+        python -m pytest src/tests/e2e -v --tb=short --junit-xml=junit-e2e.xml
+    
+    - name: Generate coverage report
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: |
+        python -m pytest src/tests --cov=src --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
+        path: |
+          junit-*.xml
+          bandit-report.json
+          safety-report.json
+          htmlcov/
+          coverage.xml
+    
+    - name: Upload test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-reports-${{ matrix.os }}-${{ matrix.python-version }}
+        path: src/tests/test_reports/
+
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: |
+        docker build -t agibot:test .
+    
+    - name: Run tests in Docker
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace agibot:test \
+          python -m pytest /workspace/src/tests/unit -v --tb=short
+
+  stress-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[stress-test]')
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-html pytest-xdist
+    
+    - name: Run stress tests
+      timeout-minutes: 30
+      run: |
+        python -m pytest src/tests/performance -v --tb=short -m "performance" --maxfail=3
+    
+    - name: Upload stress test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: stress-test-results
+        path: src/tests/test_reports/
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety semgrep
+    
+    - name: Run Bandit security scan
+      run: |
+        bandit -r src -f json -o bandit-security-report.json
+    
+    - name: Run Safety dependency check
+      run: |
+        safety check --json --output safety-security-report.json
+    
+    - name: Run Semgrep security scan
+      run: |
+        semgrep --config=auto src --json --output=semgrep-security-report.json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-security-report.json
+          safety-security-report.json
+          semgrep-security-report.json
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: [test, docker-test]
+    if: always()
+    steps:
+    - name: Check test results
+      run: |
+        if [[ "${{ needs.test.result }}" != "success" ]]; then
+          echo "Tests failed"
+          exit 1
+        fi
+        if [[ "${{ needs.docker-test.result }}" != "success" ]]; then
+          echo "Docker tests failed"
+          exit 1
+        fi
+        echo "All quality gates passed" 

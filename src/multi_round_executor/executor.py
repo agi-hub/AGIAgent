@@ -27,7 +27,7 @@ from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
 from config_loader import get_model, get_truncation_length, get_summary_history
-from tools.print_system import print_manager, print_current
+from tools.print_system import print_manager, print_current, print_agent
 from tools.debug_system import track_operation, finish_operation
 from .config import (
     DEFAULT_SUBTASK_LOOPS, DEFAULT_LOGS_DIR, DEFAULT_MODEL,
@@ -243,12 +243,20 @@ class MultiRoundTaskExecutor:
         
         finish_operation(f"Execute task: {task_name} ({task_id})")
         
+        # 🔧 New: Get the last executed round information from task history
+        last_round = 0
+        for record in reversed(task_history):
+            if isinstance(record, dict) and "task_round" in record:
+                last_round = record["task_round"]
+                break
+        
         return {
             "task_id": task_id,
             "task_name": task_name,
             "task_description": task_desc,
             "history": task_history,
-            "status": status
+            "status": status,
+            "current_loop": last_round  # Add current loop information
         }
     
     def _execute_task_rounds(self, task_id: str, task_name: str, task_desc: str, 
@@ -269,6 +277,22 @@ class MultiRoundTaskExecutor:
         max_rounds = self.subtask_loops
         task_round = 1  # Renamed from round_num to task_round for clarity
         task_completed = False
+        
+        # 🔧 新增：获取当前智能体ID用于轮次调度
+        from tools.print_system import get_agent_id
+        current_agent_id = get_agent_id()
+        
+        # 🔧 新增：检查是否启用了轮次调度器
+        round_scheduler = None
+        try:
+            from tools.priority_scheduler import get_priority_scheduler
+            round_scheduler = get_priority_scheduler()
+            if hasattr(round_scheduler, 'request_next_round'):
+                print_current(f"🎮 Using round-level fairness scheduler for {current_agent_id or 'manager'}")
+            else:
+                round_scheduler = None
+        except:
+            round_scheduler = None
         
         while task_round <= max_rounds and not task_completed:
             #print_current(f"\n🔄 --- Task Round {task_round}/{max_rounds} execution ---")
@@ -433,6 +457,20 @@ class MultiRoundTaskExecutor:
                 
                 print_current(f"✅ Task round {task_round} execution completed")
                 
+                # 🔧 New: Update current loop information in agent status file
+                if current_agent_id and hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
+                    try:
+                        update_result = self.executor.multi_agent_tools.update_agent_current_loop(
+                            agent_id=current_agent_id,
+                            current_loop=task_round
+                        )
+                        if update_result.get("status") == "success":
+                            print_agent(current_agent_id, f"📝 Status file updated: current_loop = {task_round}")
+                        else:
+                            print_agent(current_agent_id, f"⚠️ Status update failed: {update_result.get('message', 'Unknown error')}")
+                    except Exception as e:
+                        print_agent(current_agent_id, f"⚠️ Status update error: {e}")
+                
                 # 🔧 Remove synchronous incremental update call, now handled automatically by background thread
                 # Commented out original synchronous update code:
                 # try:
@@ -445,7 +483,36 @@ class MultiRoundTaskExecutor:
                 if task_completed:
                     break
                 else:
-                    task_round += 1
+                    # 🔧 新增：轮次级别的公平性调度
+                    if round_scheduler and current_agent_id:
+                        # 请求执行下一轮的权限
+                        print_agent(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/{max_rounds}")
+                        
+                        # 调用轮次调度器
+                        permission_granted = round_scheduler.request_next_round(
+                            agent_id=current_agent_id,
+                            current_round=task_round,
+                            max_rounds=max_rounds,
+                            wait_timeout=60.0  # 等待60秒
+                        )
+                        
+                        if permission_granted:
+                            task_round += 1
+                            print_agent(current_agent_id, f"✅ Permission granted, proceeding to round {task_round}")
+                        else:
+                            print_agent(current_agent_id, f"⏰ Round permission timeout, stopping execution")
+                            # 添加超时记录
+                            timeout_record = {
+                                "task_round": task_round,
+                                "message": "Round scheduling timeout - execution stopped for fairness",
+                                "timestamp": datetime.now().isoformat(),
+                                "scheduler_timeout": True
+                            }
+                            task_history.append(timeout_record)
+                            break
+                    else:
+                        # 传统模式：直接递增轮次
+                        task_round += 1
                 
             except Exception as e:
                 error_msg = str(e)

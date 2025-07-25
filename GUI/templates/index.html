@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ i18n.app_title.replace(' GUI', '') }}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
     <!-- Prism.js for syntax highlighting -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
     <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
     <style>
         * {
             margin: 0;
@@ -24,9 +24,140 @@
             color: #cccccc;
         }
 
+        /* User authentication area styles */
+        .user-auth-area {
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 50px;
+        }
+
+        .user-auth-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .user-auth-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .api-key-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .api-key-group label {
+            color: #cccccc;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        .api-key-input {
+            padding: 6px 12px;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            background: #1e1e1e;
+            color: #cccccc;
+            font-size: 0.9em;
+            width: 200px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .api-key-input:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+        }
+
+        .api-key-input::placeholder {
+            color: #6a6a6a;
+        }
+
+        .connect-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .connect-btn.connect {
+            background: #28a745;
+            color: white;
+        }
+
+        .connect-btn.connect:hover {
+            background: #218838;
+        }
+
+        .connect-btn.disconnect {
+            background: #dc3545;
+            color: white;
+        }
+
+        .connect-btn.disconnect:hover {
+            background: #c82333;
+        }
+
+        .connect-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+            color: #9cdcfe;
+        }
+
+        .user-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .user-status-indicator.connected {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        .user-status-indicator.connecting {
+            background: #ffc107;
+            animation: pulse 1s infinite;
+        }
+
+        .user-status-indicator.error {
+            background: #dc3545;
+        }
+
         .container {
             display: flex;
-            height: 100vh;
+            height: calc(100vh - 50px);  /* Subtract auth area height */
             background: #252526;
         }
 
@@ -951,6 +1082,34 @@
     </style>
 </head>
 <body>
+    <!-- User Authentication Area -->
+    <div class="user-auth-area">
+        <div class="user-auth-left">
+            <div class="api-key-group">
+                <label for="apiKeyInput">
+                    <i class="fas fa-key"></i>
+                    API Key:
+                </label>
+                <input type="password" id="apiKeyInput" class="api-key-input" 
+                       placeholder="输入API Key (可选)" 
+                       title="输入您的API Key，留空则使用默认用户模式">
+            </div>
+            <button id="connectBtn" class="connect-btn connect">
+                <i class="fas fa-plug"></i>
+                <span>连接</span>
+            </button>
+        </div>
+        <div class="user-auth-right">
+            <div class="user-info">
+                <div class="user-status">
+                    <div class="user-status-indicator" id="userStatusIndicator"></div>
+                    <span id="userStatusText">未连接</span>
+                </div>
+                <span id="userIdentity" style="margin-left: 10px;"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="main-content">
             <div class="header">
@@ -1159,22 +1318,32 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
     <script>
         // Internationalization configuration
         const I18N = {{ i18n | tojson }};
         const CURRENT_LANG = '{{ lang }}';
     </script>
     <script>
-        // Socket.IO connection configuration
-        const socket = io({
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 5,
-            timeout: 20000,
-            forceNew: true
-        });
+        // User connection management
+        let socket = null;
+        let currentUser = null;
+        let isConnected = false;
+        
+        // Socket.IO connection configuration (will be initialized when user connects)
+        function createSocket(apiKey) {
+            return io({
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                timeout: 20000,
+                forceNew: true,
+                auth: {
+                    api_key: apiKey || null
+                }
+            });
+        }
         
         // DOM elements
         const chatMessages = document.getElementById('chatMessages');
@@ -1187,6 +1356,13 @@
         const statusIndicator = document.getElementById('statusIndicator');
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
+        
+        // User authentication elements
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const connectBtn = document.getElementById('connectBtn');
+        const userStatusIndicator = document.getElementById('userStatusIndicator');
+        const userStatusText = document.getElementById('userStatusText');
+        const userIdentity = document.getElementById('userIdentity');
 
         // State management
         let isTaskRunning = false;
@@ -1199,6 +1375,98 @@
         let refreshTimeout = null; // Debounce timer
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
+
+        // User connection management functions
+        function updateUserStatus(status, message, identity = '') {
+            const statusClasses = {
+                'disconnected': '',
+                'connecting': 'connecting',
+                'connected': 'connected',
+                'error': 'error'
+            };
+            
+            userStatusIndicator.className = 'user-status-indicator ' + (statusClasses[status] || '');
+            userStatusText.textContent = message;
+            userIdentity.textContent = identity;
+            
+            // Update connect button
+            if (status === 'connected') {
+                connectBtn.className = 'connect-btn disconnect';
+                connectBtn.innerHTML = '<i class="fas fa-unlink"></i><span>断开</span>';
+                connectBtn.disabled = false;
+                isConnected = true;
+                
+                // Enable UI controls
+                enableUI(true);
+            } else if (status === 'connecting') {
+                connectBtn.disabled = true;
+                connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>连接中...</span>';
+                
+                // Disable UI controls
+                enableUI(false);
+            } else {
+                connectBtn.className = 'connect-btn connect';
+                connectBtn.innerHTML = '<i class="fas fa-plug"></i><span>连接</span>';
+                connectBtn.disabled = false;
+                isConnected = false;
+                
+                // Disable UI controls
+                enableUI(false);
+            }
+        }
+        
+        function enableUI(enabled) {
+            userInput.disabled = !enabled || isTaskRunning;
+            sendButton.disabled = !enabled || isTaskRunning;
+            planButton.disabled = !enabled || isTaskRunning;
+            newTaskButton.disabled = !enabled || isTaskRunning;
+            
+            // Enable/disable directory operations
+            const actionBtns = document.querySelectorAll('.directory-item .action-btn');
+            actionBtns.forEach(btn => {
+                btn.disabled = !enabled;
+            });
+        }
+        
+        function connectUser() {
+            const apiKey = apiKeyInput.value.trim();
+            
+            updateUserStatus('connecting', '连接中...');
+            
+            // Create socket connection
+            socket = createSocket(apiKey);
+            currentUser = apiKey || 'default';
+            
+            // Setup socket event listeners
+            setupSocketListeners();
+            
+            // Attempt to connect
+            socket.connect();
+        }
+        
+        function disconnectUser() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            currentUser = null;
+            updateUserStatus('disconnected', '未连接');
+            
+            // Clear chat messages
+            chatMessages.innerHTML = `
+                <div class="message system">
+                    <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                    ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                </div>
+            `;
+            
+            // Clear directory list
+            directoryList.innerHTML = '';
+            selectedDirectory = null;
+            taskMode = 'new';
+            updateTaskModeInfo();
+        }
 
         // File preview functionality
         const previewModal = document.getElementById('previewModal');
@@ -1223,114 +1491,128 @@
         // Auto-scroll status indicator
         const autoScrollIndicator = document.getElementById('autoScrollIndicator');
 
-        // Socket event listeners
-        socket.on('connect', function() {
-            addMessage(I18N.connected, 'system');
-            updateStatus('connected');
-            updateTaskModeInfo(); // Initialize task mode info display
-            // Ensure scroll to bottom after connection
-            setTimeout(() => {
-                scrollToBottom(false);
-            }, 100);
-            console.log('✅ Socket connected');
-        });
-
-        socket.on('disconnect', function(reason) {
-            addMessage(`${I18N.disconnected} (${reason})`, 'info');
-            updateStatus('disconnected');
-            console.log('❌ Socket disconnected:', reason);
-        });
-
-        socket.on('reconnect', function(attemptNumber) {
-            addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
-            updateStatus('connected');
-            console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
-        });
-
-        socket.on('reconnect_attempt', function(attemptNumber) {
-            console.log('🔄 Reconnection attempt', attemptNumber);
-        });
-
-        socket.on('reconnect_error', function(error) {
-            console.log('❌ Reconnection error:', error);
-        });
-
-        socket.on('reconnect_failed', function() {
-            addMessage(I18N.reconnect_failed, 'info');
-            console.log('❌ Reconnection failed');
-        });
-
-        socket.on('task_started', function(data) {
-            addMessage(data.message, 'info');
-            setTaskRunning(true);
-        });
-
-        socket.on('output', function(data) {
-            addMessage(data.message, data.type || 'info');
-        });
-
-        socket.on('task_completed', function(data) {
-            addMessage(data.message, data.success ? 'success' : 'error');
-            setTaskRunning(false);
+        // Setup socket event listeners
+        function setupSocketListeners() {
+            if (!socket) return;
             
-            // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
-            if (selectedDirectory) {
-                taskMode = 'selected';
-                // If the completed task directory is the selected directory, auto-expand it
-                if (data.output_dir && data.output_dir === selectedDirectory) {
-                    expandedDirectories.add(selectedDirectory);
-                }
-            } else {
-                taskMode = 'continue';
-                // If there's a working directory, auto-expand the latest directory
-                if (data.output_dir) {
-                    expandedDirectories.add(data.output_dir);
-                }
-            }
-            updateTaskModeInfo();
-            
-            // Refresh directory list with longer delay to ensure files are generated
-            setTimeout(() => {
+            socket.on('connect', function() {
+                const identity = currentUser === 'default' ? '默认用户' : `用户: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', '已连接', identity);
+                addMessage(I18N.connected, 'system');
+                updateStatus('connected');
+                updateTaskModeInfo(); // Initialize task mode info display
+                
+                // Refresh directories for this user
                 refreshDirectories();
-            }, 2000);
-        });
+                
+                // Ensure scroll to bottom after connection
+                setTimeout(() => {
+                    scrollToBottom(false);
+                }, 100);
+                console.log('✅ Socket connected for user:', currentUser);
+            });
 
-        socket.on('task_stopped', function(data) {
-            addMessage(data.message, data.type || 'error');
-            setTaskRunning(false);
-            // Keep current task mode
-            updateTaskModeInfo();
-            // Refresh directories after stopping task
-            setTimeout(refreshDirectories, 1000);
-        });
+            socket.on('disconnect', function(reason) {
+                updateUserStatus('disconnected', '连接断开');
+                addMessage(`${I18N.disconnected} (${reason})`, 'info');
+                updateStatus('disconnected');
+                console.log('❌ Socket disconnected:', reason);
+            });
 
-        socket.on('error', function(data) {
-            addMessage(data.message, 'error');
-            setTaskRunning(false);
-        });
+            socket.on('reconnect', function(attemptNumber) {
+                const identity = currentUser === 'default' ? '默认用户' : `用户: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', '重新连接', identity);
+                addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
+                updateStatus('connected');
+                console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+            });
 
+            socket.on('reconnect_attempt', function(attemptNumber) {
+                updateUserStatus('connecting', `重连中... (${attemptNumber})`);
+                console.log('🔄 Reconnection attempt', attemptNumber);
+            });
 
+            socket.on('reconnect_error', function(error) {
+                updateUserStatus('error', '重连失败');
+                console.log('❌ Reconnection error:', error);
+            });
 
-        socket.on('directory_selected', function(data) {
-            selectedDirectory = data.dir_name;
-            if (selectedDirectory) {
-                taskMode = 'selected';
+            socket.on('reconnect_failed', function() {
+                updateUserStatus('error', '连接失败');
+                addMessage(I18N.reconnect_failed, 'info');
+                console.log('❌ Reconnection failed');
+            });
+
+            socket.on('task_started', function(data) {
+                addMessage(data.message, 'info');
+                setTaskRunning(true);
+            });
+
+            socket.on('output', function(data) {
+                addMessage(data.message, data.type || 'info');
+            });
+
+            socket.on('task_completed', function(data) {
+                addMessage(data.message, data.success ? 'success' : 'error');
+                setTaskRunning(false);
+                
+                // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
+                if (selectedDirectory) {
+                    taskMode = 'selected';
+                    // If the completed task directory is the selected directory, auto-expand it
+                    if (data.output_dir && data.output_dir === selectedDirectory) {
+                        expandedDirectories.add(selectedDirectory);
+                    }
+                } else {
+                    taskMode = 'continue';
+                    // If there's a working directory, auto-expand the latest directory
+                    if (data.output_dir) {
+                        expandedDirectories.add(data.output_dir);
+                    }
+                }
                 updateTaskModeInfo();
-                refreshDirectories();
-            }
-        });
+                
+                // Refresh directory list with longer delay to ensure files are generated
+                setTimeout(() => {
+                    refreshDirectories();
+                }, 2000);
+            });
 
-        socket.on('directory_created', function(data) {
-            if (data.success) {
+            socket.on('task_stopped', function(data) {
+                addMessage(data.message, data.type || 'error');
+                setTaskRunning(false);
+                // Keep current task mode
+                updateTaskModeInfo();
+                // Refresh directories after stopping task
+                setTimeout(refreshDirectories, 1000);
+            });
+
+            socket.on('error', function(data) {
+                addMessage(data.message, 'error');
+                setTaskRunning(false);
+            });
+
+            socket.on('directory_selected', function(data) {
                 selectedDirectory = data.dir_name;
-                taskMode = 'selected';
-                addMessage(data.message, 'success');
-                updateTaskModeInfo();
-                refreshDirectories();
-            } else {
-                addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
-            }
-        });
+                if (selectedDirectory) {
+                    taskMode = 'selected';
+                    updateTaskModeInfo();
+                    refreshDirectories();
+                }
+            });
+
+            socket.on('directory_created', function(data) {
+                if (data.success) {
+                    selectedDirectory = data.dir_name;
+                    taskMode = 'selected';
+                    addMessage(data.message, 'success');
+                    updateTaskModeInfo();
+                    refreshDirectories();
+                } else {
+                    addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
+                }
+            });
+        }
 
         // Message handling
         let lastMessageType = null;
@@ -1489,7 +1771,7 @@
         // Input handling
         function sendMessage(planMode = false) {
             const message = userInput.value.trim();
-            if (!message || isTaskRunning) return;
+            if (!message || isTaskRunning || !socket || !isConnected) return;
 
             // In new mode, prompt user to create or select directory first
             if (taskMode === 'new') {
@@ -1539,7 +1821,7 @@
         }
 
         function createNewDirectory() {
-            if (isTaskRunning) return;
+            if (isTaskRunning || !socket || !isConnected) return;
             
             socket.emit('create_new_directory');
         }
@@ -1576,6 +1858,8 @@
         }
 
         function selectDirectory(dirName) {
+            if (!socket || !isConnected) return;
+            
             // If the same directory is already selected, no need to repeat the operation
             if (selectedDirectory === dirName) {
                 console.log(`📌 Directory ${dirName} already selected`);
@@ -1635,6 +1919,23 @@
         }
 
         // Event listeners
+        connectBtn.addEventListener('click', function() {
+            if (isConnected) {
+                disconnectUser();
+            } else {
+                connectUser();
+            }
+        });
+
+        apiKeyInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!isConnected) {
+                    connectUser();
+                }
+            }
+        });
+
         sendButton.addEventListener('click', () => sendMessage(false));
 
         planButton.addEventListener('click', () => sendMessage(true));
@@ -1642,7 +1943,9 @@
         newTaskButton.addEventListener('click', createNewDirectory);
 
         stopButton.addEventListener('click', function() {
-            socket.emit('stop_task');
+            if (socket) {
+                socket.emit('stop_task');
+            }
         });
 
         userInput.addEventListener('keydown', function(e) {
@@ -1840,7 +2143,20 @@
             sidebarLoading.classList.add('show');
             directoryList.innerHTML = '';
             
-            fetch('/api/output-dirs')
+            // Include current user info in API call
+            const params = new URLSearchParams();
+            if (currentUser && currentUser !== 'default') {
+                params.set('api_key', currentUser);
+            }
+            
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch(`/api/output-dirs?${params}`, {
+                headers: headers
+            })
                 .then(response => response.json())
                 .then(data => {
                     sidebarLoading.classList.remove('show');
@@ -2219,8 +2535,14 @@
                 }
             }
             
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
             fetch(`/api/delete-directory/${dirName}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: headers
             })
             .then(response => response.json())
             .then(data => {
@@ -2299,7 +2621,14 @@
             
             console.log('🔍 Making API request to:', `/api/file/${filePath}`);
 
-            fetch(`/api/file/${filePath}`)
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+
+            fetch(`/api/file/${filePath}`, {
+                headers: headers
+            })
                 .then(response => {
                     console.log('🔍 API response status:', response.status, response.statusText);
                     if (!response.ok) {
@@ -2643,7 +2972,14 @@
             }, 200);
             
             // 上传文件到云存储
-            fetch(`/api/upload-to-cloud/${filePath}`)
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch(`/api/upload-to-cloud/${filePath}`, {
+                headers: headers
+            })
                 .then(response => response.json())
                 .then(data => {
                     clearInterval(progressInterval);
@@ -2884,14 +3220,23 @@
             renameConfirm.disabled = true;
             renameConfirm.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.renaming}`;
             
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const body = {
+                new_name: newName
+            };
+            
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+                body.api_key = currentUser;
+            }
+            
             fetch(`/api/rename-directory/${encodeURIComponent(currentRenamingDir)}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    new_name: newName
-                })
+                headers: headers,
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -2979,7 +3324,7 @@
         /**
          * 页面初始化函数
          * @description 页面加载完成后执行的初始化操作：
-         * - 刷新目录列表
+         * - 初始化用户界面状态
          * - 设置输入框焦点
          * - 更新任务模式信息
          * - 初始化分隔条拖拽功能
@@ -2987,11 +3332,14 @@
          * - 滚动到聊天窗口底部
          */
         document.addEventListener('DOMContentLoaded', function() {
-            refreshDirectories();
-            userInput.focus();
+            // 初始化用户状态
+            updateUserStatus('disconnected', '未连接');
+            enableUI(false);
+            
+            // 设置API Key输入框焦点
+            apiKeyInput.focus();
             updateTaskModeInfo();
             initResizer();
-            startAutoRefresh();
             
             // 设置GUI配置选项的默认值
             document.getElementById('enableWebSearch').checked = false;
@@ -3126,11 +3474,20 @@
             // 保存当前展开状态
             const currentExpanded = new Set(expandedDirectories);
             
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const body = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+                body.api_key = currentUser;
+            }
+            
             fetch('/api/refresh-dirs', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: headers,
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -3208,6 +3565,11 @@
             files.forEach(file => {
                 formData.append('files', file);
             });
+            
+            // Add API key to form data
+            if (currentUser && currentUser !== 'default') {
+                formData.append('api_key', currentUser);
+            }
 
             // 显示进度条
             uploadProgress.style.display = 'block';
@@ -3424,15 +3786,15 @@
     </script>
     
     <!-- Prism.js for syntax highlighting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="{{ url_for('static', filename='js/prism-core.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/prism-autoloader.min.js') }}"></script>
     <script>
         // Configure Prism.js autoloader
-        Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+        Prism.plugins.autoloader.languages_path = '{{ url_for("static", filename="js/prism-components/") }}';
         
         // Configure PDF.js
         if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '{{ url_for("static", filename="js/pdf.worker.min.js") }}';
         }
     </script>
 </body>

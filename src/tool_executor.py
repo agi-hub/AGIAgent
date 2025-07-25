@@ -1081,6 +1081,10 @@ class ToolExecutor:
         """
         track_operation(f"executing task (prompt length: {len(prompt)})")
         
+        # Clear streaming tool execution flags and results for new task
+        self._tools_executed_in_stream = False
+        self._streaming_tool_results = []
+        
         # Initialize task history if not provided
         if task_history is None:
             task_history = []
@@ -1219,84 +1223,102 @@ class ToolExecutor:
                 
                 # Execute tools if present
                 if tool_calls:
-                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
-                    print_current("=" * 50)
-                    
-                    # Print tool calls for terminal display with better formatting
+                    # Always format tool calls for history (needed for final response)
                     tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
-                    if tool_calls_formatted:
-                        # Remove the "**Tool Calls:**" header since we already printed our own
-                        display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
-                        print_current(display_content)
                     
-                    print_current("=" * 50)
-                    print_current("🚀 Starting tool execution...")
-                    print_current("")
+                    # 🔧 NEW: Track if get_sensor_data was called in current round
+                    current_round_has_sensor_data = False
                     
-                    # Execute all tool calls and collect results
-                    all_tool_results = []
-                    successful_executions = 0
+                    # Check if tools were already executed during streaming
+                    tools_already_executed = (self.streaming and 
+                                            (not self.use_chat_based_tools) and
+                                            hasattr(self, '_tools_executed_in_stream') and 
+                                            getattr(self, '_tools_executed_in_stream', False))
                     
-                    for i, tool_call in enumerate(tool_calls, 1):
-                        # Handle standard format tool calls (both OpenAI and Anthropic)
-                        tool_name = self._get_tool_name_from_call(tool_call)
-                        tool_params = self._get_tool_params_from_call(tool_call)
+                    if tools_already_executed:
+                        print_current("✅ Tools were already executed during streaming - collecting results for response formatting")
+                        # For streaming execution, we still need to format the response properly
+                        # but skip actual execution since it was done during streaming
+                        all_tool_results = getattr(self, '_streaming_tool_results', [])
+                        successful_executions = len(all_tool_results)
+                    else:
+                        print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                        print_current("=" * 50)
                         
-                        # 🔧 NEW: Track if get_sensor_data was called in current round
-                        if tool_name == 'get_sensor_data':
-                            current_round_has_sensor_data = True
+                        # Print tool calls for terminal display with better formatting
+                        if tool_calls_formatted:
+                            # Remove the "**Tool Calls:**" header since we already printed our own
+                            display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                            print_current(display_content)
                         
-                        # Print tool execution start with clear formatting
-                        print_current(f"🔧 Executing tool {i}: {tool_name}")
-                        print_current(f"   Parameters: {tool_params}")
-                        print_current(f"   Results:")
+                        print_current("=" * 50)
+                        print_current("🚀 Starting tool execution...")
+                        print_current("")
                         
-                        try:
-                            # Convert to standard format for execute_tool
-                            standard_tool_call = {
-                                "name": tool_name,
-                                "arguments": tool_params
-                            }
-                            tool_result = self.execute_tool(standard_tool_call)
+                        # Execute all tool calls and collect results
+                        all_tool_results = []
+                        successful_executions = 0
+                    
+                    # Only execute tools if they weren't already executed during streaming
+                    if not tools_already_executed:
+                        for i, tool_call in enumerate(tool_calls, 1):
+                            # Handle standard format tool calls (both OpenAI and Anthropic)
+                            tool_name = self._get_tool_name_from_call(tool_call)
+                            tool_params = self._get_tool_params_from_call(tool_call)
                             
-                            all_tool_results.append({
-                                'tool_name': tool_name,
-                                'tool_params': tool_params,
-                                'tool_result': tool_result
-                            })
-                            successful_executions += 1
+                            # 🔧 NEW: Track if get_sensor_data was called in current round
+                            if tool_name == 'get_sensor_data':
+                                current_round_has_sensor_data = True
                             
-                            # Real-time print of each tool's execution result with proper indentation
-                            if isinstance(tool_result, dict):
-                                # Use simplified formatting for search tools if enabled in config
-                                if (self.simplified_search_output and 
-                                    tool_name in ['codebase_search', 'web_search']):
-                                    formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
+                            # Print tool execution start with clear formatting
+                            print_current(f"🔧 Executing tool {i}: {tool_name}")
+                            print_current(f"   Parameters: {tool_params}")
+                            print_current(f"   Results:")
+                            
+                            try:
+                                # Convert to standard format for execute_tool
+                                standard_tool_call = {
+                                    "name": tool_name,
+                                    "arguments": tool_params
+                                }
+                                tool_result = self.execute_tool(standard_tool_call)
+                                
+                                all_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_params,
+                                    'tool_result': tool_result
+                                })
+                                successful_executions += 1
+                                
+                                # Real-time print of each tool's execution result with proper indentation
+                                if isinstance(tool_result, dict):
+                                    # Use simplified formatting for search tools if enabled in config
+                                    if (self.simplified_search_output and 
+                                        tool_name in ['codebase_search', 'web_search']):
+                                        formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
+                                    else:
+                                        formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
+                                    # Add indentation to each line
+                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                                    print_current(indented_result)
                                 else:
-                                    formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
-                                # Add indentation to each line
-                                indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                                print_current(indented_result)
-                            else:
-                                # Add indentation to the result
-                                result_str = str(tool_result)
-                                indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                                print_current(indented_result)
+                                    # Add indentation to the result
+                                    result_str = str(tool_result)
+                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                                    print_current(indented_result)
+                                
+                            except Exception as e:
+                                error_msg = f"Tool {tool_name} execution failed: {str(e)}"
+                                print_current(f"   ❌ {error_msg}")
+                                all_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_params,
+                                    'tool_result': f"Error: {error_msg}"
+                                })
                             
-                        except Exception as e:
-                            error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                            print_current(f"   ❌ {error_msg}")
-                            all_tool_results.append({
-                                'tool_name': tool_name,
-                                'tool_params': tool_params,
-                                'tool_result': f"Error: {error_msg}"
-                            })
-                        
-                        # Add separator between tools
-                        if i < len(tool_calls):
-                            print_current("-" * 30)
-                    
-
+                            # Add separator between tools
+                            if i < len(tool_calls):
+                                print_current("-" * 30)
                     
                     # 🔧 MODIFIED: Store image data but don't use vision API
                     self._extract_current_round_images(all_tool_results)
@@ -3511,6 +3533,10 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
+                    # Phase 1: LLM text streaming (with lock)
+                    content = ""
+                    tool_calls = []
+                    
                     with streaming_context(show_start_message=False) as printer:
                         # print_current("🔄 Starting streaming generation with standard tools...")
                         response = self.client.chat.completions.create(
@@ -3523,41 +3549,76 @@ class ToolExecutor:
                             stream=True
                         )
                         
-                        content = ""
-                        tool_calls = []
                         current_tool_call = None
+                        tool_calls_detected = False
                         
                         for chunk in response:
                             if chunk.choices and len(chunk.choices) > 0:
                                 delta = chunk.choices[0].delta
                                 
-                                # Handle content
+                                # Handle content (streaming text output - keep in lock)
                                 if delta.content is not None:
                                     printer.write(delta.content)
                                     content += delta.content
-                            
-                            # Handle tool calls
-                            if delta.tool_calls:
-                                for tool_call_delta in delta.tool_calls:
-                                    if tool_call_delta.index is not None:
-                                        # Ensure we have enough tool calls in our list
-                                        while len(tool_calls) <= tool_call_delta.index:
-                                            tool_calls.append({
-                                                "id": "",
-                                                "type": "function",
-                                                "function": {"name": "", "arguments": ""}
-                                            })
-                                        
-                                        current_tool_call = tool_calls[tool_call_delta.index]
-                                        
-                                        if tool_call_delta.id:
-                                            current_tool_call["id"] = tool_call_delta.id
-                                        
-                                        if tool_call_delta.function:
-                                            if tool_call_delta.function.name:
-                                                current_tool_call["function"]["name"] = tool_call_delta.function.name
-                                            if tool_call_delta.function.arguments:
-                                                current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
+                                
+                                # Handle tool calls (collect but don't execute yet)
+                                if delta.tool_calls:
+                                    if not tool_calls_detected:
+                                        # Show detection message once, but don't execute yet
+                                        printer.write("\n")  # Add newline after text
+                                        tool_calls_detected = True
+                                    
+                                    for tool_call_delta in delta.tool_calls:
+                                        if tool_call_delta.index is not None:
+                                            # Ensure we have enough tool calls in our list
+                                            while len(tool_calls) <= tool_call_delta.index:
+                                                tool_calls.append({
+                                                    "id": "",
+                                                    "type": "function",
+                                                    "function": {"name": "", "arguments": ""}
+                                                })
+                                            
+                                            current_tool_call = tool_calls[tool_call_delta.index]
+                                            
+                                            if tool_call_delta.id:
+                                                current_tool_call["id"] = tool_call_delta.id
+                                            
+                                            if tool_call_delta.function:
+                                                if tool_call_delta.function.name:
+                                                    current_tool_call["function"]["name"] = tool_call_delta.function.name
+                                                
+                                                if tool_call_delta.function.arguments:
+                                                    current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
+                    
+                    # Phase 2: Tool execution (WITHOUT lock)
+                    if tool_calls_detected:
+                        print_current("🔧 Detecting tool calls...")
+                        
+                        executed_tool_calls = []
+                        
+                        # Execute complete tool calls
+                        for i, tool_call in enumerate(tool_calls):
+                            if (tool_call["function"]["name"] and 
+                                tool_call["function"]["arguments"] and
+                                i not in executed_tool_calls):
+                                
+                                try:
+                                    import json
+                                    json.loads(tool_call["function"]["arguments"])
+                                    
+                                    # Show tool name
+                                    print_current(f"🎯 Tool {i + 1}: {tool_call['function']['name']}")
+                                    
+                                    # Execute tool immediately (no lock!)
+                                    self._execute_tool_immediately(tool_call, i + 1)
+                                    executed_tool_calls.append(i)
+                                    
+                                except json.JSONDecodeError:
+                                    # Arguments incomplete, skip
+                                    continue
+                        
+                        if executed_tool_calls:
+                            print_current("✅ All detected tools have been executed")
                     
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
@@ -3634,6 +3695,70 @@ class ToolExecutor:
                     
                     raise e
 
+    def _execute_tool_immediately(self, tool_call, tool_index):
+        """
+        Execute a tool call immediately during streaming.
+        
+        Args:
+            tool_call: The complete tool call object
+            tool_index: The tool index for display purposes
+        """
+        try:
+            tool_name = tool_call["function"]["name"]
+            tool_params_str = tool_call["function"]["arguments"]
+            
+            # Parse parameters
+            import json
+            tool_params = json.loads(tool_params_str)
+            
+            print_current(f"⚡ Executing tool {tool_index} immediately: {tool_name}")
+            print_current(f"   Parameters: {tool_params}")
+            print_current(f"   Results:")
+            
+            # Convert to standard format for execute_tool
+            standard_tool_call = {
+                "name": tool_name,
+                "arguments": tool_params
+            }
+            
+            tool_result = self.execute_tool(standard_tool_call)
+            
+            # Store result for later response formatting
+            if not hasattr(self, '_streaming_tool_results'):
+                self._streaming_tool_results = []
+            
+            self._streaming_tool_results.append({
+                'tool_name': tool_name,
+                'tool_params': tool_params,
+                'tool_result': tool_result
+            })
+            
+            # Set flag indicating tools were executed during streaming
+            self._tools_executed_in_stream = True
+            
+            # Real-time print of tool execution result with proper indentation
+            if isinstance(tool_result, dict):
+                # Use simplified formatting for search tools if enabled in config
+                if (self.simplified_search_output and 
+                    tool_name in ['codebase_search', 'web_search']):
+                    formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
+                else:
+                    formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
+                # Add indentation to each line
+                indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                print_current(indented_result)
+            else:
+                # Add indentation to the result
+                result_str = str(tool_result)
+                indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                print_current(indented_result)
+                
+            print_current("")  # Empty line for separation
+            
+        except Exception as e:
+            print_current(f"   ❌ Tool {tool_index} execution failed: {str(e)}")
+            print_current("")
+
     def _call_claude_with_standard_tools(self, messages, user_message, system_message):
         """
         Call Claude with standard tool calling format.
@@ -3659,6 +3784,10 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
+                    # Phase 1: LLM text streaming (with lock)
+                    content = ""
+                    tool_calls = []
+                    
                     with streaming_context(show_start_message=True) as printer:
                         with self.client.messages.stream(
                             model=self.model,
@@ -3668,17 +3797,26 @@ class ToolExecutor:
                             tools=tools,
                             temperature=0.7
                         ) as stream:
-                            content = ""
-                            tool_calls = []
+                            last_content_length = 0
+                            stream_finished = False
                             
+                            # Stream text content only (keep in lock)
                             for text in stream.text_stream:
                                 printer.write(text)
                                 content += text
+                                
+                                # Show tool processing indicator when stream seems to have paused on content
+                                # (heuristic: if content stopped growing for this iteration)
+                                if len(content) == last_content_length and len(content) > 50:
+                                    if not stream_finished:
+                                        printer.write("\n🔧 Processing tool calls (Claude API limitation: tools detected after stream completion)...\n")
+                                        stream_finished = True
+                                last_content_length = len(content)
                         
-                        # Get final message to extract tool use blocks
+                        # Get final message to extract tool use blocks (still in lock)
                         final_message = stream.get_final_message()
                         
-                        # Extract tool use blocks
+                        # Extract tool use blocks (but don't execute yet)
                         for content_block in final_message.content:
                             if content_block.type == "tool_use":
                                 tool_calls.append({
@@ -3686,6 +3824,63 @@ class ToolExecutor:
                                     "name": content_block.name,
                                     "input": content_block.input
                                 })
+                    
+                    # Phase 2: Tool execution (WITHOUT lock)
+                    if tool_calls:
+                        print_current("🎯 Tool calls detected, executing immediately...")
+                        
+                        for content_block_data in tool_calls:
+                            # Execute tool immediately (no lock!)
+                            print_current(f"⚡ Executing tool: {content_block_data['name']}")
+                            print_current(f"   Parameters: {content_block_data['input']}")
+                            print_current(f"   Results:")
+                            
+                            try:
+                                # Convert to standard format for execute_tool
+                                standard_tool_call = {
+                                    "name": content_block_data['name'],
+                                    "arguments": content_block_data['input']
+                                }
+                                
+                                tool_result = self.execute_tool(standard_tool_call)
+                                
+                                # Store result for later response formatting
+                                if not hasattr(self, '_streaming_tool_results'):
+                                    self._streaming_tool_results = []
+                                
+                                self._streaming_tool_results.append({
+                                    'tool_name': content_block_data['name'],
+                                    'tool_params': content_block_data['input'],
+                                    'tool_result': tool_result
+                                })
+                                
+                                # Set flag indicating tools were executed during streaming
+                                self._tools_executed_in_stream = True
+                                
+                                # Real-time print of tool execution result with proper indentation
+                                if isinstance(tool_result, dict):
+                                    # Use simplified formatting for search tools if enabled in config
+                                    if (self.simplified_search_output and 
+                                        content_block_data['name'] in ['codebase_search', 'web_search']):
+                                        formatted_result = self._format_search_result_for_terminal(tool_result, content_block_data['name'])
+                                    else:
+                                        formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
+                                    # Add indentation to each line
+                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
+                                    print_current(indented_result)
+                                else:
+                                    # Add indentation to the result
+                                    result_str = str(tool_result)
+                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
+                                    print_current(indented_result)
+                                    
+                                print_current("")  # Empty line for separation
+                                
+                            except Exception as e:
+                                print_current(f"   ❌ Tool execution failed: {str(e)}")
+                                print_current("")
+                        
+                        print_current("✅ All detected tools have been executed")
                     
                     return content, tool_calls
                 else:

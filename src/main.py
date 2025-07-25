@@ -279,6 +279,9 @@ class AGIBotMain:
         # Set agent ID for main AGIBot
         set_agent_id("manager")
         
+        # 🔧 Initialize execution report storage
+        self.last_execution_report = None
+        
         # Initialize tools with workspace root
         self.tools = Tools(
             workspace_root=self.workspace_dir,
@@ -620,7 +623,8 @@ class AGIBotMain:
                     "failed_tasks": [],
                     "execution_summary": f"Single task mode execution completed\nTask: {user_requirement}",
                     "workspace_dir": workspace_dir,
-                    "mode": "single_task"
+                    "mode": "single_task",
+                    "current_loop": task_result.get("current_loop", 0)  # Add current loop information
                 }
                 
                 # Save execution report
@@ -653,6 +657,9 @@ class AGIBotMain:
                     except Exception as e:
                         print_current(f"⚠️ Detailed summary report generation failed: {e}")
                 
+                # 🔧 Store execution report for AGIBotClient access
+                self.last_execution_report = execution_report
+                
                 # Clean up resources before returning
                 try:
                     executor.cleanup()
@@ -673,7 +680,8 @@ class AGIBotMain:
                     "max_rounds_reached_tasks": [task_result],  # 🔧 修复：不再标记为failed_tasks
                     "execution_summary": f"Single task mode execution reached max rounds\nTask: {user_requirement}",
                     "workspace_dir": workspace_dir,
-                    "mode": "single_task"
+                    "mode": "single_task",
+                    "current_loop": task_result.get("current_loop", loops)  # Add loop information
                 }
                 
                 # Save execution report
@@ -693,6 +701,9 @@ class AGIBotMain:
                     print_current(f"📋 Execution report saved to: {report_file}")
                 except Exception as e:
                     print_current(f"⚠️ Report save failed: {e}")
+                
+                # 🔧 Store execution report for AGIBotClient access (max_rounds_reached case)
+                self.last_execution_report = execution_report
                 
                 # Clean up resources before returning
                 try:
@@ -1508,12 +1519,18 @@ class AGIBotClient:
             workspace_dir = os.path.join(dir, "workspace")
             
             if success:
+                # 🔧 Get loop information
+                current_loop = 0
+                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
+                    current_loop = main_app.last_execution_report.get("current_loop", 0)
+                
                 return {
                     "success": True,
                     "message": "Task completed successfully",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
+                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
@@ -1522,6 +1539,11 @@ class AGIBotClient:
                     }
                 }
             else:
+                # 🔧 Get loop information (failure case)
+                current_loop = loops  # Default to maximum loops
+                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
+                    current_loop = main_app.last_execution_report.get("current_loop", loops)
+                
                 # 🔧 修复：区分失败和达到最大轮数
                 return {
                     "success": False,
@@ -1529,6 +1551,7 @@ class AGIBotClient:
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
+                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
