@@ -17,7 +17,7 @@ limitations under the License.
 """
 
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sys
 import threading
@@ -218,6 +218,20 @@ I18N_TEXTS = {
         'target_directory_not_exist': '目标目录不存在',
         'upload_success': '成功上传 {0} 个文件',
         'new_name_empty': '新名称不能为空',
+        
+        # Multi-user support
+        'api_key_label': 'API Key:',
+        'api_key_placeholder': '输入API Key (可选)',
+        'api_key_tooltip': '输入您的API Key，留空则使用默认用户模式',
+        'connect_btn': '连接',
+        'disconnect_btn': '断开',
+        'connecting': '连接中...',
+        'user_connected': '已连接',
+        'user_disconnected': '未连接',
+        'user_reconnecting': '重连中...',
+        'user_connection_failed': '连接失败',
+        'default_user': '默认用户',
+        'user_prefix': '用户',
     },
     'en': {
         # Page title and basic info
@@ -379,7 +393,7 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None):
+def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None):
     # Get i18n texts for this process
     i18n = get_i18n_texts()
     """
@@ -594,29 +608,67 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
 
 class AGIBotGUI:
     def __init__(self):
+        # User session management
+        self.user_sessions = {}  # session_id -> UserSession
+        
+        # Get GUI default data directory from config, fallback to current directory
+        config_data_dir = get_gui_default_data_directory()
+        if config_data_dir:
+            self.base_data_dir = config_data_dir
+            print(f"📁 Using configured GUI base data directory: {self.base_data_dir}")
+        else:
+            self.base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            print(f"📁 Using default GUI base data directory: {self.base_data_dir}")
+        
+        # Ensure base directory exists
+        os.makedirs(self.base_data_dir, exist_ok=True)
+        
+        # Create default userdata directory
+        self.default_user_dir = os.path.join(self.base_data_dir, 'userdata')
+        os.makedirs(self.default_user_dir, exist_ok=True)
+        print(f"📁 Default user directory: {self.default_user_dir}")
+
+class UserSession:
+    def __init__(self, session_id, api_key=None):
+        self.session_id = session_id
+        self.api_key = api_key
         self.current_process = None
         self.output_queue = None
         self.current_output_dir = None  # Track current execution output directory
         self.last_output_dir = None     # Track last used output directory
         self.selected_output_dir = None # Track user selected output directory
         
-        # Get GUI default data directory from config, fallback to current directory
-        config_data_dir = get_gui_default_data_directory()
-        if config_data_dir:
-            self.output_dir = config_data_dir
-            print(f"📁 Using configured GUI data directory: {self.output_dir}")
+        # Determine user directory based on API key
+        if api_key:
+            # Use API key hash as directory name for security
+            import hashlib
+            api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+            self.user_dir_name = f"user_{api_key_hash}"
         else:
-            self.output_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            print(f"📁 Using default GUI data directory: {self.output_dir}")
+            self.user_dir_name = "userdata"
+    
+    def get_user_directory(self, base_dir):
+        """Get the user's base directory path"""
+        return os.path.join(base_dir, self.user_dir_name)
         
-    def get_output_directories(self):
-        """Get all directories containing workspace subdirectory"""
+    def get_user_session(self, session_id, api_key=None):
+        """Get or create user session"""
+        if session_id not in self.user_sessions:
+            self.user_sessions[session_id] = UserSession(session_id, api_key)
+        return self.user_sessions[session_id]
+    
+    def get_output_directories(self, user_session):
+        """Get all directories containing workspace subdirectory for specific user"""
         result = []
         
+        # Get user's directory
+        user_output_dir = user_session.get_user_directory(self.base_data_dir)
+        os.makedirs(user_output_dir, exist_ok=True)
+        
         try:
-            # Traverse all subdirectories in current directory
-            for item in os.listdir(self.output_dir):
-                item_path = os.path.join(self.output_dir, item)
+            # Traverse all subdirectories in user's directory
+            for item in os.listdir(user_output_dir):
+                item_path = os.path.join(user_output_dir, item)
                 
                 # Check if it's a directory
                 if os.path.isdir(item_path):
@@ -633,9 +685,9 @@ class AGIBotGUI:
                             'size': self.format_size(size),
                             'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                             'files': self.get_directory_structure(item_path),
-                            'is_current': item == self.current_output_dir,  # Mark if it's current directory
-                            'is_selected': item == self.selected_output_dir,  # Mark if it's selected directory
-                            'is_last': item == self.last_output_dir  # Mark if it's last used directory
+                            'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
+                            'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
+                            'is_last': item == user_session.last_output_dir  # Mark if it's last used directory
                         })
         except (OSError, PermissionError) as e:
             print(f"Error reading directories: {e}")
@@ -708,50 +760,58 @@ class AGIBotGUI:
 
 gui_instance = AGIBotGUI()
 
-def queue_reader_thread():
+def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
-    print("Queue reader thread started.")
+    print(f"Queue reader thread started for user {session_id}.")
+    
+    if session_id not in gui_instance.user_sessions:
+        print(f"❌ User session {session_id} not found")
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
     while True:
         try:
-            if gui_instance.current_process and not gui_instance.current_process.is_alive() and gui_instance.output_queue.empty():
-                print("Process finished and queue is empty, stopping reader.")
+            if user_session.current_process and not user_session.current_process.is_alive() and user_session.output_queue.empty():
+                print(f"Process finished and queue is empty for user {session_id}, stopping reader.")
                 break
 
-            message = gui_instance.output_queue.get(timeout=1)
+            message = user_session.output_queue.get(timeout=1)
             
             if message.get('event') == 'STOP':
-                print("Received STOP sentinel.")
+                print(f"Received STOP sentinel for user {session_id}.")
                 break
             
             # If task completion message, save last used directory and clear current directory mark
             if message.get('event') in ['task_completed', 'error']:
-                if gui_instance.current_output_dir:
-                    gui_instance.last_output_dir = gui_instance.current_output_dir
+                if user_session.current_output_dir:
+                    user_session.last_output_dir = user_session.current_output_dir
                     # If current directory is the selected directory, keep the selection
                     # This ensures user can continue in the same directory
-                    if gui_instance.selected_output_dir == gui_instance.current_output_dir:
-                        print(f"🔄 Keeping selected directory: {gui_instance.selected_output_dir}")
+                    if user_session.selected_output_dir == user_session.current_output_dir:
+                        print(f"🔄 Keeping selected directory for user {session_id}: {user_session.selected_output_dir}")
                     else:
                         # If different directories, clear selection to avoid confusion
-                        print(f"🔄 Clearing selected directory (was {gui_instance.selected_output_dir}, current {gui_instance.current_output_dir})")
-                        gui_instance.selected_output_dir = None
-                gui_instance.current_output_dir = None
+                        print(f"🔄 Clearing selected directory for user {session_id} (was {user_session.selected_output_dir}, current {user_session.current_output_dir})")
+                        user_session.selected_output_dir = None
+                user_session.current_output_dir = None
             
-            socketio.emit(message['event'], message.get('data', {}))
+            # Emit to user's specific room
+            socketio.emit(message['event'], message.get('data', {}), room=session_id)
         except queue.Empty:
             continue
         except Exception as e:
-            print(f"Error in queue_reader_thread: {e}")
+            print(f"Error in queue_reader_thread for user {session_id}: {e}")
             break
     
-    print("Queue reader thread finished.")
-    if gui_instance.current_process:
-        gui_instance.current_process.join(timeout=1)
-    gui_instance.current_process = None
-    gui_instance.output_queue = None
-    if gui_instance.current_output_dir:
-        gui_instance.last_output_dir = gui_instance.current_output_dir
-    gui_instance.current_output_dir = None  # Clear current directory mark
+    print(f"Queue reader thread finished for user {session_id}.")
+    if user_session.current_process:
+        user_session.current_process.join(timeout=1)
+    user_session.current_process = None
+    user_session.output_queue = None
+    if user_session.current_output_dir:
+        user_session.last_output_dir = user_session.current_output_dir
+    user_session.current_output_dir = None  # Clear current directory mark
 
 @app.route('/')
 def index():
@@ -774,7 +834,14 @@ def simple_test():
 def get_output_dirs():
     """Get output directory list"""
     try:
-        dirs = gui_instance.get_output_directories()
+        # Get API key from query parameters
+        api_key = request.args.get('api_key')
+        
+        # Create a temporary session for API calls (since no socket connection)
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        dirs = gui_instance.get_output_directories(user_session)
         return jsonify({'success': True, 'directories': dirs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -783,7 +850,15 @@ def get_output_dirs():
 def download_directory(dir_name):
     """Download directory as zip file (excluding workspace_code_index directory)"""
     try:
-        dir_path = os.path.join(gui_instance.output_dir, secure_filename(dir_name))
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        dir_path = os.path.join(user_base_dir, secure_filename(dir_name))
         if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
             return jsonify({'success': False, 'error': 'Directory not found'})
         
@@ -812,11 +887,19 @@ def download_directory(dir_name):
 def get_file_content(file_path):
     """Get file content"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -1026,11 +1109,19 @@ def get_file_content(file_path):
 def serve_pdf(file_path):
     """Serve PDF file directly"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -1051,11 +1142,19 @@ def serve_pdf(file_path):
 def download_file(file_path):
     """Download file directly"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -1109,11 +1208,19 @@ def upload_to_cloud(file_path):
     try:
         import requests
         
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -1235,23 +1342,74 @@ def upload_to_cloud(file_path):
         return jsonify({'success': False, 'error': str(e)})
 
 @socketio.on('connect')
-def handle_connect():
-    """WebSocket connection processing"""
+def handle_connect(auth):
+    """WebSocket connection processing with authentication"""
     i18n = get_i18n_texts()
-    emit('status', {'message': i18n['connected']})
+    
+    # Get user authentication info
+    api_key = None
+    if auth and 'api_key' in auth:
+        api_key = auth['api_key']
+    
+    # Create or get user session
+    session_id = request.sid
+    user_session = gui_instance.get_user_session(session_id, api_key)
+    
+    # Create user directory if not exists
+    user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    os.makedirs(user_dir, exist_ok=True)
+    
+    # Join user to their own room for isolated communication
+    join_room(session_id)
+    
+    print(f"🔗 User connected: {session_id}, API Key: {'***' if api_key else 'None'}, Directory: {os.path.basename(user_dir)}")
+    
+    emit('status', {'message': i18n['connected']}, room=session_id)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle user disconnection"""
+    session_id = request.sid
+    
+    if session_id in gui_instance.user_sessions:
+        user_session = gui_instance.user_sessions[session_id]
+        
+        # Clean up any running processes
+        if user_session.current_process and user_session.current_process.is_alive():
+            print(f"🛑 Terminating process for disconnected user {session_id}")
+            user_session.current_process.terminate()
+            user_session.current_process.join(timeout=5)  # Wait up to 5 seconds
+        
+        # Leave room
+        leave_room(session_id)
+        
+        # Remove user session
+        del gui_instance.user_sessions[session_id]
+        
+        print(f"🔌 User disconnected and cleaned up: {session_id}")
+    else:
+        print(f"🔌 User disconnected (no session found): {session_id}")
 
 @socketio.on('execute_task')
 def handle_execute_task(data):
     """Handle task execution request"""
     i18n = get_i18n_texts()
+    session_id = request.sid
     
-    if gui_instance.current_process and gui_instance.current_process.is_alive():
-        socketio.emit('error', {'message': i18n['error_task_running']})
+    # Get user session
+    if session_id not in gui_instance.user_sessions:
+        emit('error', {'message': 'User session not found'}, room=session_id)
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
+    if user_session.current_process and user_session.current_process.is_alive():
+        emit('error', {'message': i18n['error_task_running']}, room=session_id)
         return
 
     user_requirement = data.get('requirement', '')
     if not user_requirement.strip():
-        socketio.emit('error', {'message': i18n['error_no_requirement']})
+        emit('error', {'message': i18n['error_no_requirement']}, room=session_id)
         return
     
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
@@ -1259,13 +1417,17 @@ def handle_execute_task(data):
     selected_directory = data.get('selected_directory')  # Directory name from frontend
     gui_config = data.get('gui_config', {})  # GUI configuration options
     
+    # Get user's base directory
+    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    
     # Debug logging
-    print(f"🔍 Execute task debug info:")
+    print(f"🔍 Execute task debug info for user {session_id}:")
     print(f"   Task type: {task_type}")
     print(f"   Plan mode: {plan_mode}")
     print(f"   Frontend selected_directory: {selected_directory}")
-    print(f"   Backend gui_instance.selected_output_dir: {gui_instance.selected_output_dir}")
-    print(f"   Backend gui_instance.last_output_dir: {gui_instance.last_output_dir}")
+    print(f"   Backend user_session.selected_output_dir: {user_session.selected_output_dir}")
+    print(f"   Backend user_session.last_output_dir: {user_session.last_output_dir}")
+    print(f"   User base directory: {user_base_dir}")
     
     if task_type == 'new':
         # New task: create new output directory
@@ -1273,25 +1435,25 @@ def handle_execute_task(data):
         continue_mode = False
     elif task_type == 'selected':
         # Use selected directory - prioritize frontend passed directory name
-        target_dir_name = selected_directory or gui_instance.selected_output_dir
+        target_dir_name = selected_directory or user_session.selected_output_dir
         if target_dir_name:
-            out_dir = os.path.join(gui_instance.output_dir, target_dir_name)
+            out_dir = os.path.join(user_base_dir, target_dir_name)
             # Update backend state to match frontend
-            gui_instance.selected_output_dir = target_dir_name
+            user_session.selected_output_dir = target_dir_name
             print(f"🎯 Using selected directory: {target_dir_name} (from {'frontend' if selected_directory else 'backend state'})")
         else:
             out_dir = None
             print("⚠️ Selected task type but no directory specified")
         # Check if selected directory is newly created (not in last_output_dir)
         # If it's a new directory, should use continue_mode=False
-        if target_dir_name != gui_instance.last_output_dir:
+        if target_dir_name != user_session.last_output_dir:
             continue_mode = False  # New directory, don't continue previous work
         else:
             continue_mode = True   # Existing directory, continue previous work
     else:
         # Continue mode: use last output directory - convert to absolute path
-        if gui_instance.last_output_dir:
-            out_dir = os.path.join(gui_instance.output_dir, gui_instance.last_output_dir)
+        if user_session.last_output_dir:
+            out_dir = os.path.join(user_base_dir, user_session.last_output_dir)
         else:
             out_dir = None
         continue_mode = True
@@ -1299,57 +1461,75 @@ def handle_execute_task(data):
         # If no last directory, create new one
         if not out_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_dir = os.path.join(gui_instance.output_dir, f"output_{timestamp}")
+            out_dir = os.path.join(user_base_dir, f"output_{timestamp}")
     
-    gui_instance.output_queue = multiprocessing.Queue()
+    user_session.output_queue = multiprocessing.Queue()
     
-    gui_instance.current_process = multiprocessing.Process(
-                    target=execute_agibot_task_process_target,
-        args=(user_requirement, gui_instance.output_queue, out_dir, continue_mode, plan_mode, gui_config)
+    user_session.current_process = multiprocessing.Process(
+        target=execute_agibot_task_process_target,
+        args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id)
     )
-    gui_instance.current_process.daemon = True
-    gui_instance.current_process.start()
+    user_session.current_process.daemon = True
+    user_session.current_process.start()
     
     # Set current output directory name (extract from absolute path if needed)
     if out_dir:
-        gui_instance.current_output_dir = os.path.basename(out_dir)
+        user_session.current_output_dir = os.path.basename(out_dir)
     else:
-        gui_instance.current_output_dir = None
+        user_session.current_output_dir = None
 
-    threading.Thread(target=queue_reader_thread, daemon=True).start()
+    threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
 
 @socketio.on('select_directory')
 def handle_select_directory(data):
     """Handle directory selection request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
     dir_name = data.get('dir_name', '')
     if dir_name:
-        gui_instance.selected_output_dir = dir_name
-        socketio.emit('directory_selected', {'dir_name': dir_name})
+        user_session.selected_output_dir = dir_name
+        emit('directory_selected', {'dir_name': dir_name}, room=session_id)
     else:
-        gui_instance.selected_output_dir = None
-        socketio.emit('directory_selected', {'dir_name': None})
+        user_session.selected_output_dir = None
+        emit('directory_selected', {'dir_name': None}, room=session_id)
 
 @socketio.on('stop_task')
 def handle_stop_task():
     """Handle stop task request"""
     i18n = get_i18n_texts()
+    session_id = request.sid
     
-    if gui_instance.current_process and gui_instance.current_process.is_alive():
-        print("Received stop request. Terminating process.")
-        gui_instance.current_process.terminate()
-        gui_instance.current_output_dir = None  # Clear current directory mark
-        socketio.emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'})
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
+    if user_session.current_process and user_session.current_process.is_alive():
+        print(f"Received stop request for user {session_id}. Terminating process.")
+        user_session.current_process.terminate()
+        user_session.current_output_dir = None  # Clear current directory mark
+        emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'}, room=session_id)
     else:
-        socketio.emit('output', {'message': i18n['no_task_running'], 'type': 'info'})
+        emit('output', {'message': i18n['no_task_running'], 'type': 'info'}, room=session_id)
 
 @socketio.on('create_new_directory')
 def handle_create_new_directory():
     """Handle create new directory request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    
     try:
         i18n = get_i18n_texts()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_dir_name = f"output_{timestamp}"
-        new_dir_path = os.path.join(gui_instance.output_dir, new_dir_name)
+        new_dir_path = os.path.join(user_base_dir, new_dir_name)
         
         # Create main directory
         os.makedirs(new_dir_path, exist_ok=True)
@@ -1359,27 +1539,39 @@ def handle_create_new_directory():
         os.makedirs(workspace_dir, exist_ok=True)
         
         # Set as currently selected directory
-        gui_instance.selected_output_dir = new_dir_name
+        user_session.selected_output_dir = new_dir_name
         
-        socketio.emit('directory_created', {
+        emit('directory_created', {
             'dir_name': new_dir_name,
             'success': True,
             'message': i18n['directory_created_with_workspace'].format(new_dir_name)
-        })
+        }, room=session_id)
         
     except Exception as e:
-        socketio.emit('directory_created', {
+        emit('directory_created', {
             'success': False,
             'error': str(e)
-        })
+        }, room=session_id)
 
 @app.route('/api/refresh-dirs', methods=['POST'])
 def refresh_directories():
     """Manually refresh directory list"""
     try:
         i18n = get_i18n_texts()
-        # Use existing method to get directory list
-        directories = gui_instance.get_output_directories()
+        
+        # Get API key from JSON data, query parameters or headers
+        api_key = None
+        if request.json:
+            api_key = request.json.get('api_key')
+        if not api_key:
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # Use existing method to get directory list for this user
+        directories = gui_instance.get_output_directories(user_session)
         return jsonify({
             'success': True,
             'directories': directories,
@@ -1398,6 +1590,15 @@ def upload_files(dir_name):
     """Upload files to workspace of specified directory"""
     try:
         i18n = get_i18n_texts()
+        
+        # Get API key from form data, query parameters or headers
+        api_key = request.form.get('api_key') or request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         if 'files' not in request.files:
             return jsonify({'success': False, 'error': i18n['no_files_selected']})
         
@@ -1406,7 +1607,7 @@ def upload_files(dir_name):
             return jsonify({'success': False, 'error': i18n['no_valid_files']})
         
         # Target directory path
-        target_dir = os.path.join(gui_instance.output_dir, secure_filename(dir_name))
+        target_dir = os.path.join(user_base_dir, secure_filename(dir_name))
         if not os.path.exists(target_dir):
             return jsonify({'success': False, 'error': i18n['target_directory_not_exist']})
         
@@ -1476,14 +1677,26 @@ def rename_directory(old_name):
     """Rename output directory"""
     try:
         i18n = get_i18n_texts()
+        
+        # Get API key from form data, query parameters or headers
+        api_key = request.json.get('api_key') if request.json else None
+        if not api_key:
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         data = request.get_json()
         new_name = data.get('new_name', '').strip()
         
         if not new_name:
             return jsonify({'success': False, 'error': i18n['new_name_empty']})
         
-        # Check if it's currently executing directory
-        if old_name == gui_instance.current_output_dir:
+        # Check if it's currently executing directory for any user with same API key
+        # (This is a simplification - in practice we might want to check all sessions with same API key)
+        if hasattr(user_session, 'current_output_dir') and old_name == user_session.current_output_dir:
             return jsonify({'success': False, 'error': 'Cannot rename directory currently in use'})
         
         # Use custom secure filename handling, preserve more characters
@@ -1492,8 +1705,8 @@ def rename_directory(old_name):
             return jsonify({'success': False, 'error': 'Invalid directory name'})
         
         # Build complete path
-        old_path = os.path.join(gui_instance.output_dir, secure_filename(old_name))
-        new_path = os.path.join(gui_instance.output_dir, new_name_safe)
+        old_path = os.path.join(user_base_dir, secure_filename(old_name))
+        new_path = os.path.join(user_base_dir, new_name_safe)
         
         # Debug info
         print(f"Rename debug info:")
@@ -1511,7 +1724,7 @@ def rename_directory(old_name):
         # Security check: ensure paths are within expected directory
         real_old_path = os.path.realpath(old_path)
         real_new_path = os.path.realpath(new_path)
-        expected_parent = os.path.realpath(gui_instance.output_dir)
+        expected_parent = os.path.realpath(user_base_dir)
         
         if not real_old_path.startswith(expected_parent) or not real_new_path.startswith(expected_parent):
             return jsonify({'success': False, 'error': 'Paths are not safe'})
@@ -1529,11 +1742,11 @@ def rename_directory(old_name):
         # Rename directory
         os.rename(old_path, new_path)
         
-        # Update GUI instance related states
-        if gui_instance.selected_output_dir == old_name:
-            gui_instance.selected_output_dir = new_name_safe
-        if gui_instance.last_output_dir == old_name:
-            gui_instance.last_output_dir = new_name_safe
+        # Update user session related states
+        if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == old_name:
+            user_session.selected_output_dir = new_name_safe
+        if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == old_name:
+            user_session.last_output_dir = new_name_safe
         
         print(f"Successfully renamed directory: {old_name} -> {new_name_safe}")
         
@@ -1552,12 +1765,20 @@ def rename_directory(old_name):
 def delete_directory(dir_name):
     """Delete specified output directory"""
     try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = f"api_{request.remote_addr}_{id(request)}"
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         # Security check directory name
         safe_dir_name = secure_filename(dir_name)
-        target_dir = os.path.join(gui_instance.output_dir, safe_dir_name)
+        target_dir = os.path.join(user_base_dir, safe_dir_name)
         
-        # Security check: ensure directory is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_target_dir = os.path.realpath(target_dir)
         if not real_target_dir.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
@@ -1571,8 +1792,8 @@ def delete_directory(dir_name):
         if not os.path.exists(workspace_path) or not os.path.isdir(workspace_path):
             return jsonify({'success': False, 'error': 'Only directories with workspace subdirectory can be deleted'})
         
-        # Check if it's currently executing directory
-        if gui_instance.current_output_dir == dir_name:
+        # Check if it's currently executing directory for any user with same API key
+        if hasattr(user_session, 'current_output_dir') and user_session.current_output_dir == dir_name:
             return jsonify({'success': False, 'error': 'Cannot delete currently executing directory'})
         
         print(f"Deleting directory: {target_dir}")
@@ -1580,11 +1801,11 @@ def delete_directory(dir_name):
         # Delete directory and all its contents
         shutil.rmtree(target_dir)
         
-        # Clean GUI instance related states
-        if gui_instance.last_output_dir == dir_name:
-            gui_instance.last_output_dir = None
-        if gui_instance.selected_output_dir == dir_name:
-            gui_instance.selected_output_dir = None
+        # Clean user session related states
+        if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == dir_name:
+            user_session.last_output_dir = None
+        if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == dir_name:
+            user_session.selected_output_dir = None
         
         print(f"Successfully deleted directory: {dir_name}")
         

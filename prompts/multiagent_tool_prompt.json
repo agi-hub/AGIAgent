@@ -110,7 +110,8 @@
       "properties": {
         "agent_id": {
           "type": "string",
-          "description": "ID of the agent sending the update"
+          "description": "ID of the agent sending the update. ALWAYS use 'current_agent' to auto-detect the correct agent ID.",
+          "default": "current_agent"
         },
         "round_number": {
           "type": "integer",
@@ -165,6 +166,14 @@
           "description": "Reason for termination (optional)"
         }
       },
+      "required": []
+    }
+  },
+  "get_realtime_fairness_report": {
+    "description": "Get detailed real-time fairness report showing ROUND-LEVEL resource distribution balance among all agents. This shows how many rounds each agent has executed, not just instance spawning. Essential for monitoring round-by-round fairness in multi-agent execution.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
       "required": []
     }
   }

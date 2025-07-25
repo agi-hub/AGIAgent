@@ -22,13 +22,29 @@ import time
 import queue
 from typing import Dict, Any
 from .print_system import print_agent, print_system, print_current
+from .priority_scheduler import get_priority_scheduler, cleanup_scheduler
 
 
 class MultiAgentTools:
-    def __init__(self, workspace_root: str = None, debug_mode: bool = False):
-        """Initialize multi-agent tools with a workspace root directory."""
+    def __init__(self, workspace_root: str = None, debug_mode: bool = False, 
+                 use_priority_scheduler: bool = True, max_concurrent_agents: int = 5,
+                 lazy_scheduler_start: bool = True):
+        """
+        Initialize multi-agent tools with a workspace root directory.
+        
+        Args:
+            workspace_root: Root directory for workspace files
+            debug_mode: Enable debug logging
+            use_priority_scheduler: Enable priority-based fair scheduling (default: True)
+            max_concurrent_agents: Maximum number of concurrent agents (default: 20)
+            lazy_scheduler_start: If True, delay scheduler startup until first task (default: True)
+                                 Useful for resource-conscious applications that may not spawn agents
+        """
         self.workspace_root = workspace_root or os.getcwd()
         self.debug_mode = debug_mode  # Save debug mode setting
+        self.use_priority_scheduler = use_priority_scheduler
+        self.max_concurrent_agents = max_concurrent_agents
+        self.lazy_scheduler_start = lazy_scheduler_start
         
         # Add session-level AGIBot task tracking
         self.session_spawned_tasks = set()
@@ -41,6 +57,24 @@ class MultiAgentTools:
         
         # Save generated agent IDs for reference normalization
         self.generated_agent_ids = []
+        
+        # 🔧 新增：优先级调度器
+        if self.use_priority_scheduler:
+            # 根据用户配置决定是否立即启动调度器
+            auto_start = not self.lazy_scheduler_start  # 默认立即启动，除非用户选择懒加载
+            
+            self.priority_scheduler = get_priority_scheduler(
+                max_workers=max_concurrent_agents,
+                auto_start=auto_start
+            )
+            
+            if auto_start:
+                print_current(f"🏗️ MultiAgentTools initialized with priority scheduler (max {max_concurrent_agents} concurrent agents)")
+            else:
+                print_current(f"🏗️ MultiAgentTools initialized with lazy-loaded priority scheduler (max {max_concurrent_agents} concurrent agents)")
+        else:
+            self.priority_scheduler = None
+            print_current(f"🏗️ MultiAgentTools initialized with traditional threading (no scheduler)")
 
     def spawn_agibot(self, task_description: str, agent_id: str = None, output_directory: str = None, api_key: str = None, model: str = None, max_loops: int = 25, wait_for_completion: bool = False, shared_workspace: bool = True, MCP_config_file: str = None, prompts_folder: str = None, **kwargs) -> Dict[str, Any]:
         """
@@ -270,6 +304,7 @@ class MultiAgentTools:
                 "shared_workspace": shared_workspace,
                 "model": model,
                 "max_loops": max_loops,
+                "current_loop": 0,  # Add current loop field, initialized to 0
                 "error": None
             }
             
@@ -323,7 +358,7 @@ class MultiAgentTools:
                         continue_mode=kwargs.get('continue_mode', False)
                     )
                     
-                    # 🔧 修复：检查是否收到了terminate信号
+                    # 🔧 检查是否收到了terminate信号
                     is_terminated = False
                     if isinstance(response.get('message'), str) and 'AGENT_TERMINATED' in response.get('message', ''):
                         is_terminated = True
@@ -343,6 +378,7 @@ class MultiAgentTools:
                             "shared_workspace": shared_workspace,
                             "model": model,
                             "max_loops": max_loops,
+                            "current_loop": response.get("current_loop", 0),  # Add loop information when terminated
                             "error": None,
                             "success": True,
                             "terminated": True,
@@ -371,6 +407,7 @@ class MultiAgentTools:
                             "shared_workspace": shared_workspace,
                             "model": model,
                             "max_loops": max_loops,
+                            "current_loop": response.get("current_loop", max_loops),  # Add final loop information
                             "error": None,
                             "success": True,
                             "response": response
@@ -408,6 +445,7 @@ class MultiAgentTools:
                             "shared_workspace": shared_workspace,
                             "model": model,
                             "max_loops": max_loops,
+                            "current_loop": response.get("current_loop", max_loops),  # Add loop information when failed
                             "error": error_message,
                             "success": False,
                             "response": response
@@ -436,7 +474,7 @@ class MultiAgentTools:
                         else:
                             print_agent(task_id, f"❌ AGIBot spawn {task_id} failed: {response_message}")
                     
-                    # 🔧 修复：在完成后从active_threads中移除
+                    # 🔧 在完成后从active_threads中移除
                     if hasattr(self, 'active_threads') and task_id in self.active_threads:
                         del self.active_threads[task_id]
                     
@@ -459,6 +497,7 @@ class MultiAgentTools:
                         "shared_workspace": shared_workspace,
                         "model": model,
                         "max_loops": max_loops,
+                        "current_loop": 0,  # Add loop information on error (usually 0)
                         "error": error_msg,
                         "success": False,
                         "response": {
@@ -485,21 +524,40 @@ class MultiAgentTools:
                     # Reset agent ID after exception handling
                     set_agent_id(None)
             
-            # Start the task in a separate thread
-            thread = threading.Thread(target=execute_agibot_task, daemon=True)
-            thread.start()
-            
-            # Wait a moment to let the thread start
-            time.sleep(0.1)
-            
-            # Add the task ID started in this session to the tracking set
-            self.session_spawned_tasks.add(task_id)
-            
-            # Save thread reference for later checking
-            self.active_threads[task_id] = thread
-            
-            # Save generated agent ID for reference normalization
-            self.generated_agent_ids.append(task_id)
+            # 🔧 新增：选择执行方式（优先级调度器 vs 传统线程）
+            if self.use_priority_scheduler and self.priority_scheduler:
+                # 使用优先级调度器
+                submitted_task_id = self.priority_scheduler.submit_agent_task(
+                    agent_id=task_id,
+                    task_func=execute_agibot_task,
+                    estimated_duration=max_loops * 30.0,  # 估算执行时间
+                    base_priority=5.0  # 基础优先级
+                )
+                
+                print_agent(task_id, f"📋 Submitted to priority scheduler with task ID: {submitted_task_id}")
+                
+                # 添加到跟踪集合
+                self.session_spawned_tasks.add(task_id)
+                self.generated_agent_ids.append(task_id)
+                
+                # 不直接创建线程，但保留接口兼容性
+                self.active_threads[task_id] = f"scheduled_{submitted_task_id}"
+            else:
+                # 使用传统线程方式
+                thread = threading.Thread(target=execute_agibot_task, daemon=True)
+                thread.start()
+                
+                # Wait a moment to let the thread start
+                time.sleep(0.1)
+                
+                # Add the task ID started in this session to the tracking set
+                self.session_spawned_tasks.add(task_id)
+                
+                # Save thread reference for later checking
+                self.active_threads[task_id] = thread
+                
+                # Save generated agent ID for reference normalization
+                self.generated_agent_ids.append(task_id)
             
             # Base result information
             result = {
@@ -512,44 +570,96 @@ class MultiAgentTools:
                 "task_description": task_description,
                 "model": model,
                 "max_loops": max_loops,
-                "thread_started": thread.is_alive(),
                 "shared_workspace": shared_workspace,
                 "status_file": status_file_path,
                 "agent_communication_note": f"✅ Use agent ID '{task_id}' for all message sending and receiving operations",
-                "spawn_mode": "asynchronous" if not wait_for_completion else "synchronous"
+                "spawn_mode": "asynchronous" if not wait_for_completion else "synchronous",
+                "scheduler_mode": "priority_queue" if self.use_priority_scheduler else "traditional_threading"
             }
             
+            # 添加线程/调度器特定信息
+            if self.use_priority_scheduler and self.priority_scheduler:
+                result["thread_started"] = True  # 调度器已经启动
+                result["scheduler_status"] = self.priority_scheduler.get_status()
+                result["execution_note"] = "Task submitted to priority scheduler for fair resource allocation"
+            else:
+                result["thread_started"] = thread.is_alive()
+                result["thread_id"] = thread.ident if thread else None
+                result["execution_note"] = "Task running in dedicated thread"
+            
             if wait_for_completion:
-                print_agent(f"⏳ Waiting for AGIBot spawn {task_id} to complete...")
+                print_agent(task_id, f"⏳ Waiting for AGIBot spawn {task_id} to complete...")
                 
                 result["note"] = "Waiting for task completion..."
                 
-                # Wait for the thread to complete
-                thread.join()
+                if self.use_priority_scheduler and self.priority_scheduler:
+                    # 优先级调度器模式：轮询状态文件
+                    print_agent(task_id, "⏳ Polling status file for completion (priority scheduler mode)...")
+                    
+                    max_wait_time = 300  # 最多等待5分钟
+                    poll_interval = 2  # 每2秒检查一次
+                    waited_time = 0
+                    
+                    while waited_time < max_wait_time:
+                        try:
+                            if os.path.exists(status_file_path):
+                                with open(status_file_path, 'r', encoding='utf-8') as f:
+                                    final_status = json.load(f)
+                                
+                                if final_status.get("status") in ["completed", "failed", "terminated", "max_rounds_reached"]:
+                                    result.update({
+                                        "status": final_status["status"],
+                                        "completion_time": final_status.get("completion_time"), 
+                                        "success": final_status.get("success", False),
+                                        "error": final_status.get("error", None),
+                                        "note": "Task completed synchronously via priority scheduler."
+                                    })
+                                    break
+                            
+                            time.sleep(poll_interval)
+                            waited_time += poll_interval
+                            
+                        except Exception as e:
+                            print_agent(task_id, f"⚠️ Error checking status: {e}")
+                            time.sleep(poll_interval)
+                            waited_time += poll_interval
+                    
+                    if waited_time >= max_wait_time:
+                        result.update({
+                            "status": "timeout",
+                            "note": f"Task did not complete within {max_wait_time} seconds"
+                        })
+                else:
+                    # 传统线程模式：直接join
+                    thread.join()
+                    
+                    # Read final status from file
+                    try:
+                        with open(status_file_path, 'r', encoding='utf-8') as f:
+                            final_status = json.load(f)
+                        result.update({
+                            "status": final_status["status"],
+                            "completion_time": final_status["completion_time"], 
+                            "success": final_status.get("success", False),
+                            "error": final_status.get("error", None),
+                            "note": "Task completed synchronously."
+                        })
+                    except Exception as e:
+                        result.update({
+                            "status": "error",
+                            "note": f"Task thread completed but status file could not be read: {e}"
+                        })
                 
-                # Read final status from file
-                try:
-                    with open(status_file_path, 'r', encoding='utf-8') as f:
-                        final_status = json.load(f)
-                    result.update({
-                        "status": final_status["status"],
-                        "completion_time": final_status["completion_time"], 
-                        "success": final_status.get("success", False),
-                        "error": final_status.get("error", None),
-                        "note": "Task completed synchronously."
-                    })
-                except Exception as e:
-                    result.update({
-                        "status": "error",
-                        "note": f"Task thread completed but status file could not be read: {e}"
-                    })
-                
-                print_agent(f"✅ Spawn {task_id} completed")
+                print_agent(task_id, f"✅ Spawn {task_id} completed")
                 
             else:
-                result["note"] = f"✅ AGIBot {task_id} is running asynchronously in background. Task will execute independently and send messages when completed."
-                result["success"] = True
-                result["thread_id"] = thread.ident if thread else None
+                if self.use_priority_scheduler and self.priority_scheduler:
+                    result["note"] = f"✅ AGIBot {task_id} submitted to priority scheduler. Task will execute fairly with resource management."
+                    result["success"] = True
+                else:
+                    result["note"] = f"✅ AGIBot {task_id} is running asynchronously in background. Task will execute independently and send messages when completed."
+                    result["success"] = True
+                    result["thread_id"] = thread.ident if thread else None
             
             return result
             
@@ -591,9 +701,13 @@ class MultiAgentTools:
             except KeyError:
                 msg_priority = MessagePriority.NORMAL
             
-            # Get current agent ID as sender_id, if not, use manager
+            # 🔧 强制获取当前线程的真实agent_id作为sender_id
             current_agent_id = get_agent_id()
             sender_id = current_agent_id if current_agent_id else "manager"
+            
+            # 如果函数调用者传入了发送者信息但与当前线程不匹配，发出警告
+            if hasattr(self, '_override_sender_check') and current_agent_id:
+                print_current(f"📤 Message sender auto-detected as: {sender_id}")
             
             # Create message
             message = Message(
@@ -1011,12 +1125,19 @@ class MultiAgentTools:
             from .message_system import Message, MessageType, MessagePriority, StatusUpdateMessage, get_message_router
             from .print_system import get_agent_id
             
-            # 🔧 修复：自动获取当前智能体ID，支持current_agent参数
-            if agent_id == "current_agent" or not agent_id:
-                current_agent_id = get_agent_id()
-                actual_agent_id = current_agent_id if current_agent_id else "manager"
+            # 🔧 始终使用当前线程的真实agent_id，防止LLM参数错误
+            current_agent_id = get_agent_id()
+            if current_agent_id:
+                actual_agent_id = current_agent_id
+                # 如果LLM传入的agent_id与当前线程agent_id不匹配，发出警告
+                if agent_id != "current_agent" and agent_id != current_agent_id:
+                    print_current(f"⚠️ Agent ID mismatch! LLM provided '{agent_id}' but current thread is '{current_agent_id}'. Using correct ID.")
             else:
-                actual_agent_id = agent_id
+                # 如果没有设置agent_id，使用传入的参数或默认值
+                if agent_id == "current_agent" or not agent_id:
+                    actual_agent_id = "manager"
+                else:
+                    actual_agent_id = agent_id
             
             # Get message router
             router = get_message_router(self.workspace_root)
@@ -1054,7 +1175,7 @@ class MultiAgentTools:
             # Send message
             success = sender_mailbox.send_message(message)
             
-            # 🔧 修复：发送状态更新后立即触发路由处理
+            # 发送状态更新后立即触发路由处理
             if success:
                 try:
                     processed_count = router.process_all_messages_once()
@@ -1102,7 +1223,7 @@ class MultiAgentTools:
             # Broadcast message
             sent_count = router.broadcast_message("manager", content)
             
-            # 🔧 修复：广播消息后立即触发路由处理
+            # 🔧 广播消息后立即触发路由处理
             if sent_count > 0:
                 try:
                     processed_count = router.process_all_messages_once()
@@ -1123,6 +1244,326 @@ class MultiAgentTools:
                 "message_type": message_type
             }
 
+    def get_realtime_fairness_report(self) -> Dict[str, Any]:
+        """
+        获取实时轮次级别的公平性报告，显示各智能体之间的轮次分配均衡情况
+        
+        Returns:
+            包含轮次级别公平性分析的详细报告
+        """
+        # 🔧 新版本：使用轮次级别的公平性报告
+        round_report = self.get_round_fairness_report()
+        
+        # 为了保持向后兼容，生成漂亮的控制台输出
+        if round_report.get("round_scheduling") and round_report.get("scheduler_enabled"):
+            try:
+                summary = round_report.get("summary", {})
+                fairness = round_report.get("fairness_analysis", {})
+                round_counts = round_report.get("round_execution_counts", {})
+                
+                # 控制台输出
+                print_current("🎮 ==========================================")
+                print_current("🎮 Real-time Round-Level Fairness Report")
+                print_current("🎮 ==========================================")
+                print_current(f"🎮 Fairness Grade: {fairness.get('fairness_score', 'N/A')}")
+                print_current(f"🎮 Round Gap: {summary.get('round_gap', 0)} rounds")
+                print_current(f"🎮 Average Rounds: {summary.get('average_rounds_per_agent', 0)}")
+                print_current(f"🎮 Active Agents: {summary.get('total_agents', 0)}")
+                print_current(f"🎮 Total Rounds: {summary.get('total_rounds_executed', 0)}")
+                print_current("🎮 ------------------------------------------")
+                print_current(f"🎮 Distribution: {summary.get('round_distribution', 'No data')}")
+                print_current("🎮 ==========================================")
+                
+                # 转换格式以保持向后兼容
+                return {
+                    "status": "success",
+                    "fairness_grade": fairness.get("fairness_score", "N/A"),
+                    "execution_gap": summary.get("round_gap", 0),
+                    "max_executions": fairness.get("max_rounds", 0),
+                    "min_executions": fairness.get("min_rounds", 0),
+                    "avg_executions": summary.get("average_rounds_per_agent", 0),
+                    "active_agents": summary.get("total_agents", 0),
+                    "round_distribution": summary.get("round_distribution", ""),
+                    "fairness_report": {
+                        "timestamp": round_report.get("timestamp"),
+                        "balance_score": max(0, 100 - summary.get("round_gap", 0) * 25),
+                        "scheduler_efficiency": "HIGH" if summary.get("round_gap", 0) <= 1 else "MEDIUM" if summary.get("round_gap", 0) <= 2 else "LOW",
+                        "round_scheduling": True
+                    },
+                    "round_counts": round_counts,
+                    "detailed_report": round_report
+                }
+                
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Error formatting round fairness report: {e}",
+                    "raw_report": round_report
+                }
+        else:
+            # 调度器未启用或无轮次调度
+            return {
+                "status": "info",
+                "message": "Round-level scheduler not enabled",
+                "fairness_report": None,
+                "raw_report": round_report
+            }
+
+    def get_scheduler_status(self) -> Dict[str, Any]:
+        """Get current scheduler status"""
+        if not self.use_priority_scheduler or not self.priority_scheduler:
+            return {
+                "scheduler_enabled": False,
+                "message": "Priority scheduler is not enabled"
+            }
+        
+        return self.priority_scheduler.get_status()
+    
+    # 🔧 新增：获取轮次调度公平性报告
+    def get_round_fairness_report(self) -> Dict[str, Any]:
+        """
+        获取轮次级别的公平性调度报告
+        
+        Returns:
+            包含轮次分配情况的详细报告
+        """
+        if not self.use_priority_scheduler or not self.priority_scheduler:
+            return {
+                "scheduler_enabled": False,
+                "message": "Round-level scheduler is not enabled",
+                "round_scheduling": False
+            }
+        
+        try:
+            # 获取轮次执行计数
+            with self.priority_scheduler.metrics_lock:
+                round_counts = dict(self.priority_scheduler.round_execution_counts)
+                agent_metrics = {
+                    agent_id: {
+                        "total_executions": metrics.total_executions,
+                        "total_successful_tasks": metrics.total_successful_tasks,
+                        "total_failed_tasks": metrics.total_failed_tasks,
+                        "last_execution_time": metrics.last_execution_time,
+                        "fairness_score": metrics.fairness_score
+                    }
+                    for agent_id, metrics in self.priority_scheduler.agent_metrics.items()
+                }
+            
+            # 计算统计信息
+            if round_counts:
+                total_rounds = sum(round_counts.values())
+                avg_rounds = total_rounds / len(round_counts)
+                min_rounds = min(round_counts.values())
+                max_rounds = max(round_counts.values())
+                round_gap = max_rounds - min_rounds
+                
+                # 计算公平性等级
+                if round_gap == 0:
+                    fairness_grade = "A+"
+                    fairness_desc = "完美均衡"
+                elif round_gap == 1:
+                    fairness_grade = "A"
+                    fairness_desc = "优秀均衡"
+                elif round_gap <= 2:
+                    fairness_grade = "B"
+                    fairness_desc = "良好均衡"
+                elif round_gap <= 3:
+                    fairness_grade = "C"
+                    fairness_desc = "一般均衡"
+                else:
+                    fairness_grade = "D"
+                    fairness_desc = "不均衡"
+                
+                # 生成轮次分布字符串
+                round_distribution = ", ".join([f"{agent_id}: {count}" for agent_id, count in round_counts.items()])
+                
+            else:
+                total_rounds = avg_rounds = min_rounds = max_rounds = round_gap = 0
+                fairness_grade = "N/A"
+                fairness_desc = "无数据"
+                round_distribution = "无智能体执行"
+            
+            # 获取队列状态
+            queue_size = self.priority_scheduler.round_request_queue.qsize()
+            scheduler_active = self.priority_scheduler.round_scheduler_active
+            
+            return {
+                "scheduler_enabled": True,
+                "round_scheduling": True,
+                "timestamp": datetime.now().isoformat(),
+                "summary": {
+                    "total_agents": len(round_counts),
+                    "total_rounds_executed": total_rounds,
+                    "average_rounds_per_agent": round(avg_rounds, 2),
+                    "round_gap": round_gap,
+                    "fairness_grade": fairness_grade,
+                    "fairness_description": fairness_desc,
+                    "round_distribution": round_distribution
+                },
+                "round_execution_counts": round_counts,
+                "agent_metrics": agent_metrics,
+                "scheduler_status": {
+                    "round_scheduler_active": scheduler_active,
+                    "pending_round_requests": queue_size,
+                    "max_workers": self.priority_scheduler.max_workers
+                },
+                "fairness_analysis": {
+                    "most_active_agent": max(round_counts, key=round_counts.get) if round_counts else None,
+                    "least_active_agent": min(round_counts, key=round_counts.get) if round_counts else None,
+                    "max_rounds": max_rounds,
+                    "min_rounds": min_rounds,
+                    "execution_gap": round_gap,
+                    "fairness_score": f"{fairness_grade} ({fairness_desc})"
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "scheduler_enabled": True,
+                "round_scheduling": True,
+                "error": f"Failed to get round fairness report: {e}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def toggle_scheduler_mode(self, enable_scheduler: bool = True) -> Dict[str, Any]:
+        """
+        切换调度器模式（仅在没有活跃任务时有效）
+        
+        Args:
+            enable_scheduler: 是否启用优先级调度器
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查是否有活跃任务
+            active_count = len([t for t in self.active_threads.values() 
+                              if (isinstance(t, threading.Thread) and t.is_alive()) or 
+                                 (isinstance(t, str) and t.startswith("scheduled_"))])
+            
+            if active_count > 0:
+                return {
+                    "status": "error",
+                    "message": f"Cannot change scheduler mode with {active_count} active tasks. Wait for completion first.",
+                    "current_mode": "priority_queue" if self.use_priority_scheduler else "traditional_threading"
+                }
+            
+            old_mode = self.use_priority_scheduler
+            self.use_priority_scheduler = enable_scheduler
+            
+            if enable_scheduler and not old_mode:
+                # 启用调度器
+                from .priority_scheduler import get_priority_scheduler
+                self.priority_scheduler = get_priority_scheduler(
+                    max_workers=self.max_concurrent_agents,
+                    auto_start=True  # 手动启用时立即启动
+                )
+                message = "Priority scheduler enabled for fair resource allocation"
+            elif not enable_scheduler and old_mode:
+                # 禁用调度器
+                if self.priority_scheduler:
+                    self.priority_scheduler.stop()
+                    self.priority_scheduler = None
+                message = "Switched to traditional threading mode"
+            else:
+                message = f"Scheduler mode unchanged ({'enabled' if enable_scheduler else 'disabled'})"
+            
+            return {
+                "status": "success",
+                "message": message,
+                "old_mode": "priority_queue" if old_mode else "traditional_threading",
+                "new_mode": "priority_queue" if self.use_priority_scheduler else "traditional_threading"
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error toggling scheduler mode: {str(e)}"
+            }
+
+    def emergency_restart_scheduler(self) -> Dict[str, Any]:
+        """
+        紧急重启调度器以恢复阻塞状态
+        
+        Returns:
+            重启结果
+        """
+        try:
+            if self.use_priority_scheduler and self.priority_scheduler:
+                print_current("🚨 Attempting emergency restart of priority scheduler...")
+                
+                # 🔧 使用新的强力死锁恢复功能
+                success = self.priority_scheduler.force_deadlock_break()
+                
+                if success:
+                    return {
+                        "status": "success",
+                        "message": "Priority scheduler emergency restart completed successfully",
+                        "scheduler_restarted": True
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "message": "Priority scheduler emergency restart failed",
+                        "scheduler_restarted": False
+                    }
+            else:
+                return {
+                    "status": "info",
+                    "message": "Priority scheduler not enabled, no restart needed",
+                    "scheduler_restarted": False
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error during emergency restart: {str(e)}",
+                "scheduler_restarted": False
+            }
+    
+    def force_break_deadlock(self) -> Dict[str, Any]:
+        """
+        强制打破死锁，用于严重卡死情况
+        
+        Returns:
+            恢复结果
+        """
+        try:
+            print_current("🚨 FORCE BREAK DEADLOCK INITIATED...")
+            
+            if self.use_priority_scheduler and self.priority_scheduler:
+                # 强制打破死锁
+                success = self.priority_scheduler.force_deadlock_break()
+                
+                if success:
+                    print_current("🚨 Deadlock break successful")
+                    return {
+                        "status": "success", 
+                        "message": "Deadlock successfully broken and system recovered",
+                        "deadlock_broken": True
+                    }
+                else:
+                    print_current("🚨 Deadlock break failed")
+                    return {
+                        "status": "error",
+                        "message": "Failed to break deadlock",
+                        "deadlock_broken": False
+                    }
+            else:
+                return {
+                    "status": "info",
+                    "message": "Priority scheduler not enabled",
+                    "deadlock_broken": False
+                }
+                
+        except Exception as e:
+            print_current(f"🚨 Force break deadlock error: {e}")
+            return {
+                "status": "error",
+                "message": f"Error during deadlock break: {str(e)}",
+                "deadlock_broken": False
+            }
+
     def get_agent_session_info(self) -> Dict[str, Any]:
         """
         Get comprehensive information about current agent session including session statistics, 
@@ -1134,6 +1575,7 @@ class MultiAgentTools:
         try:
             from .message_system import get_message_router
             import glob
+            import threading
             
             # Get message router
             router = get_message_router(self.workspace_root, cleanup_on_init=False)
@@ -1144,17 +1586,30 @@ class MultiAgentTools:
             # Get active agents based on thread status
             active_agents_info = []
             
-            # Check active threads
+            # Check active threads (handle both traditional threads and scheduled tasks)
             if hasattr(self, 'active_threads'):
-                for agent_id, thread in self.active_threads.items():
-                    if thread.is_alive():
+                for agent_id, thread_or_ref in self.active_threads.items():
+                    # 🔧 区分传统线程和调度器任务引用
+                    if isinstance(thread_or_ref, threading.Thread):
+                        # 传统线程模式
+                        if thread_or_ref.is_alive():
+                            active_agents_info.append({
+                                "agent_id": agent_id,
+                                "status": "active",
+                                "task_description": f"Agent {agent_id}",
+                                "start_time": "2025-01-01T00:00:00",
+                                "thread_id": thread_or_ref.ident,
+                                "thread_name": thread_or_ref.name
+                            })
+                    elif isinstance(thread_or_ref, str) and thread_or_ref.startswith("scheduled_"):
+                        # 优先级调度器模式
                         active_agents_info.append({
                             "agent_id": agent_id,
-                            "status": "active",
+                            "status": "scheduled",
                             "task_description": f"Agent {agent_id}",
                             "start_time": "2025-01-01T00:00:00",
-                            "thread_id": thread.ident,
-                            "thread_name": thread.name
+                            "thread_id": thread_or_ref,
+                            "thread_name": "PriorityScheduler"
                         })
             
             # Also check registered agents in message system
@@ -1192,7 +1647,7 @@ class MultiAgentTools:
                 existing_agent_ids = {agent["agent_id"] for agent in active_agents_info}
                 for agent_id in all_registered_agents:
                     if agent_id not in existing_agent_ids and agent_id != "manager":
-                        # 🔧 修复：检查agent状态 - terminated, completed, 或 registered
+                        # 🔧 检查agent状态 - terminated, completed, 或 registered
                         if agent_id in self.terminated_agents:
                             status = "terminated"
                             status_icon = "🔴"
@@ -1250,7 +1705,7 @@ class MultiAgentTools:
             if active_agents_info:
                 print_current("🤖 Active AGIBot List:")
                 for i, agent in enumerate(active_agents_info, 1):
-                    # 🔧 修复：使用更详细的状态图标和状态描述
+                    # 🔧 使用更详细的状态图标和状态描述
                     status_icon = agent.get("status_icon", "🔵")
                     if not status_icon:
                         if agent.get("status") == "active":
@@ -1633,11 +2088,29 @@ class MultiAgentTools:
     def cleanup(self):
         """Clean up multi-agent system resources"""
         try:
+            # Clean up priority scheduler
+            if hasattr(self, 'priority_scheduler') and self.priority_scheduler:
+                
+                self.priority_scheduler.stop()
+                self.priority_scheduler = None
+            
             # Clean up active threads
             if hasattr(self, 'active_threads'):
-                for task_id, thread in self.active_threads.items():
-                    if thread.is_alive():
+                active_traditional_threads = 0
+                scheduled_tasks = 0
+                
+                for task_id, thread_or_ref in self.active_threads.items():
+                    if isinstance(thread_or_ref, threading.Thread) and thread_or_ref.is_alive():
                         print_current(f"⏳ Waiting for thread {task_id} to complete...")
+                        active_traditional_threads += 1
+                    elif isinstance(thread_or_ref, str) and thread_or_ref.startswith("scheduled_"):
+                        scheduled_tasks += 1
+                
+                if active_traditional_threads > 0:
+                    print_current(f"⏳ Waiting for {active_traditional_threads} traditional threads to complete...")
+                
+                if scheduled_tasks > 0:
+                    print_current(f"🔄 Found {scheduled_tasks} scheduled tasks (will be handled by scheduler cleanup)")
                 
                 # Clear thread dictionary
                 self.active_threads.clear()
@@ -1659,6 +2132,15 @@ class MultiAgentTools:
             except Exception as e:
                 print_current(f"⚠️ Error cleaning up message router: {e}")
             
+            # Clean up global scheduler if needed
+            try:
+                from .priority_scheduler import cleanup_scheduler
+                cleanup_scheduler()
+            except Exception as e:
+                print_current(f"⚠️ Error cleaning up global scheduler: {e}")
+            
+            print_current("✅ Multi-agent system cleanup completed")
+            
         except Exception as e:
             print_current(f"❌ Error cleaning up multi-agent system resources: {e}")
 
@@ -1668,3 +2150,139 @@ class MultiAgentTools:
             self.cleanup()
         except:
             pass
+
+    def reset_stalled_agents(self) -> Dict[str, Any]:
+        """
+        Reset stalled agents to ensure fair scheduling
+        
+        Returns:
+            Reset result
+        """
+        try:
+            if self.use_priority_scheduler and self.priority_scheduler:
+                print_current("🔄 Manually resetting stalled agents...")
+                
+                reset_count = self.priority_scheduler.reset_stalled_agents()
+                
+                return {
+                    "status": "success",
+                    "message": f"Reset {reset_count} stalled agents for better fairness",
+                    "reset_count": reset_count
+                }
+            else:
+                return {
+                    "status": "info",
+                    "message": "Priority scheduler not enabled",
+                    "reset_count": 0
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error during stalled agent reset: {str(e)}",
+                "reset_count": 0
+            }
+
+    def update_agent_current_loop(self, agent_id: str, current_loop: int) -> Dict[str, Any]:
+        """
+        Update the current loop information in agent status file
+        
+        Args:
+            agent_id: Agent ID
+            current_loop: Current loop number
+            
+        Returns:
+            Update result
+        """
+        try:
+            from datetime import datetime
+            import json
+            import os
+            
+            # Find status file
+            status_file_path = None
+            
+            # First search in current working directory
+            if hasattr(self, 'workspace_root') and self.workspace_root:
+                # Try to find in parent directory of workspace
+                parent_dir = os.path.dirname(self.workspace_root)
+                potential_status_file = os.path.join(parent_dir, f".agibot_spawn_{agent_id}_status.json")
+                if os.path.exists(potential_status_file):
+                    status_file_path = potential_status_file
+            
+            # If not found in workspace directory, try current directory
+            if not status_file_path:
+                potential_status_file = os.path.join(os.getcwd(), f".agibot_spawn_{agent_id}_status.json")
+                if os.path.exists(potential_status_file):
+                    status_file_path = potential_status_file
+            
+            # Recursively search all possible directories
+            if not status_file_path:
+                search_dirs = [os.getcwd()]
+                if hasattr(self, 'workspace_root') and self.workspace_root:
+                    search_dirs.extend([
+                        self.workspace_root,
+                        os.path.dirname(self.workspace_root),
+                        os.path.dirname(os.path.dirname(self.workspace_root))
+                    ])
+                
+                for search_dir in search_dirs:
+                    if os.path.exists(search_dir):
+                        potential_file = os.path.join(search_dir, f".agibot_spawn_{agent_id}_status.json")
+                        if os.path.exists(potential_file):
+                            status_file_path = potential_file
+                            break
+            
+            if not status_file_path:
+                return {
+                    "status": "error",
+                    "message": f"Status file for agent {agent_id} not found",
+                    "agent_id": agent_id
+                }
+            
+            # Read existing status
+            try:
+                with open(status_file_path, 'r', encoding='utf-8') as f:
+                    status_data = json.load(f)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Failed to read status file: {e}",
+                    "agent_id": agent_id,
+                    "status_file_path": status_file_path
+                }
+            
+            # Update loop information
+            status_data["current_loop"] = current_loop
+            status_data["last_loop_update"] = datetime.now().isoformat()
+            
+            # Write back to status file
+            try:
+                with open(status_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(status_data, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    import os
+                    os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                
+                return {
+                    "status": "success",
+                    "message": f"Updated current_loop for agent {agent_id} to {current_loop}",
+                    "agent_id": agent_id,
+                    "current_loop": current_loop,
+                    "status_file_path": status_file_path
+                }
+                
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Failed to write status file: {e}",
+                    "agent_id": agent_id,
+                    "status_file_path": status_file_path
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error updating agent current loop: {str(e)}",
+                "agent_id": agent_id
+            }

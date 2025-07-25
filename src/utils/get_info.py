@@ -23,7 +23,7 @@ import platform
 import subprocess
 import requests
 from typing import Dict, Any
-
+from tools.print_system import print_current
 
 def get_ip_location_info():
     """
@@ -32,13 +32,6 @@ def get_ip_location_info():
     Returns:
         Dict containing IP and location information
     """
-    try:
-        # For safety, import print_current here to avoid circular imports
-        from tools.print_system import print_current
-    except ImportError:
-        # Fallback if print_current is not available
-        def print_current(msg):
-            print(msg)
     
     try:
         # Try to get public IP and location info
