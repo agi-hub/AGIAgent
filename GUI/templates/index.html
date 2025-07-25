@@ -1088,22 +1088,22 @@
             <div class="api-key-group">
                 <label for="apiKeyInput">
                     <i class="fas fa-key"></i>
-                    API Key:
+                    {{ i18n.api_key_label }}
                 </label>
                 <input type="password" id="apiKeyInput" class="api-key-input" 
-                       placeholder="输入API Key (可选)" 
-                       title="输入您的API Key，留空则使用默认用户模式">
+                       placeholder="{{ i18n.api_key_placeholder }}" 
+                       title="{{ i18n.api_key_tooltip }}">
             </div>
             <button id="connectBtn" class="connect-btn connect">
                 <i class="fas fa-plug"></i>
-                <span>连接</span>
+                <span>{{ i18n.connect_btn }}</span>
             </button>
         </div>
         <div class="user-auth-right">
             <div class="user-info">
                 <div class="user-status">
                     <div class="user-status-indicator" id="userStatusIndicator"></div>
-                    <span id="userStatusText">未连接</span>
+                    <span id="userStatusText">{{ i18n.user_disconnected }}</span>
                 </div>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
@@ -1392,7 +1392,7 @@
             // Update connect button
             if (status === 'connected') {
                 connectBtn.className = 'connect-btn disconnect';
-                connectBtn.innerHTML = '<i class="fas fa-unlink"></i><span>断开</span>';
+                connectBtn.innerHTML = `<i class="fas fa-unlink"></i><span>${I18N.disconnect_btn}</span>`;
                 connectBtn.disabled = false;
                 isConnected = true;
                 
@@ -1400,13 +1400,13 @@
                 enableUI(true);
             } else if (status === 'connecting') {
                 connectBtn.disabled = true;
-                connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>连接中...</span>';
+                connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>${I18N.connecting}</span>`;
                 
                 // Disable UI controls
                 enableUI(false);
             } else {
                 connectBtn.className = 'connect-btn connect';
-                connectBtn.innerHTML = '<i class="fas fa-plug"></i><span>连接</span>';
+                connectBtn.innerHTML = `<i class="fas fa-plug"></i><span>${I18N.connect_btn}</span>`;
                 connectBtn.disabled = false;
                 isConnected = false;
                 
@@ -1431,7 +1431,7 @@
         function connectUser() {
             const apiKey = apiKeyInput.value.trim();
             
-            updateUserStatus('connecting', '连接中...');
+            updateUserStatus('connecting', I18N.connecting);
             
             // Create socket connection
             socket = createSocket(apiKey);
@@ -1451,7 +1451,7 @@
             }
             
             currentUser = null;
-            updateUserStatus('disconnected', '未连接');
+            updateUserStatus('disconnected', I18N.user_disconnected);
             
             // Clear chat messages
             chatMessages.innerHTML = `
@@ -1496,8 +1496,8 @@
             if (!socket) return;
             
             socket.on('connect', function() {
-                const identity = currentUser === 'default' ? '默认用户' : `用户: ${currentUser.substring(0, 8)}...`;
-                updateUserStatus('connected', '已连接', identity);
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(I18N.connected, 'system');
                 updateStatus('connected');
                 updateTaskModeInfo(); // Initialize task mode info display
@@ -1513,32 +1513,32 @@
             });
 
             socket.on('disconnect', function(reason) {
-                updateUserStatus('disconnected', '连接断开');
+                updateUserStatus('disconnected', I18N.user_disconnected);
                 addMessage(`${I18N.disconnected} (${reason})`, 'info');
                 updateStatus('disconnected');
                 console.log('❌ Socket disconnected:', reason);
             });
 
             socket.on('reconnect', function(attemptNumber) {
-                const identity = currentUser === 'default' ? '默认用户' : `用户: ${currentUser.substring(0, 8)}...`;
-                updateUserStatus('connected', '重新连接', identity);
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
                 updateStatus('connected');
                 console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
             });
 
             socket.on('reconnect_attempt', function(attemptNumber) {
-                updateUserStatus('connecting', `重连中... (${attemptNumber})`);
+                updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber})`);
                 console.log('🔄 Reconnection attempt', attemptNumber);
             });
 
             socket.on('reconnect_error', function(error) {
-                updateUserStatus('error', '重连失败');
+                updateUserStatus('error', I18N.user_connection_failed);
                 console.log('❌ Reconnection error:', error);
             });
 
             socket.on('reconnect_failed', function() {
-                updateUserStatus('error', '连接失败');
+                updateUserStatus('error', I18N.user_connection_failed);
                 addMessage(I18N.reconnect_failed, 'info');
                 console.log('❌ Reconnection failed');
             });
@@ -3333,7 +3333,7 @@
          */
         document.addEventListener('DOMContentLoaded', function() {
             // 初始化用户状态
-            updateUserStatus('disconnected', '未连接');
+            updateUserStatus('disconnected', I18N.user_disconnected);
             enableUI(false);
             
             // 设置API Key输入框焦点

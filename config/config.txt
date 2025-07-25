@@ -3,7 +3,7 @@
 LANG=zh
 
 # OpenAI API configuration 
-# api_key=sk-EjTppzE0xnr61QCj0d0MrZREohrwbV8xoMvOlvpw35g61vVG
+# api_key=your key
 # api_base=https://api.openai-proxy.org/v1
 # model=gpt-4.1
 # max_tokens=8192
@@ -21,7 +21,7 @@ LANG=zh
 # max_tokens=32768
 
 # Anthropic models
-api_key=sk-EjTppzE0xnr61QCj0d0MrZREohrwbV8xoMvOlvpw35g61vVG
+api_key=your key
 api_base=https://api.openai-proxy.org/anthropic
 model=claude-sonnet-4-0
 max_tokens=16384
