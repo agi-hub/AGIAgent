@@ -56,10 +56,19 @@ from src.main import AGIBotMain
 app_dir = os.path.dirname(os.path.abspath(__file__))
 template_dir = os.path.join(app_dir, 'templates')
 
+print(f"📁 App directory: {app_dir}")
 print(f"📁 Template directory: {template_dir}")
 print(f"📁 Template exists: {os.path.exists(template_dir)}")
+print(f"📁 Current working directory: {os.getcwd()}")
 
-app = Flask(__name__, template_folder=template_dir)
+# Initialize Flask app with absolute template and static paths
+static_dir = os.path.join(app_dir, 'static')
+print(f"📁 Static directory: {static_dir}")
+print(f"📁 Static exists: {os.path.exists(static_dir)}")
+
+app = Flask(__name__, 
+           template_folder=os.path.abspath(template_dir),
+           static_folder=os.path.abspath(static_dir))
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
                    ping_timeout=60, ping_interval=25)
@@ -385,6 +394,20 @@ I18N_TEXTS = {
         'target_directory_not_exist': 'Target directory does not exist',
         'upload_success': 'Successfully uploaded {0} files',
         'new_name_empty': 'New name cannot be empty',
+        
+        # Multi-user support
+        'api_key_label': 'API Key:',
+        'api_key_placeholder': 'Enter API Key (optional)',
+        'api_key_tooltip': 'Enter your API Key, leave empty for default user mode',
+        'connect_btn': 'Connect',
+        'disconnect_btn': 'Disconnect',
+        'connecting': 'Connecting...',
+        'user_connected': 'Connected',
+        'user_disconnected': 'Disconnected',
+        'user_reconnecting': 'Reconnecting...',
+        'user_connection_failed': 'Connection Failed',
+        'default_user': 'Default User',
+        'user_prefix': 'User',
     }
 }
 
@@ -628,29 +651,6 @@ class AGIBotGUI:
         os.makedirs(self.default_user_dir, exist_ok=True)
         print(f"📁 Default user directory: {self.default_user_dir}")
 
-class UserSession:
-    def __init__(self, session_id, api_key=None):
-        self.session_id = session_id
-        self.api_key = api_key
-        self.current_process = None
-        self.output_queue = None
-        self.current_output_dir = None  # Track current execution output directory
-        self.last_output_dir = None     # Track last used output directory
-        self.selected_output_dir = None # Track user selected output directory
-        
-        # Determine user directory based on API key
-        if api_key:
-            # Use API key hash as directory name for security
-            import hashlib
-            api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
-            self.user_dir_name = f"user_{api_key_hash}"
-        else:
-            self.user_dir_name = "userdata"
-    
-    def get_user_directory(self, base_dir):
-        """Get the user's base directory path"""
-        return os.path.join(base_dir, self.user_dir_name)
-        
     def get_user_session(self, session_id, api_key=None):
         """Get or create user session"""
         if session_id not in self.user_sessions:
@@ -757,6 +757,29 @@ class UserSession:
             pass
         
         return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
+
+class UserSession:
+    def __init__(self, session_id, api_key=None):
+        self.session_id = session_id
+        self.api_key = api_key
+        self.current_process = None
+        self.output_queue = None
+        self.current_output_dir = None  # Track current execution output directory
+        self.last_output_dir = None     # Track last used output directory
+        self.selected_output_dir = None # Track user selected output directory
+        
+        # Determine user directory based on API key
+        if api_key:
+            # Use API key hash as directory name for security
+            import hashlib
+            api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+            self.user_dir_name = f"user_{api_key_hash}"
+        else:
+            self.user_dir_name = "userdata"
+    
+    def get_user_directory(self, base_dir):
+        """Get the user's base directory path"""
+        return os.path.join(base_dir, self.user_dir_name)
 
 gui_instance = AGIBotGUI()
 
@@ -1824,5 +1847,5 @@ def delete_directory(dir_name):
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
+    port = int(os.environ.get('PORT', 5002))
     socketio.run(app, host='0.0.0.0', port=port, debug=False) 
