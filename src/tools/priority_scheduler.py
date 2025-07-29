@@ -17,7 +17,7 @@ import statistics
 from collections import deque, defaultdict
 import uuid
 
-from .print_system import print_current, print_agent
+from .print_system import print_current, print_agent, print_system_info, print_debug, print_error
 
 
 @dataclass
@@ -284,7 +284,7 @@ class PriorityAgentScheduler:
         self.lock_contention_threshold = 10  # Lock contention threshold
         self.lock_acquire_timeout = 2.0  # Lowered lock acquire timeout
         
-        print_current("🎯 Priority Agent Scheduler initialized with aggressive deadlock protection")
+        print_system_info("🎯 Priority Agent Scheduler initialized with aggressive deadlock protection")
         
         
     def start(self):
@@ -330,7 +330,7 @@ class PriorityAgentScheduler:
             )
             self.health_monitor_thread.start()
         
-        print_current(f"🚀 Priority scheduler started with {self.max_workers} workers and round-level fairness control")
+        print_system_info(f"🚀 Priority scheduler started with {self.max_workers} workers and round-level fairness control")
     
     def stop(self):
         """Stop the scheduler"""
@@ -437,12 +437,13 @@ class PriorityAgentScheduler:
                 should_delay = False
                 delay_info = None
                 waiting_agents = []
+                execution_data = {}  # Initialize execution_data to prevent NameError
+                current_executions = 0  # Initialize current_executions to prevent NameError
                 
                 # Step 1: Quickly fetch necessary data
                 with self.metrics_lock:
                     if len(self.agent_metrics) > 1:
                         current_executions = self.agent_metrics[task.agent_id].total_executions
-                        execution_data = {}
                         for agent_id, metrics in self.agent_metrics.items():
                             execution_data[agent_id] = {
                                 'executions': metrics.total_executions,
@@ -903,7 +904,7 @@ class PriorityAgentScheduler:
     
     def _round_scheduler_loop(self):
         """Round scheduler main loop"""
-        print_current("🎮 Round scheduler started")
+        print_debug("🎮 Round scheduler started")
         
         request_retry_counts = {}  # request_id -> retry_count
         max_retries_per_request = 5
@@ -999,9 +1000,9 @@ class PriorityAgentScheduler:
                         del request_retry_counts[request_id]
                 
             except Exception as e:
-                print_current(f"❌ Round scheduler error: {e}")
+                print_debug(f"❌ Round scheduler error: {e}")
         
-        print_current("🎮 Round scheduler stopped")
+        print_debug("🎮 Round scheduler stopped")
     
     def _grant_round_permission(self, request):
         """Grant round execution permission"""
@@ -1050,9 +1051,9 @@ class PriorityAgentScheduler:
         status = self.get_status()
         
         print_current("📊 ===========================================")
-        print_current("📊 Priority Agent Scheduler Status")
+        print_debug("📊 Priority Agent Scheduler Status")
         print_current("📊 ===========================================")
-        print_current(f"📊 Scheduler Active: {status['scheduler_active']}")
+        print_debug(f"📊 Scheduler Active: {status['scheduler_active']}")
         print_current(f"📊 Queue Size: {status['queue_size']}")
         print_current(f"📊 Active Agents: {status['active_agents']}/{status['max_workers']}")
         print_current(f"📊 Tasks Submitted: {status['total_submitted']}")
@@ -1154,7 +1155,7 @@ class PriorityAgentScheduler:
                 self.active_task_start_times.clear()
             
             if old_active:
-                print_current("🚨 Restarting scheduler after deadlock recovery...")
+                print_debug("🚨 Restarting scheduler after deadlock recovery...")
                 self.start()
             
             print_current("🚨 DEADLOCK RECOVERY COMPLETED")
@@ -1251,7 +1252,7 @@ class PriorityAgentScheduler:
         
         try:
             # Step 1: Stop all activity
-            print_current("🚨 Step 1: Stopping all scheduler activities...")
+            print_debug("🚨 Step 1: Stopping all scheduler activities...")
             old_scheduler_active = self.scheduler_active
             old_round_scheduler_active = self.round_scheduler_active
             
@@ -1303,7 +1304,7 @@ class PriorityAgentScheduler:
             
             # Step 5: Restart scheduler
             if old_scheduler_active or old_round_scheduler_active:
-                print_current("🚨 Step 5: Restarting scheduler...")
+                print_debug("🚨 Step 5: Restarting scheduler...")
                 self.start()
             
             print_current("🚨 EMERGENCY RESTART COMPLETED SUCCESSFULLY")
@@ -1398,9 +1399,9 @@ def get_priority_scheduler(max_workers: int = 5, auto_start: bool = False) -> Pr
             # Improved: Default to lazy loading, only start when explicitly requested
             if auto_start:
                 _global_scheduler.start()
-                print_current(f"🚀 Priority scheduler auto-started with {max_workers} workers")
+                print_system_info(f"🚀 Priority scheduler auto-started with {max_workers} workers")
             else:
-                print_current(f"🏗️ Priority scheduler created (will start when first task is submitted)")
+                print_system_info(f"🏗️ Priority scheduler created (will start when first task is submitted)")
         
         return _global_scheduler
 

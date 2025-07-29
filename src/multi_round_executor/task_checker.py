@@ -23,7 +23,7 @@ Task completion checker for detecting task completion flags
 from typing import List, Dict, Any
 
 from .config import TASK_COMPLETION_KEYWORDS
-from tools.print_system import print_system, print_current
+from tools.print_system import print_debug
 
 
 class TaskChecker:
@@ -53,12 +53,12 @@ class TaskChecker:
                 try:
                     if stripped_line.startswith("TASK_COMPLETED:"):
                         completion_desc = stripped_line[len("TASK_COMPLETED:"):].strip()
-                        print_current(f"🎉 Task completion flag detected (colon format): {completion_desc}")
+                        print_debug(f"🎉 Task completion flag detected (colon format): {completion_desc}")
                     else:
-                        print_current(f"🎉 Task completion flag detected (simple format)")
+                        print_debug(f"🎉 Task completion flag detected (simple format)")
                     return True
                 except Exception as e:
-                    print_current(f"⚠️ Error parsing task completion flag: {e}")
+                    print_debug(f"⚠️ Error parsing task completion flag: {e}")
                     return True  # Even if parsing fails, consider task completed
             
             # Check if line starts with **TASK_COMPLETED
@@ -70,12 +70,12 @@ class TaskChecker:
                         if completion_part.startswith(":"):
                             completion_part = completion_part[1:].strip()
                         completion_desc = completion_part
-                        print_current(f"🎉 Task completion flag detected (star format): {completion_desc}")
+                        print_debug(f"🎉 Task completion flag detected (star format): {completion_desc}")
                     else:
-                        print_current(f"🎉 Task completion flag detected (star format)")
+                        print_debug(f"🎉 Task completion flag detected (star format)")
                     return True
                 except Exception as e:
-                    print_current(f"⚠️ Error parsing task completion flag: {e}")
+                    print_debug(f"⚠️ Error parsing task completion flag: {e}")
                     return True  # Even if parsing fails, consider task completed
         
         return False

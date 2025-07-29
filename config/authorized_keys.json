@@ -1,0 +1,59 @@
+{
+  "description": "Authorized API keys for AGI Bot GUI access",
+  "version": "1.0",
+  "keys": [
+    {
+      "name": "testuser",
+      "description": "Test user key",
+      "sha256_hash": "18010a9ce95596827a13475fc43d7e34402e74883c7fd0c86374d3998915bca2",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-07-28T13:44:25.442548",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "admin",
+      "description": "System Administrator",
+      "sha256_hash": "e9a5c6d8ab7d2d7a19d85adcab9bd7f0be204b2f2a2076e830f5eda231373a94",
+      "permissions": [
+        "read",
+        "write",
+        "execute",
+        "admin"
+      ],
+      "created_at": "2025-07-28T14:13:56.887719",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "alice",
+      "description": "Alice测试用户",
+      "sha256_hash": "4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-07-28T14:17:36.966946",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "zhenzhi.wu",
+      "description": "zhenzhi.wu user",
+      "sha256_hash": "d3742ca629053f2b95550c7a1a04e15eba8e5b27710ad576fa06713da8378ac7",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-07-28T14:19:02.167985",
+      "expires_at": null,
+      "enabled": true
+    }
+  ]
+}

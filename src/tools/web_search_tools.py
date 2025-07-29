@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from .print_system import print_system, print_current
+from .print_system import print_system, print_current, print_system_info, print_error, print_debug
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -100,9 +100,9 @@ class WebSearchTools:
                     features.append("content filtering")
                 if enable_summary:
                     features.append("search results summarization")
-                print_current(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
+                print_system_info(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
             except Exception as e:
-                print_current(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
+                print_error(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
                 self.enable_llm_filtering = False
                 self.enable_summary = False
         elif enable_llm_filtering or enable_summary:
@@ -392,7 +392,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
         if self._google_connectivity_checked:
             return self._google_available
         
-        print_current("🌐 Checking Google connectivity for the first time...")
+        print_debug("🌐 Checking Google connectivity for the first time...")
         try:
             # Try to download Google homepage with 3 second timeout
             response = requests.get('https://www.google.com', 
@@ -400,20 +400,20 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                   headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
             
             if response.status_code == 200 and len(response.text) > 100:
-                print_current("✅ Google connectivity test passed")
+                print_debug("✅ Google connectivity test passed")
                 self._google_available = True
             else:
-                print_current(f"❌ Google connectivity test failed: status {response.status_code}")
+                print_debug(f"❌ Google connectivity test failed: status {response.status_code}")
                 self._google_available = False
                 
         except requests.exceptions.Timeout:
-            print_current("⚠️ Google connectivity test timeout (>3s)")
+            print_debug("⚠️ Google connectivity test timeout (>3s)")
             self._google_available = False
         except requests.exceptions.RequestException as e:
-            print_current(f"⚠️ Google connectivity test error: {e}")
+            print_debug(f"⚠️ Google connectivity test error: {e}")
             self._google_available = False
         except Exception as e:
-            print_current(f"⚠️ Google connectivity test error: {e}")
+            print_debug(f"⚠️ Google connectivity test error: {e}")
             self._google_available = False
         
         self._google_connectivity_checked = True
@@ -709,9 +709,9 @@ Please create a detailed, structured analysis that preserves important informati
         if kwargs:
             print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print_current(f"🔍 Search keywords: {search_term}")
+        print_debug(f"🔍 Search keywords: {search_term}")
         if fetch_content:
-            print_current(f"📄 Will automatically fetch webpage content for the first {max_content_results} results")
+            print_debug(f"📄 Will automatically fetch webpage content for the first {max_content_results} results")
         else:
             print_current(f"📝 Only get search result summaries, not webpage content")
         
@@ -945,7 +945,7 @@ Please create a detailed, structured analysis that preserves important informati
                             'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
-                        print_current("🔍 Google search engine added as primary option (connectivity confirmed)")
+                        print_debug("🔍 Google search engine added as primary option (connectivity confirmed)")
                         
                         # Add backup Google search with different approach
                         search_engines.append({
@@ -956,9 +956,9 @@ Please create a detailed, structured analysis that preserves important informati
                             'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf', '[data-sncf]'],
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
-                        print_current("🔍 Google backup search engine added")
+                        print_debug("🔍 Google backup search engine added")
                     else:
-                        print_current("⚠️ Google connectivity test failed, will use alternative search engines")
+                        print_debug("⚠️ Google connectivity test failed, will use alternative search engines")
                     
                     # Always add Baidu as fallback or secondary option
                     search_engines.append({
@@ -968,7 +968,7 @@ Please create a detailed, structured analysis that preserves important informati
                         'container_selector': '.result',
                         'snippet_selectors': ['.c-abstract', '.c-span9', 'span', 'div']
                     })
-                    print_current("🔍 Baidu search engine added to available options")
+                    print_debug("🔍 Baidu search engine added to available options")
                     
                     # Add DuckDuckGo as additional fallback
                     search_engines.append({
@@ -978,7 +978,7 @@ Please create a detailed, structured analysis that preserves important informati
                         'container_selector': '[data-testid="result"], .result, .web-result',
                         'snippet_selectors': ['.result__snippet', '[data-testid="result-snippet"]', '.result-snippet']
                     })
-                    print_current("🔍 DuckDuckGo search engine added as additional fallback")
+                    print_debug("🔍 DuckDuckGo search engine added as additional fallback")
                     
                     if not search_engines:
                         print_current("❌ No search engines available")
@@ -999,7 +999,7 @@ Please create a detailed, structured analysis that preserves important informati
                     
                     for engine in search_engines:
                         try:
-                            print_current(f"🔍 Trying to search with {engine['name']}...")
+                            print_debug(f"🔍 Trying to search with {engine['name']}...")
                             
                             # Add rate limiting for Google to avoid being blocked
                             if engine['name'].startswith('Google'):
@@ -1040,7 +1040,7 @@ Please create a detailed, structured analysis that preserves important informati
                             result_elements = page.query_selector_all(engine['result_selector'])
                             
                             if result_elements:
-                                print_current(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
+                                print_debug(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
                                 
                                 for i, elem in enumerate(result_elements[:10]):  # Top 5 results
                                     try:
@@ -1116,7 +1116,7 @@ Please create a detailed, structured analysis that preserves important informati
                             continue
                     
                     if fetch_content and results:
-                        print_current(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
+                        print_debug(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
                         
                         # Use parallel processing for better efficiency
                         try:
@@ -1163,7 +1163,7 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         if valid_results:
                             results = valid_results
-                            print_current(f"✅ Successfully got {len(results)} search results with valid content")
+                            print_debug(f"✅ Successfully got {len(results)} search results with valid content")
                         else:
                             print_current("⚠️ All search results failed to get valid webpage content, returning search results only")
                             # Return search results even without content
@@ -1220,7 +1220,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 if optimized_results:
                     results = optimized_results
-                    print_current(f"✅ Optimized search result format, {len([r for r in results if r.get('has_full_content')])} results contain full content")
+                    print_debug(f"✅ Optimized search result format, {len([r for r in results if r.get('has_full_content')])} results contain full content")
             
             # Count saved files
             saved_html_count = len([r for r in results if r.get('saved_html_path')])
@@ -1637,7 +1637,7 @@ Please create a detailed, structured analysis that preserves important informati
         if not results:
             return
         
-        print_current(f"🚀 Starting parallel content fetching for {len(results)} results with {max_workers} workers")
+        print_debug(f"🚀 Starting parallel content fetching for {len(results)} results with {max_workers} workers")
         
         # Filter results that need content fetching
         results_to_fetch = []
@@ -1670,7 +1670,7 @@ Please create a detailed, structured analysis that preserves important informati
             print_current("⚠️ No valid URLs to fetch content from")
             return
         
-        print_current(f"📊 Processing {len(results_to_fetch)} valid URLs for content fetching")
+        print_debug(f"📊 Processing {len(results_to_fetch)} valid URLs for content fetching")
         
         # Use ThreadPoolExecutor for parallel processing with improved timeout handling
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1718,7 +1718,7 @@ Please create a detailed, structured analysis that preserves important informati
                             original_result['content'] = "Parallel fetch timeout"
                         completed += 1
         
-        print_current(f"🎉 Parallel content fetching completed for all {len(results_to_fetch)} results")
+        print_debug(f"🎉 Parallel content fetching completed for all {len(results_to_fetch)} results")
 
     def _fetch_single_webpage_content(self, result: Dict, index: int) -> Dict[str, Any]:
         """
@@ -1736,7 +1736,7 @@ Please create a detailed, structured analysis that preserves important informati
         target_url = result.get('_internal_url') or result.get('url', '')
         
         try:
-            print_current(f"🔗 [{index+1}] Fetching content: {result['title'][:40]}...")
+            print_debug(f"🔗 [{index+1}] Fetching content: {result['title'][:40]}...")
             
             # Handle Baidu redirect URLs
             is_baidu_redirect = 'baidu.com/link?url=' in target_url
@@ -1849,7 +1849,7 @@ Please create a detailed, structured analysis that preserves important informati
                         # Save both HTML and text content to files
                         saved_html_path, saved_txt_path = self._save_webpage_content(page, target_url, title, content, search_term)
                         
-                        print_current(f"✅ [{index+1}] Successfully fetched {len(content)} characters")
+                        print_debug(f"✅ [{index+1}] Successfully fetched {len(content)} characters")
                         browser.close()
                         
                         # Clean content for better LLM processing
@@ -2405,7 +2405,7 @@ Please create a detailed, structured analysis that preserves important informati
         if kwargs:
             print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print_current(f"Fetching content from: {url}")
+        print_debug(f"Fetching content from: {url}")
         
         # Set timeout for this operation
         old_handler = None
@@ -2684,7 +2684,7 @@ Please create a detailed, structured analysis that preserves important informati
         if kwargs:
             print_current(f"⚠️ Ignoring extra parameters: {list(kwargs.keys())}")
         
-        print_current(f"🖼️ Starting image search: {query}")
+        print_current(f"🔍 Image search: {query}")
         
         # Set timeout handling
         old_handler = None
@@ -2796,7 +2796,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 # Check Google connectivity to decide whether to include Google
                 if self._check_google_connectivity():
-                    print_current("✅ Google available, using Google -> Baidu -> Bing search order")
+                    print_debug("✅ Google available, using Google -> Baidu -> Bing search order")
                     search_engines = [
                         {
                             'name': 'Google Images',
@@ -2818,7 +2818,7 @@ Please create a detailed, structured analysis that preserves important informati
                         }
                     ]
                 else:
-                    print_current("⚠️ Google unavailable, using Baidu -> Bing search order")
+                    print_debug("⚠️ Google unavailable, using Baidu -> Bing search order")
                     search_engines = [
                         {
                             'name': 'Baidu Images',
@@ -2844,7 +2844,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 for engine in search_engines:
                     try:
-                        print_current(f"🔍 Attempting to use {engine['name']} for image search...")
+                        print_debug(f"🔍 Attempting to use {engine['name']} for image search...")
                         
                         # Visit search page  
                         page.goto(engine['url'], timeout=8000, wait_until='domcontentloaded')
@@ -2852,7 +2852,7 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         # Find image elements
                         image_elements = page.query_selector_all(engine['image_selector'])
-                        print_current(f"🔍 {engine['name']} found {len(image_elements)} image elements")
+                        print_debug(f"🔍 {engine['name']} found {len(image_elements)} image elements")
                         
                         # Filter valid images
                         valid_images = []
@@ -2862,7 +2862,7 @@ Please create a detailed, structured analysis that preserves important informati
                         # For Baidu Images, skip first 3 images (usually ads or recommended content)
                         start_index = 3 if engine['name'] == 'Baidu Images' else 0
                         if start_index > 0:
-                            print_current(f"🔄 {engine['name']} skipping first {start_index} images (avoiding ads/recommendations)")
+                            print_debug(f"🔄 {engine['name']} skipping first {start_index} images (avoiding ads/recommendations)")
                         
                         for i, img in enumerate(image_elements[:20]):  # Increase check count to 20
                             try:
@@ -2956,9 +2956,9 @@ Please create a detailed, structured analysis that preserves important informati
                                 skipped_reasons['exception'] = skipped_reasons.get('exception', 0) + 1
                                 continue
                         
-                        # Output detailed filtering statistics
+                        # Output detailed filtering statistics to debug log
                         total_checked = len(image_elements[:20])
-                        print_current(f"📊 {engine['name']} checked {total_checked} image elements total, processed {processed_count}")
+                        print_debug(f"📊 {engine['name']} checked {total_checked} image elements total, processed {processed_count}")
                         if skipped_reasons:
                             skip_descriptions = {
                                 'baidu_skip_first': 'Skip first 3 (Baidu ads/recommendations)',
@@ -2973,19 +2973,19 @@ Please create a detailed, structured analysis that preserves important informati
                             }
                             for reason, count in skipped_reasons.items():
                                 desc = skip_descriptions.get(reason, reason)
-                                print_current(f"   - {desc}: {count} items")
-                        print_current(f"✅ {engine['name']} found {len(valid_images)} valid images")
+                                print_debug(f"   - {desc}: {count} items")
+                        print_debug(f"✅ {engine['name']} found {len(valid_images)} valid images")
                         
                         if valid_images:
                             # Save multiple valid images (max 5)
                             max_images = min(5, len(valid_images))
                             saved_images = []
                             
-                            print_current(f"🖼️ Attempting to save {max_images} related images...")
+                            print_current(f"📥 Downloading {max_images} images...")
                             
                             for i, selected_image in enumerate(valid_images[:max_images]):
                                 image_url = selected_image['src']
-                                print_current(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
+                                print_debug(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
                                 
                                 # Download and save image
                                 try:
@@ -2998,18 +2998,18 @@ Please create a detailed, structured analysis that preserves important informati
                                             # Parse data:image format: data:image/jpeg;base64,<base64_data>
                                             header, base64_data = image_url.split(',', 1)
                                             image_data = base64.b64decode(base64_data)
-                                            print_current(f"✅ Successfully parsed base64 image data, size: {len(image_data)} bytes")
+                                            print_debug(f"✅ Successfully parsed base64 image data, size: {len(image_data)} bytes")
                                         except Exception as e:
-                                            print_current(f"⚠️ Failed to parse base64 image: {e}")
+                                            print_debug(f"⚠️ Failed to parse base64 image: {e}")
                                             continue
                                     else:
                                         # Use page context to download regular HTTP images
                                         response = page.request.get(image_url, timeout=15000)
                                         if response.status == 200:
                                             image_data = response.body()
-                                            print_current(f"✅ Successfully downloaded HTTP image, size: {len(image_data)} bytes")
+                                            print_debug(f"✅ Successfully downloaded HTTP image, size: {len(image_data)} bytes")
                                         else:
-                                            print_current(f"⚠️ Image {i+1} download failed, status code: {response.status}")
+                                            print_debug(f"⚠️ Image {i+1} download failed, status code: {response.status}")
                                             continue
                                     
                                     # Validate if it's a valid image and get format (unified processing for all image data)
@@ -3058,14 +3058,14 @@ Please create a detailed, structured analysis that preserves important informati
                                                     'index': i + 1
                                                 })
                                                 
-                                                print_current(f"✅ Image {i+1} saved: {relative_path} ({img.width}x{img.height}, {len(image_data)} bytes)")
+                                                print_debug(f"✅ Image {i+1} saved: {relative_path} ({img.width}x{img.height}, {len(image_data)} bytes)")
                                                 
                                         except Exception as e:
-                                            print_current(f"⚠️ Image {i+1} validation or save failed: {e}")
+                                            print_debug(f"⚠️ Image {i+1} validation or save failed: {e}")
                                             continue
                                         
                                 except Exception as e:
-                                    print_current(f"⚠️ Error downloading image {i+1}: {e}")
+                                    print_debug(f"⚠️ Error downloading image {i+1}: {e}")
                                     continue
                             
                             # If images were successfully saved, update results
@@ -3078,13 +3078,13 @@ Please create a detailed, structured analysis that preserves important informati
                                     'total_images_available': len(valid_images)
                                 })
                                 image_found = True
-                                print_current(f"🎉 Successfully saved {len(saved_images)} images!")
+                                print_current(f"✅ Saved {len(saved_images)} images to web_search_result/images/")
                                 break
                         else:
-                            print_current(f"❌ {engine['name']} found no valid images")
+                            print_debug(f"❌ {engine['name']} found no valid images")
                             
                     except Exception as e:
-                        print_current(f"❌ {engine['name']} search failed: {e}")
+                        print_debug(f"❌ {engine['name']} search failed: {e}")
                         continue
                 
                 browser.close()
@@ -3096,7 +3096,7 @@ Please create a detailed, structured analysis that preserves important informati
                     })
                     print_current(f"❌ 图片搜索失败: {query}")
                 else:
-                    print_current(f"🎉 图片搜索成功完成: {query}")
+                    print_debug(f"🎉 图片搜索成功完成: {query}")
                 
                 return result_data
                 

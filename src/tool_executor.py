@@ -30,7 +30,9 @@ import requests
 import hashlib
 from openai import OpenAI
 from tools import Tools
-from tools.print_system import print_system, print_manager, set_agent_id, print_current, streaming_context
+from tools.print_system import (print_system, print_manager, set_agent_id, print_current, streaming_context,
+                                print_debug, print_system_info, print_tool_call, print_tool_result,
+                                print_llm_response, print_error)
 from tools.debug_system import track_operation, finish_operation
 from tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
 from tools.mcp_client import get_mcp_client, initialize_mcp_client, safe_cleanup_mcp_client
@@ -219,6 +221,10 @@ class ToolExecutor:
         self.history_summary_cache = {}
         self.last_summarized_history_length = 0
         
+        # Long-term memory update control
+        self.memory_update_counter = 0  # 记忆更新计数器
+        self.memory_update_interval = 10  # 每10轮更新一次记忆
+        
         # print_system(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
         # print_system(f"   Model: {self.model}")  # Commented out to reduce terminal noise
         # print_system(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
@@ -337,7 +343,7 @@ class ToolExecutor:
                 "recall_memories_by_time": self.long_term_memory.recall_memories_by_time,
                 "get_memory_summary": self.long_term_memory.get_memory_summary,
             })
-            print_current("🧠 Long-term memory tools registered")
+            print_system_info("🧠 Long-term memory tools registered")
         else:
             # Add error handlers for disabled memory tools
             def _memory_disabled_error(*args, **kwargs):
@@ -402,9 +408,9 @@ class ToolExecutor:
                         future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
                         self.cli_mcp_initialized = future_cli.result(timeout=10)
                         if self.cli_mcp_initialized:
-                            print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                            print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
                     except Exception as e:
-                        print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                        print_system_info(f"⚠️ cli-mcp client startup initialization failed: {e}")
                         self.cli_mcp_initialized = False
                     
                     # Initialize direct MCP client
@@ -412,7 +418,7 @@ class ToolExecutor:
                         future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
                         self.direct_mcp_initialized = future_direct.result(timeout=10)
                         if self.direct_mcp_initialized:
-                            print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                            print_system_info(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
                     except Exception as e:
                         print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                         self.direct_mcp_initialized = False
@@ -421,7 +427,7 @@ class ToolExecutor:
                 try:
                     self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                     if self.cli_mcp_initialized:
-                        print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                        print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
                 except Exception as e:
                     print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
                     self.cli_mcp_initialized = False
@@ -429,7 +435,7 @@ class ToolExecutor:
                 try:
                     self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
                     if self.direct_mcp_initialized:
-                        print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                        print_system_info(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
                 except Exception as e:
                     print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                     self.direct_mcp_initialized = False
@@ -438,15 +444,15 @@ class ToolExecutor:
             try:
                 self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                 if self.cli_mcp_initialized:
-                    print_current(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                    print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
             except Exception as e:
                 print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
                 self.cli_mcp_initialized = False
             
             try:
                 self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                if self.direct_mcp_initialized:
-                    print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                #if self.direct_mcp_initialized:
+                #    print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
             except Exception as e:
                 print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                 self.direct_mcp_initialized = False
@@ -457,19 +463,22 @@ class ToolExecutor:
             #print_current(f"🔧 MCP tools loaded successfully during startup")
         
         # Log related settings
-        # Simplified logs directory path construction - always use simple "logs" structure
+        # Only create logs directory if we have a valid workspace_dir
         if workspace_dir:
             # Get the parent directory of workspace (typically the output directory)
             parent_dir = os.path.dirname(workspace_dir) if workspace_dir else os.getcwd()
             self.logs_dir = os.path.join(parent_dir, "logs")  # Simplified: directly use "logs"
         else:
-            self.logs_dir = os.path.join(os.getcwd(), "logs")  # Simplified: directly use "logs"
+            # Don't create logs directory in project root when no workspace_dir is specified
+            print_current("⚠️ No workspace_dir specified, skipping logs directory creation")
+            self.logs_dir = None
         
         self.llm_logs_dir = self.logs_dir  # LLM call logs directory
         self.llm_call_counter = 0  # LLM call counter
         
-        # Ensure log directory exists
-        os.makedirs(self.llm_logs_dir, exist_ok=True)
+        # Ensure log directory exists only if logs_dir is set
+        if self.llm_logs_dir:
+            os.makedirs(self.llm_logs_dir, exist_ok=True)
         
         # If DEBUG mode is enabled, initialize CSV logger
         if self.debug_mode:
@@ -483,7 +492,7 @@ class ToolExecutor:
             if not self.cli_mcp_initialized:
                 self.cli_mcp_initialized = await initialize_cli_mcp_wrapper(self.MCP_config_file)
                 if self.cli_mcp_initialized:
-                    print_current("✅ cli-mcp client initialized successfully")
+                    print_system_info("✅ cli-mcp client initialized successfully")
                 else:
                     print_current("⚠️ cli-mcp client initialization failed")
             
@@ -614,7 +623,7 @@ class ToolExecutor:
         except Exception as e:
             print_system(f"⚠️ Error during ToolExecutor cleanup: {e}")
     
-    def _store_task_completion_memory(self, task_prompt: str, task_result: str, metadata: Dict[str, Any] = None):
+    def _store_task_completion_memory(self, task_prompt: str, task_result: str, metadata: Dict[str, Any] = None, force_update: bool = False):
         """
         Store task completion in long-term memory
         
@@ -622,10 +631,23 @@ class ToolExecutor:
             task_prompt: The original task prompt
             task_result: The task execution result
             metadata: Additional metadata about the execution
+            force_update: Force update regardless of interval (for task completion)
         """
         try:
             if not hasattr(self, 'long_term_memory') or not self.long_term_memory:
                 # Long-term memory not available, skip silently
+                return
+            
+            # 增加计数器
+            self.memory_update_counter += 1
+            
+            # 检查是否需要更新：每10轮或强制更新
+            should_update = (self.memory_update_counter % self.memory_update_interval == 0) or force_update
+            
+            if not should_update:
+                # 跳过此次更新，但在调试模式下记录
+                if self.debug_mode:
+                    print_current(f"🧠 跳过长期记忆更新 (轮次: {self.memory_update_counter}, 下次更新: {self.memory_update_interval - (self.memory_update_counter % self.memory_update_interval)} 轮后)")
                 return
             
             # Store the memory
@@ -834,7 +856,7 @@ class ToolExecutor:
                 if rules_parts:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
                 
-                print_current("✅ Using standard tool calling (tool descriptions provided via API)")
+                print_debug("✅ Using standard tool calling (tool descriptions provided via API)")
                 
             # Note: Removed loading of deprecated files:
             # - prompts/tool_prompt.txt
@@ -1139,7 +1161,7 @@ class ToolExecutor:
                 #print_current(f"🔍 DEBUG: After LLM call, current_round_images status: {len(self.current_round_images) if self.current_round_images else 0} images")
                 
                 # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
-                print_current(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
+                print_debug(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
                 if task_history and hasattr(self, 'history_optimizer') and self.history_optimizer:
                     try:
                         # Immediately optimize the history, removing all image data (keep_recent_images=0)
@@ -1157,7 +1179,7 @@ class ToolExecutor:
                     except Exception as e:
                         print_current(f"❌ History optimization failed: {e}")
                 else:
-                    print_current("⚠️ Skipping history optimization - conditions not met")
+                    print_debug("⚠️ Skipping history optimization - conditions not met")
                 # Show raw model response for debugging
                 if self.debug_mode and content:
                     print_current("🤖 Raw model response:")
@@ -1187,7 +1209,7 @@ class ToolExecutor:
                 
                 # If TASK_COMPLETED but no tool calls, complete the task
                 if has_task_completed and not has_tool_calls:
-                    print_current(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                    print_debug(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
                     # Extract the completion message
                     task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
                     if task_completed_match:
@@ -1213,7 +1235,7 @@ class ToolExecutor:
                         "completion_method": "TASK_COMPLETED_flag",
                         "execution_round": round_counter,
                         "model_used": self.model
-                    })
+                    }, force_update=True)
                     
                     finish_operation(f"executing task (round {round_counter})")
                     # Return optimized history if available
@@ -1236,7 +1258,7 @@ class ToolExecutor:
                                             getattr(self, '_tools_executed_in_stream', False))
                     
                     if tools_already_executed:
-                        print_current("✅ Tools were already executed during streaming - collecting results for response formatting")
+                        print_debug("✅ Tools were already executed during streaming - collecting results for response formatting")
                         # For streaming execution, we still need to format the response properly
                         # but skip actual execution since it was done during streaming
                         all_tool_results = getattr(self, '_streaming_tool_results', [])
@@ -1253,7 +1275,6 @@ class ToolExecutor:
                         
                         print_current("=" * 50)
                         print_current("🚀 Starting tool execution...")
-                        print_current("")
                         
                         # Execute all tool calls and collect results
                         all_tool_results = []
@@ -1270,18 +1291,15 @@ class ToolExecutor:
                             if tool_name == 'get_sensor_data':
                                 current_round_has_sensor_data = True
                             
-                            # Print tool execution start with clear formatting
-                            print_current(f"🔧 Executing tool {i}: {tool_name}")
-                            print_current(f"   Parameters: {tool_params}")
-                            print_current(f"   Results:")
-                            
+                            # Let streaming_output handle all tool execution display
                             try:
                                 # Convert to standard format for execute_tool
                                 standard_tool_call = {
                                     "name": tool_name,
                                     "arguments": tool_params
                                 }
-                                tool_result = self.execute_tool(standard_tool_call)
+                                # Pass streaming_output=True for real-time tool execution display
+                                tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
                                 
                                 all_tool_results.append({
                                     'tool_name': tool_name,
@@ -1290,35 +1308,18 @@ class ToolExecutor:
                                 })
                                 successful_executions += 1
                                 
-                                # Real-time print of each tool's execution result with proper indentation
-                                if isinstance(tool_result, dict):
-                                    # Use simplified formatting for search tools if enabled in config
-                                    if (self.simplified_search_output and 
-                                        tool_name in ['codebase_search', 'web_search']):
-                                        formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
-                                    else:
-                                        formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
-                                    # Add indentation to each line
-                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                                    print_current(indented_result)
-                                else:
-                                    # Add indentation to the result
-                                    result_str = str(tool_result)
-                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                                    print_current(indented_result)
+                                # Tool result is already displayed by streaming output, no need to duplicate
                                 
                             except Exception as e:
                                 error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                                print_current(f"   ❌ {error_msg}")
+                                print_current(f"❌ {error_msg}")
                                 all_tool_results.append({
                                     'tool_name': tool_name,
                                     'tool_params': tool_params,
                                     'tool_result': f"Error: {error_msg}"
                                 })
                             
-                            # Add separator between tools
-                            if i < len(tool_calls):
-                                print_current("-" * 30)
+                            # Separator is handled by streaming output, no need to duplicate
                     
                     # 🔧 MODIFIED: Store image data but don't use vision API
                     self._extract_current_round_images(all_tool_results)
@@ -1358,7 +1359,7 @@ class ToolExecutor:
                         "tool_calls_count": len(tool_calls),
                         "successful_executions": successful_executions,
                         "model_used": self.model
-                    })
+                    }, force_update=True)
                     
                     finish_operation(f"executing task (round {round_counter})")
                     # Return optimized history if available, even with tool calls
@@ -1393,7 +1394,7 @@ class ToolExecutor:
                         "completion_method": "llm_response_only",
                         "execution_round": round_counter,
                         "model_used": self.model
-                    })
+                    }, force_update=True)
                     
                     finish_operation(f"executing task (round {round_counter})")
                     # Return optimized history if available
@@ -1963,12 +1964,13 @@ class ToolExecutor:
     
 
     
-    def execute_tool(self, tool_call: Dict[str, Any]) -> Any:
+    def execute_tool(self, tool_call: Dict[str, Any], streaming_output: bool = False) -> Any:
         """
-        Execute a tool with the given parameters.
+        Execute a tool with the given parameters, optionally with streaming output.
         
         Args:
             tool_call: Dictionary containing tool name and parameters
+            streaming_output: Whether to stream the tool execution output
             
         Returns:
             Result of executing the tool
@@ -1998,7 +2000,7 @@ class ToolExecutor:
             
             # First check: instance-level initialization status
             if not self.cli_mcp_initialized:
-                print_current(f"🔄 [Thread: {current_thread}] cli-mcp client not initialized, attempting initialization for tool {tool_name}...")
+                print_debug(f"🔄 [Thread: {current_thread}] cli-mcp client not initialized, attempting initialization for tool {tool_name}...")
                 
                 # Second check: global cli-mcp wrapper status
                 from tools.cli_mcp_wrapper import get_cli_mcp_status, is_cli_mcp_initialized, initialize_cli_mcp_wrapper
@@ -2054,7 +2056,7 @@ class ToolExecutor:
                             # Verify initialization and add tools to mapping
                             if self.cli_mcp_initialized:
                                 self._add_mcp_tools_to_map()
-                                print_current(f"✅ [Thread: {current_thread}] cli-mcp client initialized successfully with config: {self.MCP_config_file}")
+                                print_debug(f"✅ [Thread: {current_thread}] cli-mcp client initialized successfully with config: {self.MCP_config_file}")
                                 
                                 # Double-check the tool mapping
                                 if tool_name in self.tool_map:
@@ -2099,10 +2101,10 @@ class ToolExecutor:
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             # Remove prefix from tool name if present
                             actual_tool_name = tool_name.replace("cli_mcp_", "")
-                            print_current(f"🎯 [Thread: {current_thread}] Calling actual tool: {actual_tool_name} with params: {params}")
+                            print_debug(f"🎯 [Thread: {current_thread}] Calling actual tool: {actual_tool_name} with params: {params}")
                             future = executor.submit(asyncio.run, self.cli_mcp_client.call_tool(actual_tool_name, params))
                             result = future.result(timeout=35)  # Increased timeout
-                            print_current(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully")
+                            print_debug(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully")
                             return result
                 except RuntimeError:
                     # No event loop, safe to run asyncio.run
@@ -2110,9 +2112,9 @@ class ToolExecutor:
                 
                 # Synchronous execution
                 actual_tool_name = tool_name.replace("cli_mcp_", "")
-                print_current(f"🎯 [Thread: {current_thread}] Calling actual tool (sync): {actual_tool_name} with params: {params}")
+                print_debug(f"🎯 [Thread: {current_thread}] Calling actual tool (sync): {actual_tool_name} with params: {params}")
                 result = asyncio.run(self.cli_mcp_client.call_tool(actual_tool_name, params))
-                print_current(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully (sync)")
+                print_debug(f"✅ [Thread: {current_thread}] cli-mcp tool call completed successfully (sync)")
                 return result
                 
             except Exception as e:
@@ -2255,7 +2257,15 @@ class ToolExecutor:
                 
                 # No special handling needed for run_terminal_cmd anymore
                 
-                result = tool_func(**filtered_params)
+                # Execute the tool function with streaming awareness
+                if streaming_output:
+                    # For streaming output, show execution in real-time
+                    self._stream_tool_execution(tool_name, filtered_params, tool_func)
+                    result = tool_func(**filtered_params)
+                    # Stream the result output immediately after execution
+                    self._stream_tool_result(tool_name, result)
+                else:
+                    result = tool_func(**filtered_params)
                 
                 # Enhanced error handling for edit_file and other tools
                 if isinstance(result, dict) and result.get('status') == 'error':
@@ -2626,7 +2636,12 @@ class ToolExecutor:
                 log_filename = f"llm_call_{current_agent_id}_{self.llm_call_counter:03d}_{timestamp}.json"
             else:
                 log_filename = f"llm_call_{self.llm_call_counter:03d}_{timestamp}.json"
-            log_path = os.path.join(self.llm_logs_dir, log_filename)
+            
+            # Only create log path if logs directory is available
+            if self.llm_logs_dir:
+                log_path = os.path.join(self.llm_logs_dir, log_filename)
+            else:
+                log_path = None
             
             # 🔧 Apply message optimization to remove base64 data from logs
             optimized_messages = self._optimize_messages_for_logging(messages)
@@ -2658,9 +2673,10 @@ class ToolExecutor:
                 if "formatted_tool_results" in tool_calls_info:
                     debug_data["call_info"]["formatted_results_length"] = len(tool_calls_info["formatted_tool_results"])
             
-            # Save to JSON file
-            with open(log_path, 'w', encoding='utf-8') as f:
-                json.dump(debug_data, f, ensure_ascii=False, indent=2)
+            # Save to JSON file only if log_path is available
+            if log_path:
+                with open(log_path, 'w', encoding='utf-8') as f:
+                    json.dump(debug_data, f, ensure_ascii=False, indent=2)
             
             
         except Exception as e:
@@ -2791,7 +2807,6 @@ class ToolExecutor:
             cached_tokens = cache_stats['estimated_cache_tokens']
             new_input_tokens = cache_stats['new_tokens']
             
-            print_current("")
             if tool_calls_tokens > 0:
                 print_current(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,} (content: {output_tokens_est:,}, tool calls: {tool_calls_tokens:,})")
             else:
@@ -2950,9 +2965,9 @@ class ToolExecutor:
                     if is_read_entire_file or is_sensor_data:
                         message_parts.append(formatted_result)
                         if is_read_entire_file:
-                            print_current(f"📄 Full file content formatted and passed to LLM")
+                            print_debug(f"📄 Full file content formatted and passed to LLM")
                         else:
-                            print_current(f"📸 Full sensor data formatted and passed to LLM")
+                            print_debug(f"📸 Full sensor data formatted and passed to LLM")
                     elif len(formatted_result) > truncation_length:
                         formatted_result = formatted_result[:truncation_length] + "... [Content truncated]"
                         message_parts.append(formatted_result)
@@ -3618,7 +3633,7 @@ class ToolExecutor:
                                     continue
                         
                         if executed_tool_calls:
-                            print_current("✅ All detected tools have been executed")
+                            print_debug("✅ All detected tools have been executed")
                     
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
@@ -3721,7 +3736,7 @@ class ToolExecutor:
                 "arguments": tool_params
             }
             
-            tool_result = self.execute_tool(standard_tool_call)
+            tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
             
             # Store result for later response formatting
             if not hasattr(self, '_streaming_tool_results'):
@@ -3736,28 +3751,10 @@ class ToolExecutor:
             # Set flag indicating tools were executed during streaming
             self._tools_executed_in_stream = True
             
-            # Real-time print of tool execution result with proper indentation
-            if isinstance(tool_result, dict):
-                # Use simplified formatting for search tools if enabled in config
-                if (self.simplified_search_output and 
-                    tool_name in ['codebase_search', 'web_search']):
-                    formatted_result = self._format_search_result_for_terminal(tool_result, tool_name)
-                else:
-                    formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
-                # Add indentation to each line
-                indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                print_current(indented_result)
-            else:
-                # Add indentation to the result
-                result_str = str(tool_result)
-                indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                print_current(indented_result)
-                
-            print_current("")  # Empty line for separation
+            # Tool result is already displayed by streaming output, no need to duplicate
             
         except Exception as e:
             print_current(f"   ❌ Tool {tool_index} execution failed: {str(e)}")
-            print_current("")
 
     def _call_claude_with_standard_tools(self, messages, user_message, system_message):
         """
@@ -3827,14 +3824,12 @@ class ToolExecutor:
                     
                     # Phase 2: Tool execution (WITHOUT lock)
                     if tool_calls:
-                        print_current("🎯 Tool calls detected, executing immediately...")
+                        # Ensure we have a newline after streaming content
+                        print()
+                        #print_tool_call("🎯 Tool calls detected, executing immediately...")
                         
                         for content_block_data in tool_calls:
-                            # Execute tool immediately (no lock!)
-                            print_current(f"⚡ Executing tool: {content_block_data['name']}")
-                            print_current(f"   Parameters: {content_block_data['input']}")
-                            print_current(f"   Results:")
-                            
+                            # Execute tool immediately (no lock!) - let streaming_output handle all display
                             try:
                                 # Convert to standard format for execute_tool
                                 standard_tool_call = {
@@ -3842,7 +3837,7 @@ class ToolExecutor:
                                     "arguments": content_block_data['input']
                                 }
                                 
-                                tool_result = self.execute_tool(standard_tool_call)
+                                tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
                                 
                                 # Store result for later response formatting
                                 if not hasattr(self, '_streaming_tool_results'):
@@ -3857,30 +3852,12 @@ class ToolExecutor:
                                 # Set flag indicating tools were executed during streaming
                                 self._tools_executed_in_stream = True
                                 
-                                # Real-time print of tool execution result with proper indentation
-                                if isinstance(tool_result, dict):
-                                    # Use simplified formatting for search tools if enabled in config
-                                    if (self.simplified_search_output and 
-                                        content_block_data['name'] in ['codebase_search', 'web_search']):
-                                        formatted_result = self._format_search_result_for_terminal(tool_result, content_block_data['name'])
-                                    else:
-                                        formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=True)
-                                    # Add indentation to each line
-                                    indented_result = "\n".join(f"   {line}" for line in formatted_result.split("\n"))
-                                    print_current(indented_result)
-                                else:
-                                    # Add indentation to the result
-                                    result_str = str(tool_result)
-                                    indented_result = "\n".join(f"   {line}" for line in result_str.split("\n"))
-                                    print_current(indented_result)
-                                    
-                                print_current("")  # Empty line for separation
+                                # Tool result is already displayed by streaming output, no need to duplicate
                                 
                             except Exception as e:
-                                print_current(f"   ❌ Tool execution failed: {str(e)}")
-                                print_current("")
+                                print_error(f"❌ Tool execution failed: {str(e)}")
                         
-                        print_current("✅ All detected tools have been executed")
+                        print_debug("✅ All detected tools have been executed")
                     
                     return content, tool_calls
                 else:
@@ -4536,6 +4513,76 @@ class ToolExecutor:
             print_current(f"⚠️ Error getting MCP tool list: {e}")
         
         return all_tools
+
+    def _stream_tool_execution(self, tool_name: str, params: Dict[str, Any], tool_func) -> None:
+        """
+        Show streaming output for tool execution progress.
+        
+        Args:
+            tool_name: Name of the tool being executed
+            params: Parameters passed to the tool
+            tool_func: The tool function to execute
+        """
+        try:
+            # Log detailed parameters to file
+            detailed_params = str(params)
+            print_debug(f"Tool {tool_name} detailed parameters: {detailed_params}")
+            print_debug(f"   Working directory: {os.getcwd()}")
+            print_debug(f"   Status: Executing...")
+            
+            # For certain tools, show important parameters in terminal
+            if tool_name == 'run_terminal_cmd':
+                command = params.get('command', 'unknown command')
+                print_tool_call(f"🚀 Command execution started, real-time output as follows:")
+                print_debug(f"   Working directory: {os.getcwd()}")
+                
+            elif tool_name == 'read_file':
+                target_file = params.get('target_file', 'unknown file')
+                print_tool_call(f"🎯 Requested to read file: {target_file}")
+                
+            elif tool_name == 'edit_file':
+                target_file = params.get('target_file', 'unknown file')
+                edit_mode = params.get('edit_mode', 'unknown mode')
+                print_tool_call(f"📝 Editing file: {target_file} (mode: {edit_mode})")
+                
+            elif tool_name == 'web_search':
+                search_term = params.get('search_term', 'unknown query')
+                print_tool_call(f"🔍 Starting web search: {search_term}")
+                
+            elif tool_name == 'codebase_search':
+                query = params.get('query', 'unknown query')
+                print_tool_call(f"🔍 Searching codebase: {query}")
+            
+        except Exception as e:
+            print_error(f"⚠️ Error showing tool execution progress: {e}")
+
+    def _stream_tool_result(self, tool_name: str, result: Any) -> None:
+        """
+        Stream tool execution result in real-time.
+        
+        Args:
+            tool_name: Name of the tool that was executed
+            result: Result from tool execution
+        """
+        try:
+            # Log full result to file
+            full_result_str = str(result)
+            print_debug(f"Tool {tool_name} full result: {full_result_str}")
+            
+            # Only show essential status information in terminal for specific tools
+            if isinstance(result, dict):
+                # Use simplified formatting for search tools if enabled in config
+                if (self.simplified_search_output and 
+                    tool_name in ['codebase_search', 'web_search']):
+                    formatted_result = self._format_search_result_for_terminal(result, tool_name)
+                    print_tool_result(formatted_result)
+                # For file operations, only show if there's an error
+                elif 'status' in result and result.get('status') in ['error', 'failed']:
+                    status = result.get('status', 'unknown')
+                    print_tool_result(f"Status: {status}")
+            
+        except Exception as e:
+            print_error(f"⚠️ Error streaming tool result: {e}")
 
     def _generate_mcp_usage_example(self, tool_name: str, tool_def: Dict[str, Any]) -> str:
         """Generate usage example for MCP tools"""

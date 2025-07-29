@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from .print_system import print_system, print_current
+from .print_system import print_system, print_current, print_system_info, print_debug
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -40,9 +40,9 @@ class FileSystemTools:
         """Check if system grep command is available"""
         self.system_grep_available = shutil.which('grep') is not None
         if self.system_grep_available:
-            print_current("🚀 System grep detected, will use for faster searching")
+            print_system_info("🚀 System grep detected, will use for faster searching")
         else:
-            print_current("⚠️ System grep not available, using Python fallback")
+            print_system_info("⚠️ System grep not available, using Python fallback")
     
     def _resolve_path(self, path: str) -> str:
         """Resolve a path relative to the workspace root."""
@@ -1546,11 +1546,11 @@ class FileSystemTools:
                 }
             else:
                 # If grep fails, fall back to Python implementation
-                print_current(f"⚠️ System grep failed (code {result.returncode}), falling back to Python")
+                print_debug(f"⚠️ System grep failed (code {result.returncode}), falling back to Python")
                 return self._execute_python_search(query, include_pattern, exclude_pattern, case_sensitive, max_results)
                 
         except Exception as e:
-            print_current(f"⚠️ System grep error: {e}, falling back to Python")
+            print_debug(f"⚠️ System grep error: {e}, falling back to Python")
             return self._execute_python_search(query, include_pattern, exclude_pattern, case_sensitive, max_results)
 
     def _execute_python_search(self, query: str, include_pattern: str, exclude_pattern: str, case_sensitive: bool, max_results: Optional[int]) -> Dict[str, Any]:
@@ -1639,11 +1639,11 @@ class FileSystemTools:
                 if processed_content.endswith('\n'):
                     # Has one newline, add another one
                     processed_content += '\n'
-                    print_current(f"📝 Added second newline at end of markdown file")
+                    print_debug(f"Added second newline at end of markdown file")
                 else:
                     # Has no newline, add two newlines
                     processed_content += '\n\n'
-                    print_current(f"📝 Added two newlines at end of markdown file")
+                    print_debug(f"Added two newlines at end of markdown file")
         
         return processed_content
 

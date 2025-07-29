@@ -9,7 +9,7 @@ import os
 import threading
 import atexit
 from typing import Dict, Optional
-from .print_system import print_current
+from .print_system import print_current, print_system_info, print_debug, print_error
 
 
 class GlobalCodeIndexManager:
@@ -86,16 +86,16 @@ class GlobalCodeIndexManager:
                     
                     if success:
                         self._parsers[workspace_root] = parser
-                        print_current(f"🔧 Global manager: Created code parser for workspace: {os.path.basename(workspace_root)}")
+                        print_system_info(f"🔧 Global manager: Created code parser for workspace: {os.path.basename(workspace_root)}")
                     else:
-                        print_current(f"❌ Global manager: Failed to initialize parser for: {workspace_root}")
+                        print_error(f"❌ Global manager: Failed to initialize parser for: {workspace_root}")
                         return None
                         
                 except Exception as e:
-                    print_current(f"❌ Global manager: Error creating parser for {workspace_root}: {e}")
+                    print_error(f"❌ Global manager: Error creating parser for {workspace_root}: {e}")
                     return None
             else:
-                print_current(f"🔄 Global manager: Reusing existing parser for: {os.path.basename(workspace_root)}")
+                print_debug(f"🔄 Global manager: Reusing existing parser for: {os.path.basename(workspace_root)}")
         
         return self._parsers.get(workspace_root)
     
@@ -110,7 +110,7 @@ class GlobalCodeIndexManager:
                     parser.cleanup()
                     del self._parsers[workspace_root]
                 except Exception as e:
-                    print_current(f"⚠️ Global manager: Error cleaning up parser for {workspace_root}: {e}")
+                    print_debug(f"⚠️ Global manager: Error cleaning up parser for {workspace_root}: {e}")
     
     def cleanup_all(self):
         """Clean up all parsers"""
@@ -121,7 +121,7 @@ class GlobalCodeIndexManager:
                     parser = self._parsers[workspace_root]
                     parser.cleanup()
                 except Exception as e:
-                    print_current(f"⚠️ Global manager: Error cleaning up parser for {workspace_root}: {e}")
+                    print_debug(f"⚠️ Global manager: Error cleaning up parser for {workspace_root}: {e}")
             self._parsers.clear()
     
     def get_stats(self) -> Dict[str, any]:

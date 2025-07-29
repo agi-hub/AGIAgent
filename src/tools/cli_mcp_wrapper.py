@@ -12,7 +12,7 @@ import asyncio
 import threading
 import shutil
 from typing import Dict, Any, List, Optional, Union
-from .print_system import print_current
+from .print_system import print_current, print_system_info, print_error, print_debug
 
 def find_cli_mcp_path():
     """Find the cli-mcp executable path"""
@@ -78,11 +78,11 @@ class CliMcpWrapper:
             await self._discover_tools()
             
             self.initialized = True
-            print_current(f"✅ cli-mcp client initialized successfully, discovered {len(self.available_tools)} tools")
+            print_system_info(f"✅ cli-mcp client initialized successfully, discovered {len(self.available_tools)} tools")
             return True
             
         except Exception as e:
-            print_current(f"❌ cli-mcp client initialization failed: {e}")
+            print_error(f"❌ cli-mcp client initialization failed: {e}")
             return False
     
     async def _load_config(self):
@@ -118,7 +118,7 @@ class CliMcpWrapper:
                 if "timeout" not in server_config:
                     server_config["timeout"] = 30
             
-            print_current(f"📊 cli-mcp client config loaded successfully, found {len(self.servers)} NPX/NPM servers")
+            print_system_info(f"📊 cli-mcp client config loaded successfully, found {len(self.servers)} NPX/NPM servers")
             
         except Exception as e:
             print_current(f"❌ Failed to load config file: {e}")
@@ -233,7 +233,7 @@ class CliMcpWrapper:
             # cli-mcp command not found
             if "cli-mcp" in str(e):
                 if not self._installation_message_shown:
-                    print_current(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
+                    print_error(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
                     print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
                     self._installation_message_shown = True
             else:
@@ -243,7 +243,7 @@ class CliMcpWrapper:
             error_msg = str(e)
             if "No such file or directory" in error_msg and "cli-mcp" in error_msg:
                 if not self._installation_message_shown:
-                    print_current(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
+                    print_error(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
                     print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
                     self._installation_message_shown = True
             else:
@@ -442,7 +442,7 @@ class CliMcpWrapper:
     
     def cleanup_sync(self):
         """Synchronous cleanup client"""
-        print_current("🔌 cli-mcp client cleaned up")
+        print_debug("🔌 cli-mcp client cleaned up")
 
 
 # Global instance with thread safety
@@ -470,19 +470,19 @@ async def initialize_cli_mcp_wrapper(config_path: str = "mcp.json") -> bool:
         
         # Check if already initialized
         if wrapper.initialized:
-            print_current(f"✅ cli-mcp wrapper already initialized, reusing existing instance")
+            print_debug(f"✅ cli-mcp wrapper already initialized, reusing existing instance")
             return True
         
         # Initialize if not already done
         try:
             result = await wrapper.initialize()
             if result:
-                print_current(f"✅ cli-mcp wrapper initialized successfully in thread {threading.current_thread().name}")
+                print_system_info(f"✅ cli-mcp wrapper initialized successfully in thread {threading.current_thread().name}")
             else:
-                print_current(f"⚠️ cli-mcp wrapper initialization failed in thread {threading.current_thread().name}")
+                print_error(f"⚠️ cli-mcp wrapper initialization failed in thread {threading.current_thread().name}")
             return result
         except Exception as e:
-            print_current(f"❌ cli-mcp wrapper initialization error in thread {threading.current_thread().name}: {e}")
+            print_error(f"❌ cli-mcp wrapper initialization error in thread {threading.current_thread().name}: {e}")
             return False
 
 def is_cli_mcp_initialized(config_path: str = "mcp.json") -> bool:
@@ -562,7 +562,7 @@ def safe_cleanup_cli_mcp_wrapper():
                 wrapper_instance.cleanup_sync()
         except Exception as e:
             # If all else fails, just clean up the references
-            print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
+            print_debug(f"⚠️ cli-mcp client cleanup failed: {e}")
             wrapper_instance.cleanup_sync()
         
         _cli_mcp_wrapper = None

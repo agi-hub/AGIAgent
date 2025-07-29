@@ -27,7 +27,7 @@ from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
 from config_loader import get_model, get_truncation_length, get_summary_history
-from tools.print_system import print_manager, print_current, print_agent
+from tools.print_system import print_manager, print_current, print_agent, print_debug
 from tools.debug_system import track_operation, finish_operation
 from .config import (
     DEFAULT_SUBTASK_LOOPS, DEFAULT_LOGS_DIR, DEFAULT_MODEL,
@@ -288,7 +288,7 @@ class MultiRoundTaskExecutor:
             from tools.priority_scheduler import get_priority_scheduler
             round_scheduler = get_priority_scheduler()
             if hasattr(round_scheduler, 'request_next_round'):
-                print_current(f"🎮 Using round-level fairness scheduler for {current_agent_id or 'manager'}")
+                print_debug(f"🎮 Using round-level fairness scheduler for {current_agent_id or 'manager'}")
             else:
                 round_scheduler = None
         except:
@@ -396,7 +396,7 @@ class MultiRoundTaskExecutor:
                 optimized_history = None
                 if isinstance(result, tuple):
                     result, optimized_history = result
-                    print_current(f"🔄 Received optimized history from single-round executor: {len(optimized_history)} records")
+                    print_debug(f"🔄 Received optimized history from single-round executor: {len(optimized_history)} records")
                     
                     # Update main task_history with optimized version
                     # Keep non-LLM records (system messages) and replace LLM history
@@ -404,7 +404,7 @@ class MultiRoundTaskExecutor:
                                      if not ("prompt" in record and ("result" in record or "error" in record))]
                     task_history.clear()
                     task_history.extend(non_llm_records + optimized_history)
-                    print_current(f"✅ Main task history updated with optimized records")
+                    print_debug(f"✅ Main task history updated with optimized records")
                 
                 # Check if user interrupted execution
                 if result.startswith("USER_INTERRUPTED:"):
@@ -455,7 +455,7 @@ class MultiRoundTaskExecutor:
                 
 
                 
-                print_current(f"✅ Task round {task_round} execution completed")
+                print_debug(f"✅ Task round {task_round} execution completed")
                 
                 # 🔧 New: Update current loop information in agent status file
                 if current_agent_id and hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
@@ -839,4 +839,4 @@ Please ensure all tasks are properly handled. If some tasks have dependencies, p
                 self.executor.cleanup()
             
         except Exception as e:
-            print_current(f"⚠️ Error during MultiRoundTaskExecutor cleanup: {e}")
+            print_debug(f"⚠️ Error during MultiRoundTaskExecutor cleanup: {e}")

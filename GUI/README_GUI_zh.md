@@ -25,6 +25,72 @@ python GUI/app.py
 当任务执行完毕或被中断后, 您可以通过选择工作区并输入提示词继续任务, 但需要注意上一轮的需求及执行过程并没有带入到本次运行.
 
 
+## 🔐 用户认证与多用户管理
+
+### 登录方式
+AGI Bot GUI 采用 API Key 认证方式：
+1. 启动 GUI 后，首次访问会要求输入 API Key
+2. 输入有效的 API Key 后即可登录使用
+3. API Key 在浏览器会话中保持有效，关闭浏览器后需重新输入
+
+### 默认账户
+系统预置了以下测试账户：
+- **用户名**: `testuser`，**API Key**: `testuser123`（普通用户权限）
+- **用户名**: `admin`，**API Key**: `admin123`（管理员权限）
+
+> ⚠️ **安全提醒**: 生产环境中请及时修改或删除默认账户，创建专属的安全账户。
+
+### 创建新账户
+
+#### 方法一：交互式创建（推荐）
+```bash
+cd GUI
+python create_user.py
+```
+按照提示输入用户信息：
+- 用户名
+- API Key（可手动输入或自动生成）
+- 用户描述
+- 权限设置（read, write, execute, admin）
+- 过期时间（可选）
+
+#### 方法二：命令行创建
+```bash
+cd GUI
+# 创建普通用户
+python create_user.py -u alice -k alice123 -d "Alice用户"
+
+# 创建管理员用户
+python create_user.py -u admin2 -k admin456 -p read write execute admin
+
+# 创建临时用户（30天后过期）
+python create_user.py -u temp -k temp123 -e 30
+```
+
+#### 方法三：查看现有用户
+```bash
+cd GUI
+python create_user.py --list
+```
+
+### 权限说明
+- **read**: 读取权限，可以查看工作区和文件
+- **write**: 写入权限，可以上传文件和修改内容  
+- **execute**: 执行权限，可以运行任务和执行命令
+- **admin**: 管理员权限，拥有所有权限
+
+### 账户管理文件
+用户认证信息存储在：`config/authorized_keys.json`
+
+该文件包含：
+- 用户名和描述信息
+- API Key 的 SHA256 哈希值（不存储明文）
+- 用户权限列表
+- 创建时间和过期时间
+- 账户启用状态
+
+> 🔒 **安全特性**: 系统仅存储 API Key 的哈希值，不保存明文密码，确保账户安全。
+
 ## 🔧 配置说明
 
 ### 环境要求

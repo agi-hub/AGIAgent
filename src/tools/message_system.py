@@ -977,7 +977,11 @@ def get_global_message_router(workspace_root: str = None) -> MessageRouter:
     
     if _global_message_router is None:
         if workspace_root is None:
-            workspace_root = os.getcwd()
+            # Don't create message router if no workspace_root is specified
+            # This prevents creating mailboxes in inappropriate locations (like project root)
+            from .print_system import print_current
+            print_current("⚠️ No workspace_root specified for MessageRouter, skipping initialization")
+            return None
         _global_message_router = MessageRouter(workspace_root)
         # print_current(f"🔧 Created global MessageRouter with workspace: {workspace_root}")
     
@@ -1030,6 +1034,31 @@ def format_inbox_for_llm_context(agent_id: str, workspace_root: str = None,
         
     except Exception as e:
         return f"❌ Error accessing inbox: {str(e)}"
+
+
+class MessageSystem:
+    """Message System - facade for message routing functionality"""
+    
+    def __init__(self, workspace_root: str = None):
+        self.workspace_root = workspace_root or os.getcwd()
+        self.router = get_global_message_router(self.workspace_root)
+    
+    def send_message(self, sender_id: str, receiver_id: str, message_type: MessageType, 
+                    content: Dict[str, Any], priority: MessagePriority = MessagePriority.NORMAL) -> bool:
+        """Send a message through the system"""
+        return self.router.send_message(sender_id, receiver_id, message_type, content, priority)
+    
+    def get_mailbox(self, agent_id: str) -> Optional['Mailbox']:
+        """Get mailbox for an agent"""
+        return self.router.get_mailbox(agent_id)
+    
+    def create_agent_mailbox(self, agent_id: str) -> 'Mailbox':
+        """Create mailbox for an agent"""
+        return self.router.create_agent_mailbox(agent_id)
+    
+    def get_agent_messages(self, agent_id: str, mark_as_read: bool = False) -> str:
+        """Get formatted messages for an agent"""
+        return get_agent_inbox_content(agent_id, self.workspace_root, mark_as_read)
 
 
 # Backward compatibility alias
