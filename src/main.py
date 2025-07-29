@@ -29,7 +29,7 @@ A complete automated task processing workflow:
 # Application name macro definition
 APP_NAME = "AGI Bot"
 
-from src.tools.print_system import set_agent_id, print_manager, print_system, print_current
+from src.tools.print_system import set_agent_id, print_manager, print_system, print_current, print_system_info
 from src.tools import Tools
 from src.tools.debug_system import install_debug_system, track_operation, finish_operation
 from typing import Dict, Any, Optional, List
@@ -278,6 +278,13 @@ class AGIBotMain:
         
         # Set agent ID for main AGIBot
         set_agent_id("manager")
+        
+        # Initialize output manager for log routing
+        try:
+            from src.tools.output_manager import init_output_manager
+        except ImportError:
+            from tools.output_manager import init_output_manager
+        init_output_manager(self.out_dir)
         
         # 🔧 Initialize execution report storage
         self.last_execution_report = None
@@ -596,7 +603,7 @@ class AGIBotMain:
                 'Dependent Tasks': ''
             }
             
-            print_manager(f"🚀 Starting task execution ({loops} rounds max)")
+            print_system_info(f"🚀 Starting task execution ({loops} rounds max)")
             
             # Execute single task
             task_result = executor.execute_single_task(single_task, 0, 1, "")
@@ -1641,7 +1648,8 @@ def main():
     debug_system = install_debug_system(
         enable_stack_trace=True,
         enable_memory_monitor=True, 
-        enable_execution_tracker=True
+        enable_execution_tracker=True,
+        show_activation_message=False  # Always silent by default
     )
     
     # Register cleanup handlers

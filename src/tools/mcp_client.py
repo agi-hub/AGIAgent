@@ -76,7 +76,7 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
-from .print_system import print_current
+from .print_system import print_current, print_system_info, print_error, print_debug
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -284,7 +284,7 @@ class MCPClient:
             
         except Exception as e:
             logger.error(f"MCP client initialization failed: {e}")
-            print_current(f"❌ MCP client initialization failed: {e}")
+            print_error(f"❌ MCP client initialization failed: {e}")
             return False
     
     def _load_config(self) -> bool:
@@ -368,9 +368,9 @@ class MCPClient:
                     continue
             
             if len(self.servers) > 0:
-                print_current(f"📋 MCP client loaded {len(self.servers)} servers")
+                print_system_info(f"📋 MCP client loaded {len(self.servers)} servers")
             else:
-                print_current(f"📋 MCP client found no applicable servers (NPX/NPM servers handled by cli-mcp wrapper)")
+                print_system_info(f"📋 MCP client found no applicable servers (NPX/NPM servers handled by cli-mcp wrapper)")
                 
             return len(self.servers) >= 0  # Allow zero servers as NPX/NPM servers are handled elsewhere
             
@@ -484,7 +484,7 @@ class MCPClient:
             }
             
             # Debug logging
-            print_current(f"🔧 STDIO MCP call: {tool_name}")
+            print_debug(f"🔧 STDIO MCP call: {tool_name}")
             print_current(f"💻 Command: {' '.join(cmd)}")
             print_current(f"📤 Request: {json.dumps(request, indent=2)}")
             
@@ -531,10 +531,10 @@ class MCPClient:
                 
                 response = json.loads(stdout)
                 if "result" in response:
-                    print_current(f"✅ Successfully parsed MCP response with result")
+                    print_debug(f"✅ Successfully parsed MCP response with result")
                     return response["result"]
                 elif "error" in response:
-                    print_current(f"❌ MCP server returned error: {response['error']}")
+                    print_error(f"❌ MCP server returned error: {response['error']}")
                     return {"error": response["error"]}
                 else:
                     print_current(f"⚠️ Unknown response format: {list(response.keys())}")
@@ -643,7 +643,7 @@ class MCPClient:
     async def _call_sse_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call MCP tool via SSE (supports protocol adapters)"""
         try:
-            print_current(f"🔌 Calling SSE MCP tool: {tool_name}")
+            print_debug(f"🔌 Calling SSE MCP tool: {tool_name}")
             
             # Check if URL exists
             if not server.url:
@@ -656,7 +656,7 @@ class MCPClient:
                 print_current(f"🔧 Using protocol adapter: {adapter.name}")
                 return await self._call_sse_with_adapter(server, tool_name, parameters, adapter)
             else:
-                print_current(f"📡 Using standard MCP SSE protocol")
+                print_debug(f"📡 Using standard MCP SSE protocol")
                 return await self._call_generic_sse(server, tool_name, parameters)
             
         except Exception as e:
@@ -959,16 +959,16 @@ def safe_cleanup_mcp_client():
                     _global_mcp_client.initialized = False
                     # print_current("🔌 MCP client cleaned up synchronously")
                 except Exception as sync_e:
-                    print_current(f"⚠️ MCP client synchronous cleanup failed: {sync_e}")
+                    print_debug(f"⚠️ MCP client synchronous cleanup failed: {sync_e}")
         except Exception as e:
             # If all methods fail, at least clear references
-            print_current(f"⚠️ MCP client cleanup failed: {e}")
+            print_debug(f"⚠️ MCP client cleanup failed: {e}")
             try:
                 _global_mcp_client.connections.clear()
                 _global_mcp_client.tools.clear()
                 _global_mcp_client.initialized = False
             except Exception as cleanup_e:
-                print_current(f"⚠️ MCP client reference cleanup failed: {cleanup_e}")
+                print_debug(f"⚠️ MCP client reference cleanup failed: {cleanup_e}")
         
         _global_mcp_client = None
 

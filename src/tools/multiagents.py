@@ -21,7 +21,7 @@ import threading
 import time
 import queue
 from typing import Dict, Any
-from .print_system import print_agent, print_system, print_current
+from .print_system import print_agent, print_system, print_current, print_system_info, print_error, print_debug
 from .priority_scheduler import get_priority_scheduler, cleanup_scheduler
 
 
@@ -69,12 +69,12 @@ class MultiAgentTools:
             )
             
             if auto_start:
-                print_current(f"🏗️ MultiAgentTools initialized with priority scheduler (max {max_concurrent_agents} concurrent agents)")
+                print_system_info(f"🏗️ MultiAgentTools initialized with priority scheduler (max {max_concurrent_agents} concurrent agents)")
             else:
-                print_current(f"🏗️ MultiAgentTools initialized with lazy-loaded priority scheduler (max {max_concurrent_agents} concurrent agents)")
+                print_system_info(f"🏗️ MultiAgentTools initialized with lazy-loaded priority scheduler (max {max_concurrent_agents} concurrent agents)")
         else:
             self.priority_scheduler = None
-            print_current(f"🏗️ MultiAgentTools initialized with traditional threading (no scheduler)")
+            print_system_info(f"🏗️ MultiAgentTools initialized with traditional threading (no scheduler)")
 
     def spawn_agibot(self, task_description: str, agent_id: str = None, output_directory: str = None, api_key: str = None, model: str = None, max_loops: int = 25, wait_for_completion: bool = False, shared_workspace: bool = True, MCP_config_file: str = None, prompts_folder: str = None, **kwargs) -> Dict[str, Any]:
         """
@@ -332,9 +332,9 @@ class MultiAgentTools:
                         from .message_system import get_message_router
                         router = get_message_router(workspace_dir, cleanup_on_init=False)
                         router.register_agent(task_id)
-                        print_agent(task_id, f"📬 Mailbox registered for agent {task_id}")
+                        print_agent(task_id, f"📬 Mailbox registered")
                     except Exception as e:
-                        print_agent(task_id, f"⚠️ Warning: Failed to register mailbox: {e}")
+                        print_debug(f"⚠️ Warning: Failed to register mailbox for {task_id}: {e}")
                     
                     # Create AGIBot client
                     debug_mode_to_use = kwargs.get('debug_mode', self.debug_mode)
@@ -391,9 +391,9 @@ class MultiAgentTools:
                                 f.flush()
                                 import os
                                 os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
-                            print_agent(task_id, f"📁 Status file updated: terminated")
+                            print_debug(f"📁 Status file updated: {task_id} terminated")
                         except Exception as e:
-                            print_agent(task_id, f"⚠️ Warning: Could not update status file for termination: {e}")
+                            print_debug(f"⚠️ Warning: Could not update status file for {task_id} termination: {e}")
                             
                     elif response["success"]:
                         completion_status = {
@@ -424,7 +424,7 @@ class MultiAgentTools:
                                 import os
                                 os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
                         except Exception as e:
-                            print_agent(task_id, f"⚠️ Warning: Could not update status file: {e}")
+                            print_debug(f"⚠️ Warning: Could not update status file for {task_id}: {e}")
                     else:
                         response_message = response.get('message', 'Task failed')
                         if "reached maximum execution rounds" in response_message or "max_rounds_reached" in response_message:
@@ -458,7 +458,7 @@ class MultiAgentTools:
                                 import os
                                 os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
                         except Exception as e:
-                            print_agent(task_id, f"⚠️ Warning: Could not update status file: {e}")
+                            print_debug(f"⚠️ Warning: Could not update status file for {task_id}: {e}")
                     
                     time.sleep(0.5)
                     
@@ -513,7 +513,7 @@ class MultiAgentTools:
                             import os
                             os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
                     except Exception as e:
-                        print_agent(task_id, f"⚠️ Warning: Could not update status file with error: {e}")
+                        print_debug(f"⚠️ Warning: Could not update status file with error for {task_id}: {e}")
                     
                     # 🔧 修复：在出错后也从active_threads中移除
                     if hasattr(self, 'active_threads') and task_id in self.active_threads:
@@ -707,7 +707,7 @@ class MultiAgentTools:
             
             # 如果函数调用者传入了发送者信息但与当前线程不匹配，发出警告
             if hasattr(self, '_override_sender_check') and current_agent_id:
-                print_current(f"📤 Message sender auto-detected as: {sender_id}")
+                print_debug(f"📤 Message sender auto-detected as: {sender_id}")
             
             # Create message
             message = Message(
@@ -958,7 +958,7 @@ class MultiAgentTools:
             
             # Current workspace_root information
             current_workspace = self.workspace_root
-            print_current(f"🔍 Current workspace_root: {current_workspace}")
+            print_debug(f"🔍 Current workspace_root: {current_workspace}")
             
             # Find all output_ directories
             output_dirs = []
@@ -971,7 +971,7 @@ class MultiAgentTools:
             
             # Remove duplicates
             output_dirs = list(set(output_dirs))
-            print_current(f"🔍 Found output directories: {output_dirs}")
+            print_debug(f"🔍 Found output directories: {output_dirs}")
             
             # Check each directory for mailboxes
             mailbox_info = []
@@ -1131,7 +1131,7 @@ class MultiAgentTools:
                 actual_agent_id = current_agent_id
                 # 如果LLM传入的agent_id与当前线程agent_id不匹配，发出警告
                 if agent_id != "current_agent" and agent_id != current_agent_id:
-                    print_current(f"⚠️ Agent ID mismatch! LLM provided '{agent_id}' but current thread is '{current_agent_id}'. Using correct ID.")
+                    print_debug(f"⚠️ Agent ID mismatch! LLM provided '{agent_id}' but current thread is '{current_agent_id}'. Using correct ID.")
             else:
                 # 如果没有设置agent_id，使用传入的参数或默认值
                 if agent_id == "current_agent" or not agent_id:
@@ -1262,17 +1262,21 @@ class MultiAgentTools:
                 round_counts = round_report.get("round_execution_counts", {})
                 
                 # 控制台输出
-                print_current("🎮 ==========================================")
-                print_current("🎮 Real-time Round-Level Fairness Report")
-                print_current("🎮 ==========================================")
-                print_current(f"🎮 Fairness Grade: {fairness.get('fairness_score', 'N/A')}")
-                print_current(f"🎮 Round Gap: {summary.get('round_gap', 0)} rounds")
-                print_current(f"🎮 Average Rounds: {summary.get('average_rounds_per_agent', 0)}")
-                print_current(f"🎮 Active Agents: {summary.get('total_agents', 0)}")
-                print_current(f"🎮 Total Rounds: {summary.get('total_rounds_executed', 0)}")
-                print_current("🎮 ------------------------------------------")
-                print_current(f"🎮 Distribution: {summary.get('round_distribution', 'No data')}")
-                print_current("🎮 ==========================================")
+                # Simplified fairness report
+                print_current(f"🎮 Multi-agent Fairness: {fairness.get('fairness_score', 'N/A')} | Active: {summary.get('total_agents', 0)} | Total Rounds: {summary.get('total_rounds_executed', 0)}")
+                
+                # Detailed report to debug log
+                print_debug("🎮 ==========================================")
+                print_debug("🎮 Real-time Round-Level Fairness Report")
+                print_debug("🎮 ==========================================")
+                print_debug(f"🎮 Fairness Grade: {fairness.get('fairness_score', 'N/A')}")
+                print_debug(f"🎮 Round Gap: {summary.get('round_gap', 0)} rounds")
+                print_debug(f"🎮 Average Rounds: {summary.get('average_rounds_per_agent', 0)}")
+                print_debug(f"🎮 Active Agents: {summary.get('total_agents', 0)}")
+                print_debug(f"🎮 Total Rounds: {summary.get('total_rounds_executed', 0)}")
+                print_debug("🎮 ------------------------------------------")
+                print_debug(f"🎮 Distribution: {summary.get('round_distribution', 'No data')}")
+                print_debug("🎮 ==========================================")
                 
                 # 转换格式以保持向后兼容
                 return {
@@ -2142,7 +2146,7 @@ class MultiAgentTools:
             print_current("✅ Multi-agent system cleanup completed")
             
         except Exception as e:
-            print_current(f"❌ Error cleaning up multi-agent system resources: {e}")
+            print_error(f"❌ Error cleaning up multi-agent system resources: {e}")
 
     def __del__(self):
         """Destructor, ensure resources are cleaned up"""

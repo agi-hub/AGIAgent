@@ -184,7 +184,7 @@ gui_default_data_directory=.
 # to prevent them from requiring user input during execution
 # Default: False (disabled)
 # Set to True to enable automatic modification of interactive commands
-auto_fix_interactive_commands=False
+auto_fix_interactive_commands=True
 
 # Multi-Agent Mode Configuration
 # Controls whether to enable multi-agent functionality
@@ -192,7 +192,7 @@ auto_fix_interactive_commands=False
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=True
+multi_agent=False
 
 # Jieba Chinese Segmentation Configuration
 # Controls whether to enable jieba Chinese text segmentation for code parsing

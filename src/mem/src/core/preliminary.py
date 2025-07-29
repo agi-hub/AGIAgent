@@ -10,8 +10,13 @@ from functools import lru_cache
 import pickle
 import jieba
 import re
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import warnings
+
+# 设置sklearn警告处理：将警告重定向到日志而不是终端
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", UserWarning)
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
 
 from ..models.memory_cell import MemCell
 from ..clients.llm_client import LLMClient
@@ -513,10 +518,10 @@ class PreliminaryMemoryManager:
             # Create TF-IDF vectorizer, using class-level word segmentation function
             self.tfidf_vectorizer = TfidfVectorizer(
                 tokenizer=self._tokenize_chinese,
+                token_pattern=None,  # 显式设置为None以避免警告
                 max_features=10000,
                 stop_words=None,
                 ngram_range=(1, 2)
-                # 不设置token_pattern，因为自定义了tokenizer
             )
 
             # Build TF-IDF matrix

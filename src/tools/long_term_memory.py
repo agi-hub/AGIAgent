@@ -33,7 +33,7 @@ except ImportError as e:
     get_logger = lambda name: None
     _MEM_AVAILABLE = False
 
-from .print_system import print_current
+from .print_system import print_current, print_system_info, print_error, print_debug
 
 
 class LongTermMemoryManager:
@@ -79,7 +79,7 @@ class LongTermMemoryManager:
         """Initialize the memory manager"""
         try:
             if MemManagerAgent is None:
-                print_current("⚠️ mem module not properly imported, long-term memory will use a simplified implementation")
+                print_system_info("⚠️ mem module not properly imported, long-term memory will use a simplified implementation")
                 self.initialized = False
                 return
 
@@ -94,13 +94,13 @@ class LongTermMemoryManager:
             health_status = self.memory_manager.health_check()
             if health_status.get("success", False):
                 self.initialized = True
-                print_current("✅ Long-term memory manager initialized successfully")
+                print_system_info("✅ Long-term memory manager initialized successfully")
             else:
-                print_current(f"⚠️ Long-term memory manager health check failed: {health_status.get('error', 'Unknown error')}")
+                print_system_info(f"⚠️ Long-term memory manager health check failed: {health_status.get('error', 'Unknown error')}")
                 self.initialized = False
 
         except Exception as e:
-            print_current(f"❌ Failed to initialize long-term memory manager: {e}")
+            print_error(f"❌ Failed to initialize long-term memory manager: {e}")
             self.initialized = False
 
     def is_available(self) -> bool:
@@ -143,14 +143,14 @@ class LongTermMemoryManager:
                     "was_updated": result.get("action") == "updated"
                 }
             else:
-                print_current(f"❌ Failed to store task memory: {result.get('error', 'Unknown error')}")
+                print_debug(f"❌ Failed to store task memory: {result.get('error', 'Unknown error')}")
                 return {
                     "success": False,
                     "error": result.get("error", "Storage failed")
                 }
 
         except Exception as e:
-            print_current(f"❌ Exception occurred while storing task memory: {e}")
+            print_debug(f"❌ Exception occurred while storing task memory: {e}")
             return {
                 "success": False,
                 "error": str(e)
@@ -293,7 +293,7 @@ class LongTermMemoryManager:
                 }
 
         except Exception as e:
-            print_current(f"❌ Exception occurred while getting memory statistics: {e}")
+            print_debug(f"❌ Exception occurred while getting memory statistics: {e}")
             return {
                 "success": False,
                 "error": str(e)
@@ -415,7 +415,7 @@ class LongTermMemoryManager:
             return formatted_result
 
         except Exception as e:
-            print_current(f"❌ Error formatting memory: {e}")
+            print_debug(f"❌ Error formatting memory: {e}")
             return None
 
     def cleanup(self):
@@ -425,9 +425,9 @@ class LongTermMemoryManager:
                 # If memory manager has a cleanup method, call it
                 if hasattr(self.memory_manager, 'cleanup'):
                     self.memory_manager.cleanup()
-            print_current("🧹 Long-term memory manager cleaned up")
+            print_debug("🧹 Long-term memory manager cleaned up")
         except Exception as e:
-            print_current(f"⚠️ Error cleaning up long-term memory manager: {e}")
+            print_debug(f"⚠️ Error cleaning up long-term memory manager: {e}")
 
 
 class LongTermMemoryTools:

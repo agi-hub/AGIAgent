@@ -12,6 +12,10 @@ import time
 from typing import Optional, Any
 from enum import Enum
 from contextlib import contextmanager
+try:
+    from .output_manager import get_output_manager, MessageImportance
+except ImportError:
+    from tools.output_manager import get_output_manager, MessageImportance
 
 
 class PrintType(Enum):
@@ -61,10 +65,29 @@ class PrintSystem:
         else:
             return (prefix,), kwargs
     
-    def _safe_print(self, prefix: str, *args, **kwargs):
-        """Safe print considering terminal exclusive state"""
+    def _safe_print(self, prefix: str, *args, category: str = 'general', 
+                   importance: MessageImportance = MessageImportance.INFO, **kwargs):
+        """Safe print considering terminal exclusive state and log routing"""
         try:
             thread_id = threading.get_ident()
+            
+            # Format the complete message for logging
+            if args:
+                message = str(args[0])
+                for arg in args[1:]:
+                    message += " " + str(arg)
+            else:
+                message = ""
+            
+            # Log to file and check if should show in terminal
+            output_manager = get_output_manager()
+            should_show_in_terminal = output_manager.log_message(
+                f"{prefix} {message}", category, importance
+            )
+            
+            # Only proceed with terminal output if determined necessary
+            if not should_show_in_terminal:
+                return
             
             # If currently in streaming mode and not the streaming owner thread
             if self._is_streaming and self._streaming_owner != thread_id:
@@ -78,7 +101,7 @@ class PrintSystem:
                     return
                 return
             
-            # Normal print
+            # Normal print to terminal
             try:
                 with self._terminal_lock:
                     formatted_args, formatted_kwargs = self._format_message(prefix, *args, **kwargs)
@@ -91,18 +114,21 @@ class PrintSystem:
             # Catch any other exceptions during shutdown to prevent crashes
             pass
     
-    def system_print(self, *args, **kwargs):
+    def system_print(self, *args, category: str = 'system', 
+                    importance: MessageImportance = MessageImportance.INFO, **kwargs):
         """System message print"""
-        self._safe_print("[system]", *args, **kwargs)
+        self._safe_print("[system]", *args, category=category, importance=importance, **kwargs)
 
-    def manager_print(self, *args, **kwargs):
+    def manager_print(self, *args, category: str = 'execution', 
+                     importance: MessageImportance = MessageImportance.IMPORTANT, **kwargs):
         """Main AGIBot message print"""
-        self._safe_print("[manager]", *args, **kwargs)
+        self._safe_print("[manager]", *args, category=category, importance=importance, **kwargs)
 
-    def agent_print(self, agent_id: str, *args, **kwargs):
+    def agent_print(self, agent_id: str, *args, category: str = 'execution',
+                   importance: MessageImportance = MessageImportance.IMPORTANT, **kwargs):
         """Specified AGIBot message print"""
         prefix = f"[{agent_id}]"
-        self._safe_print(prefix, *args, **kwargs)
+        self._safe_print(prefix, *args, category=category, importance=importance, **kwargs)
     
     def set_agent_id(self, agent_id: Optional[str]):
         """Set current AGIBot ID (thread-local)"""
@@ -232,20 +258,52 @@ def get_agent_id() -> Optional[str]:
     return get_print_system().get_agent_id()
 
 
-def print_current(*args, **kwargs):
+def print_current(*args, category: str = 'execution', 
+                 importance: MessageImportance = MessageImportance.IMPORTANT, **kwargs):
     """Print message based on current agent ID setting"""
     ps = get_print_system()
     current_id = ps.get_agent_id()
     
     if current_id is None:
         # If no agent ID set, use manager print
-        ps.manager_print(*args, **kwargs)
+        ps.manager_print(*args, category=category, importance=importance, **kwargs)
     elif current_id == "manager":
         # If manager, use manager print
-        ps.manager_print(*args, **kwargs)
+        ps.manager_print(*args, category=category, importance=importance, **kwargs)
     else:
         # Other cases use agent print
-        ps.agent_print(current_id, *args, **kwargs)
+        ps.agent_print(current_id, *args, category=category, importance=importance, **kwargs)
+
+
+# Specialized logging functions
+def print_llm_response(*args, **kwargs):
+    """Print LLM response (always shown in terminal)"""
+    print_current(*args, category='llm', importance=MessageImportance.IMPORTANT, **kwargs)
+
+
+def print_tool_call(*args, **kwargs):
+    """Print tool call information (always shown in terminal)"""
+    print_current(*args, category='tools', importance=MessageImportance.IMPORTANT, **kwargs)
+
+
+def print_tool_result(*args, **kwargs):
+    """Print tool result (always shown in terminal)"""
+    print_current(*args, category='tools', importance=MessageImportance.IMPORTANT, **kwargs)
+
+
+def print_debug(*args, **kwargs):
+    """Print debug information (log only, not shown in terminal)"""
+    print_current(*args, category='debug', importance=MessageImportance.DEBUG, **kwargs)
+
+
+def print_system_info(*args, **kwargs):
+    """Print system information (log only, not shown in terminal)"""
+    print_current(*args, category='system', importance=MessageImportance.INFO, **kwargs)
+
+
+def print_error(*args, **kwargs):
+    """Print error message (always shown in terminal)"""
+    print_current(*args, category='general', importance=MessageImportance.CRITICAL, **kwargs)
 
 
 def streaming_context(show_start_message: bool = True):

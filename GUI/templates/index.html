@@ -45,10 +45,15 @@
             min-width: 300px;
         }
 
+        .logo-group {
+            display: flex;
+            align-items: center;
+        }
+
         .user-auth-right {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
         }
 
         .api-key-group {
@@ -143,12 +148,17 @@
 
         .user-status-indicator.connected {
             background: #28a745;
-            animation: pulse 2s infinite;
+            animation: pulse-green 2s infinite;
+        }
+
+        .user-status-indicator.connected.guest {
+            background: #ff5722;
+            animation: pulse-red 2s infinite;
         }
 
         .user-status-indicator.connecting {
             background: #ffc107;
-            animation: pulse 1s infinite;
+            animation: pulse-orange 1s infinite;
         }
 
         .user-status-indicator.error {
@@ -279,6 +289,42 @@
             100% { opacity: 1; }
         }
 
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+            }
+        }
+
+        @keyframes pulse-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 87, 34, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0);
+            }
+        }
+
+        @keyframes pulse-orange {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+            }
+        }
+
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -290,7 +336,7 @@
             margin-bottom: 15px;
             padding: 12px 16px;
             border-radius: 6px;
-            max-width: 80%;
+            max-width: 95%;
             word-wrap: break-word;
             animation: fadeIn 0.3s ease-in;
             white-space: pre-wrap;
@@ -1085,6 +1131,12 @@
     <!-- User Authentication Area -->
     <div class="user-auth-area">
         <div class="user-auth-left">
+            <div class="logo-group">
+                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
+                <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
+            </div>
+        </div>
+        <div class="user-auth-right">
             <div class="api-key-group">
                 <label for="apiKeyInput">
                     <i class="fas fa-key"></i>
@@ -1098,8 +1150,6 @@
                 <i class="fas fa-plug"></i>
                 <span>{{ i18n.connect_btn }}</span>
             </button>
-        </div>
-        <div class="user-auth-right">
             <div class="user-info">
                 <div class="user-status">
                     <div class="user-status-indicator" id="userStatusIndicator"></div>
@@ -1112,8 +1162,8 @@
 
     <div class="container">
         <div class="main-content">
-            <div class="header">
-                <h1><i class="fas fa-robot"></i> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+            <div class="header" style="display: none;">
+                <h1><img src="{{ url_for('static', filename='lynlogo.png') }}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -1189,7 +1239,7 @@
                             <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
-                            <input type="checkbox" id="enableKnowledgeBase" style="margin: 0;">
+                            <input type="checkbox" id="enableKnowledgeBase" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_knowledge_base', '搜索知识库' if lang == 'zh' else 'Knowledge Base') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
@@ -1197,7 +1247,7 @@
                             <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
-                            <input type="checkbox" id="enableLongTermMemory" style="margin: 0;">
+                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
@@ -1377,7 +1427,7 @@
         let lastScrollTop = 0;
 
         // User connection management functions
-        function updateUserStatus(status, message, identity = '') {
+        function updateUserStatus(status, message, identity = '', isGuest = false) {
             const statusClasses = {
                 'disconnected': '',
                 'connecting': 'connecting',
@@ -1385,7 +1435,13 @@
                 'error': 'error'
             };
             
-            userStatusIndicator.className = 'user-status-indicator ' + (statusClasses[status] || '');
+            let className = 'user-status-indicator ' + (statusClasses[status] || '');
+            if (status === 'connected' && isGuest) {
+                className += ' guest';
+                message = I18N.temporary_connection || '临时连接';
+            }
+            
+            userStatusIndicator.className = className;
             userStatusText.textContent = message;
             userIdentity.textContent = identity;
             
@@ -1505,17 +1561,39 @@
                 // Refresh directories for this user
                 refreshDirectories();
                 
+                // 启动5秒周期自动刷新
+                startAutoRefresh();
+                
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
                     scrollToBottom(false);
                 }, 100);
                 console.log('✅ Socket connected for user:', currentUser);
             });
+            
+            socket.on('status', function(data) {
+                const isGuest = data.is_guest || false;
+                const userName = data.user_name || 'unknown';
+                let identity = '';
+                
+                if (isGuest) {
+                    identity = I18N.guest_user || '访客用户';
+                } else {
+                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                }
+                
+                updateUserStatus('connected', I18N.user_connected, identity, isGuest);
+                console.log('✅ Socket status updated:', data);
+            });
 
             socket.on('disconnect', function(reason) {
                 updateUserStatus('disconnected', I18N.user_disconnected);
                 addMessage(`${I18N.disconnected} (${reason})`, 'info');
                 updateStatus('disconnected');
+                
+                // 停止自动刷新
+                stopAutoRefresh();
+                
                 console.log('❌ Socket disconnected:', reason);
             });
 
@@ -1541,6 +1619,18 @@
                 updateUserStatus('error', I18N.user_connection_failed);
                 addMessage(I18N.reconnect_failed, 'info');
                 console.log('❌ Reconnection failed');
+            });
+            
+            socket.on('auth_failed', function(data) {
+                updateUserStatus('error', '认证失败');
+                addMessage('认证失败: ' + (data.message || '未知错误'), 'error');
+                console.log('❌ Authentication failed:', data);
+            });
+            
+            socket.on('connect_error', function(error) {
+                updateUserStatus('error', '连接错误');
+                addMessage('连接错误: ' + error.message, 'error');
+                console.log('❌ Connection error:', error);
             });
 
             socket.on('task_started', function(data) {
@@ -2243,7 +2333,7 @@
                                 <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="上传文件到Workspace">
                                     <i class="fas fa-upload"></i>
                                 </button>
-                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除workspace_code_index）">
+                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除code_index）">
                                     <i class="fas fa-download"></i>
                                 </button>
                                 <button class="action-btn rename-btn" onclick="event.stopPropagation(); showRenameDialog('${dir.name}')" title="重命名目录">
@@ -2277,9 +2367,9 @@
                 // 检查是否在特定目录下，如果是则添加灰色样式
                 const isInSpecialDir = file.path && (
                     file.path.includes('/web_search_result/') || 
-                    file.path.includes('/workspace_code_index/') ||
+                    file.path.includes('/code_index/') ||
                     file.path.includes('\\web_search_result\\') || 
-                    file.path.includes('\\workspace_code_index\\')
+                    file.path.includes('\\code_index\\')
                 );
                 const grayedClass = (file.type === 'file' && isInSpecialDir) ? ' grayed' : '';
                 
@@ -2355,7 +2445,15 @@
                 'txt': 'fas fa-file-alt',
                 'log': 'fas fa-file-alt',
                 'yaml': 'fas fa-code',
-                'yml': 'fas fa-code'
+                'yml': 'fas fa-code',
+                'png': 'fas fa-image',
+                'jpg': 'fas fa-image',
+                'jpeg': 'fas fa-image',
+                'gif': 'fas fa-image',
+                'svg': 'fas fa-image',
+                'bmp': 'fas fa-image',
+                'webp': 'fas fa-image',
+                'ico': 'fas fa-image'
             };
             return iconMap[ext] || 'fas fa-file';
         }
@@ -2367,7 +2465,8 @@
                     'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 
                     'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl', 
                     'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg', 
-                    'conf', 'toml', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'].includes(ext);
+                    'conf', 'toml', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
+                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico'].includes(ext);
         }
 
         function toggleDirectory(dirName, event) {
@@ -2487,8 +2586,14 @@
         }
 
         function downloadDirectory(dirName) {
+            // Build URL with API key parameter - use currentUser like other API calls
+            let downloadUrl = `/api/download/${dirName}`;
+            if (currentUser && currentUser !== 'default') {
+                downloadUrl += `?api_key=${encodeURIComponent(currentUser)}`;
+            }
+            
             const link = document.createElement('a');
-            link.href = `/api/download/${dirName}`;
+            link.href = downloadUrl;
             link.download = `${dirName}.zip`;
             document.body.appendChild(link);
             link.click();
@@ -2837,7 +2942,56 @@
                         }
                     }, 100);
                 }
+            } else if (type === 'image') {
+                // Image file preview
+                const { data: imageData, image_info } = data;
+                const { width, height, format } = image_info;
+                
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: 图片 (${format}) | 尺寸: ${width} × ${height}
+                    </div>
+                    <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
+                        <img src="${imageData}" 
+                             alt="${fileName}" 
+                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                             onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
+                        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <a href="/api/download-file/${file_path}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-download"></i> 下载图片
+                            </a>
+                            <button onclick="zoomImage()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-search-plus"></i> 放大查看
+                            </button>
+                        </div>
+                    </div>
+                `;
             }
+        }
+        
+        function zoomImage() {
+            const img = previewContent.querySelector('img');
+            if (!img) return;
+            
+            // Create fullscreen overlay
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.9); z-index: 10000; display: flex; 
+                align-items: center; justify-content: center; cursor: zoom-out;
+            `;
+            
+            const fullImg = document.createElement('img');
+            fullImg.src = img.src;
+            fullImg.style.cssText = `
+                max-width: 95%; max-height: 95%; object-fit: contain;
+                border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            `;
+            
+            overlay.appendChild(fullImg);
+            overlay.onclick = () => document.body.removeChild(overlay);
+            
+            document.body.appendChild(overlay);
         }
 
         function loadPDF(filePath) {
@@ -3342,12 +3496,17 @@
             initResizer();
             
             // 设置GUI配置选项的默认值
-            document.getElementById('enableWebSearch').checked = false;
-            document.getElementById('enableKnowledgeBase').checked = false;
-            document.getElementById('enableMultiAgent').checked = false;
-            document.getElementById('enableLongTermMemory').checked = false;
-            document.getElementById('enableMCP').checked = false;
-            document.getElementById('enableJieba').checked = true; // 默认启用中文分词
+            document.getElementById('enableWebSearch').checked = false;      // 搜索网络默认不选择
+            document.getElementById('enableKnowledgeBase').checked = true;   // 搜索知识库默认选择
+            
+            document.getElementById('enableMultiAgent').checked = false;     // 启动多智能体默认不选择
+            document.getElementById('enableLongTermMemory').checked = true;  // 启动长期记忆默认选择
+            document.getElementById('enableMCP').checked = false;            // 启动MCP默认不选择
+            document.getElementById('enableJieba').checked = true;           // 启用中文分词默认选择
+            
+            // 自动以Guest身份连接 (临时禁用用于调试)
+            console.log('🔍 Page loaded, auto-connect disabled for debugging');
+            // connectUser();
             
             // 初始化配置选项切换功能
             initConfigToggle();
@@ -3391,21 +3550,31 @@
         /**
          * 启动自动刷新功能
          * @description 设置定时器自动刷新目录列表：
-         * - 任务运行时每30秒刷新一次（保证实时性）
-         * - 无论是否有任务运行，每5分钟刷新一次（保证数据同步）
+         * - 每5秒自动刷新一次目录列表（保证实时性）
          */
+        let autoRefreshInterval = null;
         function startAutoRefresh() {
-            // 每30秒自动刷新一次目录列表（仅在有任务运行时）
-            setInterval(() => {
-                if (isTaskRunning) {
-                    refreshDirectories();
-                }
-            }, 30000);
+            // 如果已经有定时器在运行，先清除它
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
             
-            // 每5分钟刷新一次（无论是否有任务运行）
-            setInterval(() => {
+            // 每5秒自动刷新一次目录列表
+            autoRefreshInterval = setInterval(() => {
                 refreshDirectories();
-            }, 300000);
+            }, 5000);
+            console.log('✅ Auto-refresh started: refreshing directories every 5 seconds');
+        }
+        
+        /**
+         * 停止自动刷新功能
+         */
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                console.log('🛑 Auto-refresh stopped');
+            }
         }
 
         // 分隔条拖拽功能
