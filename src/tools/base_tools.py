@@ -164,7 +164,7 @@ class BaseTools:
             return self.sensor_collector.get_sensor_data(type, source, para)
         else:
             return {
-                'success': False,
+                'status': 'failed',
                 'data': None,
                 'dataformat': None,
                 'error': 'Sensor data collector not initialized',
@@ -186,7 +186,7 @@ class BaseTools:
             return self.terminal_tools.talk_to_user(query, timeout)
         else:
             return {
-                'status': 'error',
+                'status': 'failed',
                 'query': query,
                 'user_response': 'no user response',
                 'timeout': timeout,

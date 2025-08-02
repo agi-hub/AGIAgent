@@ -19,11 +19,11 @@ class ImageProcessor:
     def process_image(self, image_path: str, operations: List[str] = None) -> Dict[str, Any]:
         """Process an image with specified operations"""
         if not os.path.exists(image_path):
-            return {"success": False, "error": "Image file not found"}
+            return {"status": "failed", "error": "Image file not found"}
         
         # Mock processing since actual image processing would require PIL/cv2
         return {
-            "success": True,
+            "status": "success",
             "path": image_path,
             "operations": operations or [],
             "format": os.path.splitext(image_path)[1],
@@ -33,11 +33,11 @@ class ImageProcessor:
     def analyze_image(self, image_path: str) -> Dict[str, Any]:
         """Analyze image properties"""
         if not os.path.exists(image_path):
-            return {"success": False, "error": "Image file not found"}
+            return {"status": "failed", "error": "Image file not found"}
         
         stat = os.stat(image_path)
         return {
-            "success": True,
+            "status": "success",
             "path": image_path,
             "size_bytes": stat.st_size,
             "format": os.path.splitext(image_path)[1],
@@ -51,10 +51,10 @@ class ImageProcessor:
     def resize_image(self, image_path: str, width: int, height: int) -> Dict[str, Any]:
         """Resize an image"""
         if not os.path.exists(image_path):
-            return {"success": False, "error": "Image file not found"}
+            return {"status": "failed", "error": "Image file not found"}
         
         return {
-            "success": True,
+            "status": "success",
             "original_path": image_path,
             "new_dimensions": (width, height),
             "message": f"Image resized to {width}x{height} (mock)"

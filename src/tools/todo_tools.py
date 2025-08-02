@@ -73,7 +73,7 @@ class TodoTools:
             status_lower = status.lower().strip()
             if status_lower not in status_map:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": f"Invalid status '{status}'. Valid options: {list(status_map.keys())}"
                 }
             
@@ -84,7 +84,7 @@ class TodoTools:
             
             if success:
                 return {
-                    "success": True,
+                    "status": "success",
                     "message": f"Task {task_id} status updated to '{task_status.value}'",
                     "task_id": task_id,
                     "new_status": task_status.value,
@@ -92,13 +92,13 @@ class TodoTools:
                 }
             else:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": f"Failed to update task {task_id}"
                 }
                 
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "error": f"Error updating task status: {str(e)}"
             }
     
@@ -153,13 +153,13 @@ class TodoTools:
             
             if "error" in summary:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": summary["error"]
                 }
             
             # Format for LLM consumption
             result = {
-                "success": True,
+                "status": "success",
                 "total_tasks": summary["total_tasks"],
                 "completed": summary["completed"],
                 "in_progress": summary["in_progress"],
@@ -182,7 +182,7 @@ class TodoTools:
             
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "error": f"Error getting task progress: {str(e)}"
             }
     
@@ -197,7 +197,7 @@ class TodoTools:
             content = self.updater.read_todo_file()
             if content is None:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": "Could not read todo.md file"
                 }
             
@@ -213,14 +213,14 @@ class TodoTools:
                 })
             
             return {
-                "success": True,
+                "status": "success",
                 "tasks": task_list,
                 "total_count": len(task_list)
             }
             
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "error": f"Error listing tasks: {str(e)}"
             }
     
@@ -240,21 +240,21 @@ class TodoTools:
             for task in task_list["tasks"]:
                 if task["status"] == "pending":
                     return {
-                        "success": True,
+                        "status": "success",
                         "next_task": task,
                         "suggestion": f"Consider working on Task {task['id']}: {task['name']}"
                     }
             
             # No pending tasks found
             return {
-                "success": True,
+                "status": "success",
                 "next_task": None,
                 "message": "No pending tasks found. All tasks may be completed or in progress."
             }
             
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "error": f"Error finding next task: {str(e)}"
             }
     
@@ -279,7 +279,7 @@ class TodoTools:
             if not task_id or not status:
                 results.append({
                     "task_id": task_id,
-                    "success": False,
+                    "status": "failed",
                     "error": "Missing task_id or status"
                 })
                 continue
@@ -287,11 +287,11 @@ class TodoTools:
             result = self.update_task_status(task_id, status, description)
             results.append(result)
             
-            if result["success"]:
+            if result["status"] == "success":
                 success_count += 1
         
         return {
-            "success": success_count > 0,
+            "status": "success" if success_count > 0 else "failed",
             "total_updates": len(updates),
             "successful_updates": success_count,
             "failed_updates": len(updates) - success_count,
@@ -307,7 +307,7 @@ class TodoTools:
         """
         try:
             progress = self.get_task_progress()
-            if not progress["success"]:
+            if progress["status"] != "success":
                 return progress
             
             suggestions = []
@@ -347,13 +347,13 @@ class TodoTools:
                 })
             
             return {
-                "success": True,
+                "status": "success",
                 "current_progress": progress,
                 "suggestions": suggestions
             }
             
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "error": f"Error generating suggestions: {str(e)}"
             } 

@@ -78,6 +78,15 @@ from enum import Enum
 import logging
 from .print_system import print_current, print_system_info, print_error, print_debug
 
+# FastMCP integration
+try:
+    from .fastmcp_wrapper import get_fastmcp_wrapper, initialize_fastmcp_wrapper, is_fastmcp_initialized, FASTMCP_AVAILABLE
+    FASTMCP_INTEGRATION_AVAILABLE = True
+    print_debug("✅ FastMCP integration available")
+except ImportError:
+    FASTMCP_INTEGRATION_AVAILABLE = False
+    print_debug("⚠️ FastMCP integration not available")
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -121,6 +130,12 @@ class MCPClient:
         self.tools: Dict[str, Dict[str, Any]] = {}
         self.initialized = False
         self.protocol_adapters: Dict[str, ProtocolAdapter] = {}
+        
+        # FastMCP integration
+        self.fastmcp_available = FASTMCP_INTEGRATION_AVAILABLE and FASTMCP_AVAILABLE
+        self.fastmcp_wrapper = None
+        self.fastmcp_initialized = False
+        
         self._init_builtin_adapters()
     
     def _init_builtin_adapters(self):
@@ -273,6 +288,19 @@ class MCPClient:
     async def initialize(self) -> bool:
         """Initialize MCP client"""
         try:
+            # Initialize FastMCP wrapper if available
+            if self.fastmcp_available:
+                try:
+                    self.fastmcp_wrapper = get_fastmcp_wrapper(self.config_path)
+                    self.fastmcp_initialized = await initialize_fastmcp_wrapper(self.config_path)
+                    if self.fastmcp_initialized:
+                        logger.info("FastMCP wrapper initialized successfully")
+                    else:
+                        logger.warning("FastMCP wrapper initialization failed, falling back to traditional MCP")
+                except Exception as e:
+                    logger.warning(f"FastMCP wrapper initialization error: {e}, falling back to traditional MCP")
+                    self.fastmcp_initialized = False
+            
             # Load configuration
             if not self._load_config():
                 # print_current("⚠️ MCP configuration file not found or empty")
@@ -304,15 +332,21 @@ class MCPClient:
             
             for server_name, server_config in servers_config.items():
                 try:
-                    # Skip NPX/NPM format servers - they should be handled by cli_mcp_wrapper
+                    # Handle NPX/NPM format servers with FastMCP if available
                     if server_config.get("command") and not server_config.get("url"):
                         # This is a command-based server (NPX/NPM format)
-                        # Skip it as it should be handled by cli-mcp wrapper
-                        print_current(f"⏭️  Skipping NPX/NPM server {server_name}, will be handled by cli-mcp wrapper")
-                        continue
+                        if self.fastmcp_initialized and self.fastmcp_wrapper and self.fastmcp_wrapper.supports_server(server_name):
+                            # FastMCP can handle this server
+                            print_current(f"🚀 NPX/NPM server {server_name} will be handled by FastMCP")
+                            # Continue processing as STDIO type
+                            transport_type = MCPTransportType.STDIO
+                        else:
+                            # Skip it as it should be handled by cli-mcp wrapper
+                            print_current(f"⏭️  Skipping NPX/NPM server {server_name}, will be handled by cli-mcp wrapper")
+                            continue
                     
                     # Determine transport type based on configuration
-                    if server_config.get("url"):
+                    elif server_config.get("url"):
                         # Check if URL contains SSE identifier
                         url = server_config.get("url", "").lower()
                         if "sse" in url:
@@ -426,10 +460,10 @@ class MCPClient:
     async def call_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call MCP tool"""
         if not self.initialized:
-            return {"error": "MCP client not initialized"}
+            return {"status": "failed", "error": "MCP client not initialized"}
         
         if not self.is_mcp_tool(tool_name):
-            return {"error": f"Not a valid MCP tool: {tool_name}"}
+            return {"status": "failed", "error": f"Not a valid MCP tool: {tool_name}"}
         
         try:
             # Call directly using server name
@@ -441,11 +475,11 @@ class MCPClient:
                 
                 return await self._call_mcp_tool(server, actual_tool_name, actual_parameters)
             else:
-                return {"error": f"Server {tool_name} is not available"}
+                return {"status": "failed", "error": f"Server {tool_name} is not available"}
             
         except Exception as e:
             logger.error(f"Failed to call MCP tool: {e}")
-            return {"error": f"Failed to call MCP tool: {e}"}
+            return {"status": "failed", "error": f"Failed to call MCP tool: {e}"}
     
     async def _call_mcp_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Actually call MCP tool"""
@@ -456,14 +490,59 @@ class MCPClient:
         elif server.transport_type == MCPTransportType.SSE:
             return await self._call_sse_tool(server, tool_name, parameters)
         else:
-            return {"error": f"Unsupported transport type: {server.transport_type.value}"}
+            return {"status": "failed", "error": f"Unsupported transport type: {server.transport_type.value}"}
     
     async def _call_stdio_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call tool via STDIO"""
         try:
+            # Try FastMCP first if available and supports this server
+            if (self.fastmcp_initialized and 
+                self.fastmcp_wrapper and 
+                self.fastmcp_wrapper.supports_server(server.name)):
+                
+                print_current(f"🚀 Using FastMCP for server {server.name}, tool {tool_name}")
+                
+                try:
+                    result = await self.fastmcp_wrapper.call_server_tool(server.name, tool_name, parameters)
+                    
+                    if result.get("status") == "success":
+                        # Convert FastMCP result format to standard MCP result format
+                        fastmcp_result = result.get("result", "")
+                        
+                        # Check if result is already in MCP content format
+                        if isinstance(fastmcp_result, dict) and "content" in fastmcp_result:
+                            return fastmcp_result
+                        elif isinstance(fastmcp_result, str):
+                            return {
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": fastmcp_result
+                                    }
+                                ]
+                            }
+                        else:
+                            return {
+                                "content": [
+                                    {
+                                        "type": "text", 
+                                        "text": str(fastmcp_result)
+                                    }
+                                ]
+                            }
+                    else:
+                        # FastMCP failed, fall back to traditional method
+                        print_current(f"⚠️ FastMCP failed for {server.name}: {result.get('error', 'Unknown error')}, falling back to subprocess")
+                        
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP call exception for {server.name}: {str(e)}, falling back to subprocess")
+            
+            # Traditional subprocess method (fallback or when FastMCP not available)
+            print_current(f"💻 Using subprocess for server {server.name}, tool {tool_name}")
+            
             # Check if command exists
             if not server.command:
-                return {"error": "MCP server command not configured"}
+                return {"status": "failed", "error": "MCP server command not configured"}
             
             # Prepare environment variables
             env = os.environ.copy()
@@ -515,7 +594,7 @@ class MCPClient:
                     error_msg += f", stderr: {stderr.strip()}"
                 if stdout.strip():
                     error_msg += f", stdout: {stdout.strip()}"
-                return {"error": error_msg}
+                return {"status": "failed", "error": error_msg}
             
             # Debug logging for stdout content
             if len(stdout) > 500:
@@ -527,7 +606,7 @@ class MCPClient:
             # Parse response
             try:
                 if not stdout.strip():
-                    return {"error": "Empty response from MCP server"}
+                    return {"status": "failed", "error": "Empty response from MCP server"}
                 
                 response = json.loads(stdout)
                 if "result" in response:
@@ -535,10 +614,10 @@ class MCPClient:
                     return response["result"]
                 elif "error" in response:
                     print_error(f"❌ MCP server returned error: {response['error']}")
-                    return {"error": response["error"]}
+                    return {"status": "failed", "error": response["error"]}
                 else:
                     print_current(f"⚠️ Unknown response format: {list(response.keys())}")
-                    return {"error": f"Unknown response format, keys: {list(response.keys())}"}
+                    return {"status": "failed", "error": f"Unknown response format, keys: {list(response.keys())}"}
             except json.JSONDecodeError as e:
                 error_msg = f"Cannot parse JSON response. Error: {str(e)}"
                 if len(stdout) <= 1000:
@@ -552,23 +631,23 @@ class MCPClient:
                     error_msg += f"\nSTDERR: {stderr.strip()}"
                 
                 print_current(f"🚨 JSON parsing failed: {error_msg}")
-                return {"error": error_msg}
+                return {"status": "failed", "error": error_msg}
             
         except subprocess.TimeoutExpired:
             error_msg = f"MCP tool call timeout (>{server.timeout}s)"
             print_current(f"⏰ {error_msg}")
-            return {"error": error_msg}
+            return {"status": "failed", "error": error_msg}
         except Exception as e:
             error_msg = f"MCP tool call exception: {str(e)}"
             print_current(f"💥 {error_msg}")
-            return {"error": error_msg}
+            return {"status": "failed", "error": error_msg}
     
     async def _call_http_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call tool via HTTP"""
         try:
             # Check if URL exists
             if not server.url:
-                return {"error": "MCP server URL not configured"}
+                return {"status": "failed", "error": "MCP server URL not configured"}
             
             # Standard MCP request
             request_data = {
@@ -603,7 +682,7 @@ class MCPClient:
             )
             
             if response.get("status") == "error":
-                return {"error": response.get("message", "HTTP request failed")}
+                return {"status": "failed", "error": response.get("message", "HTTP request failed")}
             
             # Parse response
             response_data = response.get("data", {})
@@ -611,12 +690,12 @@ class MCPClient:
             if "result" in response_data:
                 return response_data["result"]
             elif "error" in response_data:
-                return {"error": response_data["error"]}
+                return {"status": "failed", "error": response_data["error"]}
             else:
-                return {"error": "Unknown response format"}
+                return {"status": "failed", "error": "Unknown response format"}
             
         except Exception as e:
-            return {"error": str(e)}
+            return {"status": "failed", "error": str(e)}
     
     def _make_http_request(self, url: str, data: Dict[str, Any], headers: Dict[str, str], timeout: int) -> Dict[str, Any]:
         """Synchronous HTTP request (run in executor)"""
@@ -631,14 +710,14 @@ class MCPClient:
             if response.status_code == 200:
                 return {"status": "success", "data": response.json()}
             else:
-                return {"status": "error", "message": f"HTTP status code: {response.status_code}"}
+                return {"status": "failed", "message": f"HTTP status code: {response.status_code}"}
                 
         except requests.exceptions.Timeout:
-            return {"status": "error", "message": "HTTP request timeout"}
+            return {"status": "failed", "message": "HTTP request timeout"}
         except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"HTTP request exception: {str(e)}"}
+            return {"status": "failed", "message": f"HTTP request exception: {str(e)}"}
         except Exception as e:
-            return {"status": "error", "message": f"Unknown error: {str(e)}"}
+            return {"status": "failed", "message": f"Unknown error: {str(e)}"}
     
     async def _call_sse_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Call MCP tool via SSE (supports protocol adapters)"""
@@ -647,7 +726,7 @@ class MCPClient:
             
             # Check if URL exists
             if not server.url:
-                return {"error": "MCP server URL not configured"}
+                return {"status": "failed", "error": "MCP server URL not configured"}
             
             # Detect if protocol adapter is needed
             adapter = self._detect_protocol_adapter(server)
@@ -661,14 +740,14 @@ class MCPClient:
             
         except Exception as e:
             logger.error(f"SSE tool call exception: {e}")
-            return {"error": str(e)}
+            return {"status": "failed", "error": str(e)}
     
     async def _call_sse_with_adapter(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any], adapter: ProtocolAdapter) -> Dict[str, Any]:
         """Call SSE tool using protocol adapter"""
         try:
             # Check if URL exists
             if not server.url:
-                return {"error": "MCP server URL not configured for adapter"}
+                return {"status": "failed", "error": "MCP server URL not configured for adapter"}
             
             # Parse URL, remove query parameters to get base URL
             url_parts = server.url.split("?")
@@ -708,7 +787,7 @@ class MCPClient:
             )
             
             if response.get("status") == "error":
-                return {"error": response.get("message", "Adapter request failed")}
+                return {"status": "failed", "error": response.get("message", "Adapter request failed")}
             
             # Use adapter to transform response data
             raw_data = response.get("data", {})
@@ -716,7 +795,7 @@ class MCPClient:
             
         except Exception as e:
             logger.error(f"Adapter SSE call exception: {e}")
-            return {"error": str(e)}
+            return {"status": "failed", "error": str(e)}
     
     def _make_adapter_request(self, url: str, data: Dict[str, Any], headers: Dict[str, str], timeout: int) -> Dict[str, Any]:
         """Send adapter request"""
@@ -731,21 +810,21 @@ class MCPClient:
             if response.status_code == 200:
                 return {"status": "success", "data": response.json()}
             else:
-                return {"status": "error", "message": f"HTTP status code: {response.status_code}, response: {response.text[:200]}"}
+                return {"status": "failed", "message": f"HTTP status code: {response.status_code}, response: {response.text[:200]}"}
                 
         except requests.exceptions.Timeout:
-            return {"status": "error", "message": "Adapter request timeout"}
+            return {"status": "failed", "message": "Adapter request timeout"}
         except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"Adapter request exception: {str(e)}"}
+            return {"status": "failed", "message": f"Adapter request exception: {str(e)}"}
         except Exception as e:
-            return {"status": "error", "message": f"Unknown error: {str(e)}"}
+            return {"status": "failed", "message": f"Unknown error: {str(e)}"}
     
     async def _call_generic_sse(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Generic SSE protocol handling"""
         try:
             # Check if URL exists
             if not server.url:
-                return {"error": "MCP server URL not configured for generic SSE"}
+                return {"status": "failed", "error": "MCP server URL not configured for generic SSE"}
             
             # Parse URL, remove query parameters to get base URL
             url_parts = server.url.split("?")
@@ -788,7 +867,7 @@ class MCPClient:
             )
             
             if response.get("status") == "error":
-                return {"error": response.get("message", "SSE request failed")}
+                return {"status": "failed", "error": response.get("message", "SSE request failed")}
             
             # Parse SSE response
             data = response.get("data", {})
@@ -802,7 +881,7 @@ class MCPClient:
                 
         except Exception as e:
             logger.error(f"Generic SSE call exception: {e}")
-            return {"error": str(e)}
+            return {"status": "failed", "error": str(e)}
     
     def _make_sse_request(self, url: str, data: Dict[str, Any], headers: Dict[str, str], timeout: int) -> Dict[str, Any]:
         """Send SSE request (generic implementation)"""
@@ -830,7 +909,7 @@ class MCPClient:
                                 if "result" in parsed_data:
                                     return {"status": "success", "data": parsed_data}
                                 elif "error" in parsed_data:
-                                    return {"status": "error", "message": parsed_data["error"]}
+                                    return {"status": "failed", "message": parsed_data["error"]}
                                 else:
                                     content += str(parsed_data)
                             except json.JSONDecodeError:
@@ -850,18 +929,29 @@ class MCPClient:
                     }
                 }
             else:
-                return {"status": "error", "message": f"HTTP status code: {response.status_code}, response: {response.text[:200]}"}
+                return {"status": "failed", "message": f"HTTP status code: {response.status_code}, response: {response.text[:200]}"}
                 
         except requests.exceptions.Timeout:
-            return {"status": "error", "message": "SSE request timeout"}
+            return {"status": "failed", "message": "SSE request timeout"}
         except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"SSE request exception: {str(e)}"}
+            return {"status": "failed", "message": f"SSE request exception: {str(e)}"}
         except Exception as e:
-            return {"status": "error", "message": f"Unknown error: {str(e)}"}
+            return {"status": "failed", "message": f"Unknown error: {str(e)}"}
     
     async def cleanup(self):
         """Cleanup MCP client"""
         try:
+            # Cleanup FastMCP wrapper if initialized
+            if self.fastmcp_wrapper and self.fastmcp_initialized:
+                try:
+                    await self.fastmcp_wrapper.cleanup()
+                    print_current("🧹 FastMCP wrapper cleaned up")
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP wrapper cleanup error: {e}")
+                finally:
+                    self.fastmcp_wrapper = None
+                    self.fastmcp_initialized = False
+            
             # Close all connections
             for connection in self.connections.values():
                 try:
@@ -881,6 +971,17 @@ class MCPClient:
     def cleanup_sync(self):
         """Synchronous cleanup method"""
         try:
+            # Cleanup FastMCP wrapper if initialized
+            if self.fastmcp_wrapper and self.fastmcp_initialized:
+                try:
+                    self.fastmcp_wrapper.cleanup_sync()
+                    print_current("🧹 FastMCP wrapper cleaned up synchronously")
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP wrapper sync cleanup error: {e}")
+                finally:
+                    self.fastmcp_wrapper = None
+                    self.fastmcp_initialized = False
+            
             # Synchronous cleanup operations
             self.connections.clear()
             self.tools.clear()
@@ -891,7 +992,7 @@ class MCPClient:
     
     def get_status(self) -> Dict[str, Any]:
         """Get client status"""
-        return {
+        status = {
             "initialized": self.initialized,
             "servers": {
                 name: {
@@ -900,8 +1001,23 @@ class MCPClient:
                 }
                 for name, server in self.servers.items()
             },
-            "total_servers": len(self.servers)
+            "total_servers": len(self.servers),
+            "fastmcp": {
+                "available": self.fastmcp_available,
+                "initialized": self.fastmcp_initialized,
+                "wrapper": self.fastmcp_wrapper is not None
+            }
         }
+        
+        # Add FastMCP specific status if available
+        if self.fastmcp_wrapper and self.fastmcp_initialized:
+            try:
+                fastmcp_status = self.fastmcp_wrapper.get_status()
+                status["fastmcp"]["status"] = fastmcp_status
+            except Exception as e:
+                status["fastmcp"]["status_error"] = str(e)
+        
+        return status
 
     def register_protocol_adapter(self, adapter: ProtocolAdapter):
         """Register custom protocol adapter"""

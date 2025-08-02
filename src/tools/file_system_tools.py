@@ -133,8 +133,8 @@ class FileSystemTools:
         if kwargs:
             print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print_current(f"🎯 Requested to read file: {target_file}")
-        print_current(f"📂 Current working directory: {self.workspace_root}")
+        #print_current(f"🎯 Requested to read file: {target_file}")
+        #print_current(f"📂 Current working directory: {self.workspace_root}")
         
         file_path = self._resolve_path(target_file)
         
@@ -147,6 +147,7 @@ class FileSystemTools:
                 print_current(f"⚠️ Cannot list current directory: {e}")
             
             return {
+                'status': 'failed',
                 'file': target_file,
                 'error': f'File not found: {file_path}',
                 'workspace_root': self.workspace_root,
@@ -157,6 +158,7 @@ class FileSystemTools:
         if not os.path.isfile(file_path):
             print_current(f"❌ Path is not a file: {file_path}")
             return {
+                'status': 'failed',
                 'file': target_file,
                 'error': f'Path is not a file: {file_path}',
                 'workspace_root': self.workspace_root,
@@ -176,11 +178,11 @@ class FileSystemTools:
                 if total_lines <= max_entire_lines:
                     content = ''.join(all_lines)
                     return {
+                        'status': 'success',
                         'file': target_file,
                         'content': content,
                         'total_lines': total_lines,
-                        'resolved_path': file_path,
-                        'status': 'success'
+                        'resolved_path': file_path
                     }
                 else:
                     # File too large, truncate to max_entire_lines
@@ -189,14 +191,14 @@ class FileSystemTools:
                     after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
                     print_current(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
                     return {
+                        'status': 'success',
                         'file': target_file,
                         'content': content,
                         'after_summary': after_summary,
                         'total_lines': total_lines,
                         'lines_shown': max_entire_lines,
                         'truncated': True,
-                        'resolved_path': file_path,
-                        'status': 'success'
+                        'resolved_path': file_path
                     }
             else:
                 if start_line_one_indexed is None:
@@ -219,6 +221,7 @@ class FileSystemTools:
                 after_summary = f"... {total_lines - end_idx} lines after ..." if end_idx < total_lines else ""
                 
                 return {
+                    'status': 'success',
                     'file': target_file,
                     'content': content,
                     'before_summary': before_summary,
@@ -226,24 +229,23 @@ class FileSystemTools:
                     'start_line': start_line_one_indexed,
                     'end_line': end_line_one_indexed_inclusive,
                     'total_lines': total_lines,
-                    'resolved_path': file_path,
-                    'status': 'success'
+                    'resolved_path': file_path
                 }
         except UnicodeDecodeError as e:
             print_current(f"❌ File encoding error: {e}")
             return {
+                'status': 'failed',
                 'file': target_file,
                 'error': f'Unicode decode error: {str(e)}',
-                'resolved_path': file_path,
-                'status': 'encoding_error'
+                'resolved_path': file_path
             }
         except Exception as e:
             print_current(f"❌ Error occurred while reading file: {e}")
             return {
+                'status': 'failed',
                 'file': target_file,
                 'error': str(e),
-                'resolved_path': file_path,
-                'status': 'error'
+                'resolved_path': file_path
             }
 
     def list_dir(self, relative_workspace_path: str = "", **kwargs) -> Dict[str, Any]:
@@ -271,12 +273,14 @@ class FileSystemTools:
                     files.append(entry)
             
             return {
+                'status': 'success',
                 'path': relative_workspace_path,
                 'directories': sorted(directories),
                 'files': sorted(files)
             }
         except Exception as e:
             return {
+                'status': 'failed',
                 'path': relative_workspace_path,
                 'error': str(e)
             }
@@ -335,8 +339,8 @@ class FileSystemTools:
         if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
             print_current(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
             return {
+                'status': 'failed',
                 'file': target_file,
-                'status': 'skipped',
                 'error': 'Dummy placeholder file detected - hallucination prevention active',
                 'hallucination_prevention': True
             }
@@ -422,8 +426,8 @@ class FileSystemTools:
                 status = 'edited'
             
             return {
+                'status': 'success',
                 'file': target_file,
-                'status': status,
                 'action': action,
                 'edit_mode': edit_mode,
                 'snapshot_created': file_exists  # Only create snapshot for existing files
@@ -431,8 +435,8 @@ class FileSystemTools:
             
         except Exception as e: 
             return {
+                'status': 'failed',
                 'file': target_file,
-                'status': 'error',
                 'error': str(e),
                 'edit_mode': edit_mode
             }
@@ -1126,7 +1130,7 @@ class FileSystemTools:
         """
         print_current(f"🔧 Handling complex edit with {len(edit_parts)} parts")
         
-        # 调试打印：显示编辑部分
+
         for i, part in enumerate(edit_parts):
             part_preview = part.strip()[:100].replace('\n', '\\n') if part.strip() else "(empty)"
             print_current(f"🔍 DEBUG: Multiple marker edit part {i}: {part_preview}...")
@@ -1205,6 +1209,7 @@ class FileSystemTools:
                 break
         
         return {
+            'status': 'success',
             'query': query,
             'results': results,
             'total_matches': len(results),
@@ -1224,29 +1229,30 @@ class FileSystemTools:
         
         if not os.path.exists(file_path):
             return {
+                'status': 'failed',
                 'file': target_file,
-                'status': 'error',
                 'error': 'File does not exist'
             }
         
         try:
             if os.path.isdir(file_path):
                 return {
+                    'status': 'failed',
                     'file': target_file,
-                    'status': 'error',
                     'error': 'Target is a directory, not a file'
                 }
             
             os.remove(file_path)
             
             return {
+                'status': 'success',
                 'file': target_file,
-                'status': 'deleted'
+                'action': 'deleted'
             }
         except Exception as e:
             return {
+                'status': 'failed',
                 'file': target_file,
-                'status': 'error',
                 'error': str(e)
             }
 
@@ -1383,6 +1389,7 @@ class FileSystemTools:
                 unique_results.append(result)
         
         return {
+            'status': 'success',
             'query': ' + '.join(all_queries),
             'results': unique_results[:50],  # Limit final results
             'total_matches': len(unique_results),
@@ -1439,6 +1446,7 @@ class FileSystemTools:
                     break
         
         return {
+            'status': 'success',
             'query': query,
             'results': results,
             'total_matches': len(results),
@@ -1536,6 +1544,7 @@ class FileSystemTools:
                                     continue
                 
                 return {
+                    'status': 'success',
                     'query': query,
                     'results': results,
                     'total_matches': len(results),
@@ -1602,6 +1611,7 @@ class FileSystemTools:
                     break
         
         return {
+            'status': 'success',
             'query': query,
             'results': results,
             'total_matches': len(results),

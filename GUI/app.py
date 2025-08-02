@@ -92,6 +92,7 @@ I18N_TEXTS = {
         'delete': '删除',
         'confirm': '确认',
         'cancel': '取消',
+        'clear_chat': '清扫',
         
         # Button tooltips
         'direct_tooltip': '直接执行 - 不进行任务分解',
@@ -102,6 +103,7 @@ I18N_TEXTS = {
         'download_tooltip': '下载目录为ZIP（排除code_index）',
         'rename_tooltip': '重命名目录',
         'delete_tooltip': '删除目录',
+        'clear_chat_tooltip': '清空日志显示区域和历史对话',
         
         # Input boxes and placeholders
         'input_placeholder': '请输入您的需求...',
@@ -125,6 +127,8 @@ I18N_TEXTS = {
         'directory_deleted': '目录删除成功',
         'files_uploaded': '文件上传成功',
         'refresh_success': '目录列表已刷新',
+        'chat_cleared': '日志和历史对话已清空',
+        'confirm_clear_chat': '确定要清空所有日志和历史对话吗？此操作不可撤销。',
         
         # Mode information
         'plan_mode_info': '🔄 启用计划模式：将先分解任务再执行',
@@ -239,6 +243,8 @@ I18N_TEXTS = {
         'user_prefix': '用户',
         'guest_user': '访客用户',
         'temporary_connection': '临时连接',
+        'auto_login_from_url': '已通过URL参数自动登录',
+        'session_restored': '已恢复上次登录会话',
     },
     'en': {
         # Page title and basic info
@@ -261,6 +267,7 @@ I18N_TEXTS = {
         'delete': 'Delete',
         'confirm': 'Confirm',
         'cancel': 'Cancel',
+        'clear_chat': 'Clean',
         
         # Button tooltips
         'direct_tooltip': 'Direct execution - no task decomposition',
@@ -271,6 +278,7 @@ I18N_TEXTS = {
         'download_tooltip': 'Download directory as ZIP (excluding code_index)',
         'rename_tooltip': 'Rename directory',
         'delete_tooltip': 'Delete directory',
+        'clear_chat_tooltip': 'Clear chat log and conversation history',
         
         # Input and placeholders
         'input_placeholder': 'Enter your requirements...',
@@ -294,6 +302,8 @@ I18N_TEXTS = {
         'directory_deleted': 'Directory deleted successfully',
         'files_uploaded': 'Files uploaded successfully',
         'refresh_success': 'Directory list refreshed',
+        'chat_cleared': 'Chat log and conversation history cleared',
+        'confirm_clear_chat': 'Are you sure you want to clear all chat logs and conversation history? This operation cannot be undone.',
         
         # Mode info
         'plan_mode_info': '🔄 Plan mode enabled: Tasks will be decomposed before execution',
@@ -408,6 +418,8 @@ I18N_TEXTS = {
         'user_prefix': 'User',
         'guest_user': 'Guest User',
         'temporary_connection': 'Temporary Connection',
+        'auto_login_from_url': 'Auto-logged in via URL parameter',
+        'session_restored': 'Previous login session restored',
     }
 }
 
@@ -1688,7 +1700,8 @@ def handle_execute_task(data):
         history_context = user_session.get_summarized_requirements()
         if history_context:
             # 🔧 修复：调整提示词顺序 - 当前在前，历史在后
-            detailed_requirement = f"Current request: {user_requirement}\n\nPrevious conversation context:\n{history_context}"
+            # Note: history_context already contains "Previous conversation context:" prefix
+            detailed_requirement = f"Current request: {user_requirement}\n\n{history_context}"
     
     # Get user's base directory
     user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
@@ -1835,6 +1848,28 @@ def handle_create_new_directory():
         
     except Exception as e:
         emit('directory_created', {
+            'success': False,
+            'error': str(e)
+        }, room=session_id)
+
+@socketio.on('clear_chat')
+def handle_clear_chat():
+    """Handle clear chat request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    try:
+        i18n = get_i18n_texts()
+        
+        # Clear chat history (this is mainly client-side, but we acknowledge the request)
+        emit('chat_cleared', {
+            'success': True,
+            'message': i18n['chat_cleared']
+        }, room=session_id)
+        
+    except Exception as e:
+        emit('chat_cleared', {
             'success': False,
             'error': str(e)
         }, room=session_id)

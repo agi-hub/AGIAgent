@@ -140,14 +140,33 @@ class OutputManager:
     
     def _write_to_log_file(self, message: str, category: str):
         """Write message to unified log file with category prefix"""
-        if self._unified_log_file and not self._unified_log_file.closed:
+        # 🔧 核心修复：当文件句柄为None时，尝试恢复并写入
+        if self._unified_log_file is None:
+            # 尝试恢复日志文件句柄
+            if self._recover_log_file():
+                # 恢复成功，继续正常写入流程
+                pass
+            else:
+                # 恢复失败，无法写入日志文件
+                return
+        
+        # 检查文件句柄是否有效
+        if self._unified_log_file and hasattr(self._unified_log_file, 'closed') and not self._unified_log_file.closed:
             try:
                 # Add category prefix for better organization
                 categorized_message = f"[{category.upper()}] {message}"
                 self._unified_log_file.write(categorized_message + '\n')
                 self._unified_log_file.flush()
-            except:
-                pass
+            except Exception as e:
+                # 文件写入失败，尝试恢复
+                if self._recover_log_file():
+                    # 恢复成功，重试写入
+                    try:
+                        categorized_message = f"[{category.upper()}] {message}"
+                        self._unified_log_file.write(categorized_message + '\n')
+                        self._unified_log_file.flush()
+                    except:
+                        pass  # 重试失败，放弃写入
     
     def log_llm_response(self, response: str, show_in_terminal: bool = True):
         """Log LLM response"""
@@ -204,6 +223,36 @@ class OutputManager:
             importance=MessageImportance.CRITICAL,
             show_in_terminal=show_in_terminal
         )
+    
+    def _recover_log_file(self) -> bool:
+        """尝试恢复日志文件句柄"""
+        try:
+            # 如果已经有日志目录，直接重新初始化文件
+            if self._log_dir and os.path.exists(self._log_dir):
+                self._init_log_files()
+                return self._unified_log_file is not None
+            
+            # 如果没有日志目录，尝试查找可能的输出目录
+            possible_dirs = []
+            
+            # 查找最新的output目录
+            import glob
+            output_patterns = ['output_*', './output_*', '../output_*']
+            for pattern in output_patterns:
+                dirs = glob.glob(pattern)
+                if dirs:
+                    # 按修改时间排序，取最新的
+                    dirs.sort(key=lambda x: os.path.getmtime(x) if os.path.exists(x) else 0, reverse=True)
+                    possible_dirs.extend(dirs)
+            
+            # 如果找到输出目录，使用第一个进行初始化
+            if possible_dirs:
+                self.set_output_directory(possible_dirs[0])
+                return self._unified_log_file is not None
+            
+            return False
+        except Exception:
+            return False
     
     def cleanup(self):
         """Clean up resources"""

@@ -19,9 +19,21 @@ limitations under the License.
 import os
 from typing import Dict, Optional
 
+# 全局缓存配置
+_config_cache: Dict[str, Dict[str, str]] = {}
+_config_file_mtime: Dict[str, float] = {}
+
+def clear_config_cache() -> None:
+    """
+    清除配置文件缓存
+    """
+    global _config_cache, _config_file_mtime
+    _config_cache.clear()
+    _config_file_mtime.clear()
+
 def load_config(config_file: str = "config/config.txt", verbose: bool = False) -> Dict[str, str]:
     """
-    Load configuration from config/config.txt file
+    Load configuration from config/config.txt file (with caching support)
     
     Args:
         config_file: Path to the configuration file
@@ -30,14 +42,32 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
     Returns:
         Dictionary containing configuration key-value pairs
     """
-    config = {}
+    global _config_cache, _config_file_mtime
     
+    # 检查文件是否存在
     if not os.path.exists(config_file):
         if verbose:
             print(f"Warning: Configuration file {config_file} not found")
-        return config
+        return {}
     
     try:
+        # 获取文件修改时间
+        current_mtime = os.path.getmtime(config_file)
+        
+        # 检查缓存是否有效
+        if (config_file in _config_cache and 
+            config_file in _config_file_mtime and 
+            _config_file_mtime[config_file] == current_mtime):
+            if verbose:
+                print(f"Using cached configuration for {config_file}")
+            return _config_cache[config_file].copy()
+        
+        # 需要重新解析文件
+        if verbose:
+            print(f"Loading configuration from {config_file}")
+        
+        config = {}
+        
         with open(config_file, 'r', encoding='utf-8') as f:
             line_number = 0
             for line in f:
@@ -76,11 +106,16 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                 else:
                     if verbose:
                         print(f"Warning: Invalid config line {line_number} (no '=' found): {original_line}")
+        
+        # 更新缓存
+        _config_cache[config_file] = config.copy()
+        _config_file_mtime[config_file] = current_mtime
+        
+        return config
                     
     except Exception as e:
         print(f"Error reading configuration file {config_file}: {e}")
-    
-    return config
+        return {}
 
 def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     """

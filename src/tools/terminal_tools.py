@@ -117,9 +117,6 @@ class TerminalTools:
         
         timed_out = False
         
-        pass  # Separator line removed
-        print_current("🚀 Command execution started, real-time output as follows:")
-        pass  # Separator line removed
         
         try:
             while process.poll() is None:
@@ -339,7 +336,7 @@ class TerminalTools:
             else:
                 print_current(f"❌ 输入错误: {response}")
                 return {
-                    'status': 'error',
+                    'status': 'failed',
                     'query': query,
                     'user_response': 'no user response',
                     'timeout': timeout,
@@ -351,7 +348,7 @@ class TerminalTools:
             # Timeout occurred
             print_current("⏰ 用户未在指定时间内回复")
             return {
-                'status': 'timeout',
+                'status': 'failed',
                 'query': query,
                 'user_response': 'no user response',
                 'timeout': timeout,
@@ -360,7 +357,7 @@ class TerminalTools:
         except Exception as e:
             print_current(f"❌ 等待用户输入时发生错误: {e}")
             return {
-                'status': 'error',
+                'status': 'failed',
                 'query': query,
                 'user_response': 'no user response',
                 'timeout': timeout,
@@ -450,7 +447,7 @@ class TerminalTools:
                 if is_potentially_long_running:
                     timeout_inactive = max(timeout_inactive, 600)
                     max_total_time = max(max_total_time, 1800)
-                    print_current(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    #print_current(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 # For interactive commands, use special environment variables
                 env = None
@@ -459,7 +456,7 @@ class TerminalTools:
                     env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'  # For apt commands
                     env['NEEDRESTART_MODE'] = 'a'  # Auto restart services
-                    print_current("🔧 DEBUG: Set noninteractive environment for interactive command")
+                    #print_current("🔧 DEBUG: Set noninteractive environment for interactive command")
                 
                 process = subprocess.Popen(
                     command,
@@ -478,11 +475,9 @@ class TerminalTools:
                     process, timeout_inactive, max_total_time
                 )
                 
-                status = 'completed'
-                if timed_out:
-                    status = 'timeout'
-                elif return_code != 0:
-                    status = 'error'
+                status = 'success'
+                if timed_out or return_code != 0:
+                    status = 'failed'
                 
                 result = {
                     'status': status,
@@ -511,7 +506,7 @@ class TerminalTools:
                 
         except Exception as e:
             return {
-                'status': 'error',
+                'status': 'failed',
                 'command': command,
                 'original_command': original_command,
                 'error': str(e),

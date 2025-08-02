@@ -176,9 +176,29 @@ def global_cleanup():
     
     try:
         import time
+        #print_current("🔄 Starting global cleanup...")
         
         # Import here to avoid circular imports
         # Note: AgentManager class is not implemented, skipping cleanup
+        
+        # Cleanup MCP clients first (most important for subprocess cleanup)
+        try:
+            from src.tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+            safe_cleanup_cli_mcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ CLI-MCP cleanup warning: {e}")
+        
+        try:
+            from src.tools.fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+            safe_cleanup_fastmcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ FastMCP cleanup warning: {e}")
+        
+        try:
+            from src.tools.mcp_client import safe_cleanup_mcp_client
+            safe_cleanup_mcp_client()
+        except Exception as e:
+            print_current(f"⚠️ MCP client cleanup warning: {e}")
         
         # Stop message router if it exists
         try:
@@ -186,8 +206,8 @@ def global_cleanup():
             router = get_message_router()
             if router:
                 router.stop()
-        except:
-            pass
+        except Exception as e:
+            print_current(f"⚠️ Message router cleanup warning: {e}")
         
         # Cleanup debug system
         try:
@@ -206,12 +226,13 @@ def global_cleanup():
             print_current(f"⚠️ Code index cleanup warning: {e}")
         
         # Small delay to allow daemon threads to finish current operations
-        time.sleep(0.1)
+        time.sleep(0.2)
         
         # Force garbage collection
         import gc
         gc.collect()
         
+        #print_current("✅ Global cleanup completed")
         
     except Exception as e:
         print_current(f"⚠️ Error during final cleanup: {e}")

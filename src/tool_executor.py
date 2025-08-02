@@ -20,26 +20,23 @@ import os
 import json
 import re
 import argparse
-import sys
 import datetime
-import platform
-import subprocess
 from typing import Dict, Any, List, Optional, Union, Tuple
-from pathlib import Path
-import requests
-import hashlib
 from openai import OpenAI
-from tools import Tools
-from tools.print_system import (print_system, print_manager, set_agent_id, print_current, streaming_context,
+from tools.print_system import (print_system, print_current, streaming_context,
                                 print_debug, print_system_info, print_tool_call, print_tool_result,
-                                print_llm_response, print_error)
+                                print_error)
 from tools.debug_system import track_operation, finish_operation
 from tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
-from tools.mcp_client import get_mcp_client, initialize_mcp_client, safe_cleanup_mcp_client
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_web_content_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
+from tools.mcp_client import safe_cleanup_mcp_client
+from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
 import base64
 import mimetypes
 import threading
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Note: JSON parsing utilities now imported below with other utils
 
@@ -225,6 +222,10 @@ class ToolExecutor:
         self.memory_update_counter = 0  # 记忆更新计数器
         self.memory_update_interval = 10  # 每10轮更新一次记忆
         
+        # Tool definitions cache to avoid repeated loading
+        self._tool_definitions_cache = None
+        self._tool_definitions_cache_timestamp = None
+        
         # print_system(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
         # print_system(f"   Model: {self.model}")  # Commented out to reduce terminal noise
         # print_system(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
@@ -395,7 +396,7 @@ class ToolExecutor:
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
         
-        # Try to initialize both MCP clients synchronously if possible
+        # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
         import asyncio
         try:
             loop = asyncio.get_event_loop()
@@ -403,27 +404,68 @@ class ToolExecutor:
                 # We're in an async context, use thread pool for initialization
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    # Initialize cli-mcp client
-                    try:
-                        future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
-                        self.cli_mcp_initialized = future_cli.result(timeout=10)
-                        if self.cli_mcp_initialized:
-                            print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
-                    except Exception as e:
-                        print_system_info(f"⚠️ cli-mcp client startup initialization failed: {e}")
-                        self.cli_mcp_initialized = False
-                    
-                    # Initialize direct MCP client
+                    # Initialize direct MCP client (FastMCP) FIRST
                     try:
                         future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
                         self.direct_mcp_initialized = future_direct.result(timeout=10)
                         if self.direct_mcp_initialized:
-                            print_system_info(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
+                            print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
                     except Exception as e:
                         print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                         self.direct_mcp_initialized = False
+                    
+                    # Only initialize cli-mcp if FastMCP is not handling servers
+                    should_init_cli_mcp = self._should_initialize_cli_mcp()
+                    if should_init_cli_mcp:
+                        try:
+                            future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
+                            self.cli_mcp_initialized = future_cli.result(timeout=10)
+                            if self.cli_mcp_initialized:
+                                print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                        except Exception as e:
+                            print_system_info(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                            self.cli_mcp_initialized = False
+                    else:
+                        print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                        self.cli_mcp_initialized = False
             else:
                 # Safe to run async initialization directly
+                # Initialize direct MCP client (FastMCP) FIRST
+                try:
+                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                    if self.direct_mcp_initialized:
+                        print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                    self.direct_mcp_initialized = False
+                
+                # Only initialize cli-mcp if needed
+                should_init_cli_mcp = self._should_initialize_cli_mcp()
+                if should_init_cli_mcp:
+                    try:
+                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                        if self.cli_mcp_initialized:
+                            print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                        self.cli_mcp_initialized = False
+                else:
+                    print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                    self.cli_mcp_initialized = False
+        except RuntimeError:
+            # No event loop, safe to create one
+            # Initialize direct MCP client (FastMCP) FIRST
+            try:
+                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                if self.direct_mcp_initialized:
+                    print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+            except Exception as e:
+                print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                self.direct_mcp_initialized = False
+            
+            # Only initialize cli-mcp if needed
+            should_init_cli_mcp = self._should_initialize_cli_mcp()
+            if should_init_cli_mcp:
                 try:
                     self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                     if self.cli_mcp_initialized:
@@ -431,31 +473,9 @@ class ToolExecutor:
                 except Exception as e:
                     print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
                     self.cli_mcp_initialized = False
-                
-                try:
-                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                    if self.direct_mcp_initialized:
-                        print_system_info(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
-                except Exception as e:
-                    print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
-                    self.direct_mcp_initialized = False
-        except RuntimeError:
-            # No event loop, safe to create one
-            try:
-                self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
-                if self.cli_mcp_initialized:
-                    print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
-            except Exception as e:
-                print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+            else:
+                print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
                 self.cli_mcp_initialized = False
-            
-            try:
-                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                #if self.direct_mcp_initialized:
-                #    print_current(f"✅ SSE MCP client initialized during startup with config: {self.MCP_config_file}")
-            except Exception as e:
-                print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
-                self.direct_mcp_initialized = False
         
         # Add MCP tools to tool_map after successful initialization
         if self.cli_mcp_initialized or self.direct_mcp_initialized:
@@ -511,20 +531,171 @@ class ToolExecutor:
         except Exception as e:
             print_current(f"⚠️ MCP client async initialization failed: {e}")
     
+    def _should_initialize_cli_mcp(self) -> bool:
+        """Check if cli-mcp should be initialized based on FastMCP status"""
+        try:
+            # If FastMCP is not available or not initialized, use cli-mcp
+            if not self.direct_mcp_initialized:
+                return True
+            
+            # Check if FastMCP has servers configured
+            if hasattr(self.direct_mcp_client, 'fastmcp_wrapper') and self.direct_mcp_client.fastmcp_wrapper:
+                fastmcp_wrapper = self.direct_mcp_client.fastmcp_wrapper
+                
+                # If FastMCP has no servers, allow cli-mcp
+                if not hasattr(fastmcp_wrapper, 'servers') or not fastmcp_wrapper.servers:
+                    return True
+                
+                # Check if there are servers that FastMCP cannot handle
+                # Load cli-mcp config to compare
+                import json
+                import os
+                
+                cli_config_path = self.MCP_config_file if self.MCP_config_file else "mcp.json"
+                if not os.path.exists(cli_config_path):
+                    return False  # No cli-mcp config, no need to initialize
+                
+                try:
+                    with open(cli_config_path, 'r', encoding='utf-8') as f:
+                        cli_config = json.load(f)
+                    
+                    cli_servers = cli_config.get("mcpServers", {})
+                    fastmcp_servers = set(fastmcp_wrapper.servers.keys())
+                    
+                    # Check if there are CLI servers not handled by FastMCP
+                    for server_name in cli_servers.keys():
+                        # Normalize server names for comparison
+                        normalized_cli = server_name.replace('-', '_').replace('_', '-')
+                        
+                        is_handled = False
+                        for fastmcp_server in fastmcp_servers:
+                            normalized_fast = fastmcp_server.replace('-', '_').replace('_', '-')
+                            if (server_name == fastmcp_server or 
+                                normalized_cli == normalized_fast or
+                                server_name.replace('-', '_') == fastmcp_server.replace('-', '_')):
+                                is_handled = True
+                                break
+                        
+                        if not is_handled:
+                            print_current(f"📋 Found server {server_name} not handled by FastMCP, will initialize cli-mcp")
+                            return True
+                    
+                    #print_current("📋 All servers handled by FastMCP, skipping cli-mcp")
+                    return False
+                    
+                except Exception as e:
+                    print_current(f"⚠️ Error reading cli-mcp config: {e}, defaulting to initialize cli-mcp")
+                    return True
+            
+            return True  # Default to allowing cli-mcp if unsure
+            
+        except Exception as e:
+            print_current(f"⚠️ Error checking cli-mcp initialization status: {e}, defaulting to initialize")
+            return True
+
     def _add_mcp_tools_to_map(self):
         """Add MCP tools to the tool mapping"""
+        # Clear tool definitions cache since tools are being updated
+        if hasattr(self, '_clear_tool_definitions_cache'):
+            self._clear_tool_definitions_cache()
+        
         # Create tool source mapping table
         if not hasattr(self, 'tool_source_map'):
             self.tool_source_map = {}
         
-        # Add cli-mcp tools (NPX/NPM format) - NO prefix
+        # FastMCP tools have the highest priority - register FastMCP tools first
+        fastmcp_tools_added = []
+        fastmcp_server_names = []  # Record the server names handled by FastMCP
+        
+        try:
+            # Directly check the FastMCP wrapper, avoid relying on the MCP client state
+            from tools.fastmcp_wrapper import get_fastmcp_wrapper, is_fastmcp_initialized
+            
+            # Directly get the FastMCP wrapper, do not rely on is_fastmcp_initialized()
+            try:
+                fastmcp_wrapper = get_fastmcp_wrapper()
+                
+                if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
+                    # Get FastMCP tools
+                    fastmcp_tools = fastmcp_wrapper.get_available_tools()
+                    
+                    if fastmcp_tools:
+                        # Get the server names handled by FastMCP
+                        if hasattr(fastmcp_wrapper, 'servers'):
+                            fastmcp_server_names = list(fastmcp_wrapper.servers.keys())
+                        for tool_name in fastmcp_tools:
+                            # Create a wrapper function for each FastMCP tool
+                            def create_fastmcp_tool_wrapper(tool_name=tool_name, wrapper=fastmcp_wrapper):
+                                def sync_fastmcp_tool_wrapper(**kwargs):
+                                    try:
+                                        # Use the synchronous call_tool_sync method instead of async call_tool
+                                        return wrapper.call_tool_sync(tool_name, kwargs)
+                                    except Exception as e:
+                                        return {"error": f"FastMCP tool {tool_name} call failed: {e}"}
+                                
+                                return sync_fastmcp_tool_wrapper
+                            
+                            # Add to tool mapping with FastMCP priority
+                            self.tool_map[tool_name] = create_fastmcp_tool_wrapper()
+                            self.tool_source_map[tool_name] = 'fastmcp'
+                            fastmcp_tools_added.append(tool_name)
+                        
+                        logger.info(f"Added {len(fastmcp_tools)} FastMCP tools: {', '.join(fastmcp_tools)}")
+                    else:
+                        logger.debug("FastMCP wrapper found but no tools available")
+                elif fastmcp_wrapper:
+                    logger.debug("FastMCP wrapper found but not initialized yet")
+                else:
+                    logger.debug("FastMCP wrapper is None")
+            except Exception as e:
+                logger.error(f"Error getting FastMCP wrapper: {e}")
+                
+        except Exception as e:
+            logger.error(f"Failed to add FastMCP tools to mapping: {e}")
+        
+        # Add cli-mcp tools (NPX/NPM format) - but skip tools already handled by FastMCP
         if self.cli_mcp_initialized and self.cli_mcp_client:
             try:
                 # Get available MCP tools from cli-mcp wrapper
                 cli_mcp_tools = self.cli_mcp_client.get_available_tools()
                 
                 if cli_mcp_tools:
+                    cli_mcp_tools_added = []
                     for tool_name in cli_mcp_tools:
+                        # Intelligently check if the tool is already handled by FastMCP
+                        should_skip = False
+                        skip_reason = ""
+                        
+                        # CLI-MCP tool format: server_name_tool_name (split by the first underscore)
+                        if '_' in tool_name:
+                            # Find the position of the first underscore for splitting
+                            first_underscore = tool_name.find('_')
+                            server_part = tool_name[:first_underscore]        # Server name part
+                            actual_tool_name = tool_name[first_underscore+1:] # Actual tool name
+                            
+                            # Check 1: Is the server handled by FastMCP?
+                            for fastmcp_server in fastmcp_server_names:
+                                if (server_part == fastmcp_server.replace('-', '_') or 
+                                    server_part.replace('_', '-') == fastmcp_server or
+                                    server_part == fastmcp_server):
+                                    should_skip = True
+                                    skip_reason = f"server {fastmcp_server} handled by FastMCP"
+                                    break
+                            
+                            # Check 2: Is the tool name already registered by FastMCP?
+                            if not should_skip and actual_tool_name in fastmcp_tools_added:
+                                should_skip = True
+                                skip_reason = f"tool {actual_tool_name} already in FastMCP"
+                        
+                        # Check 3: Is the full tool name already registered by FastMCP?
+                        if not should_skip and tool_name in fastmcp_tools_added:
+                            should_skip = True
+                            skip_reason = f"exact tool name in FastMCP"
+                        
+                        if should_skip:
+                            logger.debug(f"Skipping cli-mcp tool {tool_name} ({skip_reason})")
+                            continue
+                            
                         # Create a wrapper function for each cli-mcp tool
                         def create_cli_mcp_tool_wrapper(tool_name=tool_name):
                             def sync_cli_mcp_tool_wrapper(**kwargs):
@@ -540,20 +711,58 @@ class ToolExecutor:
                         # Add to tool mapping WITHOUT prefix
                         self.tool_map[tool_name] = create_cli_mcp_tool_wrapper()
                         self.tool_source_map[tool_name] = 'cli_mcp'
+                        cli_mcp_tools_added.append(tool_name)
                     
-                    print_current(f"✅ Added {len(cli_mcp_tools)} cli-mcp tools to mapping: {', '.join(cli_mcp_tools)}")
+                    if cli_mcp_tools_added:
+                        logger.info(f"Added {len(cli_mcp_tools_added)} cli-mcp tools: {', '.join(cli_mcp_tools_added)}")
+                    else:
+                        logger.debug("No cli-mcp tools added (all handled by FastMCP)")
             except Exception as e:
-                print_current(f"⚠️ Failed to add cli-mcp tools to mapping: {e}")
+                logger.error(f"Failed to add cli-mcp tools to mapping: {e}")
                 self.cli_mcp_initialized = False
         
-        # Add direct MCP client tools (SSE format) - NO prefix for SSE tools
+        # Add direct MCP client tools (SSE format) - 但跳过已处理的工具
         if self.direct_mcp_initialized and self.direct_mcp_client:
             try:
                 # Get available MCP tools from direct MCP client
                 direct_mcp_tools = self.direct_mcp_client.get_available_tools()
                 
                 if direct_mcp_tools:
+                    direct_mcp_tools_added = []
                     for tool_name in direct_mcp_tools:
+                        # 智能检查SSE MCP工具是否被FastMCP处理
+                        should_skip = False
+                        skip_reason = ""
+                        
+                        # SSE MCP工具名通常就是服务器名
+                        # 检查1: 服务器名是否被FastMCP处理
+                        for fastmcp_server in fastmcp_server_names:
+                            if (tool_name == fastmcp_server or 
+                                tool_name.replace('-', '_') == fastmcp_server.replace('-', '_')):
+                                should_skip = True
+                                skip_reason = f"server {fastmcp_server} handled by FastMCP"
+                                break
+                        
+                        # 检查2: 工具名是否直接在FastMCP工具列表中
+                        if not should_skip and tool_name in fastmcp_tools_added:
+                            should_skip = True
+                            skip_reason = f"exact tool name in FastMCP"
+                        
+                        # 检查3: 如果有FastMCP工具且服务器名匹配模式
+                        if not should_skip and fastmcp_tools_added:
+                            for fastmcp_tool in fastmcp_tools_added:
+                                # 检查FastMCP工具是否来自同一服务器
+                                if (tool_name in fastmcp_tool or 
+                                    fastmcp_tool.startswith(tool_name.replace('-', '_')) or 
+                                    tool_name.replace('-', '_') in fastmcp_tool):
+                                    should_skip = True
+                                    skip_reason = f"FastMCP tool {fastmcp_tool} from same server"
+                                    break
+                        
+                        if should_skip:
+                            logger.debug(f"Skipping SSE MCP tool {tool_name} ({skip_reason})")
+                            continue
+                            
                         # Create a wrapper function for each direct MCP tool
                         def create_direct_mcp_tool_wrapper(tool_name=tool_name):
                             def sync_direct_mcp_tool_wrapper(**kwargs):
@@ -569,10 +778,12 @@ class ToolExecutor:
                         # Add to tool mapping WITHOUT prefix for SSE tools
                         self.tool_map[tool_name] = create_direct_mcp_tool_wrapper()
                         self.tool_source_map[tool_name] = 'direct_mcp'
+                        direct_mcp_tools_added.append(tool_name)
                     
-                    print_current(f"✅ Added {len(direct_mcp_tools)} SSE MCP tools to mapping: {', '.join(direct_mcp_tools)}")
+                    if direct_mcp_tools_added:
+                        logger.info(f"Added {len(direct_mcp_tools_added)} SSE MCP tools: {', '.join(direct_mcp_tools_added)}")
             except Exception as e:
-                print_current(f"⚠️ Failed to add direct MCP tools to mapping: {e}")
+                logger.error(f"Failed to add direct MCP tools to mapping: {e}")
                 self.direct_mcp_initialized = False
     
     def cleanup(self):
@@ -638,43 +849,41 @@ class ToolExecutor:
                 # Long-term memory not available, skip silently
                 return
             
-            # 增加计数器
+            # Increment the counter
             self.memory_update_counter += 1
-            
-            # 检查是否需要更新：每10轮或强制更新
+
+            # Check if update is needed: every 10 rounds or forced update
             should_update = (self.memory_update_counter % self.memory_update_interval == 0) or force_update
-            
+
             if not should_update:
-                # 跳过此次更新，但在调试模式下记录
-                if self.debug_mode:
-                    print_current(f"🧠 跳过长期记忆更新 (轮次: {self.memory_update_counter}, 下次更新: {self.memory_update_interval - (self.memory_update_counter % self.memory_update_interval)} 轮后)")
+                # Skip this update, but log in debug mode
                 return
-            
+
             # Store the memory
             result = self.long_term_memory.memory_manager.store_task_memory(
                 task_prompt=task_prompt,
                 task_result=task_result,
                 execution_metadata=metadata
             )
-            
-            if result.get("success", False):
+
+            if result.get("status") == "success":
                 action = result.get("action", "stored")
                 memory_id = result.get("memory_id", "unknown")
                 # Only print for new memories, not updates
-                if action == "added":
-                    print_current(f"🧠 任务记忆已存储 (ID: {memory_id})")
-                elif action == "updated":
-                    print_current(f"🧠 任务记忆已更新 (ID: {memory_id})")
+                #if action == "added":
+                #    print_current(f"🧠 Task memory stored (ID: {memory_id})")
+                #elif action == "updated":
+                #    print_current(f"🧠 Task memory updated (ID: {memory_id})")
             else:
                 # Only print errors in debug mode to avoid cluttering output
                 if self.debug_mode:
-                    print_current(f"⚠️ 任务记忆存储失败: {result.get('error', 'Unknown error')}")
-                
+                    print_current(f"⚠️ Failed to store task memory: {result.get('error', 'Unknown error')}")
+
         except Exception as e:
             # Only print errors in debug mode
             if self.debug_mode:
-                print_current(f"⚠️ 存储任务记忆时发生异常: {e}")
-    
+                print_current(f"⚠️ Exception occurred while storing task memory: {e}")
+                
     def _setup_llm_client(self):
         """
         Set up the LLM client based on the API base URL.
@@ -1114,400 +1323,396 @@ class ToolExecutor:
         original_history_id = id(task_history)  # Track if we modify the history
         history_was_optimized = False
         
-        max_rounds = 10  # Maximum number of rounds to prevent infinite loops
-        round_counter = 1
-        
         # 🔧 Initialize current_round_images if not exists
         if not hasattr(self, 'current_round_images'):
             self.current_round_images = []
         
         # �� NEW: Track if get_sensor_data was called in current round
         current_round_has_sensor_data = False
+        round_counter = execution_round
         
-        while round_counter <= max_rounds:
-            try:
-                # Enhancement: Check for terminate messages before each tool call in every round
-                terminate_signal = self._check_terminate_messages()
-                if terminate_signal:
-                    return terminate_signal
+        try:
+            # Enhancement: Check for terminate messages before each tool call in every round
+            terminate_signal = self._check_terminate_messages()
+            if terminate_signal:
+                return terminate_signal
+            
+            # Load system prompt (only core system_prompt.txt content)
+            system_prompt = self.load_system_prompt()
+            
+            # Build user message with new architecture
+            user_message = self._build_new_user_message(prompt, task_history, round_counter)
+            
+            # Prepare messages for the LLM with proper system/user separation
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            # Save debug log for this call's input (before LLM call)
+            if self.debug_mode:
+                try:
+                    initial_call_info = {
+                        "is_single_call": True,
+                        "call_type": "standard_tools_execution",
+                        "user_prompt": prompt
+                    }
+                except Exception as e:
+                    print_current(f"⚠️ Debug preparation failed: {e}")
+            
+            # Execute LLM call with standard tools
+            content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
+            
+            # 🔧 DEBUG: Check current_round_images status
+            #print_current(f"🔍 DEBUG: After LLM call, current_round_images status: {len(self.current_round_images) if self.current_round_images else 0} images")
+            
+            # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
+            print_debug(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
+            if task_history and hasattr(self, 'history_optimizer') and self.history_optimizer:
+                try:
+                    # Immediately optimize the history, removing all image data (keep_recent_images=0)
+                    # Since the vision API has already provided a text description, the original image data is no longer needed
+                    #print_current(f"🔍 Starting optimization with {len(task_history)} history records...")
+                    optimized_history = self.history_optimizer.optimize_history_for_context(
+                        task_history, keep_recent_images=0
+                    )
+                    # Update the history reference to ensure subsequent rounds use the optimized history
+                    original_count = len(task_history)
+                    task_history.clear()
+                    task_history.extend(optimized_history)
+                    history_was_optimized = True
+                    #print_current(f"✅ History optimization complete: {original_count} → {len(optimized_history)} records")
+                except Exception as e:
+                    print_current(f"❌ History optimization failed: {e}")
+            else:
+                print_debug("⚠️ Skipping history optimization - conditions not met")
+            # Show raw model response for debugging
+            if self.debug_mode and content:
+                print_current("🤖 Raw model response:")
+                print_current(content)
+            
+            # Calculate and display token and character statistics
+            self._display_llm_statistics(messages, content, tool_calls)
+            
+            # Store current messages for next round cache analysis
+            self.previous_messages = messages.copy()
+            
+            # Check for TASK_COMPLETED flag and detect conflicts
+            has_task_completed = "TASK_COMPLETED:" in content
+            has_tool_calls = len(tool_calls) > 0
+            
+            # Check for TASK_COMPLETED flag and detect conflicts
+            has_task_completed = "TASK_COMPLETED:" in content
+            has_tool_calls = len(tool_calls) > 0
+            
+            # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
+            conflict_detected = has_tool_calls and has_task_completed
+            if conflict_detected:
+                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
+                # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                has_task_completed = False # Ensure the flag is updated after removal
+            
+            # If TASK_COMPLETED but no tool calls, complete the task
+            if has_task_completed and not has_tool_calls:
+                print_debug(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                # Extract the completion message
+                task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                if task_completed_match:
+                    completion_message = task_completed_match.group(1).strip()
                 
-                # Load system prompt (only core system_prompt.txt content)
-                system_prompt = self.load_system_prompt()
-                
-                # Build user message with new architecture
-                user_message = self._build_new_user_message(prompt, task_history, round_counter)
-                
-                # Prepare messages for the LLM with proper system/user separation
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ]
-                
-                # Save debug log for this call's input (before LLM call)
+                # Save final debug log
                 if self.debug_mode:
                     try:
-                        initial_call_info = {
-                            "is_single_call": True,
-                            "call_type": "standard_tools_execution",
-                            "user_prompt": prompt
+                        completion_info = {
+                            "has_tool_calls": False,
+                            "task_completed": True,
+                            "completion_detected": True,
+                            "execution_result": "task_completed_flag"
                         }
-                    except Exception as e:
-                        print_current(f"⚠️ Debug preparation failed: {e}")
+                        
+                        self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
+                    except Exception as log_error:
+                        print_current(f"❌ Completion debug log save failed: {log_error}")
                 
-                # Execute LLM call with standard tools
-                content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
+                # Store task completion in long-term memory
+                self._store_task_completion_memory(prompt, content, {
+                    "task_completed": True,
+                    "completion_method": "TASK_COMPLETED_flag",
+                    "execution_round": round_counter,
+                    "model_used": self.model
+                }, force_update=True)
                 
-                # 🔧 DEBUG: Check current_round_images status
-                #print_current(f"🔍 DEBUG: After LLM call, current_round_images status: {len(self.current_round_images) if self.current_round_images else 0} images")
+                finish_operation(f"executing task (round {round_counter})")
+                # Return optimized history if available
+                if history_was_optimized:
+                    return (content, task_history)
+                return content
+            
+            # Execute tools if present
+            if tool_calls:
+                # Always format tool calls for history (needed for final response)
+                tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
                 
-                # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
-                print_debug(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
-                if task_history and hasattr(self, 'history_optimizer') and self.history_optimizer:
-                    try:
-                        # Immediately optimize the history, removing all image data (keep_recent_images=0)
-                        # Since the vision API has already provided a text description, the original image data is no longer needed
-                        #print_current(f"🔍 Starting optimization with {len(task_history)} history records...")
-                        optimized_history = self.history_optimizer.optimize_history_for_context(
-                            task_history, keep_recent_images=0
-                        )
-                        # Update the history reference to ensure subsequent rounds use the optimized history
-                        original_count = len(task_history)
-                        task_history.clear()
-                        task_history.extend(optimized_history)
-                        history_was_optimized = True
-                        #print_current(f"✅ History optimization complete: {original_count} → {len(optimized_history)} records")
-                    except Exception as e:
-                        print_current(f"❌ History optimization failed: {e}")
+                # 🔧 NEW: Track if get_sensor_data was called in current round
+                current_round_has_sensor_data = False
+                
+                # Check if tools were already executed during streaming
+                tools_already_executed = (self.streaming and 
+                                        (not self.use_chat_based_tools) and
+                                        hasattr(self, '_tools_executed_in_stream') and 
+                                        getattr(self, '_tools_executed_in_stream', False))
+                
+                if tools_already_executed:
+                    print_debug("✅ Tools were already executed during streaming - collecting results for response formatting")
+                    # For streaming execution, we still need to format the response properly
+                    # but skip actual execution since it was done during streaming
+                    all_tool_results = getattr(self, '_streaming_tool_results', [])
+                    successful_executions = len(all_tool_results)
                 else:
-                    print_debug("⚠️ Skipping history optimization - conditions not met")
-                # Show raw model response for debugging
-                if self.debug_mode and content:
-                    print_current("🤖 Raw model response:")
-                    print_current(content)
-                
-                # Calculate and display token and character statistics
-                self._display_llm_statistics(messages, content, tool_calls)
-                
-                # Store current messages for next round cache analysis
-                self.previous_messages = messages.copy()
-                
-                # Check for TASK_COMPLETED flag and detect conflicts
-                has_task_completed = "TASK_COMPLETED:" in content
-                has_tool_calls = len(tool_calls) > 0
-                
-                # Check for TASK_COMPLETED flag and detect conflicts
-                has_task_completed = "TASK_COMPLETED:" in content
-                has_tool_calls = len(tool_calls) > 0
-                
-                # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
-                conflict_detected = has_tool_calls and has_task_completed
-                if conflict_detected:
-                    print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
-                    # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
-                    content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
-                    has_task_completed = False # Ensure the flag is updated after removal
-                
-                # If TASK_COMPLETED but no tool calls, complete the task
-                if has_task_completed and not has_tool_calls:
-                    print_debug(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
-                    # Extract the completion message
-                    task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
-                    if task_completed_match:
-                        completion_message = task_completed_match.group(1).strip()
+                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                    print_current("=" * 50)
                     
-                    # Save final debug log
-                    if self.debug_mode:
-                        try:
-                            completion_info = {
-                                "has_tool_calls": False,
-                                "task_completed": True,
-                                "completion_detected": True,
-                                "execution_result": "task_completed_flag"
-                            }
-                            
-                            self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag", 1, completion_info)
-                        except Exception as log_error:
-                            print_current(f"❌ Completion debug log save failed: {log_error}")
-                    
-                    # Store task completion in long-term memory
-                    self._store_task_completion_memory(prompt, content, {
-                        "task_completed": True,
-                        "completion_method": "TASK_COMPLETED_flag",
-                        "execution_round": round_counter,
-                        "model_used": self.model
-                    }, force_update=True)
-                    
-                    finish_operation(f"executing task (round {round_counter})")
-                    # Return optimized history if available
-                    if history_was_optimized:
-                        return (content, task_history)
-                    return content
-                
-                # Execute tools if present
-                if tool_calls:
-                    # Always format tool calls for history (needed for final response)
-                    tool_calls_formatted = self._format_tool_calls_for_history(tool_calls)
-                    
-                    # 🔧 NEW: Track if get_sensor_data was called in current round
-                    current_round_has_sensor_data = False
-                    
-                    # Check if tools were already executed during streaming
-                    tools_already_executed = (self.streaming and 
-                                            (not self.use_chat_based_tools) and
-                                            hasattr(self, '_tools_executed_in_stream') and 
-                                            getattr(self, '_tools_executed_in_stream', False))
-                    
-                    if tools_already_executed:
-                        print_debug("✅ Tools were already executed during streaming - collecting results for response formatting")
-                        # For streaming execution, we still need to format the response properly
-                        # but skip actual execution since it was done during streaming
-                        all_tool_results = getattr(self, '_streaming_tool_results', [])
-                        successful_executions = len(all_tool_results)
-                    else:
-                        print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
-                        print_current("=" * 50)
-                        
-                        # Print tool calls for terminal display with better formatting
-                        if tool_calls_formatted:
-                            # Remove the "**Tool Calls:**" header since we already printed our own
-                            display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
-                            print_current(display_content)
-                        
-                        print_current("=" * 50)
-                        print_current("🚀 Starting tool execution...")
-                        
-                        # Execute all tool calls and collect results
-                        all_tool_results = []
-                        successful_executions = 0
-                    
-                    # Only execute tools if they weren't already executed during streaming
-                    if not tools_already_executed:
-                        for i, tool_call in enumerate(tool_calls, 1):
-                            # Handle standard format tool calls (both OpenAI and Anthropic)
-                            tool_name = self._get_tool_name_from_call(tool_call)
-                            tool_params = self._get_tool_params_from_call(tool_call)
-                            
-                            # 🔧 NEW: Track if get_sensor_data was called in current round
-                            if tool_name == 'get_sensor_data':
-                                current_round_has_sensor_data = True
-                            
-                            # Let streaming_output handle all tool execution display
-                            try:
-                                # Convert to standard format for execute_tool
-                                standard_tool_call = {
-                                    "name": tool_name,
-                                    "arguments": tool_params
-                                }
-                                # Pass streaming_output=True for real-time tool execution display
-                                tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
-                                
-                                all_tool_results.append({
-                                    'tool_name': tool_name,
-                                    'tool_params': tool_params,
-                                    'tool_result': tool_result
-                                })
-                                successful_executions += 1
-                                
-                                # Tool result is already displayed by streaming output, no need to duplicate
-                                
-                            except Exception as e:
-                                error_msg = f"Tool {tool_name} execution failed: {str(e)}"
-                                print_current(f"❌ {error_msg}")
-                                all_tool_results.append({
-                                    'tool_name': tool_name,
-                                    'tool_params': tool_params,
-                                    'tool_result': f"Error: {error_msg}"
-                                })
-                            
-                            # Separator is handled by streaming output, no need to duplicate
-                    
-                    # 🔧 MODIFIED: Store image data but don't use vision API
-                    self._extract_current_round_images(all_tool_results)
-                    
-                    # 🔧 NEW: Format tool results with base64 data detection
-                    tool_results_message = self._format_tool_results_for_llm(all_tool_results, include_base64_info=current_round_has_sensor_data)
-                    
-                    # Save debug log with tool execution info
-                    if self.debug_mode:
-                        try:
-                            tool_execution_info = {
-                                "has_tool_calls": True,
-                                "parsed_tool_calls": tool_calls,
-                                "tool_results": all_tool_results,
-                                "formatted_tool_results": tool_results_message,
-                                "successful_executions": successful_executions,
-                                "total_tool_calls": len(tool_calls),
-                                "conflict_detected": conflict_detected
-                            }
-                            
-                            self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
-                        except Exception as log_error:
-                            print_current(f"❌ Debug log save failed: {log_error}")
-                    
-                    # Return combined response with tool calls and tool results
-                    result_parts = [content]
+                    # Print tool calls for terminal display with better formatting
                     if tool_calls_formatted:
-                        result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
-                    result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
+                        # Remove the "**Tool Calls:**" header since we already printed our own
+                        display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                        print_current(display_content)
                     
-                    # Store task completion in long-term memory
-                    combined_result = "".join(result_parts)
-                    self._store_task_completion_memory(prompt, combined_result, {
-                        "task_completed": True,
-                        "completion_method": "tool_execution",
-                        "execution_round": round_counter,
-                        "tool_calls_count": len(tool_calls),
-                        "successful_executions": successful_executions,
-                        "model_used": self.model
-                    }, force_update=True)
+                    print_current("=" * 50)
+                    print_current("🚀 Starting tool execution...")
                     
-                    finish_operation(f"executing task (round {round_counter})")
-                    # Return optimized history if available, even with tool calls
-                    if history_was_optimized:
-                        return (combined_result, task_history)
-                    return combined_result
+                    # Execute all tool calls and collect results
+                    all_tool_results = []
+                    successful_executions = 0
                 
-                else:
-                    # No tool calls, return LLM response directly
-                    print_current("📝 No tool calls found, returning LLM response")
-                    
-                    # 🔧 NEW: Add base64 data status information when no tools are called
-                    base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
-                    content = content + base64_status_info
-                    
-                    # Save debug log for response without tools
-                    if self.debug_mode:
+                # Only execute tools if they weren't already executed during streaming
+                if not tools_already_executed:
+                    for i, tool_call in enumerate(tool_calls, 1):
+                        # Handle standard format tool calls (both OpenAI and Anthropic)
+                        tool_name = self._get_tool_name_from_call(tool_call)
+                        tool_params = self._get_tool_params_from_call(tool_call)
+                        
+                        # 🔧 NEW: Track if get_sensor_data was called in current round
+                        if tool_name == 'get_sensor_data':
+                            current_round_has_sensor_data = True
+                        
+                        # Let streaming_output handle all tool execution display
                         try:
-                            no_tools_info = {
-                                "has_tool_calls": False,
-                                "task_completed": has_task_completed,
-                                "execution_result": "llm_response_only"
+                            # Convert to standard format for execute_tool
+                            standard_tool_call = {
+                                "name": tool_name,
+                                "arguments": tool_params
                             }
+                            # Pass streaming_output=True for real-time tool execution display
+                            tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
                             
-                            self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
-                        except Exception as log_error:
-                            print_current(f"❌ Final debug log save failed: {log_error}")
-                    
-                    # Store task completion in long-term memory
-                    self._store_task_completion_memory(prompt, content, {
-                        "task_completed": True,
-                        "completion_method": "llm_response_only",
-                        "execution_round": round_counter,
-                        "model_used": self.model
-                    }, force_update=True)
-                    
-                    finish_operation(f"executing task (round {round_counter})")
-                    # Return optimized history if available
-                    if history_was_optimized:
-                        return (content, task_history)
-                    return content
+                            all_tool_results.append({
+                                'tool_name': tool_name,
+                                'tool_params': tool_params,
+                                'tool_result': tool_result
+                            })
+                            successful_executions += 1
+                            
+                            # Tool result is already displayed by streaming output, no need to duplicate
+                            
+                        except Exception as e:
+                            error_msg = f"Tool {tool_name} execution failed: {str(e)}"
+                            print_current(f"❌ {error_msg}")
+                            all_tool_results.append({
+                                'tool_name': tool_name,
+                                'tool_params': tool_params,
+                                'tool_result': f"Error: {error_msg}"
+                            })
+                        
+                        # Separator is handled by streaming output, no need to duplicate
                 
-            except json.JSONDecodeError as e:
-                error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
-                print_current(error_msg)
-                print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
-                print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+                # 🔧 MODIFIED: Store image data but don't use vision API
+                self._extract_current_round_images(all_tool_results)
+                
+                # 🔧 NEW: Format tool results with base64 data detection
+                tool_results_message = self._format_tool_results_for_llm(all_tool_results, include_base64_info=current_round_has_sensor_data)
+                
+                # Save debug log with tool execution info
+                if self.debug_mode:
+                    try:
+                        tool_execution_info = {
+                            "has_tool_calls": True,
+                            "parsed_tool_calls": tool_calls,
+                            "tool_results": all_tool_results,
+                            "formatted_tool_results": tool_results_message,
+                            "successful_executions": successful_executions,
+                            "total_tool_calls": len(tool_calls),
+                            "conflict_detected": conflict_detected
+                        }
+                        
+                        self._save_llm_call_debug_log(messages, f"Single execution with {len(tool_calls)} tool calls", 1, tool_execution_info)
+                    except Exception as log_error:
+                        print_current(f"❌ Debug log save failed: {log_error}")
+                
+                # Return combined response with tool calls and tool results
+                result_parts = [content]
+                if tool_calls_formatted:
+                    result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
+                result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
+                
+                # Store task completion in long-term memory
+                combined_result = "".join(result_parts)
+                self._store_task_completion_memory(prompt, combined_result, {
+                    "task_completed": True,
+                    "completion_method": "tool_execution",
+                    "execution_round": round_counter,
+                    "tool_calls_count": len(tool_calls),
+                    "successful_executions": successful_executions,
+                    "model_used": self.model
+                }, force_update=False)
+                
                 finish_operation(f"executing task (round {round_counter})")
-                return error_msg
-            except Exception as e:
-                error_msg = f"❌ Error executing subtask: {str(e)}"
-                print_current(error_msg)
+                # Return optimized history if available, even with tool calls
+                if history_was_optimized:
+                    return (combined_result, task_history)
+                return combined_result
+            
+            else:
+                # No tool calls, return LLM response directly
+                print_current("📝 No tool calls found, returning LLM response")
                 
-                # Add more specific error information for common issues
-                if "Expecting ',' delimiter" in str(e):
-                    print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
-                    print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
-                elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
-                    print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+                # 🔧 NEW: Add base64 data status information when no tools are called
+                base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
+                content = content + base64_status_info
+                
+                # Save debug log for response without tools
+                if self.debug_mode:
+                    try:
+                        no_tools_info = {
+                            "has_tool_calls": False,
+                            "task_completed": has_task_completed,
+                            "execution_result": "llm_response_only"
+                        }
+                        
+                        self._save_llm_call_debug_log(messages, f"Single execution, no tool calls", 1, no_tools_info)
+                    except Exception as log_error:
+                        print_current(f"❌ Final debug log save failed: {log_error}")
+                
+                # Store task completion in long-term memory
+                self._store_task_completion_memory(prompt, content, {
+                    "task_completed": True,
+                    "completion_method": "llm_response_only",
+                    "execution_round": round_counter,
+                    "model_used": self.model
+                }, force_update=False)
                 
                 finish_operation(f"executing task (round {round_counter})")
-                return error_msg
+                # Return optimized history if available
+                if history_was_optimized:
+                    return (content, task_history)
+                return content
+            
+        except json.JSONDecodeError as e:
+            error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
+            print_current(error_msg)
+            print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
+            print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+            finish_operation(f"executing task (round {round_counter})")
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Error executing subtask: {str(e)}"
+            print_current(error_msg)
+            
+            # Add more specific error information for common issues
+            if "Expecting ',' delimiter" in str(e):
+                print_current(f"💡 This is likely a JSON formatting issue in tool arguments")
+                print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
+            elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
+                print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+            
+            finish_operation(f"executing task (round {round_counter})")
+            return error_msg
             
             # Add current result to accumulated results
-            accumulated_results += content
+            #accumulated_results += content
             
             # Add tool calls to conversation history
-            conversation_history.append({"role": "assistant", "content": content})
+            #conversation_history.append({"role": "assistant", "content": content})
             
             # Add tool calls to tool_calls list
-            tool_calls_list.extend(tool_calls)
+            #tool_calls_list.extend(tool_calls)
             
-            round_counter += 1
+            #round_counter += 1
         
         # If we reach here, it means we've completed all tool calls
         print_current("🎉 All tool calls completed successfully!")
         
         # Return final accumulated results
-        return accumulated_results
+        return "error"
     
     def _check_terminate_messages(self) -> Optional[str]:
         """
-        检查agent是否收到terminate信号
-        
+        Check if the agent has received a terminate signal.
+
         Returns:
-            如果收到terminate信号返回终止消息，否则返回None
+            If a terminate signal is received, return the termination message; otherwise, return None.
         """
         try:
-            # 只有在多智能体模式下才检查
+            # Only check in multi-agent mode
             if not self.multi_agent_tools:
                 return None
-            
-            # 🔧 修复：直接从mailbox获取未读消息，不自动标记为已读
+
+            # Fix: Directly get unread messages from mailbox, do not mark as read automatically
             from tools.message_system import get_message_router
             from tools.print_system import get_agent_id
-            
+
             current_agent_id = get_agent_id()
             if not current_agent_id:
                 return None
-                
+
             try:
                 router = get_message_router(self.multi_agent_tools.workspace_root, cleanup_on_init=False)
                 mailbox = router.get_mailbox(current_agent_id)
-                
+
                 if not mailbox:
                     return None
-                
-                # 直接获取未读消息，不自动标记为已读
+
+                # Directly get unread messages, do not mark as read automatically
                 unread_messages = mailbox.get_unread_messages()
-                
-                # 检查是否有terminate信号
+
+                # Check if there is a terminate signal
                 for message in unread_messages:
                     if hasattr(message, 'message_type') and hasattr(message, 'content'):
                         message_type = message.message_type
                         content = message.content
-                        
-                        # 检查是否是系统消息且包含terminate信号
-                        if (message_type.value == "system" and 
-                            isinstance(content, dict) and 
+
+                        # Check if it is a system message and contains a terminate signal
+                        if (message_type.value == "system" and
+                            isinstance(content, dict) and
                             content.get("signal") == "terminate"):
-                            
+
                             reason = content.get("reason", "Terminated by request")
                             sender = content.get("sender", "unknown")
-                            
+
                             terminate_msg = f"AGENT_TERMINATED: Agent {current_agent_id} received terminate signal from {sender}. Reason: {reason}"
                             print_current(f"🛑 {terminate_msg}")
-                            
-                            # 只有在确认terminate信号后才标记消息为已读
+
+                            # Only mark the message as read after confirming the terminate signal
                             try:
                                 mailbox.mark_as_read(message.message_id)
                             except Exception as e:
                                 print_current(f"⚠️ Warning: Could not mark terminate message as read: {e}")
-                            
+
                             return terminate_msg
-                            
+
                 return None
-                
+
             except Exception as e:
                 if self.debug_mode:
                     print_current(f"⚠️ Warning: Error accessing mailbox directly: {e}")
                 return None
-            
+
         except Exception as e:
-            # 如果检查terminate消息失败，不应该中断正常执行
+            # If checking terminate messages fails, normal execution should not be interrupted
             if self.debug_mode:
                 print_current(f"⚠️ Warning: Failed to check terminate messages: {e}")
             return None
-    
     def parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """
         Parse multiple tool calls from the model's response.
@@ -1541,34 +1746,34 @@ class ToolExecutor:
                 if json_start != -1 and json_end > json_start:
                     json_block = content[json_start + 7:json_end - 3].strip()
                     
-                    # Handle common escape issues in JSON strings
-                    # Replace single backslashes with double backslashes to make valid JSON
-                    # But be careful not to double-escape already valid escapes
-                    json_block = fix_json_escapes(json_block)
-                    
-                    tool_calls_data = json.loads(json_block)
-                    
-                    if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
-                        for i, tool_call in enumerate(tool_calls_data['tool_calls']):
-                            if isinstance(tool_call, dict) and 'function' in tool_call:
-                                function_data = tool_call['function']
-                                if 'name' in function_data and 'arguments' in function_data:
-                                    arguments = function_data['arguments']
-                                    # If arguments is a string (JSON), parse it
-                                    if isinstance(arguments, str):
-                                        try:
-                                            arguments = json.loads(arguments)
-                                        except json.JSONDecodeError:
-                                            pass
-                                    
-                                    all_tool_calls.append({
-                                        "name": function_data['name'],
-                                        "arguments": arguments
-                                    })
+                    # Try to parse JSON directly without complex escape fixing
+                    try:
+                        tool_calls_data = json.loads(json_block)
+                        
+                        if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                            for i, tool_call in enumerate(tool_calls_data['tool_calls']):
+                                if isinstance(tool_call, dict) and 'function' in tool_call:
+                                    function_data = tool_call['function']
+                                    if 'name' in function_data and 'arguments' in function_data:
+                                        arguments = function_data['arguments']
+                                        # If arguments is a string (JSON), parse it
+                                        if isinstance(arguments, str):
+                                            try:
+                                                arguments = json.loads(arguments)
+                                            except json.JSONDecodeError:
+                                                pass
+                                        
+                                        all_tool_calls.append({
+                                            "name": function_data['name'],
+                                            "arguments": arguments
+                                        })
                         
                         # If we found OpenAI-style tool calls, return them
                         if all_tool_calls:
                             return all_tool_calls
+                    except json.JSONDecodeError as e:
+                        print_current(f"Failed to parse JSON block: {str(e)[:200]}")
+                        pass  # Continue to try other parsing methods
             except json.JSONDecodeError as e:
                 if self.debug_mode:
                     print_current(f"Failed to parse OpenAI-style JSON tool calls: {e}")
@@ -1579,7 +1784,6 @@ class ToolExecutor:
         if direct_json_match and not all_tool_calls:
             try:
                 json_str = direct_json_match.group(0)
-                json_str = fix_json_escapes(json_str)
                 tool_calls_data = json.loads(json_str)
                 if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
                     for tool_call in tool_calls_data['tool_calls']:
@@ -1993,6 +2197,36 @@ class ToolExecutor:
         # Check tool source from mapping table
         tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
         
+        # Handle FastMCP tools
+        if tool_source == 'fastmcp':
+            current_thread = threading.current_thread().name
+            print_current(f"🚀 [Thread: {current_thread}] Calling FastMCP tool: {tool_name}")
+            
+            try:
+
+                if tool_name in self.tool_map:
+                    # Execute the tool function with streaming awareness
+                    if streaming_output:
+                        # For streaming output, show execution in real-time
+                        self._stream_tool_execution(tool_name, params, self.tool_map[tool_name])
+                        result = self.tool_map[tool_name](**params)
+                        # Stream the result output immediately after execution
+                        self._stream_tool_result(tool_name, result)
+                    else:
+                        result = self.tool_map[tool_name](**params)
+                    
+                    print_current(f"✅ [Thread: {current_thread}] FastMCP tool call successful: {tool_name}")
+                    return result
+                else:
+                    error_msg = f"FastMCP tool {tool_name} not found in tool map"
+                    print_current(f"❌ [Thread: {current_thread}] {error_msg}")
+                    return {"error": error_msg}
+                    
+            except Exception as e:
+                error_msg = f"FastMCP tool call failed: {e}"
+                print_current(f"❌ [Thread: {current_thread}] {error_msg}")
+                return {"error": error_msg}
+        
         # Handle cli-mcp tools
         if tool_source == 'cli_mcp':
             # Enhanced multi-thread initialization for cli-mcp client
@@ -2118,7 +2352,7 @@ class ToolExecutor:
                 return result
                 
             except Exception as e:
-                error_msg = f"cli-mcp工具调用失败 in thread {current_thread}: {e}"
+                error_msg = f"cli-mcp tool call failed in thread {current_thread}: {e}"
                 print_current(f"❌ {error_msg}")
                 return {"error": error_msg}
         
@@ -2143,7 +2377,7 @@ class ToolExecutor:
                             import concurrent.futures
                             with concurrent.futures.ThreadPoolExecutor() as executor:
                                 future = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
-                                self.direct_mcp_initialized = future.result(timeout=15)  # 增加超时时间
+                                self.direct_mcp_initialized = future.result(timeout=15)  # Increased timeout
                         else:
                             # We can run the async function directly
                             self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
@@ -2157,13 +2391,13 @@ class ToolExecutor:
                             print_current(f"⚠️ Direct MCP initialization attempt {retry_count} failed")
                             if retry_count < max_retries:
                                 import time
-                                time.sleep(2)  # 等待2秒后重试
+                                time.sleep(2)  # Wait 2 seconds before retry
                                 
                     except Exception as e:
                         print_current(f"⚠️ Direct MCP client initialization attempt {retry_count} failed: {e}")
                         if retry_count < max_retries:
                             import time
-                            time.sleep(2)  # 等待2秒后重试
+                            time.sleep(2)  # Wait 2 seconds before retry
                         else:
                             return {"error": f"Direct MCP client initialization failed after {max_retries} attempts: {e}"}
             
@@ -2171,29 +2405,28 @@ class ToolExecutor:
             try:
                 import asyncio
                 
-                # 检查是否在异步环境中
+                # Check if in async environment
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
-                        # 在异步环境中，使用线程池执行
+                        # In async environment, use thread pool for execution
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             # Use tool name directly (no prefix removal needed for SSE tools)
                             future = executor.submit(asyncio.run, self.direct_mcp_client.call_tool(tool_name, params))
-                            result = future.result(timeout=30)  # 30秒超时
+                            result = future.result(timeout=30)  # 30 seconds timeout
                             return result
                 except RuntimeError:
-                    # 没有事件循环，可以安全地运行asyncio.run
+                    # No event loop, safe to run asyncio.run
                     pass
                 
-                # 在同步环境中运行异步函数
+                # Run async function in sync environment
                 result = asyncio.run(self.direct_mcp_client.call_tool(tool_name, params))
                 return result
                 
             except Exception as e:
-                print_current(f"❌ SSE MCP工具调用失败: {e}")
-                return {"error": f"SSE MCP工具调用失败: {e}"}
-        
+                print_current(f"❌ SSE MCP tool call failed: {e}")
+                return {"error": f"SSE MCP tool call failed: {e}"}
         # Handle regular tools
         if tool_name in self.tool_map:
             tool_func = self.tool_map[tool_name]
@@ -2350,13 +2583,15 @@ class ToolExecutor:
             print_current(f"❌ Tool execution failed: {error_result}")
             return error_result
     
-    def _format_dict_as_text(self, data: Dict[str, Any], for_terminal_display: bool = False) -> str:
+    def _format_dict_as_text(self, data: Dict[str, Any], for_terminal_display: bool = False, tool_name: str = None, tool_params: Dict[str, Any] = None) -> str:
         """
         Format a dictionary result as readable text.
         
         Args:
             data: Dictionary to format
             for_terminal_display: If True, skip stdout/stderr for terminal commands to avoid duplication
+            tool_name: Name of the tool that generated this result (for special handling)
+            tool_params: Parameters of the tool that generated this result (for special handling)
             
         Returns:
             Formatted text string
@@ -2366,251 +2601,91 @@ class ToolExecutor:
         
         lines = []
         
-        # Handle common result patterns
+        # Handle error cases first
         if 'error' in data:
             error_msg = f"Error: {data['error']}"
             if 'tool' in data:
                 error_msg = f"Tool '{data['tool']}' failed: {data['error']}"
-            if 'parameters' in data:
-                error_msg += f"\nParameters used: {data['parameters']}"
-            if 'available_tools' in data:
-                error_msg += f"\nAvailable tools: {', '.join(data['available_tools'])}"
-            if 'available_tools_help' in data:
-                error_msg += f"\n\n{data['available_tools_help']}"
-
             return error_msg
         
+        # Show status if present
         if 'status' in data:
-            lines.append(f"Status: {data['status']}")
-        
-        if 'file' in data:
-            lines.append(f"File: {data['file']}")
-        
-        # Special handling for read_file results with truncation information
-        if 'content' in data:
-            # Check if this is a read_file result with truncation info
-            if 'total_lines' in data:
-                total_lines = data['total_lines']
-                
-                # Handle truncated entire file read
-                if data.get('truncated', False) and 'lines_shown' in data:
-                    lines_shown = data['lines_shown']
-                    lines.append(f"📄 **FILE TRUNCATED**: Showing lines 1-{lines_shown} of {total_lines} total lines")
-                    lines.append(f"⚠️  **IMPORTANT**: The file has {total_lines - lines_shown} additional lines that are not shown.")
-                    lines.append(f"Content (first {lines_shown} lines):")
-                    lines.append(f"{data['content']}")
-                    if 'after_summary' in data:
-                        lines.append(f"\n{data['after_summary']}")
-                # Handle partial file read
-                elif 'start_line' in data and 'end_line' in data:
-                    start_line = data['start_line']
-                    end_line = data['end_line']
-                    lines.append(f"📄 **PARTIAL FILE READ**: Showing lines {start_line}-{end_line} of {total_lines} total lines")
-                    if 'before_summary' in data and data['before_summary']:
-                        lines.append(f"⚠️  **BEFORE**: {data['before_summary']}")
-                    lines.append(f"Content (lines {start_line}-{end_line}):")
-                    lines.append(f"{data['content']}")
-                    if 'after_summary' in data and data['after_summary']:
-                        lines.append(f"⚠️  **AFTER**: {data['after_summary']}")
-                # Handle complete file read (no truncation)
-                else:
-                    lines.append(f"📄 **COMPLETE FILE**: Showing all {total_lines} lines")
-                    lines.append(f"Content:")
-                    lines.append(f"{data['content']}")
+            if data['status'] == 'success':
+                lines.append("✅ Success")
+            elif data['status'] == 'error':
+                lines.append("❌ Failed")
             else:
-                # Fallback for content without line info
-                lines.append(f"Content:\n{data['content']}")
+                lines.append(f"Status: {data['status']}")
+        elif 'success' in data:
+            status = "✅ Success" if data['success'] else "❌ Failed"
+            lines.append(status)
         
-        # Special handling for web search results
-        if 'search_term' in data and 'results' in data:
-            lines.append(f"Search Term: {data['search_term']}")
-            if 'timestamp' in data:
-                lines.append(f"Search Time: {data['timestamp']}")
-            
-            results = data['results']
-            if isinstance(results, list):
-                lines.append(f"\nSearch Results ({len(results)} items):")
-                for i, result in enumerate(results[:10], 1):  # Limit to first 10
-                    if isinstance(result, dict):
-                        lines.append(f"\n{i}. {result.get('title', 'No Title')}")
-                        
-                        # URL field removed from display to reduce clutter
-                        
-                        # Handle content with priority: full_content > content > content_summary > snippet
-                        content_shown = False
-                        if result.get('full_content'):
-                            content = result['full_content']
-                            if len(content) > get_truncation_length():
-                                lines.append(f"   Content: {content[:get_truncation_length()]}...\n   [Content truncated - showing first {get_truncation_length()} characters]")
-                            else:
-                                lines.append(f"   Content: {content}")
-                            content_shown = True
-                        elif result.get('content'):
-                            content = result['content']
-                            if len(content) > get_truncation_length():
-                                lines.append(f"   Content: {content[:get_truncation_length()]}...\n   [Content truncated - showing first {get_truncation_length()} characters]")
-                            else:
-                                lines.append(f"   Content: {content}")
-                            content_shown = True
-                        elif result.get('content_summary'):
-                            lines.append(f"   Content Summary: {result['content_summary']}")
-                            content_shown = True
-                        
-                        # If no content, show snippet
-                        if not content_shown and result.get('snippet'):
-                            lines.append(f"   Summary: {result['snippet'][:get_truncation_length()]}...")
-                        
-                        # Show source
-                        if result.get('source'):
-                            lines.append(f"   Source: {result['source']}")
-                        
-                        # Show content status for results without content
-                        if result.get('content_status'):
-                            lines.append(f"   Content Status: {result['content_status']}")
-            
-            # Add additional web search metadata
-            if 'content_fetched' in data:
-                lines.append(f"\nContent Fetched: {data['content_fetched']}")
-            if 'total_results' in data:
-                lines.append(f"Total Results: {data['total_results']}")
-            if 'results_with_content' in data:
-                lines.append(f"Results with Content: {data['results_with_content']}")
-            
-            return '\n'.join(lines)
+        # Handle key fields in priority order
+        field_handlers = [
+            ('result', lambda v: f"Result: {v}"),
+            ('content', self._format_content_field),
+            ('file', lambda v: f"File: {v}"),
+            ('output', lambda v: f"Output:\n{v}"),
+            ('message', lambda v: f"Message: {v}"),
+        ]
         
-        # Handle agent messages results from get_agent_messages
-        if 'messages' in data and 'agent_id' in data and 'message_count' in data:
-            agent_id = data.get('agent_id', 'unknown')
-            message_count = data.get('message_count', 0)
-            messages = data.get('messages', [])
-            
-            lines.append(f"📬 Agent {agent_id} Messages: {message_count} messages")
-            
-            if message_count > 0:
-                lines.append("")
-                # Show each message with a summary format
-                for i, msg in enumerate(messages[:10], 1):  # Limit to first 10 messages
-                    if isinstance(msg, dict):
-                        msg_id = msg.get('message_id', f'msg_{i}')
-                        sender = msg.get('sender_id', 'unknown')
-                        msg_type = msg.get('message_type', 'unknown')
-                        timestamp = msg.get('timestamp', 'unknown')
-                        read_status = "✓ read" if msg.get('read', False) else "unread"
-                        
-                        lines.append(f"  {i}. {msg_id} from {sender}")
-                        lines.append(f"     Type: {msg_type} | Time: {timestamp} | Status: {read_status}")
-                        
-                        # Show content preview
-                        content = msg.get('content', {})
-                        if isinstance(content, dict):
-                            # Special handling for different message types
-                            if content.get('message'):
-                                preview = str(content['message'])[:100]
-                                if len(str(content['message'])) > 100:
-                                    preview += "..."
-                                lines.append(f"     Content: {preview}")
-                            elif content.get('llm_response_preview'):
-                                preview = str(content['llm_response_preview'])[:100]
-                                if len(str(content['llm_response_preview'])) > 100:
-                                    preview += "..."
-                                lines.append(f"     Response: {preview}")
-                            elif content.get('current_task_description'):
-                                preview = str(content['current_task_description'])[:100]
-                                if len(str(content['current_task_description'])) > 100:
-                                    preview += "..."
-                                lines.append(f"     Task: {preview}")
-                            else:
-                                # Generic content preview
-                                content_str = json.dumps(content, ensure_ascii=False)[:150]
-                                if len(json.dumps(content, ensure_ascii=False)) > 150:
-                                    content_str += "..."
-                                lines.append(f"     Content: {content_str}")
-                        else:
-                            content_str = str(content)[:100]
-                            if len(str(content)) > 100:
-                                content_str += "..."
-                            lines.append(f"     Content: {content_str}")
-                        
-                        lines.append("")  # Empty line between messages
-                
-                if message_count > 10:
-                    lines.append(f"  ... and {message_count - 10} more messages")
-            
-            # Add mailbox statistics if available
-            if 'mailbox_stats' in data:
-                stats = data['mailbox_stats']
-                lines.append("")
-                lines.append(f"📊 Mailbox Stats:")
-                for key, value in stats.items():
-                    lines.append(f"   {key}: {value}")
-            
-            # Add workspace info
-            if 'found_in_workspace' in data:
-                lines.append(f"📁 Workspace: {data['found_in_workspace']}")
-            
-            return '\n'.join(lines)
-
-        # Handle other types of results
-        if 'results' in data:
-            results = data['results']
-            if isinstance(results, list):
-                lines.append(f"Results ({len(results)} items):")
-                for i, result in enumerate(results[:10]):  # Limit to first 10
-                    if isinstance(result, dict):
-                        if 'file' in result and 'line_number' in result:
-                            lines.append(f"  {i+1}. {result['file']}:{result['line_number']} - {result.get('line', '')}")
-                        elif 'file' in result and 'snippet' in result:
-                            lines.append(f"  {i+1}. {result['file']} - {result['snippet'][:get_truncation_length()]}...")
-                        else:
-                            lines.append(f"  {i+1}. {str(result)[:get_truncation_length()]}...")
-                    else:
-                        lines.append(f"  {i+1}. {str(result)}")
+        # Process high-priority fields
+        processed_keys = {'error', 'status', 'success'}
+        for field_name, handler in field_handlers:
+            if field_name in data:
+                try:
+                    formatted_value = handler(data[field_name])
+                    if formatted_value:
+                        lines.append(formatted_value)
+                except Exception as e:
+                    lines.append(f"{field_name}: {data[field_name]}")
+                processed_keys.add(field_name)
         
-        if 'output' in data:
-            lines.append(f"Output:\n{data['output']}")
-        
-        # Handle stdout/stderr based on context
-        if for_terminal_display and ('command' in data and 'working_directory' in data):
-            # For terminal display of terminal commands, skip stdout/stderr to avoid duplication
-            # (they were already shown in real-time)
-            pass
-        else:
-            # For LLM context or non-terminal commands, always include stdout/stderr
+        # Handle stdout/stderr (avoid duplication for terminal commands)
+        if not (for_terminal_display and 'command' in data):
             if 'stdout' in data and data['stdout']:
                 lines.append(f"Output:\n{data['stdout']}")
-            
+                processed_keys.add('stdout')
             if 'stderr' in data and data['stderr']:
                 lines.append(f"Error Output:\n{data['stderr']}")
+                processed_keys.add('stderr')
+        else:
+            processed_keys.update(['stdout', 'stderr', 'command', 'working_directory'])
         
-        # If no specific formatting applied, show all key-value pairs
-        if not lines:
-            for key, value in data.items():
-                if isinstance(value, (list, dict)):
-                    # Avoid serializing very large lists/dicts that could cause display issues
-                    if isinstance(value, list) and len(value) > 20:
-                        lines.append(f"{key}: [Large list with {len(value)} items - use specific tools to inspect]")
-                    elif isinstance(value, dict) and len(json.dumps(value, ensure_ascii=False)) > 5000:
-                        lines.append(f"{key}: [Large dict with {len(value)} keys - use specific tools to inspect]")
-                    else:
-                        lines.append(f"{key}: {json.dumps(value, indent=2, ensure_ascii=False)}")
-                else:
-                    # Special handling for base64 data field - truncate to 50 characters for terminal display
-                    if key == 'data' and isinstance(value, str) and len(value) > 1000:
-                        # Check if this looks like base64 data (long string with base64 characters)
-                        import re
-                        if re.match(r'^[A-Za-z0-9+/\[\]_:\-\.]+={0,2}$', value[:100]):
-                            # Show only first 50 characters for terminal display
-                            truncated_value = value[:50] + f"... [Total length: {len(value)} characters]"
-                            lines.append(f"{key}: {truncated_value}")
-                        else:
-                            lines.append(f"{key}: {value}")
-                    else:
-                        lines.append(f"{key}: {value}")
+        # Handle remaining fields generically
+        remaining = {k: v for k, v in data.items() if k not in processed_keys}
+        for key, value in remaining.items():
+            lines.append(self._format_generic_field(key, value))
         
-        return '\n'.join(lines)
-
-
-
+        return '\n'.join(lines) if lines else str(data)
+    
+    def _format_content_field(self, content: Any) -> str:
+        """Format content field with basic truncation info if available."""
+        if not isinstance(content, str):
+            return f"Content: {content}"
+        
+        # Simple content formatting - let the content speak for itself
+        return f"Content:\n{content}"
+    
+    def _format_generic_field(self, key: str, value: Any) -> str:
+        """Format a generic field with reasonable truncation for large data."""
+        if isinstance(value, (list, dict)):
+            if isinstance(value, list) and len(value) > 10:
+                return f"{key}: [List with {len(value)} items - first few: {value[:3]}...]"
+            elif isinstance(value, dict) and len(str(value)) > 1000:
+                return f"{key}: [Dict with {len(value)} keys - too large to display fully]"
+            else:
+                return f"{key}: {json.dumps(value, indent=2, ensure_ascii=False)}"
+        elif isinstance(value, str) and len(value) > 1000:
+            # Handle large strings (possibly base64 data)
+            if key == 'data' and len(value) > 500:
+                preview = value[:50] + f"... [Total: {len(value)} chars]"
+                return f"{key}: {preview}"
+            else:
+                preview = value[:200] + "..." if len(value) > 200 else value
+                return f"{key}: {preview}"
+        else:
+            return f"{key}: {value}"
 
     def _save_llm_call_debug_log(self, messages: List[Dict[str, Any]], content: str, tool_call_round: int = 0, tool_calls_info: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -2884,9 +2959,6 @@ class ToolExecutor:
         if not tool_results:
             return "No tool results to report."
         
-       
-        truncation_length = get_truncation_length()
-        
         message_parts = ["Tool execution results:\n"]
         for i, result in enumerate(tool_results, 1):
             tool_name = result.get('tool_name', 'unknown')
@@ -2901,97 +2973,30 @@ class ToolExecutor:
                 key_params = []
                 for key, value in tool_params.items():
                     if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
-                        # Truncate long values for readability
-                        if isinstance(value, str) and len(value) > truncation_length:
-                            value = value[:truncation_length] + "..."
+                        # Show full parameter values without truncation
                         key_params.append(f"{key}={value}")
                 if key_params:
                     message_parts.append(f"**Parameters:** {', '.join(key_params)}")
             
-            # Check if this is a read_file operation with should_read_entire_file=true
-            is_read_entire_file = (tool_name == 'read_file' and 
-                                 tool_params.get('should_read_entire_file', False) is True)
-            
-            # Check if this is a get_sensor_data operation (should not truncate image data)
-            is_sensor_data = (tool_name == 'get_sensor_data')
-            
-            # Format the result
+            # Format the result using _format_dict_as_text for all cases
             message_parts.append("**Result:**")
             if isinstance(tool_result, dict):
-                if tool_result.get('success') is not None:
-                    # Structured result format
-                    status = "✅ Success" if tool_result.get('success') else "❌ Failed"
-                    message_parts.append(status)
-                    
-                    for key, value in tool_result.items():
-                        if key not in ['status', 'command', 'working_directory']:
-                            # For read_entire_file operations, don't truncate content but show truncation info
-                            if is_read_entire_file and key == 'content':
-                                # Check if the file was truncated
-                                if tool_result.get('truncated', False):
-                                    total_lines = tool_result.get('total_lines', 'unknown')
-                                    lines_shown = tool_result.get('lines_shown', 'unknown')
-                                    message_parts.append(f"- 📄 **FILE TRUNCATED**: Showing lines 1-{lines_shown} of {total_lines} total lines")
-                                    message_parts.append(f"- ⚠️  **IMPORTANT**: The file has {total_lines - lines_shown if isinstance(total_lines, int) and isinstance(lines_shown, int) else 'additional'} lines that are not shown.")
-                                    message_parts.append(f"- {key} (first {lines_shown} lines): {value}")
-                                    if tool_result.get('after_summary'):
-                                        message_parts.append(f"- **Truncation note**: {tool_result.get('after_summary')}")
-                                else:
-                                    # Complete file
-                                    total_lines = tool_result.get('total_lines', 'unknown')
-                                    message_parts.append(f"- 📄 **COMPLETE FILE**: Showing all {total_lines} lines")
-                                    message_parts.append(f"- {key}: {value}")
-                                print_current(f"📄 Full file content passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
-                            # For get_sensor_data operations, show a summary instead of full base64 to avoid overwhelming LLM
-                            elif is_sensor_data and key == 'data':
-                                if isinstance(value, str) and len(value) > 1000:
-                                    # Show base64 data summary (only first 50 characters for terminal display)
-                                    data_preview = value[:50] + "..." if len(value) > 50 else value
-                                    message_parts.append(f"- {key}: [BASE64_DATA] {data_preview} [Total length: {len(value)} characters]")
-                                    print_current(f"📸 Base64 data summary passed to LLM, original length: {len(value)} characters")
-                                else:
-                                    message_parts.append(f"- {key}: {value}")
-                                    print_current(f"📸 Full sensor data passed to LLM, length: {len(value) if isinstance(value, str) else 'N/A'} characters")
-                            elif isinstance(value, str) and len(value) > truncation_length:
-                                # Truncate very long content for other operations
-                                value = value[:truncation_length] + f"... [Content truncated, total length: {len(value)} characters]"
-                                message_parts.append(f"- {key}: {value}")
-                            else:
-                                message_parts.append(f"- {key}: {value}")
-                else:
-                    # Fallback formatting
-                    formatted_result = self._format_dict_as_text(tool_result)
-                    # For read_entire_file and get_sensor_data operations, don't truncate
-                    if is_read_entire_file or is_sensor_data:
-                        message_parts.append(formatted_result)
-                        if is_read_entire_file:
-                            print_debug(f"📄 Full file content formatted and passed to LLM")
-                        else:
-                            print_debug(f"📸 Full sensor data formatted and passed to LLM")
-                    elif len(formatted_result) > truncation_length:
-                        formatted_result = formatted_result[:truncation_length] + "... [Content truncated]"
-                        message_parts.append(formatted_result)
-                    else:
-                        message_parts.append(formatted_result)
+                formatted_result = self._format_dict_as_text(tool_result, for_terminal_display=False, tool_name=tool_name, tool_params=tool_params)
+                message_parts.append(formatted_result)
             else:
                 # Handle non-dict results
                 result_str = str(tool_result)
-                # For read_entire_file and get_sensor_data operations, don't truncate
-                if is_read_entire_file or is_sensor_data:
-                    message_parts.append(result_str)
-                    if is_sensor_data:
-                        print_current(f"📸 Full sensor data (non-dict) passed to LLM, length: {len(result_str)} characters")
-                elif len(result_str) > truncation_length:
-                    result_str = result_str[:truncation_length] + "... [Content truncated]"
-                    message_parts.append(result_str)
-                else:
-                    message_parts.append(result_str)
+                message_parts.append(result_str)
+                # Check if this is a get_sensor_data operation for logging
+                is_sensor_data = (tool_name == 'get_sensor_data')
+                if is_sensor_data:
+                    print_current(f"📸 Full sensor data (non-dict) passed to LLM, length: {len(result_str)} characters")
             
             # Add separator between tools
             if i < len(tool_results):
                 message_parts.append("")  # Empty line for separation
         
-        # 🔧 NEW: Add base64 data detection information
+        # Add base64 data detection information
         if include_base64_info:
             message_parts.append("")
             message_parts.append("## Base64 Data Status")
@@ -3029,9 +3034,7 @@ class ToolExecutor:
                 key_params = []
                 for key, value in tool_params.items():
                     if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
-                        # Truncate long values for readability
-                        if isinstance(value, str) and len(value) > truncation_length:
-                            value = value[:truncation_length] + "..."
+                        # Show full parameter values without truncation
                         key_params.append(f"{key}={value}")
                 if key_params:
                     message_parts.append(f"**Parameters:** {', '.join(key_params)}")
@@ -3051,12 +3054,8 @@ class ToolExecutor:
                             message_parts.append(f"- {key}: [IMAGE DATA - See image below]")
                             print_current(f"📸 Image data formatted for vision API, tool {i}")
                         elif key not in ['status', 'command', 'working_directory']:
-                            if isinstance(value, str) and len(value) > truncation_length:
-                                # Truncate very long content for other operations
-                                value = value[:truncation_length] + f"... [Content truncated, total length: {len(value)} characters]"
-                                message_parts.append(f"- {key}: {value}")
-                            else:
-                                message_parts.append(f"- {key}: {value}")
+                            # Show full content without truncation
+                            message_parts.append(f"- {key}: {value}")
             
             # Add separator between tools
             if i < len(tool_results):
@@ -3223,7 +3222,7 @@ class ToolExecutor:
         
         # For other tools or unrecognized search results, fall back to original formatting
         else:
-            return self._format_dict_as_text(data, for_terminal_display=True)
+            return self._format_dict_as_text(data, for_terminal_display=True, tool_name=tool_name)
         
         return '\n'.join(lines)
 
@@ -3251,8 +3250,48 @@ class ToolExecutor:
         for tool_name in self.tool_map.keys():
             tool_source = tool_source_map.get(tool_name, 'regular')
             
+            # Handle FastMCP tools
+            if tool_source == 'fastmcp':
+                try:
+                    from tools.fastmcp_wrapper import get_fastmcp_wrapper
+                    
+                    fastmcp_wrapper = get_fastmcp_wrapper()
+                    if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
+                        # Get tool definition from FastMCP wrapper
+                        fastmcp_tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
+                        if fastmcp_tool_def:
+                            if provider == "openai":
+                                # OpenAI format for FastMCP tools
+                                standard_tool = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "description": fastmcp_tool_def.get("description", f"FastMCP tool: {tool_name}"),
+                                        "parameters": fastmcp_tool_def.get("input_schema", {
+                                            "type": "object",
+                                            "properties": {},
+                                            "required": []
+                                        })
+                                    }
+                                }
+                            elif provider == "anthropic":
+                                # Anthropic format for FastMCP tools
+                                standard_tool = {
+                                    "name": tool_name,
+                                    "description": fastmcp_tool_def.get("description", f"FastMCP tool: {tool_name}"),
+                                    "input_schema": fastmcp_tool_def.get("input_schema", {
+                                        "type": "object",
+                                        "properties": {},
+                                        "required": []
+                                    })
+                                }
+                            
+                            standard_tools.append(standard_tool)
+                except Exception as e:
+                    print_current(f"⚠️ Failed to get FastMCP tool {tool_name} definition for standard format: {e}")
+            
             # Handle cli-mcp tools
-            if tool_source == 'cli_mcp':
+            elif tool_source == 'cli_mcp':
                 if self.cli_mcp_client and self.cli_mcp_initialized:
                     try:
                         # Use tool name directly (no prefix for cli-mcp tools now)
@@ -3264,7 +3303,7 @@ class ToolExecutor:
                                     "type": "function",
                                     "function": {
                                         "name": tool_name,  # Use original name (no prefix)
-                                        "description": cli_mcp_tool_def.get("description", f"cli-mcp工具: {tool_name}"),
+                                        "description": cli_mcp_tool_def.get("description", f"cli-mcptool: {tool_name}"),
                                         "parameters": cli_mcp_tool_def.get("input_schema", {
                                             "type": "object",
                                             "properties": {},
@@ -3276,7 +3315,7 @@ class ToolExecutor:
                                 # Anthropic format for cli-mcp tools
                                 standard_tool = {
                                     "name": tool_name,  # Use original name (no prefix)
-                                    "description": cli_mcp_tool_def.get("description", f"cli-mcp工具: {tool_name}"),
+                                    "description": cli_mcp_tool_def.get("description", f"cli-mcp tool: {tool_name}"),
                                     "input_schema": cli_mcp_tool_def.get("input_schema", {
                                         "type": "object",
                                         "properties": {},
@@ -3286,7 +3325,7 @@ class ToolExecutor:
                             
                             standard_tools.append(standard_tool)
                     except Exception as e:
-                        print_current(f"⚠️ 无法获取cli-mcp工具 {tool_name} 的定义: {e}")
+                        print_current(f"⚠️ Failed to get SSE MCP tool {tool_name} definition: {e}")
             
             # Handle direct MCP tools (SSE)
             elif tool_source == 'direct_mcp':
@@ -3605,7 +3644,7 @@ class ToolExecutor:
                                                 if tool_call_delta.function.arguments:
                                                     current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
                     
-                    # Phase 2: Tool execution (WITHOUT lock)
+                    # Phase 2: Tool execution
                     if tool_calls_detected:
                         print_current("🔧 Detecting tool calls...")
                         
@@ -3781,7 +3820,7 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # Phase 1: LLM text streaming (with lock)
+                    # Phase 1: LLM text streaming
                     content = ""
                     tool_calls = []
                     
@@ -3797,7 +3836,7 @@ class ToolExecutor:
                             last_content_length = 0
                             stream_finished = False
                             
-                            # Stream text content only (keep in lock)
+                            # Stream text content only
                             for text in stream.text_stream:
                                 printer.write(text)
                                 content += text
@@ -3822,11 +3861,8 @@ class ToolExecutor:
                                     "input": content_block.input
                                 })
                     
-                    # Phase 2: Tool execution (WITHOUT lock)
                     if tool_calls:
-                        # Ensure we have a newline after streaming content
                         print()
-                        #print_tool_call("🎯 Tool calls detected, executing immediately...")
                         
                         for content_block_data in tool_calls:
                             # Execute tool immediately (no lock!) - let streaming_output handle all display
@@ -3908,7 +3944,7 @@ class ToolExecutor:
                 
                 if is_retryable and attempt < max_retries:
                     # Calculate retry delay with exponential backoff
-                    retry_delay = min(2 ** attempt, 10)  # 1, 2, 4 seconds, max 10
+                    retry_delay = 1
                     
                     print_current(f"⚠️ Claude API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
                     print_current(f"💡 Consider switching to a different model or trying again later")
@@ -3976,13 +4012,9 @@ class ToolExecutor:
                     try:
                         return json.loads(arguments)
                     except json.JSONDecodeError as e:
-                        # Try to fix common JSON issues
-                        try:
-                            fixed_arguments = fix_json_escapes(arguments)
-                            parsed_result = json.loads(fixed_arguments)
-                            return parsed_result
-                        except json.JSONDecodeError as e2:
-                            return {}
+                        # JSON parsing failed, return empty dict to avoid crashes
+                        print_current(f"Failed to parse JSON arguments: {str(e)[:200]}")
+                        return {}
                 return arguments
             # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
             elif "input" in tool_call:
@@ -3999,13 +4031,9 @@ class ToolExecutor:
                     try:
                         return json.loads(arguments)
                     except json.JSONDecodeError as e:
-                        # Try to fix common JSON issues
-                        try:
-                            fixed_arguments = fix_json_escapes(arguments)
-                            parsed_result = json.loads(fixed_arguments)
-                            return parsed_result
-                        except json.JSONDecodeError as e2:
-                            return {}
+                        # JSON parsing failed, return empty dict to avoid crashes
+                        print_current(f"Failed to parse JSON arguments: {str(e)[:200]}")
+                        return {}
                 return arguments
             elif hasattr(tool_call, 'input'):
                 return tool_call.input
@@ -4049,18 +4077,29 @@ class ToolExecutor:
         
         return "\n".join(formatted_calls)
 
-    def _load_tool_definitions_from_file(self, json_file_path: str = None) -> Dict[str, Any]:
+    def _load_tool_definitions_from_file(self, json_file_path: str = None, force_reload: bool = False) -> Dict[str, Any]:
         """
-        Load tool definitions from JSON file.
+        Load tool definitions from JSON file with caching to avoid repeated loading.
         
         Args:
             json_file_path: Path to the JSON file containing tool definitions
+            force_reload: Whether to force reload even if cache exists
             
         Returns:
             Dictionary containing tool definitions
         """
         try:
             import json
+            import time
+            
+            # Check cache first (unless force_reload is True)
+            if not force_reload and self._tool_definitions_cache is not None:
+                # Check if cache is still valid (within 60 seconds)
+                current_time = time.time()
+                if (self._tool_definitions_cache_timestamp is not None and 
+                    current_time - self._tool_definitions_cache_timestamp < 60):
+                    #print_current("🔄 Using cached tool definitions (avoiding repeated FastMCP loading)")
+                    return self._tool_definitions_cache
             
             # Load basic tool definitions
             tool_definitions = {}
@@ -4111,6 +4150,77 @@ class ToolExecutor:
                 # print_current("🔒 Multi-agent mode disabled - skipping multi-agent tool definitions")
                 pass
             
+            # 🔧 NEW: Load FastMCP tool definitions dynamically
+            try:
+                from tools.fastmcp_wrapper import get_fastmcp_wrapper
+                
+                fastmcp_wrapper = get_fastmcp_wrapper()
+                if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
+                    fastmcp_tools = fastmcp_wrapper.get_available_tools()
+                    if fastmcp_tools:
+                        print_current(f"🔧 Loading {len(fastmcp_tools)} FastMCP tool definitions")
+                        
+                        for tool_name in fastmcp_tools:
+                            try:
+                                # Get tool definition from FastMCP wrapper
+                                tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
+                                if tool_def:
+                                    # Convert to the format expected by our tool definitions
+                                    tool_definitions[tool_name] = {
+                                        "description": tool_def.get("description", f"FastMCP tool: {tool_name}"),
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": tool_def.get("input_schema", {}).get("properties", {}),
+                                            "required": tool_def.get("input_schema", {}).get("required", [])
+                                        }
+                                    }
+                                    print_current(f"✅ Added FastMCP tool: {tool_name}")
+                            except Exception as e:
+                                print_current(f"⚠️ Failed to load FastMCP tool definition for {tool_name}: {e}")
+                                continue
+                        
+                        print_current(f"✅ FastMCP tool definitions loaded successfully")
+                    
+            except Exception as e:
+                print_current(f"⚠️ Failed to load FastMCP tool definitions: {e}")
+            
+            # 🔧 NEW: Load cli-mcp tool definitions dynamically
+            try:
+                if hasattr(self, 'tool_source_map'):
+                    cli_mcp_tools = [tool_name for tool_name, source in self.tool_source_map.items() 
+                                   if source == 'cli_mcp']
+                    
+                    if cli_mcp_tools and self.cli_mcp_initialized and self.cli_mcp_client:
+                        print_current(f"🔧 Loading {len(cli_mcp_tools)} cli-mcp tool definitions")
+                        
+                        for tool_name in cli_mcp_tools:
+                            try:
+                                # Get tool definition from cli-mcp wrapper
+                                tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
+                                if tool_def:
+                                    # Convert to the format expected by our tool definitions
+                                    tool_definitions[tool_name] = {
+                                        "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": tool_def.get("input_schema", {}).get("properties", {}),
+                                            "required": tool_def.get("input_schema", {}).get("required", [])
+                                        }
+                                    }
+                                    print_current(f"✅ Added cli-mcp tool definition: {tool_name}")
+                            except Exception as e:
+                                print_current(f"⚠️ Failed to load cli-mcp tool definition for {tool_name}: {e}")
+                                continue
+                        
+                        print_current(f"✅ cli-mcp tool definitions loaded successfully")
+                    
+            except Exception as e:
+                print_current(f"⚠️ Failed to load cli-mcp tool definitions: {e}")
+            
+            # Cache the loaded tool definitions
+            self._tool_definitions_cache = tool_definitions
+            self._tool_definitions_cache_timestamp = time.time()
+            
             return tool_definitions
                 
         except json.JSONDecodeError as e:
@@ -4121,6 +4231,12 @@ class ToolExecutor:
         # Return empty definitions if file loading fails
         # print_current("🔄 No fallback tool definitions available")
         return {}
+    
+    def _clear_tool_definitions_cache(self):
+        """Clear the tool definitions cache to force reload on next access."""
+        self._tool_definitions_cache = None
+        self._tool_definitions_cache_timestamp = None
+        #print_current("🔄 Tool definitions cache cleared")
     
     def _is_multi_agent_enabled(self) -> bool:
         """
@@ -4526,7 +4642,7 @@ class ToolExecutor:
         try:
             # Log detailed parameters to file
             detailed_params = str(params)
-            print_debug(f"Tool {tool_name} detailed parameters: {detailed_params}")
+            print_debug(f"Tool {tool_name} with parameters: {detailed_params}")
             print_debug(f"   Working directory: {os.getcwd()}")
             print_debug(f"   Status: Executing...")
             
@@ -4569,13 +4685,37 @@ class ToolExecutor:
             full_result_str = str(result)
             print_debug(f"Tool {tool_name} full result: {full_result_str}")
             
-            # Only show essential status information in terminal for specific tools
+            # Show results for various tool types
             if isinstance(result, dict):
                 # Use simplified formatting for search tools if enabled in config
                 if (self.simplified_search_output and 
                     tool_name in ['codebase_search', 'web_search']):
                     formatted_result = self._format_search_result_for_terminal(result, tool_name)
                     print_tool_result(formatted_result)
+                
+                # Handle MCP tools (FastMCP, CLI-MCP, Direct MCP) results
+                elif tool_name in getattr(self, 'tool_source_map', {}) or any(prefix in tool_name for prefix in ['jina_', 'cli_mcp_']):
+                    tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'unknown')
+                    
+                    if result.get('status') == 'success' and 'result' in result:
+                        tool_result_content = result['result']
+                        
+                        # Format the result content appropriately - NO TRUNCATION
+                        if isinstance(tool_result_content, str):
+                            # For string results, show directly without truncation
+                            print_tool_result(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
+                        elif isinstance(tool_result_content, dict):
+                            # For dict results, format as text without truncation
+                            formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=params)
+                            print_tool_result(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
+                        else:
+                            print_tool_result(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
+                    elif result.get('status') == 'error':
+                        error_msg = result.get('error', 'Unknown error')
+                        print_tool_result(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
+                    else:
+                        print_tool_result(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
+                
                 # For file operations, only show if there's an error
                 elif 'status' in result and result.get('status') in ['error', 'failed']:
                     status = result.get('status', 'unknown')

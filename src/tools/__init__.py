@@ -67,6 +67,25 @@ if PLUGIN_TOOLS_AVAILABLE:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                # Clean up MCP clients first (most critical for subprocess cleanup)
+                try:
+                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                    safe_cleanup_cli_mcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                
+                try:
+                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                    safe_cleanup_fastmcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                
+                try:
+                    from .mcp_client import safe_cleanup_mcp_client
+                    safe_cleanup_mcp_client()
+                except Exception as e:
+                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
                     try:
@@ -116,6 +135,25 @@ else:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                # Clean up MCP clients first (most critical for subprocess cleanup)
+                try:
+                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                    safe_cleanup_cli_mcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                
+                try:
+                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                    safe_cleanup_fastmcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                
+                try:
+                    from .mcp_client import safe_cleanup_mcp_client
+                    safe_cleanup_mcp_client()
+                except Exception as e:
+                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
                     try:

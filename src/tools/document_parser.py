@@ -20,21 +20,21 @@ class DocumentParser:
     def parse_document(self, file_path: str) -> Dict[str, Any]:
         """Parse a document and return structured data"""
         if not os.path.exists(file_path):
-            return {"success": False, "error": "File not found"}
+            return {"status": "failed", "error": "File not found"}
         
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
             return {
-                "success": True,
+                "status": "success",
                 "content": content,
                 "format": os.path.splitext(file_path)[1],
                 "size": len(content),
                 "lines": len(content.splitlines())
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"status": "failed", "error": str(e)}
     
     def parse_multiple(self, file_paths: List[str]) -> List[Dict[str, Any]]:
         """Parse multiple documents"""

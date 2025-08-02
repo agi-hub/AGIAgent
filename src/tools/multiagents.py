@@ -125,7 +125,7 @@ class MultiAgentTools:
                 
             except (ValueError, TypeError) as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Invalid parameter types: max_loops={max_loops}, wait_for_completion={wait_for_completion}, shared_workspace={shared_workspace}",
                     "error": str(e)
                 }
@@ -145,7 +145,7 @@ class MultiAgentTools:
                 # Validate user-provided agent ID format
                 if not self._is_valid_agent_id_format(agent_id):
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": f"Invalid agent ID format: '{agent_id}'. Must match pattern 'agent_XXX' where XXX is a 3-digit number (e.g., 'agent_001')",
                         "provided_agent_id": agent_id
                     }
@@ -153,7 +153,7 @@ class MultiAgentTools:
                 # Check if agent ID is already in use
                 if self._is_agent_id_in_use(agent_id):
                     return {
-                        "status": "error", 
+                        "status": "failed", 
                         "message": f"Agent ID '{agent_id}' is already in use. Please choose a different ID or let the system auto-generate one.",
                         "provided_agent_id": agent_id,
                         "active_agents": list(self.generated_agent_ids)
@@ -211,14 +211,14 @@ class MultiAgentTools:
             # Validate required parameters
             if not api_key:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": "API key not found. Please provide api_key parameter or set it in config/config.txt",
                     "agent_id": agent_id
                 }
             
             if not model:
                 return {
-                    "status": "error", 
+                    "status": "failed", 
                     "message": "Model not found. Please provide model parameter or set it in config/config.txt",
                     "agent_id": agent_id
                 }
@@ -282,7 +282,7 @@ class MultiAgentTools:
                 # If MCP config file not found, return error
                 if mcp_config_path is None:
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": f"MCP configuration file '{MCP_config_file}' not found. Searched locations: {search_locations}",
                         "agent_id": agent_id,
                         "searched_locations": search_locations
@@ -380,7 +380,7 @@ class MultiAgentTools:
                             "max_loops": max_loops,
                             "current_loop": response.get("current_loop", 0),  # Add loop information when terminated
                             "error": None,
-                            "success": True,
+                            "status": "success",
                             "terminated": True,
                             "response": response
                         }
@@ -409,7 +409,7 @@ class MultiAgentTools:
                             "max_loops": max_loops,
                             "current_loop": response.get("current_loop", max_loops),  # Add final loop information
                             "error": None,
-                            "success": True,
+                            "status": "success",
                             "response": response
                         }
                         
@@ -447,7 +447,7 @@ class MultiAgentTools:
                             "max_loops": max_loops,
                             "current_loop": response.get("current_loop", max_loops),  # Add loop information when failed
                             "error": error_message,
-                            "success": False,
+                            "status": "failed",
                             "response": response
                         }
                         
@@ -499,9 +499,9 @@ class MultiAgentTools:
                         "max_loops": max_loops,
                         "current_loop": 0,  # Add loop information on error (usually 0)
                         "error": error_msg,
-                        "success": False,
+                        "status": "failed",
                         "response": {
-                            "success": False,
+                            "status": "failed",
                             "message": error_msg
                         }
                     }
@@ -646,7 +646,7 @@ class MultiAgentTools:
                         })
                     except Exception as e:
                         result.update({
-                            "status": "error",
+                            "status": "failed",
                             "note": f"Task thread completed but status file could not be read: {e}"
                         })
                 
@@ -665,7 +665,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Failed to spawn AGIBot instance: {str(e)}",
                 "task_id": task_id if 'task_id' in locals() else "unknown"
             }
@@ -694,7 +694,7 @@ class MultiAgentTools:
             try:
                 msg_type = MessageType(message_type)
             except ValueError:
-                return {"status": "error", "message": f"Invalid message type: {message_type}"}
+                return {"status": "failed", "message": f"Invalid message type: {message_type}"}
             
             try:
                 msg_priority = MessagePriority[priority.upper()]
@@ -723,7 +723,7 @@ class MultiAgentTools:
             if not sender_mailbox:
                 sender_mailbox = router.register_agent(sender_id)
                 if not sender_mailbox:
-                    return {"status": "error", "message": f"Failed to register sender agent: {sender_id}"}
+                    return {"status": "failed", "message": f"Failed to register sender agent: {sender_id}"}
             
             # Send message
             success = sender_mailbox.send_message(message)
@@ -755,7 +755,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error sending message: {str(e)}",
                 "receiver_id": receiver_id if 'receiver_id' in locals() else "unknown"
             }
@@ -788,7 +788,7 @@ class MultiAgentTools:
                     # Collect available agents for error reporting
                     available_agents = router.get_all_agents()
                     return {
-                        "status": "error", 
+                        "status": "failed", 
                         "message": f"Agent '{agent_id}' mailbox not found",
                         "agent_id": agent_id,
                         "workspace_root": self.workspace_root,
@@ -799,7 +799,7 @@ class MultiAgentTools:
                 
             except Exception as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Error accessing workspace: {str(e)}",
                     "agent_id": agent_id,
                     "workspace_root": self.workspace_root
@@ -838,7 +838,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error getting messages: {str(e)}",
                 "agent_id": agent_id if 'agent_id' in locals() else "unknown"
             }
@@ -868,7 +868,7 @@ class MultiAgentTools:
             
             if not mailbox:
                 return {
-                    "status": "error", 
+                    "status": "failed", 
                     "message": f"Agent '{agent_id}' mailbox not found",
                     "agent_id": agent_id,
                     "workspace_root": self.workspace_root
@@ -934,7 +934,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error getting message summary: {str(e)}",
                 "agent_id": agent_id if 'agent_id' in locals() else "unknown"
             }
@@ -1032,7 +1032,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error diagnosing mailbox paths: {str(e)}"
             }
 
@@ -1050,7 +1050,7 @@ class MultiAgentTools:
             # Validate path exists
             if not os.path.exists(new_workspace_root):
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Path does not exist: {new_workspace_root}"
                 }
             
@@ -1092,14 +1092,14 @@ class MultiAgentTools:
                 # Rollback on error
                 self.workspace_root = old_workspace
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Error testing new workspace root: {str(e)}",
                     "workspace_root": self.workspace_root
                 }
                 
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error setting workspace root: {str(e)}"
             }
 
@@ -1167,7 +1167,7 @@ class MultiAgentTools:
                 sender_mailbox = router.register_agent(actual_agent_id)
                 if not sender_mailbox:
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": f"Failed to register agent: {actual_agent_id}",
                         "agent_id": actual_agent_id
                     }
@@ -1192,7 +1192,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error sending status update to manager: {str(e)}",
                 "agent_id": actual_agent_id if 'actual_agent_id' in locals() else agent_id
             }
@@ -1218,7 +1218,7 @@ class MultiAgentTools:
             try:
                 msg_type = MessageType(message_type)
             except ValueError:
-                return {"status": "error", "message": f"Invalid message type: {message_type}"}
+                return {"status": "failed", "message": f"Invalid message type: {message_type}"}
             
             # Broadcast message
             sent_count = router.broadcast_message("manager", content)
@@ -1239,7 +1239,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error broadcasting message: {str(e)}",
                 "message_type": message_type
             }
@@ -1300,7 +1300,7 @@ class MultiAgentTools:
                 
             except Exception as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Error formatting round fairness report: {e}",
                     "raw_report": round_report
                 }
@@ -1447,7 +1447,7 @@ class MultiAgentTools:
             
             if active_count > 0:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Cannot change scheduler mode with {active_count} active tasks. Wait for completion first.",
                     "current_mode": "priority_queue" if self.use_priority_scheduler else "traditional_threading"
                 }
@@ -1481,7 +1481,7 @@ class MultiAgentTools:
             
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error toggling scheduler mode: {str(e)}"
             }
 
@@ -1507,7 +1507,7 @@ class MultiAgentTools:
                     }
                 else:
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": "Priority scheduler emergency restart failed",
                         "scheduler_restarted": False
                     }
@@ -1520,7 +1520,7 @@ class MultiAgentTools:
                 
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error during emergency restart: {str(e)}",
                 "scheduler_restarted": False
             }
@@ -1549,7 +1549,7 @@ class MultiAgentTools:
                 else:
                     print_current("🚨 Deadlock break failed")
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": "Failed to break deadlock",
                         "deadlock_broken": False
                     }
@@ -1563,7 +1563,7 @@ class MultiAgentTools:
         except Exception as e:
             print_current(f"🚨 Force break deadlock error: {e}")
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error during deadlock break: {str(e)}",
                 "deadlock_broken": False
             }
@@ -1776,7 +1776,7 @@ class MultiAgentTools:
             error_msg = f"Error getting session info: {str(e)}"
             print_current(f"❌ {error_msg}")
             return {
-                "status": "error",
+                "status": "failed",
                 "message": error_msg
             }
 
@@ -1805,7 +1805,7 @@ class MultiAgentTools:
                     agent_id = current_agent_id
                 else:
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": "Cannot determine current agent ID for self-termination",
                         "agent_id": agent_id
                     }
@@ -1813,7 +1813,7 @@ class MultiAgentTools:
             # Validate agent ID format
             if not self._is_valid_agent_id_format(agent_id):
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Invalid agent ID format: {agent_id}. Expected format: agent_XXX",
                     "agent_id": agent_id
                 }
@@ -1838,7 +1838,7 @@ class MultiAgentTools:
             
             if not agent_exists:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Agent '{agent_id}' not found or already terminated",
                     "agent_id": agent_id
                 }
@@ -1899,21 +1899,21 @@ class MultiAgentTools:
                     }
                 else:
                     return {
-                        "status": "error",
+                        "status": "failed",
                         "message": f"Failed to send terminate signal to agent {agent_id}",
                         "agent_id": agent_id
                     }
                     
             except Exception as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Error sending terminate signal to agent {agent_id}: {str(e)}",
                     "agent_id": agent_id
                 }
         
         except Exception as e:
             return {
-                "status": "error", 
+                "status": "failed", 
                 "message": f"Error terminating agent {agent_id}: {str(e)}",
                 "agent_id": agent_id if 'agent_id' in locals() else "unknown"
             }
@@ -2143,7 +2143,7 @@ class MultiAgentTools:
             except Exception as e:
                 print_current(f"⚠️ Error cleaning up global scheduler: {e}")
             
-            print_current("✅ Multi-agent system cleanup completed")
+            #print_current("✅ Multi-agent system cleanup completed")
             
         except Exception as e:
             print_error(f"❌ Error cleaning up multi-agent system resources: {e}")
@@ -2182,7 +2182,7 @@ class MultiAgentTools:
                 
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error during stalled agent reset: {str(e)}",
                 "reset_count": 0
             }
@@ -2239,7 +2239,7 @@ class MultiAgentTools:
             
             if not status_file_path:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Status file for agent {agent_id} not found",
                     "agent_id": agent_id
                 }
@@ -2250,7 +2250,7 @@ class MultiAgentTools:
                     status_data = json.load(f)
             except Exception as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Failed to read status file: {e}",
                     "agent_id": agent_id,
                     "status_file_path": status_file_path
@@ -2278,7 +2278,7 @@ class MultiAgentTools:
                 
             except Exception as e:
                 return {
-                    "status": "error",
+                    "status": "failed",
                     "message": f"Failed to write status file: {e}",
                     "agent_id": agent_id,
                     "status_file_path": status_file_path
@@ -2286,7 +2286,7 @@ class MultiAgentTools:
                 
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "message": f"Error updating agent current loop: {str(e)}",
                 "agent_id": agent_id
             }

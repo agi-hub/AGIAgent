@@ -9,9 +9,10 @@ LANG=zh
 # max_tokens=8192
 
 # Bailian API configuration 
-# api_key=your key
-# api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
+api_key=your key
+api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
 # model=qwen3-coder-480b-a35b-instruct
+model=qwen3-coder-30b-a3b-instruct
 # max_tokens=65536
 
 # model=qwen3-235b-a22b-instruct-2507
@@ -21,10 +22,10 @@ LANG=zh
 # max_tokens=32768
 
 # Anthropic models
-api_key=your key
-api_base=https://api.openai-proxy.org/anthropic
-model=claude-sonnet-4-0
-max_tokens=16384
+# api_key=your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
+# max_tokens=16384
 
 # Google gemini model
 # api_key=your key
@@ -192,7 +193,7 @@ auto_fix_interactive_commands=True
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=False
+multi_agent=True
 
 # Jieba Chinese Segmentation Configuration
 # Controls whether to enable jieba Chinese text segmentation for code parsing

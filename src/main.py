@@ -58,9 +58,29 @@ def global_cleanup():
     _cleanup_executed = True
     
     try:
+        #print_current("🔄 Starting global cleanup...")
         
         # Import here to avoid circular imports
         # Note: AgentManager class is not implemented, skipping cleanup
+        
+        # Cleanup MCP clients first (most important for subprocess cleanup)
+        try:
+            from tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+            safe_cleanup_cli_mcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ CLI-MCP cleanup warning: {e}")
+        
+        try:
+            from tools.fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+            safe_cleanup_fastmcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ FastMCP cleanup warning: {e}")
+        
+        try:
+            from tools.mcp_client import safe_cleanup_mcp_client
+            safe_cleanup_mcp_client()
+        except Exception as e:
+            print_current(f"⚠️ MCP client cleanup warning: {e}")
         
         # Stop message router if it exists
         try:
@@ -68,21 +88,26 @@ def global_cleanup():
             router = get_message_router()
             if router:
                 router.stop()
-        except:
-            pass
+        except Exception as e:
+            print_current(f"⚠️ Message router cleanup warning: {e}")
         
         # Cleanup debug system
         try:
             from tools.debug_system import get_debug_system
             debug_sys = get_debug_system()
             debug_sys.cleanup()
-        except:
-            pass
+        except Exception as e:
+            print_current(f"⚠️ Debug system cleanup warning: {e}")
+        
+        # Small delay to allow cleanup to complete
+        import time
+        time.sleep(0.2)
         
         # Force garbage collection
         import gc
         gc.collect()
         
+        #print_current("✅ Global cleanup completed")
         
     except Exception as e:
         print_current(f"⚠️ Error during final cleanup: {e}")
