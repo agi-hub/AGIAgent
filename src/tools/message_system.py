@@ -707,24 +707,24 @@ class MessageRouter:
     
     def _is_valid_agent_id(self, agent_id: str) -> bool:
         """
-        验证agent ID格式是否正确
-        
+        Validate if the agent ID format is correct
+
         Args:
             agent_id: Agent ID to validate
-            
+
         Returns:
             True if agent ID format is valid
         """
         import re
-        
-        # 允许的格式：
-        # 1. manager (特殊管理员ID)
-        # 2. agent_XXX (支持字母、数字、下划线的组合)
+
+        # Allowed formats:
+        # 1. "manager" (special admin ID)
+        # 2. agent_XXX (letters, numbers, and underscores allowed)
         if agent_id == "manager":
             return True
-            
-        # agent_开头，后面可以是字母、数字、下划线的组合
-        # 例如：agent_001, agent_main, agent_primary, agent_test_1 等
+
+        # Must start with "agent_", followed by letters, numbers, or underscores
+        # Examples: agent_001, agent_main, agent_primary, agent_test_1, etc.
         pattern = r'^agent_[a-zA-Z0-9_]+$'
         return bool(re.match(pattern, agent_id))
 
@@ -977,14 +977,8 @@ def get_global_message_router(workspace_root: str = None) -> MessageRouter:
     
     if _global_message_router is None:
         if workspace_root is None:
-            # Don't create message router if no workspace_root is specified
-            # This prevents creating mailboxes in inappropriate locations (like project root)
-            from .print_system import print_current
-            print_current("⚠️ No workspace_root specified for MessageRouter, skipping initialization")
             return None
         _global_message_router = MessageRouter(workspace_root)
-        # print_current(f"🔧 Created global MessageRouter with workspace: {workspace_root}")
-    
     return _global_message_router
 
 

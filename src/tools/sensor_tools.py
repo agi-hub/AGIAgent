@@ -394,7 +394,7 @@ class SensorDataCollector:
             if vision_mode == 'reference':
                 # For vision mode, return a minimal reference format
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': marked_base64_data, # Still include full base64 for vision API
                     'dataformat': f'base64 encoded {format_type}',
                     'source': filepath,
@@ -407,7 +407,7 @@ class SensorDataCollector:
             else:
                 # For full mode, return the full base64 data
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': marked_base64_data,
                     'dataformat': f'base64 encoded {format_type}',
                     'source': filepath,
@@ -567,7 +567,7 @@ class SensorDataCollector:
                 if vision_mode == 'reference':
                     # For vision mode, return a minimal reference format
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': marked_base64_data, # Still include full base64 for vision API
                         'dataformat': 'base64 encoded image/jpeg',
                         'source': source,
@@ -580,7 +580,7 @@ class SensorDataCollector:
                 else:
                     # For full mode, return the full base64 data
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': marked_base64_data,
                         'dataformat': 'base64 encoded image/jpeg',
                         'source': source,
@@ -664,7 +664,7 @@ class SensorDataCollector:
                     print_current(f"🎥 Video captured successfully using ffmpeg")
                     
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': output_file,
                         'dataformat': 'MP4 video file',
                         'source': source,
@@ -739,7 +739,7 @@ class SensorDataCollector:
             if capture_success:
                 file_size = os.path.getsize(output_file)
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': output_file,
                     'dataformat': 'WAV audio file',
                     'source': source,
@@ -764,7 +764,7 @@ class SensorDataCollector:
             
             print_current(f"🎥 Successfully loaded video from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': filepath,
                 'dataformat': f'{file_ext.upper()} video file',
                 'source': filepath,
@@ -784,7 +784,7 @@ class SensorDataCollector:
             
             print_current(f"🎤 Successfully loaded audio from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': filepath,
                 'dataformat': f'{file_ext.upper()} audio file',
                 'source': filepath,
@@ -812,7 +812,7 @@ class SensorDataCollector:
             
             print_current(f"📊 Successfully loaded sensor data from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': parsed_data,
                 'dataformat': dataformat,
                 'source': filepath,
@@ -850,7 +850,7 @@ class SensorDataCollector:
             
             print_current(f"📊 Successfully read sensor data from device: {source}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': parsed_data,
                 'dataformat': dataformat,
                 'source': source,
@@ -864,7 +864,7 @@ class SensorDataCollector:
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """Create standardized error result."""
         return {
-            'success': False,
+            'status': 'failed',
             'data': None,
             'dataformat': None,
             'error': error_message,

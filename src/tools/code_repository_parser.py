@@ -1557,12 +1557,12 @@ class CodeRepositoryParser:
             self.parse_repository(force_rebuild=True)
             
             # Check if we have segments
-            if len(self.code_segments) == 0:
-                print_system_info("ℹ️ No code files found in directory - this is normal for empty or new projects")
+            #if len(self.code_segments) == 0:
+                #print_system_info("ℹ️ No code files found in directory - this is normal for empty or new projects")
                 #print_current(f"📋 Supported extensions: {', '.join(sorted(self.supported_extensions))}")
                 #print_current("✅ Code index initialized for empty workspace")
-            else:
-                print_current(f"📊 Indexed {len(self.code_segments)} code segments from {len(self.file_timestamps)} files")
+            #else:
+                #print_current(f"📊 Indexed {len(self.code_segments)} code segments from {len(self.file_timestamps)} files")
             
             # Save database (even if empty)
             self.save_database(db_path)

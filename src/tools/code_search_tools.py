@@ -308,19 +308,19 @@ class CodeSearchTools:
                 continue
                 
             # Skip files with very high non-ASCII ratio (likely data files)
-            content = segment.content
-            if content:
-                non_ascii_count = sum(1 for char in content if ord(char) > 127)
-                if len(content) > 0 and non_ascii_count / len(content) > 0.7:
-                    continue
+            #content = segment.content
+            #if content:
+            #    non_ascii_count = sum(1 for char in content if ord(char) > 127)
+            #    if len(content) > 0 and non_ascii_count / len(content) > 0.7:
+            #        continue
             
             # Boost score for code files
-            if any(ext in file_path for ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.h']):
-                result.score *= 1.2
+            #if any(ext in file_path for ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.h']):
+            #    result.score *= 1.2
             
             # Boost score for files with relevant keywords
-            if any(keyword in content.lower() for keyword in ['agent', 'communication', 'spawn', 'process']):
-                result.score *= 1.1
+            #if any(keyword in content.lower() for keyword in ['agent', 'communication', 'spawn', #'process']):
+            #    result.score *= 1.1
             
             filtered_results.append(result)
         

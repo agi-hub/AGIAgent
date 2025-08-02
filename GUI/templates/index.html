@@ -468,6 +468,10 @@
             background: #f57c00;
         }
 
+        #clearChatButton:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
         .sidebar-header {
             display: flex;
             justify-content: space-between;
@@ -1225,6 +1229,9 @@
                     <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
                         <i class="fas fa-stop"></i>
                     </button>
+                    <button class="send-button" id="clearChatButton" style="background-color: #6c757d;" title="{{ i18n.clear_chat_tooltip }}">
+                        <i class="fas fa-broom"></i>
+                    </button>
                 </div>
                 
                 <!-- GUI Configuration Options -->
@@ -1403,6 +1410,7 @@
 
         const newTaskButton = document.getElementById('newTaskButton');
         const stopButton = document.getElementById('stopButton');
+        const clearChatButton = document.getElementById('clearChatButton');
         const statusIndicator = document.getElementById('statusIndicator');
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
@@ -1509,6 +1517,14 @@
             currentUser = null;
             updateUserStatus('disconnected', I18N.user_disconnected);
             
+            // Clear saved session from localStorage
+            try {
+                localStorage.removeItem('agibot_api_key');
+                console.log('🗑️ Cleared saved session from localStorage');
+            } catch (error) {
+                console.warn('⚠️ Failed to clear session from localStorage:', error);
+            }
+            
             // Clear chat messages
             chatMessages.innerHTML = `
                 <div class="message system">
@@ -1558,11 +1574,25 @@
                 updateStatus('connected');
                 updateTaskModeInfo(); // Initialize task mode info display
                 
+                // Save API key to localStorage for session restoration
+                try {
+                    if (currentUser && currentUser !== 'default') {
+                        localStorage.setItem('agibot_api_key', currentUser);
+                        console.log('💾 API key saved to localStorage for session restoration');
+                    } else {
+                        // For default user, save a special marker
+                        localStorage.setItem('agibot_api_key', '');
+                        console.log('💾 Default user session saved to localStorage');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Failed to save session to localStorage:', error);
+                }
+                
                 // Refresh directories for this user
                 refreshDirectories();
                 
-                // 启动5秒周期自动刷新
-                startAutoRefresh();
+                // 自动刷新已禁用，只使用手动刷新
+                // startAutoRefresh();
                 
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
@@ -1591,8 +1621,8 @@
                 addMessage(`${I18N.disconnected} (${reason})`, 'info');
                 updateStatus('disconnected');
                 
-                // 停止自动刷新
-                stopAutoRefresh();
+                // 自动刷新已禁用
+                // stopAutoRefresh();
                 
                 console.log('❌ Socket disconnected:', reason);
             });
@@ -1700,6 +1730,14 @@
                     refreshDirectories();
                 } else {
                     addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
+                }
+            });
+
+            socket.on('chat_cleared', function(data) {
+                if (data.success) {
+                    addMessage(data.message, 'success');
+                } else {
+                    addMessage(`${I18N.chat_cleared}: ${data.error}`, 'error');
                 }
             });
         }
@@ -1916,6 +1954,114 @@
             socket.emit('create_new_directory');
         }
 
+        function clearChat() {
+            if (!socket || !isConnected) return;
+            
+            // Show confirmation dialog
+            if (confirm(I18N.confirm_clear_chat)) {
+                // Clear the chat messages immediately for better user experience
+                chatMessages.innerHTML = `
+                    <div class="message system">
+                        <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                        ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                    </div>
+                `;
+                
+                // Reset message tracking variables
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+                // Reset scroll state
+                autoScrollEnabled = true;
+                updateAutoScrollIndicator();
+                
+                // Scroll to bottom
+                scrollToBottom(false);
+                
+                // Notify server
+                socket.emit('clear_chat');
+            }
+        }
+
+        /**
+         * 检查URL参数并自动登录
+         * 支持的URL参数：user, username, apikey, api_key
+         * 例如：http://localhost:5001/?user=testuser
+         *      http://localhost:5001/?apikey=abc123
+         */
+        function checkUrlAutoLogin() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                let apiKey = null;
+                
+                // 检查多种可能的参数名
+                const possibleKeys = ['apikey', 'api_key', 'user', 'username', 'key'];
+                for (const key of possibleKeys) {
+                    if (urlParams.has(key)) {
+                        apiKey = urlParams.get(key);
+                        console.log(`🔑 Found URL parameter '${key}': ${apiKey.substring(0, 8)}...`);
+                        break;
+                    }
+                }
+                
+                if (apiKey) {
+                    // 填入API Key输入框
+                    apiKeyInput.value = apiKey;
+                    
+                    // 延迟一点时间确保DOM完全加载
+                    setTimeout(() => {
+                        console.log('🚀 Auto-connecting with URL parameter...');
+                        connectUser();
+                        
+                        // 显示自动登录提示
+                        setTimeout(() => {
+                            addMessage(`🔗 ${I18N.auto_login_from_url || '已通过URL参数自动登录'}`, 'info');
+                        }, 1000);
+                    }, 500);
+                    
+                    return true; // 返回true表示找到了参数并尝试自动登录
+                }
+            } catch (error) {
+                console.error('❌ Error parsing URL parameters:', error);
+            }
+            
+            return false; // 返回false表示没有找到URL参数
+        }
+
+        /**
+         * 检查并恢复localStorage中保存的会话
+         * 当页面刷新时自动恢复上次的登录状态
+         */
+        function checkSessionRestore() {
+            try {
+                const savedApiKey = localStorage.getItem('agibot_api_key');
+                
+                if (savedApiKey !== null) { // null means no item, empty string is valid for default user
+                    console.log('🔄 Found saved session in localStorage');
+                    
+                    // 填入API Key输入框
+                    apiKeyInput.value = savedApiKey;
+                    
+                    // 延迟一点时间确保DOM完全加载
+                    setTimeout(() => {
+                        console.log('🚀 Auto-connecting with saved session...');
+                        connectUser();
+                        
+                        // 显示会话恢复提示
+                        setTimeout(() => {
+                            addMessage(`🔄 ${I18N.session_restored || '已恢复上次登录会话'}`, 'info');
+                        }, 1000);
+                    }, 500);
+                    
+                    return true; // 返回true表示找到了保存的会话并尝试恢复
+                }
+            } catch (error) {
+                console.error('❌ Error restoring session from localStorage:', error);
+            }
+            
+            return false; // 返回false表示没有找到保存的会话
+        }
+
         function executeSelectedTask() {
             const message = userInput.value.trim();
             if (!message || isTaskRunning) return;
@@ -2037,6 +2183,8 @@
                 socket.emit('stop_task');
             }
         });
+
+        clearChatButton.addEventListener('click', clearChat);
 
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -3490,8 +3638,21 @@
             updateUserStatus('disconnected', I18N.user_disconnected);
             enableUI(false);
             
-            // 设置API Key输入框焦点
-            apiKeyInput.focus();
+            // 检查URL参数并自动登录（优先级最高）
+            const urlAutoLogin = checkUrlAutoLogin();
+            
+            // 如果没有URL参数，检查localStorage中的保存会话
+            if (!urlAutoLogin) {
+                const sessionRestored = checkSessionRestore();
+                
+                // 只有在没有自动登录和会话恢复时才设置输入框焦点
+                if (!sessionRestored && !isConnected) {
+                    setTimeout(() => {
+                        apiKeyInput.focus();
+                    }, 100);
+                }
+            }
+            
             updateTaskModeInfo();
             initResizer();
             
@@ -3548,10 +3709,13 @@
         }
 
         /**
-         * 启动自动刷新功能
-         * @description 设置定时器自动刷新目录列表：
-         * - 每5秒自动刷新一次目录列表（保证实时性）
+         * 自动刷新功能已禁用
+         * @description 原有的自动刷新定时器功能已被移除，只保留手动刷新
+         * - 用户可以通过点击刷新按钮手动刷新目录列表
          */
+        
+        // 自动刷新相关代码已禁用
+        /*
         let autoRefreshInterval = null;
         function startAutoRefresh() {
             // 如果已经有定时器在运行，先清除它
@@ -3566,9 +3730,6 @@
             console.log('✅ Auto-refresh started: refreshing directories every 5 seconds');
         }
         
-        /**
-         * 停止自动刷新功能
-         */
         function stopAutoRefresh() {
             if (autoRefreshInterval) {
                 clearInterval(autoRefreshInterval);
@@ -3576,6 +3737,7 @@
                 console.log('🛑 Auto-refresh stopped');
             }
         }
+        */
 
         // 分隔条拖拽功能
         function initResizer() {

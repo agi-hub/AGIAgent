@@ -983,6 +983,7 @@ Please create a detailed, structured analysis that preserves important informati
                     if not search_engines:
                         print_current("❌ No search engines available")
                         return {
+                            'status': 'failed',
                             'search_term': search_term,
                             'results': [{
                                 'title': 'No search engines available',
@@ -1235,6 +1236,7 @@ Please create a detailed, structured analysis that preserves important informati
             total_txt_files = self._count_txt_files_in_result_dir()
             
             result_data = {
+                'status': 'success',
                 'search_term': search_term,
                 'results': results,
                 'timestamp': datetime.datetime.now().isoformat(),
@@ -1311,6 +1313,7 @@ Please create a detailed, structured analysis that preserves important informati
             print_current(f"Playwright not installed: {import_error}")
             print_current("Install with: pip install playwright && playwright install chromium")
             return {
+                'status': 'failed',
                 'search_term': search_term,
                 'results': [{
                     'title': 'Playwright not available',
@@ -1330,6 +1333,7 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current("⚠️  Your system GLIBC version is too old for Playwright")
                 print_current("💡 Suggestion: Try using requests-based fallback or upgrade your system")
                 return {
+                    'status': 'failed',
                     'search_term': search_term,
                     'results': [{
                         'title': 'System compatibility issue',
@@ -1344,6 +1348,7 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current(f"❌ Playwright initialization error: {playwright_error}")
                 print_current("💡 This might be due to browser installation issues")
                 return {
+                    'status': 'failed',
                     'search_term': search_term,
                     'results': [{
                         'title': 'Playwright initialization failed',
@@ -1357,6 +1362,7 @@ Please create a detailed, structured analysis that preserves important informati
             else:
                 print_current(f"❌ Playwright error: {playwright_error}")
                 return {
+                    'status': 'failed',
                     'search_term': search_term,
                     'results': [{
                         'title': f'Playwright error: {search_term}',
@@ -1371,6 +1377,7 @@ Please create a detailed, structured analysis that preserves important informati
         except TimeoutError:
             # print_current("❌ Web search timed out after 60 seconds")  # Commented out to reduce terminal noise
             return {
+                'status': 'failed',
                 'search_term': search_term,
                 'results': [{
                     'title': f'Search timeout: {search_term}',
@@ -1385,6 +1392,7 @@ Please create a detailed, structured analysis that preserves important informati
         except Exception as e:
             print_current(f"❌ Web search failed: {e}")
             return {
+                'status': 'failed',
                 'search_term': search_term,
                 'results': [{
                     'title': f'Search error: {search_term}',
@@ -1869,15 +1877,15 @@ Please create a detailed, structured analysis that preserves important informati
                     else:
     
                         browser.close()
-                        return {'content': "Content too short or unable to extract"}
+                        return {'status': 'failed', 'content': "Content too short or unable to extract"}
                 else:
                     browser.close()
-                    return {'content': "Failed to load page after retries"}
+                    return {'status': 'failed', 'content': "Failed to load page after retries"}
         
         except Exception as e:
             error_msg = str(e)
             # print_current(f"❌ [{index+1}] Fetch failed: {error_msg}")  # Commented out to reduce terminal noise
-            return {'content': f"Content fetch error: {error_msg}"}
+            return {'status': 'failed', 'content': f"Content fetch error: {error_msg}"}
 
     def _fetch_webpage_content(self, results: List[Dict], page) -> None:
         """
@@ -2705,6 +2713,7 @@ Please create a detailed, structured analysis that preserves important informati
                 from PIL import Image
             except ImportError as e:
                 return {
+                    'status': 'failed',
                     'query': query,
                     'error': f'缺少必要的库: {e}',
                     'suggestion': '请安装: pip install playwright pillow',
@@ -2712,6 +2721,7 @@ Please create a detailed, structured analysis that preserves important informati
                 }
             except Exception as e:
                 return {
+                    'status': 'failed',
                     'query': query,
                     'error': f'导入库时出错: {e}',
                     'timestamp': datetime.datetime.now().isoformat()
@@ -2721,6 +2731,7 @@ Please create a detailed, structured analysis that preserves important informati
             self._ensure_result_directory()
             if not self.web_result_dir:
                 return {
+                    'status': 'failed',
                     'query': query,
                     'error': '无法创建图片保存目录',
                     'timestamp': datetime.datetime.now().isoformat()
@@ -2733,6 +2744,7 @@ Please create a detailed, structured analysis that preserves important informati
                     os.makedirs(images_dir)
             except Exception as e:
                 return {
+                    'status': 'failed',
                     'query': query,
                     'error': f'无法创建图片目录: {e}',
                     'timestamp': datetime.datetime.now().isoformat()
@@ -2836,6 +2848,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 image_found = False
                 result_data = {
+                    'status': 'success',
                     'query': query,
                     'timestamp': datetime.datetime.now().isoformat(),
                     'search_engine_used': None,
@@ -3102,6 +3115,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
         except ImportError as import_error:
             return {
+                'status': 'failed',
                 'query': query,
                 'error': f'Playwright not installed: {import_error}',
                 'suggestion': 'Install command: pip install playwright && playwright install chromium',
@@ -3110,6 +3124,7 @@ Please create a detailed, structured analysis that preserves important informati
             
         except Exception as e:
             return {
+                'status': 'failed',
                 'query': query,
                 'error': f'Image search failed: {str(e)}',
                 'timestamp': datetime.datetime.now().isoformat()

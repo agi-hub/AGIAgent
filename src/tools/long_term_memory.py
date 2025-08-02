@@ -121,7 +121,7 @@ class LongTermMemoryManager:
         """
         if not self.is_available():
             return {
-                "success": False,
+                "status": "failed",
                 "error": "Long-term memory is not available",
                 "fallback_used": True
             }
@@ -136,7 +136,7 @@ class LongTermMemoryManager:
             if result.get("success", False):
                 #print_current(f"✅ Task memory stored: {result.get('action', 'unknown')} (ID: {result.get('mem_id', 'unknown')})")
                 return {
-                    "success": True,
+                    "status": "success",
                     "action": result.get("action"),
                     "memory_id": result.get("mem_id"),
                     "similarity_score": result.get("similarity_score"),
@@ -145,14 +145,14 @@ class LongTermMemoryManager:
             else:
                 print_debug(f"❌ Failed to store task memory: {result.get('error', 'Unknown error')}")
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": result.get("error", "Storage failed")
                 }
 
         except Exception as e:
             print_debug(f"❌ Exception occurred while storing task memory: {e}")
             return {
-                "success": False,
+                "status": "failed",
                 "error": str(e)
             }
 
@@ -169,7 +169,7 @@ class LongTermMemoryManager:
         """
         if not self.is_available():
             return {
-                "success": False,
+                "status": "failed",
                 "error": "Long-term memory is not available",
                 "memories": []
             }
@@ -188,14 +188,14 @@ class LongTermMemoryManager:
                         formatted_memories.append(formatted_memory)
 
                 return {
-                    "success": True,
+                    "status": "success",
                     "memories": formatted_memories,
                     "total_found": len(memories),
                     "search_method": result.get("search_method", "auto")
                 }
             else:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": result.get("error", "Search failed"),
                     "memories": []
                 }
@@ -203,7 +203,7 @@ class LongTermMemoryManager:
         except Exception as e:
             print_current(f"❌ Exception occurred while recalling memories: {e}")
             return {
-                "success": False,
+                "status": "failed",
                 "error": str(e),
                 "memories": []
             }
@@ -221,7 +221,7 @@ class LongTermMemoryManager:
         """
         if not self.is_available():
             return {
-                "success": False,
+                "status": "failed",
                 "error": "Long-term memory is not available",
                 "memories": []
             }
@@ -241,7 +241,7 @@ class LongTermMemoryManager:
                         formatted_memories.append(formatted_memory)
 
                 return {
-                    "success": True,
+                    "status": "success",
                     "memories": formatted_memories,
                     "time_query": time_query,
                     "total_found": len(memories)
@@ -253,7 +253,7 @@ class LongTermMemoryManager:
         except Exception as e:
             print_current(f"❌ Exception occurred while searching memories by time: {e}")
             return {
-                "success": False,
+                "status": "failed",
                 "error": str(e),
                 "memories": []
             }
@@ -267,7 +267,7 @@ class LongTermMemoryManager:
         """
         if not self.is_available():
             return {
-                "success": False,
+                "status": "failed",
                 "error": "Long-term memory is not available"
             }
 
@@ -278,7 +278,7 @@ class LongTermMemoryManager:
             if status.get("success", False):
                 stats = status.get("status", {})
                 return {
-                    "success": True,
+                    "status": "success",
                     "total_memories": stats.get("total_memories", 0),
                     "preliminary_memories": stats.get("preliminary_memories", 0),
                     "memoir_entries": stats.get("memoir_entries", 0),
@@ -288,14 +288,14 @@ class LongTermMemoryManager:
                 }
             else:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "error": status.get("error", "Failed to get status")
                 }
 
         except Exception as e:
             print_debug(f"❌ Exception occurred while getting memory statistics: {e}")
             return {
-                "success": False,
+                "status": "failed",
                 "error": str(e)
             }
 
@@ -466,7 +466,7 @@ class LongTermMemoryTools:
                 # Format output
                 if not memories:
                     return {
-                        "success": True,  # Use 'success' field to match tool_executor logic
+                        "status": "success",  # Use 'success' field to match tool_executor logic
                         "message": "No relevant memories found",
                         "memories_count": 0,
                         "memories": []
@@ -488,7 +488,7 @@ class LongTermMemoryTools:
                 final_message = "\n".join(formatted_output)
 
                 return {
-                    "success": True,
+                    "status": "success",
                     "message": final_message,
                     "memories_count": len(memories),
                     "memories": memories,
@@ -496,7 +496,7 @@ class LongTermMemoryTools:
                 }
             else:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "message": f"Memory recall failed: {result.get('error', 'Unknown error')}",
                     "memories_count": 0,
                     "memories": []
@@ -505,7 +505,7 @@ class LongTermMemoryTools:
         except Exception as e:
             print_current(f"❌ Exception in recall_memories tool: {e}")
             return {
-                "success": False,
+                "status": "failed",
                 "message": f"Exception occurred while recalling memories: {e}",
                 "memories_count": 0,
                 "memories": []
@@ -530,7 +530,7 @@ class LongTermMemoryTools:
 
                 if not memories:
                     return {
-                        "success": True,
+                        "status": "success",
                         "message": f"No relevant memories found for time '{time_query}'",
                         "memories_count": 0,
                         "memories": []
@@ -547,7 +547,7 @@ class LongTermMemoryTools:
                     formatted_output.append("")
 
                 return {
-                    "success": True,
+                    "status": "success",
                     "message": "\n".join(formatted_output),
                     "memories_count": len(memories),
                     "memories": memories,
@@ -555,7 +555,7 @@ class LongTermMemoryTools:
                 }
             else:
                 return {
-                    "success": False,
+                    "status": "failed",
                     "message": f"Time memory search failed: {result.get('error', 'Unknown error')}",
                     "memories_count": 0,
                     "memories": []
@@ -563,7 +563,7 @@ class LongTermMemoryTools:
 
         except Exception as e:
             return {
-                "success": False,
+                "status": "failed",
                 "message": f"Exception occurred while recalling memories by time: {e}",
                 "memories_count": 0,
                 "memories": []

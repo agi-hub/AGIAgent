@@ -21,10 +21,10 @@ class MultimodalProcessor:
     def process_image(self, image_path: str, operations: List[str] = None) -> Dict[str, Any]:
         """Process an image file"""
         if not os.path.exists(image_path):
-            return {"success": False, "error": "Image file not found"}
+            return {"status": "failed", "error": "Image file not found"}
         
         return {
-            "success": True,
+            "status": "success",
             "type": "image",
             "path": image_path,
             "operations": operations or [],
@@ -34,10 +34,10 @@ class MultimodalProcessor:
     def process_audio(self, audio_path: str, operations: List[str] = None) -> Dict[str, Any]:
         """Process an audio file"""
         if not os.path.exists(audio_path):
-            return {"success": False, "error": "Audio file not found"}
+            return {"status": "failed", "error": "Audio file not found"}
         
         return {
-            "success": True,
+            "status": "success",
             "type": "audio", 
             "path": audio_path,
             "operations": operations or [],
@@ -47,10 +47,10 @@ class MultimodalProcessor:
     def process_video(self, video_path: str, operations: List[str] = None) -> Dict[str, Any]:
         """Process a video file"""
         if not os.path.exists(video_path):
-            return {"success": False, "error": "Video file not found"}
+            return {"status": "failed", "error": "Video file not found"}
         
         return {
-            "success": True,
+            "status": "success",
             "type": "video",
             "path": video_path, 
             "operations": operations or [],
@@ -60,7 +60,7 @@ class MultimodalProcessor:
     def analyze_content(self, file_path: str) -> Dict[str, Any]:
         """Analyze multimodal content"""
         if not os.path.exists(file_path):
-            return {"success": False, "error": "File not found"}
+            return {"status": "failed", "error": "File not found"}
         
         file_ext = os.path.splitext(file_path)[1].lower()
         content_type = "unknown"
@@ -74,7 +74,7 @@ class MultimodalProcessor:
         
         stat = os.stat(file_path)
         return {
-            "success": True,
+            "status": "success",
             "path": file_path,
             "type": content_type,
             "size": stat.st_size,
@@ -85,11 +85,11 @@ class MultimodalProcessor:
     def extract_metadata(self, file_path: str) -> Dict[str, Any]:
         """Extract metadata from multimodal content"""
         if not os.path.exists(file_path):
-            return {"success": False, "error": "File not found"}
+            return {"status": "failed", "error": "File not found"}
         
         # Mock metadata extraction
         return {
-            "success": True,
+            "status": "success",
             "path": file_path,
             "metadata": {
                 "creation_date": "2024-01-01",

@@ -46,6 +46,8 @@ class CliMcpWrapper:
         self.available_tools = {}
         self.servers = {}
         self.initialized = False
+        self._active_processes = set()  # Track active subprocess handles
+        self._cleanup_lock = threading.Lock()
         
         # Ensure config file exists
         if not os.path.exists(self.config_path):
@@ -165,7 +167,7 @@ class CliMcpWrapper:
             env = os.environ.copy()
             env.update(server_config.get('env', {}))
             
-            # Use subprocess to call cli-mcp
+            # Use subprocess to call cli-mcp with proper tracking
             cli_mcp_path = find_cli_mcp_path()
             result = await asyncio.create_subprocess_exec(
                 cli_mcp_path, "list", server_name,
@@ -175,7 +177,16 @@ class CliMcpWrapper:
                 env=env  # Pass environment variables
             )
             
-            stdout, stderr = await result.communicate()
+            # Track the process for cleanup
+            with self._cleanup_lock:
+                self._active_processes.add(result)
+            
+            try:
+                stdout, stderr = await result.communicate()
+            finally:
+                # Remove from tracking when done
+                with self._cleanup_lock:
+                    self._active_processes.discard(result)
             
             if result.returncode != 0:
                 raise Exception(f"cli-mcp list failed: {stderr.decode()}")
@@ -283,7 +294,16 @@ class CliMcpWrapper:
                 env=env  # Pass environment variables
             )
             
-            stdout, stderr = await result.communicate()
+            # Track the process for cleanup
+            with self._cleanup_lock:
+                self._active_processes.add(result)
+            
+            try:
+                stdout, stderr = await result.communicate()
+            finally:
+                # Remove from tracking when done
+                with self._cleanup_lock:
+                    self._active_processes.discard(result)
             
             if result.returncode != 0:
                 error_msg = stderr.decode()
@@ -431,6 +451,9 @@ class CliMcpWrapper:
     async def cleanup(self):
         """Cleanup resources"""
         try:
+            # Clean up active processes
+            await self._cleanup_active_processes()
+            
             # Close any open connections
             self.available_tools.clear()
             self.servers.clear()
@@ -439,6 +462,29 @@ class CliMcpWrapper:
         except Exception as e:
             # print_current("🔌 cli-mcp client cleaned up")
             pass
+    
+    async def _cleanup_active_processes(self):
+        """Clean up any active subprocesses"""
+        try:
+            with self._cleanup_lock:
+                processes_to_cleanup = list(self._active_processes)
+                self._active_processes.clear()
+            
+            for process in processes_to_cleanup:
+                try:
+                    if process.returncode is None:  # Process is still running
+                        process.terminate()
+                        try:
+                            await asyncio.wait_for(process.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            # Force kill if termination didn't work
+                            process.kill()
+                            await process.wait()
+                except Exception as e:
+                    print_debug(f"⚠️ Error cleaning up subprocess: {e}")
+                    
+        except Exception as e:
+            print_debug(f"⚠️ Error in _cleanup_active_processes: {e}")
     
     def cleanup_sync(self):
         """Synchronous cleanup client"""
@@ -546,24 +592,44 @@ def safe_cleanup_cli_mcp_wrapper():
     global _cli_mcp_wrapper, _cli_mcp_config_path
     if _cli_mcp_wrapper:
         wrapper_instance = _cli_mcp_wrapper  # Store reference before clearing
+        _cli_mcp_wrapper = None
+        _cli_mcp_config_path = None
+        
         try:
             # Try to get the current event loop
             loop = asyncio.get_running_loop()
-            # If there's a running loop, schedule the cleanup
-            async def async_cleanup():
-                await wrapper_instance.cleanup()
-            loop.create_task(async_cleanup())
+            # If there's a running loop and it's not closed, schedule the cleanup
+            if not loop.is_closed():
+                async def async_cleanup():
+                    try:
+                        await wrapper_instance.cleanup()
+                    except Exception as cleanup_e:
+                        print_debug(f"⚠️ Async cleanup error: {cleanup_e}")
+                
+                # Schedule the cleanup task
+                try:
+                    loop.create_task(async_cleanup())
+                except RuntimeError:
+                    # Loop is closing or closed, use sync cleanup
+                    wrapper_instance.cleanup_sync()
+            else:
+                # Loop is closed, use sync cleanup
+                wrapper_instance.cleanup_sync()
         except RuntimeError:
             # No event loop running, try to create one for cleanup
             try:
-                asyncio.run(wrapper_instance.cleanup())
-            except RuntimeError:
+                # Check if we can create a new event loop
+                import threading
+                if threading.current_thread() is threading.main_thread():
+                    # Only create new event loop in main thread
+                    asyncio.run(wrapper_instance.cleanup())
+                else:
+                    # In non-main thread, use sync cleanup
+                    wrapper_instance.cleanup_sync()
+            except (RuntimeError, ImportError):
                 # If that fails too, use synchronous cleanup
                 wrapper_instance.cleanup_sync()
         except Exception as e:
             # If all else fails, just clean up the references
             print_debug(f"⚠️ cli-mcp client cleanup failed: {e}")
             wrapper_instance.cleanup_sync()
-        
-        _cli_mcp_wrapper = None
-        _cli_mcp_config_path = None

@@ -188,8 +188,6 @@ class MultiRoundTaskExecutor:
                     print_current(f"🏷️ Set agent ID from task_id pattern: {agent_match.group()}")
         
         track_operation(f"Execute task: {task_name} ({task_id})")
-
-
         
         # Initialize task history
         task_history = []
@@ -235,10 +233,10 @@ class MultiRoundTaskExecutor:
         # Check if task was actually completed or just reached max rounds
         completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
         if completed_rounds:
-            print_current(f"✅ Task {task_id} execution completed successfully")
+            print_current(f"✅ Task completed successfully")
             status = "completed"
         else:
-            print_current(f"⚠️ Task {task_id} reached maximum rounds without explicit completion")
+            print_current(f"⚠️ Task reached maximum rounds without explicit completion")
             status = "max_rounds_reached"
         
         finish_operation(f"Execute task: {task_name} ({task_id})")
@@ -295,7 +293,7 @@ class MultiRoundTaskExecutor:
             round_scheduler = None
         
         while task_round <= max_rounds and not task_completed:
-            #print_current(f"\n🔄 --- Task Round {task_round}/{max_rounds} execution ---")
+            print_current(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
             
             # Use base prompt directly - round info will be handled by _build_new_user_message
             current_prompt = base_prompt
@@ -517,85 +515,7 @@ class MultiRoundTaskExecutor:
             except Exception as e:
                 error_msg = str(e)
                 error_str = error_msg.lower()
-                
-                # Check if this is a retryable error (like overloaded)
-                retryable_errors = [
-                    'overloaded', 'rate limit', 'too many requests', 
-                    'service unavailable', 'timeout', 'temporary failure',
-                    'server error', '429', '503', '502', '500'
-                ]
-                
-                # Find which error keyword matched
-                matched_error_keyword = None
-                for error_keyword in retryable_errors:
-                    if error_keyword in error_str:
-                        matched_error_keyword = error_keyword
-                        break
-                
-                is_retryable = matched_error_keyword is not None
-                
-                if is_retryable:
-                    # Get or initialize retry count for this round
-                    retry_key = f"round_{task_round}_retries"
-                    if not hasattr(self, '_round_retries'):
-                        self._round_retries = {}
-                    
-                    current_retries = self._round_retries.get(retry_key, 0)
-                    max_retries = 3  # Maximum retry attempts for retryable errors
-                    
-                    if current_retries < max_retries:
-                        # Retry current round
-                        self._round_retries[retry_key] = current_retries + 1
-                        retry_delay = min(2 ** current_retries, 10)  # Exponential backoff, max 10 seconds
-                        
-                        print_manager(f"⚠️ {matched_error_keyword.title() if matched_error_keyword else 'Unknown'} error detected in task round {task_round}: {error_msg}")
-                        print_manager(f"💡 Consider switching to a different model or trying again later")
-                        print_manager(f"🔄 You can change the model in config.txt and restart AGIBot")
-                        print_manager(f"🔄 Retrying in {retry_delay} seconds... (attempt {current_retries + 1}/{max_retries})")
-                        
-                        # Wait before retry
-                        import time
-                        time.sleep(retry_delay)
-                        
-                        # Record retry attempt but don't advance to next round
-                        retry_record = {
-                            "task_round": task_round,
-                            "prompt": current_prompt,
-                            "result": f"🔄 Retry attempt {current_retries + 1}/{max_retries} after {matched_error_keyword} error: {error_msg}",
-                            "error": error_msg,
-                            "task_completed": False,
-                            "is_retry": True,
-                            "retry_attempt": current_retries + 1,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                        task_history.append(retry_record)
-                        
-                        # Record debug information for retry
-                        self.debug_recorder.record_llm_call(
-                            task_id=task_id,
-                            task_name=task_name,
-                            round_num=task_round,
-                            prompt=current_prompt,
-                            llm_output="",
-                            tool_name="",
-                            tool_params="",
-                            tool_result="",
-                            task_completed=False,
-                            history_length=len(task_history),
-                            error_msg=f"Retry {current_retries + 1}/{max_retries}: {error_msg}"
-                        )
-                        
-                        # Continue to retry (don't increment task_round)
-                        continue
-                    else:
-                        # Max retries exceeded
-                        print_manager(f"❌ Maximum retries ({max_retries}) exceeded for task round {task_round}")
-                        print_manager(f"💡 Moving to next round. Consider switching to a different model.")
-                        
-                        # Clean up retry counter for this round
-                        if retry_key in self._round_retries:
-                            del self._round_retries[retry_key]
-                
+
                 # Record error in debug (for non-retryable errors or max retries exceeded)
                 self.debug_recorder.record_llm_call(
                     task_id=task_id,
