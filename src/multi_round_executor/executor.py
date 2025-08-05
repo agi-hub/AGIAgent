@@ -295,6 +295,32 @@ class MultiRoundTaskExecutor:
         while task_round <= max_rounds and not task_completed:
             print_current(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
             
+            # Interactive mode confirmation before each round
+            if self.interactive_mode and task_round > 1:  # Skip confirmation for first round
+                try:
+                    response = input(f"\n🤖 Continue to round {task_round} for task: {task_name}? (Y/n): ").strip().lower()
+                    if response and response not in ['y', 'yes', 'yes', '']:
+                        print_current("🛑 Task execution stopped by user")
+                        # Mark as user interrupted
+                        task_history.append({
+                            "round": task_round,
+                            "prompt": "User cancelled execution",
+                            "result": "Task cancelled by user",
+                            "user_interrupted": True,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        return task_history
+                except (KeyboardInterrupt, EOFError):
+                    print_current("\n🛑 Task execution stopped by user")
+                    task_history.append({
+                        "round": task_round,
+                        "prompt": "User cancelled execution",
+                        "result": "Task cancelled by user (KeyboardInterrupt)",
+                        "user_interrupted": True,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    return task_history
+            
             # Use base prompt directly - round info will be handled by _build_new_user_message
             current_prompt = base_prompt
             

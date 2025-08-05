@@ -27,6 +27,14 @@ import shutil
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple, Union
 
+# Import Mermaid processor for handling charts in markdown files
+try:
+    from .utils.mermaid_processor import mermaid_processor
+    MERMAID_PROCESSOR_AVAILABLE = True
+except ImportError:
+    print_debug("⚠️ Mermaid processor not available")
+    MERMAID_PROCESSOR_AVAILABLE = False
+
 
 class FileSystemTools:
     def __init__(self, workspace_root: Optional[str] = None):
@@ -414,6 +422,25 @@ class FileSystemTools:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
             
+            # Process Mermaid charts if this is a markdown file
+            mermaid_result = None
+            if target_file.lower().endswith('.md') and MERMAID_PROCESSOR_AVAILABLE:
+                try:
+                    if mermaid_processor.has_mermaid_charts(file_path):
+                        print_current(f"🎨 Detected Mermaid charts in markdown file, processing...")
+                        mermaid_result = mermaid_processor.process_markdown_file(file_path)
+                        if mermaid_result['status'] == 'success':
+                            print_current(f"✅ Mermaid processing completed: {mermaid_result['message']}")
+                        else:
+                            print_current(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
+                except Exception as e:
+                    print_current(f"⚠️ Error during Mermaid processing: {e}")
+                    mermaid_result = {
+                        'status': 'failed',
+                        'error': str(e),
+                        'message': f'Mermaid processing error: {e}'
+                    }
+            
             # Determine action and status
             if not file_exists:
                 action = 'created'
@@ -425,13 +452,19 @@ class FileSystemTools:
                 action = 'modified'
                 status = 'edited'
             
-            return {
+            result = {
                 'status': 'success',
                 'file': target_file,
                 'action': action,
                 'edit_mode': edit_mode,
                 'snapshot_created': file_exists  # Only create snapshot for existing files
             }
+            
+            # Add Mermaid processing result if applicable
+            if mermaid_result is not None:
+                result['mermaid_processing'] = mermaid_result
+            
+            return result
             
         except Exception as e: 
             return {

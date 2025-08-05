@@ -2,6 +2,11 @@
 # LANG=en
 LANG=zh
 
+# GUI API configuration 
+api_key=your key
+api_base=https://api.openai-proxy.org/v1
+
+
 # OpenAI API configuration 
 # api_key=your key
 # api_base=https://api.openai-proxy.org/v1
@@ -9,10 +14,10 @@ LANG=zh
 # max_tokens=8192
 
 # Bailian API configuration 
-api_key=your key
-api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
+# api_key=your key
+# api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
 # model=qwen3-coder-480b-a35b-instruct
-model=qwen3-coder-30b-a3b-instruct
+# model=qwen3-coder-30b-a3b-instruct
 # max_tokens=65536
 
 # model=qwen3-235b-a22b-instruct-2507
@@ -22,10 +27,10 @@ model=qwen3-coder-30b-a3b-instruct
 # max_tokens=32768
 
 # Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
-# max_tokens=16384
+api_key=your key
+api_base=https://api.openai-proxy.org/anthropic
+model=claude-sonnet-4-0
+max_tokens=16384
 
 # Google gemini model
 # api_key=your key
@@ -63,6 +68,7 @@ model=qwen3-coder-30b-a3b-instruct
 # model=qwen3:8b
 # max_tokens=4096
 
+
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
 
@@ -98,7 +104,7 @@ Tool_calling_format=True
 # - Tool parameter displays
 # - Search result summaries
 # - Output limits in debug logs
-truncation_length=10000
+truncation_length=20000
 
 # Web content truncation length, default 50000 characters, uses 5x truncation_length if not set
 # Used for truncating large-capacity content like web search results
@@ -107,7 +113,7 @@ truncation_length=10000
 # - Web search content
 # - Web scraping results
 # - Large document content
-web_content_truncation_length=50000
+web_content_truncation_length=20000
 
 # Usage recommendations:
 # 1. If using models with smaller context windows (<32K), consider lowering all truncation values
@@ -193,7 +199,7 @@ auto_fix_interactive_commands=True
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=True
+multi_agent=False
 
 # Jieba Chinese Segmentation Configuration
 # Controls whether to enable jieba Chinese text segmentation for code parsing

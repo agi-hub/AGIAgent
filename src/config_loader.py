@@ -17,7 +17,7 @@ limitations under the License.
 """
 
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # 全局缓存配置
 _config_cache: Dict[str, Dict[str, str]] = {}
@@ -119,7 +119,7 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
 
 def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get API key from configuration file
+    Get API key from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -127,12 +127,17 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         API key string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_API_KEY')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('api_key')
 
 def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get API base URL from configuration file
+    Get API base URL from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -140,6 +145,11 @@ def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         API base URL string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_API_BASE')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('api_base')
 
@@ -160,7 +170,7 @@ def get_config_value(key: str, default: Optional[str] = None, config_file: str =
 
 def get_model(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get model name from configuration file
+    Get model name from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -168,6 +178,11 @@ def get_model(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         Model name string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_MODEL')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('model')
 
@@ -621,3 +636,85 @@ def get_tool_calling_format(config_file: str = "config/config.txt") -> bool:
     else:
         # Default to True if invalid value
         return True
+
+def get_gui_config(config_file: str = "config/config.txt") -> Dict[str, Optional[str]]:
+    """
+    Get GUI API configuration from configuration file
+    
+    Reads the GUI API configuration section which should contain:
+    - api_key: API key for the model
+    - api_base: Base URL for the API
+    - model: Model name (can be overridden by GUI selection)
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Dictionary containing GUI configuration values
+    """
+    config = load_config(config_file)
+    
+    # Parse the config file to find GUI API configuration section
+    gui_config = {}
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            
+        in_gui_section = False
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # Check for GUI API configuration section
+            if line.startswith('# GUI API configuration'):
+                in_gui_section = True
+                continue
+            
+            # Check if we've reached another section
+            if line.startswith('#') and 'configuration' in line and in_gui_section:
+                # We've moved to another configuration section
+                break
+                
+            # If we're in the GUI section and find a config line
+            if in_gui_section and '=' in line and not line.startswith('#'):
+                # Handle inline comments
+                if '#' in line:
+                    line = line.split('#')[0].strip()
+                
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                if key in ['api_key', 'api_base', 'model', 'max_tokens']:
+                    gui_config[key] = value
+                    
+    except Exception as e:
+        print(f"Error reading GUI configuration from {config_file}: {e}")
+        
+    return gui_config
+
+def validate_gui_config(gui_config: Dict[str, Optional[str]]) -> Tuple[bool, str]:
+    """
+    Validate GUI configuration
+    
+    Args:
+        gui_config: Dictionary containing GUI configuration
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    api_key = gui_config.get('api_key')
+    api_base = gui_config.get('api_base')
+    
+    # Check if API key is set and not the default placeholder
+    if not api_key or api_key.strip() == 'your key':
+        return False, "Invalid API Key configuration. Please check the GUI API configuration section in config/config.txt."
+    
+    # Check if API base is set
+    if not api_base or api_base.strip() == '':
+        return False, "Invalid API Base configuration. Please check the GUI API configuration section in config/config.txt."
+    return True, ""

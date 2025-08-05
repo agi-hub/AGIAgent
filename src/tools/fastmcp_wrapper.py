@@ -855,7 +855,7 @@ async def initialize_fastmcp_wrapper(config_path: str = "config/mcp_servers.json
     with _fastmcp_lock:
         wrapper = get_fastmcp_wrapper(config_path)
         if wrapper.initialized:
-            print_current(f"✅ FastMCP wrapper already initialized, reusing existing instance")
+            #print_current(f"✅ FastMCP wrapper already initialized, reusing existing instance")
             return True
     
     # Initialize outside the lock to avoid blocking other threads

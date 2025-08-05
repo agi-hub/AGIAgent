@@ -112,8 +112,6 @@ class TaskDecomposer:
                 
                 # Get complete response content
                 content = response.content[0].text
-                print("\n🤖 Task decomposition completed")
-                print("✅ Generation completed")
                 
             else:
                 # Use OpenAI API - batch call
@@ -136,7 +134,7 @@ class TaskDecomposer:
                 print("✅ Generation completed")
             
             # No longer repeat display response content since it's already streamed
-            print(f"\n📝 Decomposition content length: {len(content)} characters")
+            #print(f"\n📝 Decomposition content length: {len(content)} characters")
             
             # Extract task list from response and create CSV file
             tasks = self._extract_tasks_from_response(content)

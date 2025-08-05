@@ -272,7 +272,7 @@ class BaseTools:
                 # Update task status
                 update_result = todo_tools.update_task_status(task_id, status, description)
                 
-                if update_result['success']:
+                if update_result.get('status') == 'success':
                     result['success'] = True
                     result['message'] = update_result['message']
                     result['new_status'] = update_result.get('new_status')
@@ -284,7 +284,7 @@ class BaseTools:
                 # Get current progress
                 progress_result = todo_tools.get_task_progress()
                 
-                if progress_result['success']:
+                if progress_result.get('status') == 'success':
                     result['success'] = True
                     result['progress'] = progress_result
                     result['message'] = f"Progress: {progress_result['completion_percentage']}% complete"
@@ -295,7 +295,7 @@ class BaseTools:
                 # List all tasks
                 list_result = todo_tools.list_tasks()
                 
-                if list_result['success']:
+                if list_result.get('status') == 'success':
                     result['success'] = True
                     result['tasks'] = list_result['tasks']
                     result['total_count'] = list_result['total_count']
@@ -307,7 +307,7 @@ class BaseTools:
                 # Get next pending task
                 next_result = todo_tools.get_next_pending_task()
                 
-                if next_result['success']:
+                if next_result.get('status') == 'success':
                     result['success'] = True
                     result['next_task'] = next_result.get('next_task')
                     result['message'] = next_result.get('suggestion', next_result.get('message', ''))
@@ -362,6 +362,7 @@ class BaseTools:
             return result
             
         except Exception as e:
+            from datetime import datetime
             error_result = {
                 'success': False,
                 'action': action,

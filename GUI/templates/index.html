@@ -1142,6 +1142,16 @@
         </div>
         <div class="user-auth-right">
             <div class="api-key-group">
+                <label for="modelSelect">
+                    <i class="fas fa-brain"></i>
+                    {{ i18n.model_label }}
+                </label>
+                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 220px;">
+                    <option value="claude-sonnet-4-0">{{ i18n.model_claude_sonnet }}</option>
+                    <option value="gpt-4.1" selected>{{ i18n.model_gpt_4 }}</option>
+                </select>
+            </div>
+            <div class="api-key-group">
                 <label for="apiKeyInput">
                     <i class="fas fa-key"></i>
                     {{ i18n.api_key_label }}
@@ -1897,7 +1907,7 @@
         }
 
         // Input handling
-        function sendMessage(planMode = false) {
+        async function sendMessage(planMode = false) {
             const message = userInput.value.trim();
             if (!message || isTaskRunning || !socket || !isConnected) return;
 
@@ -1907,45 +1917,78 @@
                 return;
             }
 
-            // Display execution mode information
-            let modeInfo = '';
-            if (planMode) {
-                modeInfo = I18N.plan_mode_suffix;
-                addMessage(`${message}${modeInfo}`, 'user');
-                addMessage(I18N.plan_mode_info, 'info');
-            } else {
-                addMessage(message, 'user');
-                addMessage(I18N.direct_mode_info, 'info');
-            }
+            // Get selected model
+            const selectedModel = document.getElementById('modelSelect').value;
             
-            // Get GUI configuration options
-            const guiConfig = {
-                enable_web_search: document.getElementById('enableWebSearch').checked,
-                enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
-                enable_multi_agent: document.getElementById('enableMultiAgent').checked,
-                enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
-                enable_mcp: document.getElementById('enableMCP').checked,
-                enable_jieba: document.getElementById('enableJieba').checked
-            };
-            
-            if (taskMode === 'selected' && selectedDirectory) {
-                socket.emit('execute_task', {
-                    requirement: message,
-                    type: 'selected',
-                    plan_mode: planMode,
-                    gui_config: guiConfig
+            // Validate configuration before execution
+            try {
+                const response = await fetch('/api/validate-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel
+                    })
                 });
-            } else {
-                socket.emit('execute_task', {
-                    requirement: message,
-                    type: 'continue',
-                    plan_mode: planMode,
-                    gui_config: guiConfig
-                });
-            }
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    addMessage(`${I18N.config_error_title}: ${result.error}`, 'error');
+                    return;
+                }
+                
+                // Configuration is valid, proceed with execution
+                
+                // Display execution mode information
+                let modeInfo = '';
+                if (planMode) {
+                    modeInfo = I18N.plan_mode_suffix;
+                    addMessage(`${message}${modeInfo}`, 'user');
+                    addMessage(I18N.plan_mode_info, 'info');
+                } else {
+                    addMessage(message, 'user');
+                    addMessage(I18N.direct_mode_info, 'info');
+                }
+                
+                // Get GUI configuration options
+                const guiConfig = {
+                    enable_web_search: document.getElementById('enableWebSearch').checked,
+                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
+                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
+                    enable_mcp: document.getElementById('enableMCP').checked,
+                    enable_jieba: document.getElementById('enableJieba').checked,
+                    // Add model configuration
+                    selected_model: selectedModel,
+                    model_api_key: result.config.api_key,
+                    model_api_base: result.config.api_base
+                };
+                
+                if (taskMode === 'selected' && selectedDirectory) {
+                    socket.emit('execute_task', {
+                        requirement: message,
+                        type: 'selected',
+                        plan_mode: planMode,
+                        gui_config: guiConfig
+                    });
+                } else {
+                    socket.emit('execute_task', {
+                        requirement: message,
+                        type: 'continue',
+                        plan_mode: planMode,
+                        gui_config: guiConfig
+                    });
+                }
 
-            userInput.value = '';
-            resizeTextarea();
+                userInput.value = '';
+                resizeTextarea();
+                
+            } catch (error) {
+                console.error('Configuration validation error:', error);
+                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+            }
         }
 
         function createNewDirectory() {
@@ -2062,7 +2105,7 @@
             return false; // 返回false表示没有找到保存的会话
         }
 
-        function executeSelectedTask() {
+        async function executeSelectedTask() {
             const message = userInput.value.trim();
             if (!message || isTaskRunning) return;
 
@@ -2071,26 +2114,58 @@
                 return;
             }
 
-            addMessage(message, 'user');
+            // Get selected model
+            const selectedModel = document.getElementById('modelSelect').value;
             
-            // Get GUI configuration options
-            const guiConfig = {
-                enable_web_search: document.getElementById('enableWebSearch').checked,
-                enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
-                enable_multi_agent: document.getElementById('enableMultiAgent').checked,
-                enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
-                enable_mcp: document.getElementById('enableMCP').checked,
-                enable_jieba: document.getElementById('enableJieba').checked
-            };
-            
-            socket.emit('execute_task', {
-                requirement: message,
-                type: 'selected',
-                gui_config: guiConfig
-            });
+            // Validate configuration before execution
+            try {
+                const response = await fetch('/api/validate-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    addMessage(`${I18N.config_error_title}: ${result.error}`, 'error');
+                    return;
+                }
+                
+                // Configuration is valid, proceed with execution
+                addMessage(message, 'user');
+                
+                // Get GUI configuration options
+                const guiConfig = {
+                    enable_web_search: document.getElementById('enableWebSearch').checked,
+                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
+                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
+                    enable_mcp: document.getElementById('enableMCP').checked,
+                    enable_jieba: document.getElementById('enableJieba').checked,
+                    // Add model configuration
+                    selected_model: selectedModel,
+                    model_api_key: result.config.api_key,
+                    model_api_base: result.config.api_base
+                };
+                
+                socket.emit('execute_task', {
+                    requirement: message,
+                    type: 'selected',
+                    gui_config: guiConfig
+                });
 
-            userInput.value = '';
-            resizeTextarea();
+                userInput.value = '';
+                resizeTextarea();
+                
+            } catch (error) {
+                console.error('Configuration validation error:', error);
+                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+            }
         }
 
         function selectDirectory(dirName) {
