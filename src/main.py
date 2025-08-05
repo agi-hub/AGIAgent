@@ -1056,7 +1056,6 @@ Please generate a markdown format detailed summary report, retaining all importa
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
 
 **Location Information**:
 - City: {location_info['city']}
@@ -1108,7 +1107,6 @@ Please generate a markdown format detailed summary report, retaining all importa
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
 
 **Location Information**:
 - City: {location_info['city']}
@@ -1328,6 +1326,13 @@ Please generate a markdown format detailed summary report, retaining all importa
         save_last_output_dir(self.out_dir, requirement)
         print_system(f"💾 Configuration saved for future --continue operations")
         
+        # Interactive mode confirmation before task execution
+        if self.interactive_mode:
+            task_description = f"Execute task: {requirement}"
+            if not self.ask_user_confirmation(f"🤖 Ready to execute task:\n   {requirement}\n\nProceed with execution?"):
+                print_current("❌ Task execution cancelled by user")
+                return False
+        
         # Choose execution path based on mode
         if self.single_task_mode:
             # Single task mode: directly execute user requirement
@@ -1349,8 +1354,12 @@ Please generate a markdown format detailed summary report, retaining all importa
                 return False
             finish_operation("Task Decomposition")
             
-            # Interactive mode confirmation is handled by individual task execution
-            # No need for pre-execution confirmation here
+            # Interactive mode confirmation after task decomposition
+            if self.interactive_mode:
+                if not self.ask_user_confirmation(f"🤖 Task decomposition completed. Ready to execute all tasks?\n\nProceed with task execution?"):
+                    print_current("❌ Task execution cancelled by user")
+                    finish_operation("Main Program Execution")
+                    return False
             
             # Step 3: Execute tasks
             track_operation("Multi-Task Execution")

@@ -1156,7 +1156,7 @@ class ToolExecutor:
                 
                 # Display tool execution results if present
                 if tool_results_section:
-                    message_parts.append("**Tool Execution Results:**")
+                    # message_parts.append("**Tool Execution Results:**")
                     # Standardize tool results format for better cache consistency
                     tool_results_section = self._standardize_tool_results_format(tool_results_section)
                     message_parts.append(tool_results_section)
@@ -2882,10 +2882,7 @@ class ToolExecutor:
             cached_tokens = cache_stats['estimated_cache_tokens']
             new_input_tokens = cache_stats['new_tokens']
             
-            if tool_calls_tokens > 0:
-                print_current(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,} (content: {output_tokens_est:,}, tool calls: {tool_calls_tokens:,})")
-            else:
-                print_current(f"📊 Input history (cached) tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,}")
+            print_current(f"📊 Input cached tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,}")
             
         except Exception as e:
             print_current(f"⚠️ Statistics calculation failed: {e}")

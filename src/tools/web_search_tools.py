@@ -2688,6 +2688,12 @@ Please create a detailed, structured analysis that preserves important informati
         Returns:
             Dictionary containing multiple image information, with images field as JSON list format
         """
+        # Define MD5 hashes of images to filter out
+        FILTERED_IMAGE_HASHES = [
+            "f7581bb6ed68eec740feb1e9931f22d6",  # AI智能体发展趋势图表_20250804_182940_01.png
+            "923e31f20669ef6cc6b86c48cdcad1f0",  # AI智能体发展趋势图表_20250804_182940_02.png
+            "901093ca6d9ffbb484f2e92abbf83fba"   # 类脑大模型_示意图_20250805_184251_01.png
+        ]
         # Ignore extra parameters
         if kwargs:
             print_current(f"⚠️ Ignoring extra parameters: {list(kwargs.keys())}")
@@ -2872,17 +2878,9 @@ Please create a detailed, structured analysis that preserves important informati
                         processed_count = 0
                         skipped_reasons = {}
                         
-                        # For Baidu Images, skip first 3 images (usually ads or recommended content)
-                        start_index = 3 if engine['name'] == 'Baidu Images' else 0
-                        if start_index > 0:
-                            print_debug(f"🔄 {engine['name']} skipping first {start_index} images (avoiding ads/recommendations)")
-                        
-                        for i, img in enumerate(image_elements[:20]):  # Increase check count to 20
+                        # Process all images without skipping any at the beginning
+                        for i, img in enumerate(image_elements[:25]):  # Increase check count to 25
                             try:
-                                # For Baidu search, skip first 3 images
-                                if engine['name'] == 'Baidu Images' and i < start_index:
-                                    skipped_reasons['baidu_skip_first'] = skipped_reasons.get('baidu_skip_first', 0) + 1
-                                    continue
                                 
                                 processed_count += 1
                                 
@@ -2970,11 +2968,10 @@ Please create a detailed, structured analysis that preserves important informati
                                 continue
                         
                         # Output detailed filtering statistics to debug log
-                        total_checked = len(image_elements[:20])
+                        total_checked = len(image_elements[:25])
                         print_debug(f"📊 {engine['name']} checked {total_checked} image elements total, processed {processed_count}")
                         if skipped_reasons:
                             skip_descriptions = {
-                                'baidu_skip_first': 'Skip first 3 (Baidu ads/recommendations)',
                                 'no_src': 'No image URL',
                                 'not_http': 'Non-HTTP URL',
                                 'svg_format': 'SVG format',
@@ -2982,6 +2979,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 'size_too_small': 'Size too small',
                                 'aspect_ratio': 'Abnormal aspect ratio',
                                 'baidu_static': 'Baidu static resources',
+                                'md5_filtered': 'Filtered by MD5 hash (excluded images)',
                                 'exception': 'Processing exception'
                             }
                             for reason, count in skipped_reasons.items():
@@ -2990,8 +2988,8 @@ Please create a detailed, structured analysis that preserves important informati
                         print_debug(f"✅ {engine['name']} found {len(valid_images)} valid images")
                         
                         if valid_images:
-                            # Save multiple valid images (max 5)
-                            max_images = min(5, len(valid_images))
+                            # Save multiple valid images (max 8)
+                            max_images = min(8, len(valid_images))
                             saved_images = []
                             
                             print_current(f"📥 Downloading {max_images} images...")
@@ -3028,6 +3026,14 @@ Please create a detailed, structured analysis that preserves important informati
                                     # Validate if it's a valid image and get format (unified processing for all image data)
                                     if image_data:
                                         try:
+                                            # Check if this image should be filtered out by computing its MD5 hash
+                                            import hashlib
+                                            image_md5 = hashlib.md5(image_data).hexdigest()
+                                            if image_md5 in FILTERED_IMAGE_HASHES:
+                                                skipped_reasons['md5_filtered'] = skipped_reasons.get('md5_filtered', 0) + 1
+                                                print_debug(f"🚫 Image {i+1} filtered out (matches excluded image MD5: {image_md5})")
+                                                continue
+                                                
                                             with io.BytesIO(image_data) as img_buffer:
                                                 img = Image.open(img_buffer)
                                                 img.verify()  # Verify image format

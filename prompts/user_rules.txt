@@ -16,6 +16,7 @@ Use xelatex to compile Latex, when creating Latex script, you must use \usepacka
 Generating more figures is preferred, using mermaid or graphviz library, and insert to your markdown report.
 
 Convert markdown to pdf / word / html / powerpoint using pandoc.
+For Chinese content PDF: use --pdf-engine=xelatex -V mainfont="Noto Serif CJK SC" to avoid font warnings.
 
 
 To obtain the original figures of input materials, and add them to your report, you can check if mineru is installed, and use terminal command 'mineru -p source_file -o out_dir' to convert word / pdf / powerpoint file into markdown and images stored in out_dir, 

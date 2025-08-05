@@ -233,7 +233,7 @@ class TodoTools:
         """
         try:
             task_list = self.list_tasks()
-            if not task_list["success"]:
+            if task_list.get("status") != "success":
                 return task_list
             
             # Find first pending task

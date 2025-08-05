@@ -355,7 +355,7 @@ def get_workspace_info(workspace_dir: str) -> str:
     Returns:
         Formatted workspace information
     """
-    workspace_instruction = f"""**Important Workspace Information**:
+    workspace_instruction = f"""**Workspace Information**:
 - Workspace Directory: {workspace_dir}
 - Please save all created code files and project files in this directory
 - When creating or editing files, please use filenames directly, do not add prefix to paths
@@ -363,6 +363,6 @@ def get_workspace_info(workspace_dir: str) -> str:
 """
     
     # Get existing code context from workspace
-    workspace_context = get_workspace_context(workspace_dir)
+    # workspace_context = get_workspace_context(workspace_dir)
     
-    return workspace_instruction + "\n\n" + workspace_context 
+    return workspace_instruction

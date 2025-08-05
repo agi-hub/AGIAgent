@@ -122,7 +122,8 @@ class PrintSystem:
     def manager_print(self, *args, category: str = 'execution', 
                      importance: MessageImportance = MessageImportance.IMPORTANT, **kwargs):
         """Main AGIBot message print"""
-        self._safe_print("[manager]", *args, category=category, importance=importance, **kwargs)
+        #self._safe_print("[manager]", *args, category=category, importance=importance, **kwargs)
+        self._safe_print("", *args, category=category, importance=importance, **kwargs)
 
     def agent_print(self, agent_id: str, *args, category: str = 'execution',
                    importance: MessageImportance = MessageImportance.IMPORTANT, **kwargs):
@@ -157,7 +158,7 @@ class PrintSystem:
                         # Show streaming start message
                         current_id = self.get_agent_id()
                         if current_id is None or current_id == "manager":
-                            prefix = "[manager]"
+                            prefix = "" # "[manager]"
                         else:
                             prefix = f"[{current_id}]"
                         self._original_print(f"{prefix} 🔄 LLM is thinking:")
@@ -174,6 +175,9 @@ class PrintSystem:
             with self._terminal_lock:
                 self._is_streaming = False
                 self._streaming_owner = None
+                
+                # Add empty line after streaming completes
+                self._original_print("")
                 
                 # Process pending messages
                 self._flush_pending_messages()

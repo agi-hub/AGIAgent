@@ -245,6 +245,14 @@ I18N_TEXTS = {
         'temporary_connection': '临时连接',
         'auto_login_from_url': '已通过URL参数自动登录',
         'session_restored': '已恢复上次登录会话',
+        
+        # Model selection
+        'model_label': '模型:',
+        'model_tooltip': '选择要使用的AI模型',
+        'model_claude_sonnet': 'claude-sonnet-4-0 (高精度)',
+        'model_gpt_4': 'gpt-4.1 (高效率)',
+        'config_error_title': '配置错误',
+        'config_error_invalid_key': 'API Key配置无效，请检查config/config.txt文件中的GUI API configuration部分',
     },
     'en': {
         # Page title and basic info
@@ -420,6 +428,14 @@ I18N_TEXTS = {
         'temporary_connection': 'Temporary Connection',
         'auto_login_from_url': 'Auto-logged in via URL parameter',
         'session_restored': 'Previous login session restored',
+        
+        # Model selection
+        'model_label': 'Model:',
+        'model_tooltip': 'Select AI model to use',
+        'model_claude_sonnet': 'claude-sonnet-4-0 (High Accuracy)',
+        'model_gpt_4': 'gpt-4.1 (High Efficiency)',
+        'config_error_title': 'Configuration Error',
+        'config_error_invalid_key': 'Invalid API Key configuration, please check GUI API configuration in config/config.txt',
     }
 }
 
@@ -468,8 +484,14 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         enable_mcp = gui_config.get('enable_mcp', False)
         enable_jieba = gui_config.get('enable_jieba', True)  # 默认选择
         
+        # Model configuration from GUI
+        selected_model = gui_config.get('selected_model', 'gpt-4.1')
+        model_api_key = gui_config.get('model_api_key')
+        model_api_base = gui_config.get('model_api_base')
+        
         # Log GUI configuration
         output_queue.put({'event': 'output', 'data': {'message': f"GUI Configuration:", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Model: {selected_model}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Web Search: {enable_web_search}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Knowledge Base: {enable_knowledge_base}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Multi-Agent: {enable_multi_agent}", 'type': 'info'}})
@@ -480,6 +502,17 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         # Create a temporary configuration that overrides config.txt for GUI mode
         # We'll use environment variables to pass these settings to the AGIBot system
         original_env = {}
+        
+        # Model configuration: GUI setting overrides config.txt
+        if model_api_key:
+            original_env['AGIBOT_API_KEY'] = os.environ.get('AGIBOT_API_KEY', '')
+            os.environ['AGIBOT_API_KEY'] = model_api_key
+        if model_api_base:
+            original_env['AGIBOT_API_BASE'] = os.environ.get('AGIBOT_API_BASE', '')
+            os.environ['AGIBOT_API_BASE'] = model_api_base
+        if selected_model:
+            original_env['AGIBOT_MODEL'] = os.environ.get('AGIBOT_MODEL', '')
+            os.environ['AGIBOT_MODEL'] = selected_model
         
         # Web search: only set if GUI enables it
         if enable_web_search:
@@ -2142,6 +2175,55 @@ def delete_directory(dir_name):
         print(f"Error deleting directory {dir_name}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/validate-config', methods=['POST'])
+def validate_config():
+    """Validate GUI configuration and return model-specific config"""
+    try:
+        from src.config_loader import get_gui_config, validate_gui_config
+        
+        data = request.get_json()
+        selected_model = data.get('model', 'gpt-4.1')
+        
+        # Read GUI configuration from config.txt
+        gui_config = get_gui_config()
+        
+        # Validate the configuration
+        is_valid, error_message = validate_gui_config(gui_config)
+        
+        if not is_valid:
+            return jsonify({
+                'success': False,
+                'error': error_message
+            })
+        
+        # Get model-specific configuration
+        api_key = gui_config.get('api_key')
+        api_base = gui_config.get('api_base')
+        
+        # For different models, we might need different api_base URLs
+        if selected_model == 'claude-sonnet-4-0':
+            # For Claude models, check if we need to use Anthropic endpoint
+            if 'anthropic' not in api_base.lower():
+                # If the current api_base doesn't contain 'anthropic', 
+                # we might need to use a different endpoint
+                # But for now, let's use the configured api_base
+                pass
+        
+        return jsonify({
+            'success': True,
+            'config': {
+                'api_key': api_key,
+                'api_base': api_base,
+                'model': selected_model
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error validating configuration: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'配置验证失败: {str(e)}'
+        })
 
 
 if __name__ == '__main__':
