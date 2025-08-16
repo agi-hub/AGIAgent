@@ -363,7 +363,7 @@ class FastMcpWrapper:
                 
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(run_in_thread)
-                    result = future.result(timeout=30)  # 30 second timeout
+                    result = future.result(timeout=60)  # 60 second timeout
                     return result
                     
             except RuntimeError:
@@ -590,14 +590,14 @@ class FastMcpWrapper:
             available_tools = self.get_server_tools(server_name)
             raise Exception(f"Tool '{tool_name}' not found in server '{server_name}'. Available tools: {available_tools}")
 
-        # FastMCP 设计哲学：每次调用都使用新的客户端实例
-        # 这是 FastMCP 的标准工作模式，不是 bug
+        # FastMCP design philosophy: use new client instance for each call
+        # This is FastMCP's standard working mode
         print_current(f"🔧 Creating fresh FastMCP client for tool: {actual_tool_name} on server: {server_name}")
         
         max_retries = 1  # 由于每次都是新连接，减少重试次数
         for attempt in range(max_retries + 1):
             try:
-                # 根据 FastMCP 文档，每次调用都应该创建新客户端
+                # According to FastMCP documentation
                 fresh_client = self._create_fresh_client()
                 
                 print_current(f"🚀 Calling FastMCP tool: {actual_tool_name} (attempt {attempt + 1})")
@@ -623,14 +623,14 @@ class FastMcpWrapper:
                 error_msg = str(e)
                 print_current(f"⚠️ FastMCP call attempt {attempt + 1} failed for tool {actual_tool_name}: {error_msg}")
                 
-                # FastMCP 连接诊断信息
+                # FastMCP connection diagnostic information
                 if "Client failed to connect" in error_msg:
                     print_current(f"🔍 FastMCP Connection Analysis:")
                     print_current(f"   - This is normal FastMCP behavior - each call creates a new process")
                     print_current(f"   - Server process startup time: ~1 second")
                     print_current(f"   - STDIO mode requires fresh connections for reliability")
                 
-                # 如果是最后一次尝试，返回错误
+                # If it's the last attempt
                 if attempt == max_retries:
                     print_current(f"❌ FastMCP call failed after {max_retries + 1} attempts")
                     print_current(f"💡 Note: FastMCP uses fresh processes for each call - this is by design")
@@ -644,7 +644,7 @@ class FastMcpWrapper:
                         "diagnosis": "fastmcp_process_startup_failed"
                     }
                 else:
-                    # 简短等待后重试
+                    # Brief wait then retry
                     import asyncio
                     await asyncio.sleep(0.5)
                     continue

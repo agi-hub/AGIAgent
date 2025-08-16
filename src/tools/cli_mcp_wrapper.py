@@ -12,7 +12,7 @@ import asyncio
 import threading
 import shutil
 from typing import Dict, Any, List, Optional, Union
-from .print_system import print_current, print_system_info, print_error, print_debug
+from .print_system import print_current, print_system, print_error, print_debug
 
 def find_cli_mcp_path():
     """Find the cli-mcp executable path"""
@@ -80,7 +80,7 @@ class CliMcpWrapper:
             await self._discover_tools()
             
             self.initialized = True
-            print_system_info(f"✅ cli-mcp client initialized successfully, discovered {len(self.available_tools)} tools")
+            print_system(f"✅ cli-mcp client initialized successfully, discovered {len(self.available_tools)} tools")
             return True
             
         except Exception as e:
@@ -120,7 +120,7 @@ class CliMcpWrapper:
                 if "timeout" not in server_config:
                     server_config["timeout"] = 30
             
-            print_system_info(f"📊 cli-mcp client config loaded successfully, found {len(self.servers)} NPX/NPM servers")
+            print_system(f"📊 cli-mcp client config loaded successfully, found {len(self.servers)} NPX/NPM servers")
             
         except Exception as e:
             print_current(f"❌ Failed to load config file: {e}")
@@ -523,7 +523,7 @@ async def initialize_cli_mcp_wrapper(config_path: str = "mcp.json") -> bool:
         try:
             result = await wrapper.initialize()
             if result:
-                print_system_info(f"✅ cli-mcp wrapper initialized successfully in thread {threading.current_thread().name}")
+                print_system(f"✅ cli-mcp wrapper initialized successfully in thread {threading.current_thread().name}")
             else:
                 print_error(f"⚠️ cli-mcp wrapper initialization failed in thread {threading.current_thread().name}")
             return result

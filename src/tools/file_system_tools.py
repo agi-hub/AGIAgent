@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from .print_system import print_system, print_current, print_system_info, print_debug
+from .print_system import print_system, print_current, print_system, print_debug
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -29,7 +29,7 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 
 # Import Mermaid processor for handling charts in markdown files
 try:
-    from .utils.mermaid_processor import mermaid_processor
+    from .mermaid_processor import mermaid_processor
     MERMAID_PROCESSOR_AVAILABLE = True
 except ImportError:
     print_debug("⚠️ Mermaid processor not available")
@@ -48,9 +48,9 @@ class FileSystemTools:
         """Check if system grep command is available"""
         self.system_grep_available = shutil.which('grep') is not None
         if self.system_grep_available:
-            print_system_info("🚀 System grep detected, will use for faster searching")
+            print_system("🚀 System grep detected, will use for faster searching")
         else:
-            print_system_info("⚠️ System grep not available, using Python fallback")
+            print_system("⚠️ System grep not available, using Python fallback")
     
     def _resolve_path(self, path: str) -> str:
         """Resolve a path relative to the workspace root."""
@@ -325,23 +325,24 @@ class FileSystemTools:
             return self._execute_single_search(query_str, include_pattern or "", exclude_pattern or "", case_sensitive, max_results)
 
     def edit_file(self, target_file: str, edit_mode: str, code_edit: str, instructions: Optional[str] = None, 
-                  **kwargs) -> Dict[str, Any]:
+                  old_code: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """
-        使用三种模式编辑文件或创建新文件。
+        Use three modes to edit files or create new files.
         
         Args:
-            target_file: 文件路径
-            edit_mode: 编辑模式 - "lines_replace", "append", "full_replace"
-            code_edit: 要编辑的代码/文本内容
-            instructions: 可选的编辑说明
+            target_file: File path
+            edit_mode: Edit mode - "lines_replace", "append", "full_replace"
+            code_edit: Code/text content to edit
+            instructions: Optional edit description
+            old_code: For lines_replace mode
             
         Returns:
-            包含编辑结果的字典
+            Dictionary containing edit results
         
         Edit Modes:
-            - lines_replace: 智能替换模式，使用existing code标记进行精确合并
-            - append: 追加到文件末尾
-            - full_replace: 完全替换文件内容
+            - lines_replace: Exact replacement mode
+            - append: Append to end of file
+            - full_replace: Completely replace file content
         """
         # Check for dummy placeholder file created by hallucination detection
         if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
@@ -357,7 +358,7 @@ class FileSystemTools:
         if edit_mode == "auto":
             edit_mode = "append"
         
-        # 兼容旧的edit_mode名称
+        # Compatible with old edit_mode names
         if edit_mode == "auto":
             edit_mode = "lines_replace"
         elif edit_mode in ["replace_lines", "insert_lines"]:
@@ -415,12 +416,29 @@ class FileSystemTools:
             
             # Process edit based on mode
             new_content = self._process_edit_by_mode(
-                original_content, cleaned_code_edit, edit_mode, target_file
+                original_content, cleaned_code_edit, edit_mode, target_file, old_code
             )
             
             # Write the new content
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
+            
+            # Preprocess bullet formatting for markdown files
+            if target_file.lower().endswith('.md'):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content_to_preprocess = f.read()
+                    
+                    # Apply bullet formatting preprocessing
+                    preprocessed_content = self._preprocess_bullet_formatting(content_to_preprocess)
+                    
+                    # Only rewrite if content has changed
+                    if preprocessed_content != content_to_preprocess:
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(preprocessed_content)
+                        print_current(f"📝 Applied bullet formatting preprocessing to markdown file")
+                except Exception as e:
+                    print_current(f"⚠️ Error during bullet formatting preprocessing: {e}")
             
             # Process Mermaid charts if this is a markdown file
             mermaid_result = None
@@ -463,6 +481,21 @@ class FileSystemTools:
             # Add Mermaid processing result if applicable
             if mermaid_result is not None:
                 result['mermaid_processing'] = mermaid_result
+            
+            # Convert markdown to Word and PDF if this is a markdown file
+            conversion_result = None
+            if target_file.lower().endswith('.md'):
+                try:
+                    conversion_result = self._convert_markdown_to_formats(file_path, target_file)
+                    if conversion_result:
+                        result['conversion'] = conversion_result
+                except Exception as e:
+                    print_current(f"⚠️ Error during markdown conversion: {e}")
+                    result['conversion'] = {
+                        'status': 'failed',
+                        'error': str(e),
+                        'message': f'Markdown conversion error: {e}'
+                    }
             
             return result
             
@@ -570,7 +603,7 @@ class FileSystemTools:
         return code_content
 
     def _process_edit_by_mode(self, original_content: str, code_edit: str, edit_mode: str, 
-                             target_file: str) -> str:
+                             target_file: str, old_code: Optional[str] = None) -> str:
         """
         Process edit based on the specified mode.
 
@@ -579,13 +612,14 @@ class FileSystemTools:
             code_edit: The new content to add/replace
             edit_mode: Edit mode - "lines_replace", "append", "full_replace"
             target_file: Target file path
+            old_code: For lines_replace mode, the exact code to find and replace
 
         Returns:
             The new file content after applying the edit
         """
         if edit_mode == "lines_replace":
-            # Smart replacement mode using existing code markers
-            return self._process_code_edit(original_content, code_edit, target_file)
+            # Precise replacement mode using exact code matching
+            return self._process_precise_code_edit(original_content, code_edit, target_file, old_code)
         elif edit_mode == "append":
             # Append to the end of the file
             return self._append_content(original_content, code_edit)
@@ -595,7 +629,7 @@ class FileSystemTools:
         else:
             # Compatibility mode: default to lines_replace
             print_current(f"⚠️ Unknown edit_mode '{edit_mode}', defaulting to lines_replace")
-            return self._process_code_edit(original_content, code_edit, target_file)
+            return self._process_precise_code_edit(original_content, code_edit, target_file, old_code)
 
     def _replace_lines(self, content: str, new_content: str, start_line_one_indexed: int, end_line_one_indexed_inclusive: int) -> str:
         """
@@ -678,11 +712,8 @@ class FileSystemTools:
         Returns:
             Updated content with content appended
         """
-        # Remove any existing code markers from the append content
-        clean_content = new_content.replace('// ... existing code ...', '').strip()
-        clean_content = clean_content.replace('# ... existing code ...', '').strip()
-        clean_content = clean_content.replace('/* ... existing code ...', '').strip()
-        clean_content = clean_content.replace('<!-- ... existing code ...', '').strip()
+        # No special processing needed for append content
+        clean_content = new_content.strip()
         
         if not content:
             print_current("📝 Creating new file with append content")
@@ -697,521 +728,104 @@ class FileSystemTools:
         print_current(f"➕ Appending {len(clean_content.split(chr(10)))} lines to end of file")
         return result
 
-    def _process_code_edit(self, original_content: str, code_edit: str, target_file: str) -> str:
+    def _process_precise_code_edit(self, original_content: str, code_edit: str, target_file: str, old_code: Optional[str] = None) -> str:
         """
-        Process code edits using context anchor matching algorithm for precise positioning.
+        Process code edits using 100% precise matching algorithm.
+        
+        Args:
+            original_content: The original file content
+            code_edit: The new content to replace with  
+            target_file: Target file path
+            old_code: The exact code snippet to find and replace
+            
+        Returns:
+            The new file content after applying the edit
+            
+        Raises:
+            ValueError: If old_code is not provided for lines_replace mode
+            ValueError: If old_code is not found exactly in the original content
         """
-        comment_markers = self._get_comment_markers(target_file)
-        
-        # Standard existing code markers for auto mode
-        existing_code_patterns = [
-            '// ... existing code ...',
-            '# ... existing code ...',
-            '/* ... existing code ...',
-            '<!-- ... existing code -->',
-        ]
-        
-        used_pattern = None
-        for pattern in existing_code_patterns:
-            if pattern in code_edit:
-                used_pattern = pattern
-                break
-        
-        if not used_pattern:
-            # Reject edits without existing code markers to prevent accidental full file replacement
+        if old_code is None:
             raise ValueError(
-                "EDIT REJECTED: No existing code markers found in lines_replace mode. "
-                "To prevent accidental file replacement, you must use one of these markers: "
-                f"{', '.join(existing_code_patterns)}. "
-                "If you want to replace the entire file, use edit_mode='full_replace' instead. "
-                "If you want to add content to the end, use edit_mode='append'."
+                "EDIT REJECTED: old_code parameter is required for lines_replace mode. "
+                "You must provide the exact code snippet that you want to replace, "
+                "including all whitespace and indentation."
             )
         
-        edit_parts = code_edit.split(used_pattern)
+        # Clean the old_code in the same way as code_edit
+        cleaned_old_code = self._clean_markdown_markers(old_code)
+        cleaned_old_code = self._fix_html_entities(cleaned_old_code)
+        cleaned_old_code = self._process_markdown_content(cleaned_old_code, target_file)
         
-        if len(edit_parts) == 1:
-            return code_edit
+        # Clean the new code_edit 
+        cleaned_code_edit = self._clean_markdown_markers(code_edit)
+        cleaned_code_edit = self._fix_html_entities(cleaned_code_edit)
+        cleaned_code_edit = self._process_markdown_content(cleaned_code_edit, target_file)
         
-        print_current(f"🔧 Found existing code marker: {used_pattern}")
-        print_current(f"📝 Edit split into {len(edit_parts)} parts")
+        print_current(f"🎯 Starting precise code replacement")
+        print_current(f"📝 Looking for old code snippet ({len(cleaned_old_code)} chars)")
+        print_current(f"🔄 Will replace with new code snippet ({len(cleaned_code_edit)} chars)")
         
-        # Use improved context anchor matching algorithm
-        return self._apply_context_based_edit(original_content, edit_parts, used_pattern)
+        # Apply direct string replacement
+        return self._apply_precise_replacement(original_content, cleaned_old_code, cleaned_code_edit)
     
-    def _apply_context_based_edit(self, original_content: str, edit_parts: List[str], marker: str) -> str:
+    def _apply_precise_replacement(self, original_content: str, old_code: str, new_code: str) -> str:
         """
-        Smart code merging algorithm based on context anchors.
+        Apply precise replacement using exact string matching.
         
         Args:
-            original_content: Original file content
-            edit_parts: Edit parts split by existing code marker
-            marker: The existing code marker used
-        
+            original_content: The original file content
+            old_code: The exact code snippet to find
+            new_code: The new code snippet to replace with
+            
         Returns:
-            Merged file content
-        """
-        if len(edit_parts) < 2:
-            return original_content
+            The updated file content
             
-        original_lines = original_content.split('\n')
-        
-        # 调试打印：显示编辑部分的内容
-        print_current(f"🔍 DEBUG: Edit parts count: {len(edit_parts)}")
-        for i, part in enumerate(edit_parts):
-            part_preview = part.strip()[:100].replace('\n', '\\n') if part.strip() else "(empty)"
-            print_current(f"🔍 DEBUG: Edit part {i}: {part_preview}...")
-        
-        if len(edit_parts) == 2:
-            # Simple case: one existing code marker
-            return self._apply_single_marker_edit(original_lines, edit_parts[0], edit_parts[1])
-        else:
-            # Complex case: multiple existing code markers
-            return self._apply_multiple_marker_edit(original_lines, edit_parts, marker)
+        Raises:
+            ValueError: If the old_code is not found exactly in the original content
+        """
+        # Simplified logic: only perform direct exact string replacement
+        return self._apply_direct_precise_replacement(original_content, old_code, new_code)
     
-    def _apply_single_marker_edit(self, original_lines: List[str], before_part: str, after_part: str) -> str:
+    def _apply_direct_precise_replacement(self, original_content: str, old_code: str, new_code: str) -> str:
         """
-        Handle the case of a single existing code marker, using context anchors for precise positioning.
-        """
-        before_lines = [line.rstrip() for line in before_part.split('\n') if line.strip()]
-        after_lines = [line.rstrip() for line in after_part.split('\n') if line.strip()]
-        
-        # 调试打印：显示before和after的内容
-        print_current(f"🔍 DEBUG: Before lines count: {len(before_lines)}")
-        if before_lines:
-            print_current(f"🔍 DEBUG: Before lines preview: {before_lines[:3]}...")
-        print_current(f"🔍 DEBUG: After lines count: {len(after_lines)}")
-        if after_lines:
-            print_current(f"🔍 DEBUG: After lines preview: {after_lines[:3]}...")
-        
-        # Case 1: No content at all
-        if not before_lines and not after_lines:
-            print_current("🔍 DEBUG: Case 1 - No content, returning original")
-            return '\n'.join(original_lines)
-        
-        # Case 2: Only before content - try context matching first, fallback to beginning
-        if before_lines and not after_lines:
-            print_current("🔍 DEBUG: Case 2 - Only before content, trying context matching")
-            # Try to find context for before_lines first
-            best_match = self._find_best_context_match(original_lines, before_lines, [])
-            if best_match is not None:
-                insert_pos, match_type, anchor_size = best_match
-                print_current(f"🎯 Found context match for before_lines at line {insert_pos}")
-                if match_type == "before":
-                    new_content_lines = before_lines[:-anchor_size] if len(before_lines) > anchor_size else []
-                    result_lines = (original_lines[:insert_pos + anchor_size] + 
-                                  new_content_lines + original_lines[insert_pos + anchor_size:])
-                    return '\n'.join(result_lines)
-            
-            print_current("🔍 DEBUG: No context match found, inserting at beginning")
-            return self._insert_at_beginning(original_lines, before_lines)
-        
-        # Case 3: Only after content - ALWAYS try context matching first
-        if after_lines and not before_lines:
-            print_current("🔍 DEBUG: Case 3 - Only after content, trying context matching")
-            # Try to find context for after_lines first
-            best_match = self._find_best_context_match(original_lines, [], after_lines)
-            if best_match is not None:
-                insert_pos, match_type, anchor_size = best_match
-                print_current(f"🎯 Found context match for after_lines at line {insert_pos}")
-                if match_type == "after":
-                    # Replace the anchor content with new content
-                    replace_size = max(anchor_size, len(after_lines) if after_lines else 0)
-                    print_current(f"🔄 Case 3: Replacing {replace_size} lines starting from line {insert_pos + 1}")
-                    print_current(f"🔍 DEBUG: anchor_size={anchor_size}, after_lines={len(after_lines)}, replace_size={replace_size}")
-                    result_lines = (original_lines[:insert_pos] + after_lines + original_lines[insert_pos + replace_size:])
-                    return '\n'.join(result_lines)
-            
-            print_current("🔍 DEBUG: No context match found, inserting at end")
-            return self._insert_at_end(original_lines, after_lines)
-        
-        # Case 4: Both before and after content, need to find insertion position
-        if before_lines and after_lines:
-            print_current("🔍 DEBUG: Case 4 - Both before and after content, using context anchors")
-            return self._insert_with_context_anchors(original_lines, before_lines, after_lines)
-        
-        # Fallback
-        print_current("🔍 DEBUG: Fallback - returning original")
-        return '\n'.join(original_lines)
-    
-    def _insert_with_context_anchors(self, original_lines: List[str], before_lines: List[str], after_lines: List[str]) -> str:
-        """
-        Use context anchors to find the precise insertion position with improved matching.
-        """
-        print_current(f"🔍 DEBUG: Original file has {len(original_lines)} lines")
-        
-        # Show what we're looking for
-        if before_lines:
-            print_current(f"🔍 DEBUG: Looking for BEFORE content ending with: {before_lines[-3:] if len(before_lines) >= 3 else before_lines}")
-        if after_lines:
-            print_current(f"🔍 DEBUG: Looking for AFTER content starting with: {after_lines[:3] if len(after_lines) >= 3 else after_lines}")
-        
-        # Strategy 1: Try to find the best match for complete context sequence
-        best_match = self._find_best_context_match(original_lines, before_lines, after_lines)
-        
-        if best_match is not None:
-            insert_pos, match_type, anchor_size = best_match
-            print_current(f"🎯 Found best context match at line {insert_pos} (type: {match_type}, anchor_size: {anchor_size})")
-            
-            if match_type == "before":
-                # Replace the anchor content with new content
-                print_current(f"🔄 Replacing {anchor_size} lines starting from line {insert_pos + 1}")
-                # For "before" type, we want to replace the matched content plus find the appropriate range
-                # Calculate how many lines we should replace based on before_lines and after_lines
-                replace_size = max(anchor_size, len(before_lines) if before_lines else 0)
-                result_lines = (original_lines[:insert_pos] + 
-                              before_lines + after_lines + 
-                              original_lines[insert_pos + replace_size:])
-                return '\n'.join(result_lines)
-            elif match_type == "after":
-                # Replace the anchor content with new content
-                print_current(f"🔄 Replacing {anchor_size} lines starting from line {insert_pos + 1}")
-                # For "after" type, we want to replace a range that covers the content we're updating
-                # The range should cover at least the anchor_size, but potentially more based on after_lines
-                replace_size = max(anchor_size, len(after_lines) if after_lines else 0)
-                print_current(f"🔍 DEBUG: Will replace {replace_size} lines (anchor_size={anchor_size}, after_lines={len(after_lines)})")
-                print_current(f"🔍 DEBUG: Original file range to replace: lines {insert_pos + 1} to {insert_pos + replace_size}")
-                print_current(f"🔍 DEBUG: Keeping lines 0 to {insert_pos}, then inserting {len(before_lines) + len(after_lines)} new lines, then keeping from line {insert_pos + replace_size + 1}")
-                result_lines = (original_lines[:insert_pos] + before_lines + 
-                              after_lines + original_lines[insert_pos + replace_size:])
-                print_current(f"🔍 DEBUG: Result will have {len(result_lines)} lines (original had {len(original_lines)})")
-                return '\n'.join(result_lines)
-        
-        # Strategy 2: Try traditional anchor matching with larger anchor sizes for unique matches
-        print_current("🔍 DEBUG: Trying traditional anchor matching...")
-        for anchor_size in [5, 4, 3, 2, 1]:  # Try larger anchors first
-            # Try before context
-            if anchor_size <= len(before_lines):
-                before_anchor = before_lines[-anchor_size:]
-                matches = self._find_all_anchor_positions(original_lines, before_anchor)
-                
-                print_current(f"🔍 DEBUG: Traditional matching - anchor_size {anchor_size}, before anchor: {before_anchor}, matches: {matches}")
-                
-                if len(matches) == 1:  # Unique match found
-                    insert_pos = matches[0]
-                    print_current(f"🎯 Found unique anchor position using before context at line {insert_pos + anchor_size} (anchor_size: {anchor_size})")
-                    new_content_lines = before_lines[:-anchor_size] if len(before_lines) > anchor_size else []
-                    result_lines = (original_lines[:insert_pos + anchor_size] + 
-                                  new_content_lines + after_lines + 
-                                  original_lines[insert_pos + anchor_size:])
-                    return '\n'.join(result_lines)
-            
-            # Try after context
-            if anchor_size <= len(after_lines):
-                after_anchor = after_lines[:anchor_size]
-                matches = self._find_all_anchor_positions(original_lines, after_anchor)
-                
-                print_current(f"🔍 DEBUG: Traditional matching - anchor_size {anchor_size}, after anchor: {after_anchor}, matches: {matches}")
-                
-                if len(matches) == 1:  # Unique match found
-                    insert_pos = matches[0]
-                    print_current(f"🎯 Found unique anchor position using after context at line {insert_pos} (anchor_size: {anchor_size})")
-                    new_content_lines = after_lines[anchor_size:] if len(after_lines) > anchor_size else []
-                    result_lines = (original_lines[:insert_pos] + before_lines + 
-                                  new_content_lines + original_lines[insert_pos:])
-                    return '\n'.join(result_lines)
-        
-        # Strategy 3: Fallback to safe append mode
-        print_current("⚠️ No suitable anchor found, appending to end")
-        return self._safe_append_edit(original_lines, before_lines, after_lines)
-    
-    def _find_anchor_position(self, original_lines: List[str], anchor_lines: List[str], search_from_start: bool = True) -> Optional[int]:
-        """
-        Find the anchor position in the original file.
+        Apply direct string replacement.
         
         Args:
-            original_lines: Original file lines
-            anchor_lines: Anchor lines
-            search_from_start: Whether to search from the start
-        
+            original_content: The original file content
+            old_code: The exact code snippet to find
+            new_code: The new code snippet to replace with
+            
         Returns:
-            Line number of the anchor position, or None if not found
+            The updated file content
+            
+        Raises:
+            ValueError: If the old_code is not found exactly once in the original content
         """
-        if not anchor_lines:
-            return None
+        # Count occurrences of old_code in original content
+        occurrence_count = original_content.count(old_code)
         
-        anchor_text = [line.strip() for line in anchor_lines if line.strip()]
-        if not anchor_text:
-            return None
+        if occurrence_count == 0:
+            raise ValueError(
+                f"EDIT REJECTED: The specified old_code was not found in the file. "
+                f"Please check that the code snippet matches exactly (including whitespace and indentation). "
+                f"Old code snippet (first 200 chars): {repr(old_code[:200])}"
+            )
+        elif occurrence_count > 1:
+            raise ValueError(
+                f"EDIT REJECTED: The specified old_code appears {occurrence_count} times in the file. "
+                f"For safety, please make the old_code more specific to match exactly one location. "
+                f"You can add more context lines to make it unique."
+            )
         
-        matches = []
-        search_range = range(len(original_lines) - len(anchor_text) + 1)
+        # Perform the replacement
+        new_content = original_content.replace(old_code, new_code, 1)
         
-        for i in search_range:
-            match = True
-            for j, anchor_line in enumerate(anchor_text):
-                original_line = original_lines[i + j].strip()
-                # Use fuzzy matching, ignore whitespace differences
-                if not self._lines_match(original_line, anchor_line):
-                    match = False
-                    break
-            
-            if match:
-                matches.append(i)
+        print_current(f"✅ Successfully replaced code snippet (direct replacement)")
+        print_current(f"📊 Content size: {len(original_content)} → {len(new_content)} chars")
         
-        # Check for uniqueness
-        if len(matches) == 1:
-            return matches[0]
-        elif len(matches) > 1:
-            print_current(f"⚠️ Multiple anchor matches found: {matches}, using {'first' if search_from_start else 'last'}")
-            return matches[0] if search_from_start else matches[-1]
-        
-        return None
-
-    def _find_all_anchor_positions(self, original_lines: List[str], anchor_lines: List[str]) -> List[int]:
-        """
-        Find all possible anchor positions in the original file.
-        
-        Args:
-            original_lines: Original file lines
-            anchor_lines: Anchor lines
-        
-        Returns:
-            List of line numbers where the anchor matches
-        """
-        if not anchor_lines:
-            return []
-        
-        # Clean anchor lines for comparison
-        anchor_text = [line.strip() for line in anchor_lines if line.strip()]
-        if not anchor_text:
-            return []
-        
-        matches = []
-        
-        for i in range(len(original_lines) - len(anchor_text) + 1):
-            match = True
-            for j, anchor_line in enumerate(anchor_text):
-                original_line = original_lines[i + j].strip()
-                # Use fuzzy matching, ignore whitespace differences
-                if not self._lines_match(original_line, anchor_line):
-                    match = False
-                    break
-            
-            if match:
-                matches.append(i)
-        
-        return matches
-
-    def _find_best_context_match(self, original_lines: List[str], before_lines: List[str], after_lines: List[str]) -> Optional[Tuple[int, str, int]]:
-        """
-        Find the best context match by analyzing both before and after context together.
-        
-        Args:
-            original_lines: Original file lines
-            before_lines: Lines that should appear before the insertion point
-            after_lines: Lines that should appear after the insertion point
-        
-        Returns:
-            Tuple of (insert_position, match_type, anchor_size) or None if no good match found
-        """
-        best_score = 0
-        best_match = None
-        
-        print_current("🔍 DEBUG: Starting best context match search...")
-        
-        # Try different anchor sizes for comprehensive matching
-        for anchor_size in [5, 4, 3, 2, 1]:
-            # Try before context anchors
-            if anchor_size <= len(before_lines):
-                before_anchor = before_lines[-anchor_size:]
-                before_matches = self._find_all_anchor_positions(original_lines, before_anchor)
-                
-                print_current(f"🔍 DEBUG: Anchor size {anchor_size}, before anchor: {before_anchor}, found {len(before_matches)} matches at positions: {before_matches}")
-                
-                for match_pos in before_matches:
-                    # Calculate context score by checking surrounding lines
-                    score = self._calculate_context_score(original_lines, match_pos, before_lines, after_lines, anchor_size, "before")
-                    
-                    # Show context around the match position
-                    context_start = max(0, match_pos - 2)
-                    context_end = min(len(original_lines), match_pos + anchor_size + 2)
-                    context_lines = original_lines[context_start:context_end]
-                    context_preview = [f"L{context_start + i + 1}: {line}" for i, line in enumerate(context_lines)]
-                    
-                    print_current(f"🔍 DEBUG: Before match at line {match_pos + 1}, score: {score}")
-                    print_current(f"🔍 DEBUG: Context around match:\n" + "\n".join(context_preview))
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_match = (match_pos, "before", anchor_size)
-            
-            # Try after context anchors
-            if anchor_size <= len(after_lines):
-                after_anchor = after_lines[:anchor_size]
-                after_matches = self._find_all_anchor_positions(original_lines, after_anchor)
-                
-                print_current(f"🔍 DEBUG: Anchor size {anchor_size}, after anchor: {after_anchor}, found {len(after_matches)} matches at positions: {after_matches}")
-                
-                for match_pos in after_matches:
-                    # Calculate context score by checking surrounding lines
-                    score = self._calculate_context_score(original_lines, match_pos, before_lines, after_lines, anchor_size, "after")
-                    
-                    # Show context around the match position
-                    context_start = max(0, match_pos - 2)
-                    context_end = min(len(original_lines), match_pos + anchor_size + 2)
-                    context_lines = original_lines[context_start:context_end]
-                    context_preview = [f"L{context_start + i + 1}: {line}" for i, line in enumerate(context_lines)]
-                    
-                    print_current(f"🔍 DEBUG: After match at line {match_pos + 1}, score: {score}")
-                    print_current(f"🔍 DEBUG: Context around match:\n" + "\n".join(context_preview))
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_match = (match_pos, "after", anchor_size)
-        
-        # Only return match if score is high enough (at least 2 matching context lines)
-        if best_score >= 2 and best_match is not None:
-            print_current(f"🔍 DEBUG: Best match found: position {best_match[0]}, type {best_match[1]}, anchor_size {best_match[2]}, score {best_score}")
-            return best_match
-        else:
-            print_current(f"🔍 DEBUG: No good match found, best score was {best_score} (minimum required: 2)")
-            return None
-
-    def _calculate_context_score(self, original_lines: List[str], match_pos: int, before_lines: List[str], after_lines: List[str], anchor_size: int, match_type: str) -> int:
-        """
-        Calculate a context score for how well the surrounding lines match.
-        
-        Args:
-            original_lines: Original file lines
-            match_pos: Position of the potential match
-            before_lines: Expected before context
-            after_lines: Expected after context
-            anchor_size: Size of the anchor being tested
-            match_type: Type of match ("before" or "after")
-        
-        Returns:
-            Score indicating quality of context match (higher is better)
-        """
-        score = anchor_size  # Base score from anchor match
-        
-        if match_type == "before":
-            # Check additional context before the anchor
-            additional_before = before_lines[:-anchor_size] if len(before_lines) > anchor_size else []
-            check_pos = match_pos - len(additional_before)
-            
-            if check_pos >= 0:
-                for i, line in enumerate(additional_before):
-                    if check_pos + i < len(original_lines):
-                        if self._lines_match(original_lines[check_pos + i].strip(), line.strip()):
-                            score += 1
-            
-            # Check after context at the position where new content would be inserted
-            check_pos = match_pos + anchor_size
-            for i, line in enumerate(after_lines[:3]):  # Check first 3 lines of after context
-                if check_pos + i < len(original_lines):
-                    if self._lines_match(original_lines[check_pos + i].strip(), line.strip()):
-                        score += 1
-        
-        elif match_type == "after":
-            # Check before context at the position where new content would be inserted
-            check_pos = match_pos - len(before_lines[:3])  # Check last 3 lines of before context
-            
-            if check_pos >= 0:
-                for i, line in enumerate(before_lines[-3:]):  # Check last 3 lines
-                    if check_pos + i < len(original_lines):
-                        if self._lines_match(original_lines[check_pos + i].strip(), line.strip()):
-                            score += 1
-            
-            # Check additional context after the anchor
-            additional_after = after_lines[anchor_size:] if len(after_lines) > anchor_size else []
-            check_pos = match_pos + anchor_size
-            
-            for i, line in enumerate(additional_after):
-                if check_pos + i < len(original_lines):
-                    if self._lines_match(original_lines[check_pos + i].strip(), line.strip()):
-                        score += 1
-        
-        return score
+        return new_content
     
-    def _lines_match(self, line1: str, line2: str) -> bool:
-        """
-        Check if two lines match (ignoring whitespace differences).
-        """
-        # Remove extra whitespace and compare
-        clean1 = ' '.join(line1.split())
-        clean2 = ' '.join(line2.split())
-        return clean1 == clean2
-    
-    def _insert_at_beginning(self, original_lines: List[str], new_lines: List[str]) -> str:
-        """Insert content at the beginning of the file."""
-        print_current(f"📍 Inserting {len(new_lines)} lines at beginning")
-        return '\n'.join(new_lines + original_lines)
-    
-    def _insert_at_end(self, original_lines: List[str], new_lines: List[str]) -> str:
-        """Insert content at the end of the file."""
-        print_current(f"📍 Inserting {len(new_lines)} lines at end")
-        return '\n'.join(original_lines + new_lines)
-    
-    def _safe_append_edit(self, original_lines: List[str], before_lines: List[str], after_lines: List[str]) -> str:
-        """Safe append edit mode."""
-        result_lines = original_lines[:]
-        
-        if before_lines:
-            # Insert before content at a suitable position
-            insert_pos = len(result_lines) // 2  # Middle position
-            result_lines = result_lines[:insert_pos] + before_lines + result_lines[insert_pos:]
-        
-        if after_lines:
-            # Append after content
-            result_lines.extend(after_lines)
-        
-        return '\n'.join(result_lines)
-    
-    def _apply_multiple_marker_edit(self, original_lines: List[str], edit_parts: List[str], marker: str) -> str:
-        """
-        Handle complex cases with multiple existing code markers using anchor detection.
-        """
-        print_current(f"🔧 Handling complex edit with {len(edit_parts)} parts")
-        
-
-        for i, part in enumerate(edit_parts):
-            part_preview = part.strip()[:100].replace('\n', '\\n') if part.strip() else "(empty)"
-            print_current(f"🔍 DEBUG: Multiple marker edit part {i}: {part_preview}...")
-        
-        # For multiple markers, we need to process them sequentially
-        # Start with the original content
-        current_content = '\n'.join(original_lines)
-        
-        # Process pairs of edit parts (before_marker, after_marker)
-        for i in range(0, len(edit_parts) - 1, 2):
-            if i + 1 < len(edit_parts):
-                before_part = edit_parts[i]
-                after_part = edit_parts[i + 1]
-                
-                print_current(f"🔍 DEBUG: Processing marker pair {i//2 + 1}")
-                print_current(f"🔍 DEBUG: Before part: {before_part.strip()[:100] if before_part.strip() else '(empty)'}...")
-                print_current(f"🔍 DEBUG: After part: {after_part.strip()[:100] if after_part.strip() else '(empty)'}...")
-                
-                # Apply single marker edit logic for each pair
-                current_lines = current_content.split('\n')
-                current_content = self._apply_single_marker_edit(current_lines, before_part, after_part)
-        
-        return current_content
-
-    def _get_comment_markers(self, target_file: str) -> Dict[str, str]:
-        """Get appropriate comment markers for the file type."""
-        ext = os.path.splitext(target_file)[1].lower()
-        
-        comment_map = {
-            '.py': {'line': '#', 'block_start': '"""', 'block_end': '"""'},
-            '.js': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.ts': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.jsx': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.tsx': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.java': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.c': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.cpp': {'line': '//', 'block_start': '/*', 'block_end': '*/'},
-            '.html': {'line': '', 'block_start': '<!--', 'block_end': '-->'},
-            '.xml': {'line': '', 'block_start': '<!--', 'block_end': '-->'},
-            '.css': {'line': '', 'block_start': '/*', 'block_end': '*/'},
-            '.md': {'line': '', 'block_start': '<!--', 'block_end': '-->'},
-            '.sh': {'line': '#', 'block_start': '', 'block_end': ''},
-            '.yaml': {'line': '#', 'block_start': '', 'block_end': ''},
-            '.yml': {'line': '#', 'block_start': '', 'block_end': ''},
-        }
-        
-        return comment_map.get(ext, {'line': '//', 'block_start': '/*', 'block_end': '*/'})
-
 
     def file_search(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -1306,29 +920,8 @@ class FileSystemTools:
         if not file_exists or edit_mode in ["append", "full_replace"]:
             return False
         
-        # For lines_replace mode, be more flexible with safety checks
+        # For lines_replace mode, no special safety checks needed since we have old_code parameter
         if edit_mode == "lines_replace":
-            # Check if existing code marker is present
-            existing_code_patterns = [
-                '// ... existing code ...',
-                '# ... existing code ...',
-                '/* ... existing code ...',
-                '<!-- ... existing code -->',
-            ]
-            
-            has_existing_marker = any(pattern in new_content for pattern in existing_code_patterns)
-            
-            # If no existing code marker found, only warn for very short content
-            if not has_existing_marker:
-                # Only block if the new content is suspiciously short compared to original
-                if len(original_content.strip()) > 200 and len(new_content.strip()) < 30:
-                    print_current("🚨 Safety check: Original file has substantial content but new content is very short")
-                    return True
-                else:
-                    # Allow the edit but log a warning
-                    print_current("⚠️ lines_replace mode without existing code markers - treating as full replacement")
-                    return False
-            
             return False
         
         # For other modes, apply stricter checks
@@ -1670,12 +1263,6 @@ class FileSystemTools:
         
         processed_content = content
         
-        # Convert \n markers to actual newlines
-        # Only convert literal \n (not already converted newlines)
-        if '\\n' in processed_content:
-            processed_content = processed_content.replace('\\n', '\n')
-            print_current(f"📝 Converted \\n markers to actual newlines in markdown file")
-        
         # Ensure file ends with two newlines (two empty lines) for markdown files
         if processed_content:
             if not processed_content.endswith('\n\n'):
@@ -1689,5 +1276,397 @@ class FileSystemTools:
                     print_debug(f"Added two newlines at end of markdown file")
         
         return processed_content
+    
+    def _preprocess_bullet_formatting(self, content: str) -> str:
+        """Preprocess Markdown files to fix bullet point formatting issues
+        
+        Ensure there is a blank line before bullet points so that Pandoc recognizes them as separate lists.
+        """
+        lines = content.split('\n')
+        processed_lines = []
+        
+        for i, line in enumerate(lines):
+            processed_lines.append(line)
+            
+            # Check if the current line is not empty, and the next line is a bullet point
+            if (line.strip() and 
+                i + 1 < len(lines) and 
+                lines[i + 1].strip().startswith('- ') and
+                not line.strip().startswith('- ') and  # Current line is not a bullet point
+                (i == 0 or lines[i - 1].strip() != '')):  # Previous line is not empty
+                
+                # Add a blank line after the current line to ensure the following bullet point is recognized correctly
+                processed_lines.append('')
+        
+        return '\n'.join(processed_lines)
+
+    def parse_doc_to_md(self, folder_path: str) -> Dict[str, Any]:
+        """
+        Recursively traverse a folder and convert document files to markdown using markitdown.
+        
+        Args:
+            folder_path: Path to the folder to process
+            
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            # Import markitdown
+            from markitdown import MarkItDown
+            markitdown = MarkItDown()
+        except ImportError:
+            return {
+                'status': 'failed',
+                'error': 'markitdown library not found. Please install it with: pip install markitdown',
+                'folder': folder_path
+            }
+        
+        # Resolve the folder path
+        resolved_folder = self._resolve_path(folder_path)
+        
+        if not os.path.exists(resolved_folder):
+            return {
+                'status': 'failed',
+                'error': f'Folder not found: {resolved_folder}',
+                'folder': folder_path
+            }
+        
+        if not os.path.isdir(resolved_folder):
+            return {
+                'status': 'failed',
+                'error': f'Path is not a directory: {resolved_folder}',
+                'folder': folder_path
+            }
+        
+        # Define supported document extensions
+        doc_extensions = {'.docx', '.doc', '.pdf', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.rtf'}
+        
+        processed_files = []
+        failed_files = []
+        skipped_files = []
+        
+        print_current(f"📁 Starting document parsing in folder: {resolved_folder}")
+        
+        # Recursively walk through all files
+        for root, dirs, files in os.walk(resolved_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_ext = os.path.splitext(file)[1].lower()
+                
+                # Check if it's a supported document type
+                if file_ext not in doc_extensions:
+                    continue
+                
+                # Get relative path for display
+                rel_path = os.path.relpath(file_path, self.workspace_root)
+                
+                # Generate output markdown filename
+                base_name = os.path.splitext(file)[0]
+                md_filename = base_name + '.md'
+                md_path = os.path.join(root, md_filename)
+                
+                # Skip if markdown file already exists and is newer than source
+                if os.path.exists(md_path):
+                    src_mtime = os.path.getmtime(file_path)
+                    md_mtime = os.path.getmtime(md_path)
+                    if md_mtime >= src_mtime:
+                        skipped_files.append({
+                            'file': rel_path,
+                            'reason': 'markdown file already exists and is newer'
+                        })
+                        continue
+                
+                print_current(f"🔄 Converting: {rel_path}")
+                
+                try:
+                    # Convert document to markdown
+                    result = markitdown.convert(file_path)
+                    
+                    if result and hasattr(result, 'text_content'):
+                        markdown_content = result.text_content
+                        
+                        # Write the markdown content to file
+                        with open(md_path, 'w', encoding='utf-8') as f:
+                            f.write(markdown_content)
+                        
+                        processed_files.append({
+                            'source': rel_path,
+                            'output': os.path.relpath(md_path, self.workspace_root),
+                            'size': len(markdown_content)
+                        })
+                        
+                        print_current(f"✅ Converted: {rel_path} → {os.path.basename(md_path)}")
+                    else:
+                        failed_files.append({
+                            'file': rel_path,
+                            'error': 'No content returned from markitdown conversion'
+                        })
+                        print_current(f"❌ Failed to convert: {rel_path} - No content returned")
+                        
+                except Exception as e:
+                    failed_files.append({
+                        'file': rel_path,
+                        'error': str(e)
+                    })
+                    print_current(f"❌ Failed to convert: {rel_path} - {str(e)}")
+        
+        # Summary
+        total_processed = len(processed_files)
+        total_failed = len(failed_files)
+        total_skipped = len(skipped_files)
+        
+        print_current(f"📊 Conversion complete:")
+        print_current(f"   ✅ Processed: {total_processed} files")
+        print_current(f"   ❌ Failed: {total_failed} files")
+        print_current(f"   ⏭️ Skipped: {total_skipped} files")
+        
+        return {
+            'status': 'success',
+            'folder': folder_path,
+            'resolved_folder': resolved_folder,
+            'summary': {
+                'processed': total_processed,
+                'failed': total_failed,
+                'skipped': total_skipped,
+                'total_files': total_processed + total_failed + total_skipped
+            },
+            'processed_files': processed_files,
+            'failed_files': failed_files,
+            'skipped_files': skipped_files
+        }
+
+    def _convert_markdown_to_formats(self, file_path: str, target_file: str) -> Dict[str, Any]:
+        """
+        Convert Markdown files to Word and PDF formats
+        
+        Args:
+            file_path: Absolute path of Markdown file
+            target_file: Relative path of Markdown file
+            
+        Returns:
+            Dictionary containing conversion results
+        """
+        import subprocess
+        from pathlib import Path
+        
+        try:
+            md_path = Path(file_path)
+            base_name = md_path.stem
+            output_dir = md_path.parent
+            
+            # Generate output filename
+            word_file = output_dir / f"{base_name}.docx"
+            pdf_file = output_dir / f"{base_name}.pdf"
+            
+            conversion_results = {
+                'status': 'success',
+                'markdown_file': target_file,
+                'conversions': {}
+            }
+            
+            # Convert to Word document
+            print_current(f"📄 Converting Markdown to Word document: {word_file.name}")
+            try:
+                # Use pandoc to convert to Word
+                cmd = [
+                    'pandoc',
+                    md_path.name,  # Use filename instead of full path
+                    '-o', word_file.name,  # Use filename instead of full path
+                    '--from', 'markdown',
+                    '--to', 'docx'
+                ]
+                
+                # Execute command in markdown file directory
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
+                
+                if word_file.exists():
+                    file_size = word_file.stat().st_size
+                    conversion_results['conversions']['word'] = {
+                        'status': 'success',
+                        'file': str(word_file.relative_to(self.workspace_root)),
+                        'size': file_size,
+                        'size_kb': f"{file_size / 1024:.1f} KB"
+                    }
+                    print_current(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
+                else:
+                    conversion_results['conversions']['word'] = {
+                        'status': 'failed',
+                        'error': 'Word file not generated'
+                    }
+                    print_current(f"❌ Word document conversion failed: File not generated")
+                    
+            except subprocess.CalledProcessError as e:
+                conversion_results['conversions']['word'] = {
+                    'status': 'failed',
+                    'error': f'pandoc conversion failed: {e.stderr}'
+                }
+                print_current(f"❌ Word document conversion failed: {e.stderr}")
+            except Exception as e:
+                conversion_results['conversions']['word'] = {
+                    'status': 'failed',
+                    'error': f'Conversion exception: {str(e)}'
+                }
+                print_current(f"❌ Word document conversion exception: {str(e)}")
+            
+            # Convert to PDF document
+            print_current(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
+            try:
+                # Use trans_md_to_pdf.py script to convert to PDF
+                trans_script = Path(__file__).parent.parent / "utils" / "trans_md_to_pdf.py"
+                
+                if trans_script.exists():
+                    cmd = [
+                        'python3',
+                        str(trans_script),
+                        md_path.name,  # Use filename instead of full path
+                        pdf_file.name  # Use filename instead of full path
+                    ]
+                    
+                    # Execute command in markdown file directory
+                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+                    
+                    if result.returncode == 0 and pdf_file.exists():
+                        file_size = pdf_file.stat().st_size
+                        conversion_results['conversions']['pdf'] = {
+                            'status': 'success',
+                            'file': str(pdf_file.relative_to(self.workspace_root)),
+                            'size': file_size,
+                            'size_kb': f"{file_size / 1024:.1f} KB"
+                        }
+                        print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                    else:
+                        # If trans_md_to_pdf.py fails
+                        print_current(f"⚠️ trans_md_to_pdf.py conversion failed...")
+                        error_msg = result.stderr if result.stderr else result.stdout
+                        print_current(f"   Error message: {error_msg}")
+                        
+                        # Use pandoc directly for conversion
+                        try:
+                            direct_cmd = [
+                                'pandoc',
+                                md_path.name,
+                                '-o', pdf_file.name,
+                                '--pdf-engine=xelatex',
+                                '-V', 'CJKmainfont=Noto Serif CJK SC',
+                                '-V', 'CJKsansfont=Noto Sans CJK SC',
+                                '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
+                                '-V', 'mainfont=DejaVu Serif',
+                                '-V', 'sansfont=DejaVu Sans',
+                                '-V', 'monofont=DejaVu Sans Mono',
+                                '-V', 'fontsize=12pt',
+                                '-V', 'geometry:margin=2.5cm',
+                                '-V', 'geometry:a4paper',
+                                '-V', 'linestretch=1.5',
+                                '--highlight-style=tango',
+                                '-V', 'colorlinks=true',
+                                '-V', 'linkcolor=blue',
+                                '-V', 'urlcolor=blue',
+                                '--toc',
+                                '--wrap=preserve'
+                            ]
+                            
+                            direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
+                            
+                            if direct_result.returncode == 0 and pdf_file.exists():
+                                file_size = pdf_file.stat().st_size
+                                conversion_results['conversions']['pdf'] = {
+                                    'status': 'success',
+                                    'file': str(pdf_file.relative_to(self.workspace_root)),
+                                    'size': file_size,
+                                    'size_kb': f"{file_size / 1024:.1f} KB",
+                                    'method': 'direct_pandoc'
+                                }
+                                print_current(f"✅ PDF document conversion successful (Direct pandoc): {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                            else:
+                                conversion_results['conversions']['pdf'] = {
+                                    'status': 'failed',
+                                    'error': f'Direct pandoc conversion also failed: {direct_result.stderr if direct_result.stderr else "Unknown error"}'
+                                }
+                                print_current(f"❌ PDF document conversion failed (Direct pandoc): {direct_result.stderr if direct_result.stderr else 'Unknown error'}")
+                        except Exception as e:
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'failed',
+                                'error': f'Direct pandoc conversion exception: {str(e)}'
+                            }
+                            print_current(f"❌ PDF document conversion exception (Direct pandoc): {str(e)}")
+                else:
+                    # If trans_md_to_pdf.py doesn't exist
+                    print_current(f"⚠️ trans_md_to_pdf.py script doesn't exist")
+                    cmd = [
+                        'pandoc',
+                        md_path.name,  # Use filename instead of full path
+                        '-o', pdf_file.name,  # Use filename instead of full path
+                        '--pdf-engine=xelatex',
+                        '-V', 'CJKmainfont=Noto Serif CJK SC',
+                        '-V', 'CJKsansfont=Noto Sans CJK SC',
+                        '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
+                        '-V', 'mainfont=DejaVu Serif',
+                        '-V', 'sansfont=DejaVu Sans',
+                        '-V', 'monofont=DejaVu Sans Mono',
+                        '-V', 'fontsize=12pt',
+                        '-V', 'geometry:margin=2.5cm',
+                        '-V', 'geometry:a4paper',
+                        '-V', 'linestretch=1.5',
+                        '--highlight-style=tango',
+                        '-V', 'colorlinks=true',
+                        '-V', 'linkcolor=blue',
+                        '-V', 'urlcolor=blue',
+                        '--toc',
+                        '--wrap=preserve'
+                    ]
+                    
+                    # Execute command in markdown file directory
+                    result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
+                    
+                    if pdf_file.exists():
+                        file_size = pdf_file.stat().st_size
+                        conversion_results['conversions']['pdf'] = {
+                            'status': 'success',
+                            'file': str(pdf_file.relative_to(self.workspace_root)),
+                            'size': file_size,
+                            'size_kb': f"{file_size / 1024:.1f} KB"
+                        }
+                        print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                    else:
+                        conversion_results['conversions']['pdf'] = {
+                            'status': 'failed',
+                            'error': 'PDF file not generated'
+                        }
+                        print_current(f"❌ PDF document conversion failed: File not generated")
+                        
+            except subprocess.CalledProcessError as e:
+                conversion_results['conversions']['pdf'] = {
+                    'status': 'failed',
+                    'error': f'PDF conversion failed: {e.stderr}'
+                }
+                print_current(f"❌ PDF document conversion failed: {e.stderr}")
+            except Exception as e:
+                conversion_results['conversions']['pdf'] = {
+                    'status': 'failed',
+                    'error': f'PDF conversion exception: {str(e)}'
+                }
+                print_current(f"❌ PDF document conversion exception: {str(e)}")
+            
+            # Check conversion results
+            successful_conversions = sum(1 for conv in conversion_results['conversions'].values() 
+                                       if conv.get('status') == 'success')
+            total_conversions = len(conversion_results['conversions'])
+            
+            if successful_conversions > 0:
+                print_current(f"📊 Conversion completed: {successful_conversions}/{total_conversions} formats converted successfully")
+            else:
+                print_current(f"⚠️ All format conversions failed")
+                conversion_results['status'] = 'partial_failure'
+            
+            return conversion_results
+            
+        except Exception as e:
+            print_current(f"❌ Error occurred during Markdown conversion: {str(e)}")
+            return {
+                'status': 'failed',
+                'markdown_file': target_file,
+                'error': str(e),
+                'message': f'Error occurred during conversion: {str(e)}'
+            }
 
  

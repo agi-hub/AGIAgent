@@ -76,16 +76,14 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
-from .print_system import print_current, print_system_info, print_error, print_debug
+from .print_system import print_current, print_system, print_error, print_debug
 
 # FastMCP integration
 try:
     from .fastmcp_wrapper import get_fastmcp_wrapper, initialize_fastmcp_wrapper, is_fastmcp_initialized, FASTMCP_AVAILABLE
     FASTMCP_INTEGRATION_AVAILABLE = True
-    print_debug("✅ FastMCP integration available")
 except ImportError:
     FASTMCP_INTEGRATION_AVAILABLE = False
-    print_debug("⚠️ FastMCP integration not available")
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -402,9 +400,9 @@ class MCPClient:
                     continue
             
             if len(self.servers) > 0:
-                print_system_info(f"📋 MCP client loaded {len(self.servers)} servers")
+                print_system(f"📋 MCP client loaded {len(self.servers)} servers")
             else:
-                print_system_info(f"📋 MCP client found no applicable servers (NPX/NPM servers handled by cli-mcp wrapper)")
+                print_system(f"📋 MCP client found no applicable servers (NPX/NPM servers handled by cli-mcp wrapper)")
                 
             return len(self.servers) >= 0  # Allow zero servers as NPX/NPM servers are handled elsewhere
             
@@ -671,7 +669,7 @@ class MCPClient:
                 headers["Authorization"] = f"Bearer {server.auth_token}"
             
             # Send HTTP request
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None, 
                 self._make_http_request,
@@ -776,7 +774,7 @@ class MCPClient:
                     headers["Authorization"] = f"Bearer {server.auth_token}"
             
             # Send request
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 self._make_adapter_request,
@@ -856,7 +854,7 @@ class MCPClient:
             print_current(f"📝 Request data: {request_data}")
             
             # Send SSE request
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 self._make_sse_request,

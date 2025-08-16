@@ -19,4 +19,7 @@ eventlet>=0.30.0
 cli-mcp
 fastmcp
 
+# for document parsing
+markitdown
+
 

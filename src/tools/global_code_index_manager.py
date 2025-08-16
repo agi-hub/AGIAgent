@@ -9,7 +9,7 @@ import os
 import threading
 import atexit
 from typing import Dict, Optional
-from .print_system import print_current, print_system_info, print_debug, print_error
+from .print_system import print_current, print_system, print_debug, print_error
 
 
 class GlobalCodeIndexManager:
@@ -86,7 +86,7 @@ class GlobalCodeIndexManager:
                     
                     if success:
                         self._parsers[workspace_root] = parser
-                        print_system_info(f"🔧 Global manager: Created code parser for workspace: {os.path.basename(workspace_root)}")
+                        print_system(f"🔧 Global manager: Created code parser for workspace: {os.path.basename(workspace_root)}")
                     else:
                         print_error(f"❌ Global manager: Failed to initialize parser for: {workspace_root}")
                         return None

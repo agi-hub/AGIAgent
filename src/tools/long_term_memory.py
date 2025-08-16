@@ -33,7 +33,7 @@ except ImportError as e:
     get_logger = lambda name: None
     _MEM_AVAILABLE = False
 
-from .print_system import print_current, print_system_info, print_error, print_debug
+from .print_system import print_current, print_system, print_error, print_debug
 
 
 class LongTermMemoryManager:
@@ -78,8 +78,14 @@ class LongTermMemoryManager:
     def _initialize_memory_manager(self):
         """Initialize the memory manager"""
         try:
+            # Check if long-term memory is enabled via environment variable
+            if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
+                print_system("⚠️ Long-term memory is disabled via environment variable AGIBOT_LONG_TERM_MEMORY")
+                self.initialized = False
+                return
+            
             if MemManagerAgent is None:
-                print_system_info("⚠️ mem module not properly imported, long-term memory will use a simplified implementation")
+                print_system("⚠️ mem module not properly imported, long-term memory will use a simplified implementation")
                 self.initialized = False
                 return
 
@@ -94,9 +100,9 @@ class LongTermMemoryManager:
             health_status = self.memory_manager.health_check()
             if health_status.get("success", False):
                 self.initialized = True
-                print_system_info("✅ Long-term memory manager initialized successfully")
+                print_system("✅ Long-term memory manager initialized successfully")
             else:
-                print_system_info(f"⚠️ Long-term memory manager health check failed: {health_status.get('error', 'Unknown error')}")
+                print_system(f"⚠️ Long-term memory manager health check failed: {health_status.get('error', 'Unknown error')}")
                 self.initialized = False
 
         except Exception as e:
@@ -425,9 +431,8 @@ class LongTermMemoryManager:
                 # If memory manager has a cleanup method, call it
                 if hasattr(self.memory_manager, 'cleanup'):
                     self.memory_manager.cleanup()
-            print_debug("🧹 Long-term memory manager cleaned up")
         except Exception as e:
-            print_debug(f"⚠️ Error cleaning up long-term memory manager: {e}")
+            pass
 
 
 class LongTermMemoryTools:

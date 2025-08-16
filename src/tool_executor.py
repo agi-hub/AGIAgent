@@ -21,19 +21,24 @@ import json
 import re
 import argparse
 import datetime
-from typing import Dict, Any, List, Optional, Union, Tuple
-from openai import OpenAI
-from tools.print_system import (print_system, print_current, streaming_context,
-                                print_debug, print_system_info, print_tool_call, print_tool_result,
-                                print_error)
-from tools.debug_system import track_operation, finish_operation
-from tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
-from tools.mcp_client import safe_cleanup_mcp_client
-from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
+import sys
 import base64
 import mimetypes
 import threading
 import logging
+import time
+
+from typing import Dict, Any, List, Optional, Union, Tuple
+from openai import OpenAI
+from src.tools.print_system import (print_system, print_current, streaming_context,
+                                print_debug, print_system, print_current, print_current,
+                                print_error)
+from src.tools.agent_context import get_current_agent_id
+from src.tools.debug_system import track_operation, finish_operation
+from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
+from src.tools.mcp_client import safe_cleanup_mcp_client
+from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
+from src.tools.message_system import get_message_router
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -42,7 +47,6 @@ logger = logging.getLogger(__name__)
 
 # Import get_info utilities
 from utils.get_info import (
-    get_ip_location_info,
     get_system_environment_info,
     get_workspace_info,
     format_file_size,
@@ -126,7 +130,8 @@ class ToolExecutor:
                  streaming: Optional[bool] = None,
                  interactive_mode: bool = False,
                  MCP_config_file: Optional[str] = None,
-                 prompts_folder: Optional[str] = None):
+                 prompts_folder: Optional[str] = None,
+                 user_id: Optional[str] = None):
         """
         Initialize the ToolExecutor
         
@@ -142,6 +147,7 @@ class ToolExecutor:
             interactive_mode: Whether to enable interactive mode
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
+            user_id: User ID for MCP knowledge base tools
         """
         # Load API key from config/config.txt if not provided
         if api_key is None:
@@ -163,7 +169,7 @@ class ToolExecutor:
             if api_base is None:
                 raise ValueError("API base URL not found. Please provide api_base parameter or set it in config/config.txt")
         
-        # Load streaming configuration from config/config.txt if not provided
+        # Load streaming configuration from config/config.txt
         if streaming is None:
             streaming = get_streaming()
         self.streaming = streaming
@@ -191,6 +197,9 @@ class ToolExecutor:
         # Store custom file paths
         self.MCP_config_file = MCP_config_file or "config/mcp_servers.json"
         self.prompts_folder = prompts_folder or "prompts"
+        
+        # Store user ID for MCP knowledge base tools
+        self.user_id = user_id
         
         # Set api_base first
         self.api_base = api_base
@@ -235,7 +244,7 @@ class ToolExecutor:
         # print_system(f"   Streaming: {'✅ Enabled' if self.streaming else '❌ Disabled (Batch mode)'}")  # Commented out to reduce terminal noise
         # print_system(f"   Cache Optimization: ✅ Enabled (All rounds use combined prompts for maximum cache hits)")  # Commented out to reduce terminal noise
         # print_system(f"   History Summarization: {'✅ Enabled' if self.summary_history else '❌ Disabled'} (Trigger: {self.summary_trigger_length} chars, Max: {self.summary_max_length} chars)")  # Commented out to reduce terminal noise
-        # print_system(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects codebase_search and web_search terminal display)")  # Commented out to reduce terminal noise
+        # print_system(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects workspace_search and web_search terminal display)")  # Commented out to reduce terminal noise
         # if debug_mode:
         #     print_system(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
         
@@ -258,23 +267,29 @@ class ToolExecutor:
             llm_api_base=self.api_base,
             enable_llm_filtering=False,  # Disable LLM filtering by default for faster responses
             enable_summary=get_web_search_summary(),  # Load web search summary setting from config
-            out_dir=out_dir
+            out_dir=out_dir,
+            user_id=self.user_id
         )
         
         # Initialize long-term memory system
         try:
-            from tools.long_term_memory import LongTermMemoryTools
-            # 长期记忆现在存储在项目根目录，不再需要workspace_root参数
-            # 配置文件会自动从项目根目录加载
-            self.long_term_memory = LongTermMemoryTools(
-                workspace_root=self.workspace_dir  # 仅用于兼容性，实际存储在项目根目录
-            )
-            #print_current("✅ Long-term memory system initialized successfully (global shared storage)")
+            # Check if long-term memory is enabled via environment variable
+            if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
+                print_current("⚠️ Long-term memory is disabled via environment variable AGIBOT_LONG_TERM_MEMORY")
+                self.long_term_memory = None
+            else:
+                from tools.long_term_memory import LongTermMemoryTools
+                # Long-term memory is now stored in the project root directory
+                # Configuration files will be automatically loaded from the project root directory
+                self.long_term_memory = LongTermMemoryTools(
+                    workspace_root=self.workspace_dir  # 仅用于兼容性，实际存储在项目根目录
+                )
+                #print_current("✅ Long-term memory system initialized successfully (global shared storage)")
         except ImportError as e:
-            print_current(f"⚠️ 长期记忆模块导入失败: {e}")
+            print_current(f"⚠️ Long-term memory module import failed: {e}")
             self.long_term_memory = None
         except Exception as e:
-            print_current(f"⚠️ 长期记忆系统初始化失败: {e}")
+            print_current(f"⚠️ Long-term memory system initialization failed: {e}")
             self.long_term_memory = None
         
         # Initialize history optimizer for image data optimization
@@ -289,7 +304,6 @@ class ToolExecutor:
         # Initialize multi-agent tools directly if enabled
         if self.multi_agent:
             from tools.multiagents import MultiAgentTools
-            # 🔧 修复：传递debug_mode参数给MultiAgentTools
             self.multi_agent_tools = MultiAgentTools(self.workspace_dir, debug_mode=self.debug_mode)
         else:
             self.multi_agent_tools = None
@@ -313,13 +327,14 @@ class ToolExecutor:
         else:
             self.conversation_summarizer = None
         
+        
         # Helper function for disabled multi-agent tools
         def _multi_agent_disabled_error(*args, **kwargs):
             return {"status": "error", "message": "Multi-agent functionality is disabled. Enable it in config/config.txt by setting multi_agent=True"}
         
         # Map of tool names to their implementation methods
         self.tool_map = {
-            "codebase_search": self.tools.codebase_search,
+            "workspace_search": self.tools.workspace_search,
             "read_file": self.tools.read_file,
             "run_terminal_cmd": self.tools.run_terminal_cmd,
             "list_dir": self.tools.list_dir,
@@ -335,6 +350,7 @@ class ToolExecutor:
             "idle": self.tools.idle,
             "get_sensor_data": self.tools.get_sensor_data,
             "todo_update": self.tools.todo_update,  # Add todo task status update tool
+            "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
         }
         
         # Add long-term memory tools if available
@@ -344,11 +360,11 @@ class ToolExecutor:
                 "recall_memories_by_time": self.long_term_memory.recall_memories_by_time,
                 "get_memory_summary": self.long_term_memory.get_memory_summary,
             })
-            print_system_info("🧠 Long-term memory tools registered")
+            print_system("🧠 Long-term memory tools registered")
         else:
             # Add error handlers for disabled memory tools
             def _memory_disabled_error(*args, **kwargs):
-                return {"status": "error", "message": "长期记忆功能未启用或初始化失败"}
+                return {"status": "error", "message": "Long-term memory feature not enabled or initialization failed"}
             
             self.tool_map.update({
                 "recall_memories": _memory_disabled_error,
@@ -359,35 +375,27 @@ class ToolExecutor:
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
             self.tool_map.update({
-                "spawn_agibot": self.multi_agent_tools.spawn_agibot,
-                "send_message_to_agent_or_manager": self.multi_agent_tools.send_message_to_agent_or_manager,
-                "get_agent_messages": self.multi_agent_tools.get_agent_messages,
+                "spawn_agent": self.multi_agent_tools.spawn_agent,
+                "send_P2P_message": self.multi_agent_tools.send_P2P_message,
+                "read_received_messages": self.multi_agent_tools.read_received_messages,
                 "send_status_update_to_manager": self.multi_agent_tools.send_status_update_to_manager,
-                "broadcast_message_to_agents": self.multi_agent_tools.broadcast_message_to_agents,
+                "send_broadcast_message": self.multi_agent_tools.send_broadcast_message,
                 "get_agent_session_info": self.multi_agent_tools.get_agent_session_info,
-                "terminate_agibot": self.multi_agent_tools.terminate_agibot
+                "terminate_agent": self.multi_agent_tools.terminate_agent
             })
         else:
             # Add error handlers for disabled multi-agent tools
             self.tool_map.update({
-                "spawn_agibot": _multi_agent_disabled_error,
-                "send_message_to_agent_or_manager": _multi_agent_disabled_error,
-                "get_agent_messages": _multi_agent_disabled_error,
+                "spawn_agent": _multi_agent_disabled_error,
+                "send_P2P_message": _multi_agent_disabled_error,
+                "read_received_messages": _multi_agent_disabled_error,
                 "send_status_update_to_manager": _multi_agent_disabled_error,
-                "broadcast_message_to_agents": _multi_agent_disabled_error,
+                "send_broadcast_message": _multi_agent_disabled_error,
                 "get_agent_session_info": _multi_agent_disabled_error,
-                "terminate_agibot": _multi_agent_disabled_error,
+                "terminate_agent": _multi_agent_disabled_error,
             })
         
-        # Add plugin tools if available
-        if hasattr(self.tools, 'kb_search'):
-            self.tool_map.update({
-                "kb_search": self.tools.kb_search,
-                "kb_content": self.tools.kb_content,
-                "kb_body": self.tools.kb_body
-            })
-            # print_current("🔌 Plugin tools registered: kb_search, kb_content, kb_body")
-        
+
         # Initialize MCP clients - support both cli-mcp and direct MCP implementation
         self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
         # Create direct MCP client with specific config file instead of using global singleton
@@ -399,7 +407,7 @@ class ToolExecutor:
         # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             if loop.is_running():
                 # We're in an async context, use thread pool for initialization
                 import concurrent.futures
@@ -409,7 +417,7 @@ class ToolExecutor:
                         future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
                         self.direct_mcp_initialized = future_direct.result(timeout=10)
                         if self.direct_mcp_initialized:
-                            print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                            print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
                     except Exception as e:
                         print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                         self.direct_mcp_initialized = False
@@ -421,12 +429,12 @@ class ToolExecutor:
                             future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
                             self.cli_mcp_initialized = future_cli.result(timeout=10)
                             if self.cli_mcp_initialized:
-                                print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                                print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
                         except Exception as e:
-                            print_system_info(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                            print_system(f"⚠️ cli-mcp client startup initialization failed: {e}")
                             self.cli_mcp_initialized = False
                     else:
-                        print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                        print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
                         self.cli_mcp_initialized = False
             else:
                 # Safe to run async initialization directly
@@ -434,7 +442,7 @@ class ToolExecutor:
                 try:
                     self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
                     if self.direct_mcp_initialized:
-                        print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                        print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
                 except Exception as e:
                     print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                     self.direct_mcp_initialized = False
@@ -445,12 +453,12 @@ class ToolExecutor:
                     try:
                         self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                         if self.cli_mcp_initialized:
-                            print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                            print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
                     except Exception as e:
                         print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
                         self.cli_mcp_initialized = False
                 else:
-                    print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                    print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
                     self.cli_mcp_initialized = False
         except RuntimeError:
             # No event loop, safe to create one
@@ -458,7 +466,7 @@ class ToolExecutor:
             try:
                 self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
                 if self.direct_mcp_initialized:
-                    print_system_info(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                    print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
             except Exception as e:
                 print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
                 self.direct_mcp_initialized = False
@@ -469,12 +477,12 @@ class ToolExecutor:
                 try:
                     self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                     if self.cli_mcp_initialized:
-                        print_system_info(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                        print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
                 except Exception as e:
                     print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
                     self.cli_mcp_initialized = False
             else:
-                print_system_info("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
                 self.cli_mcp_initialized = False
         
         # Add MCP tools to tool_map after successful initialization
@@ -512,7 +520,7 @@ class ToolExecutor:
             if not self.cli_mcp_initialized:
                 self.cli_mcp_initialized = await initialize_cli_mcp_wrapper(self.MCP_config_file)
                 if self.cli_mcp_initialized:
-                    print_system_info("✅ cli-mcp client initialized successfully")
+                    print_system("✅ cli-mcp client initialized successfully")
                 else:
                     print_current("⚠️ cli-mcp client initialization failed")
             
@@ -721,21 +729,21 @@ class ToolExecutor:
                 logger.error(f"Failed to add cli-mcp tools to mapping: {e}")
                 self.cli_mcp_initialized = False
         
-        # Add direct MCP client tools (SSE format) - 但跳过已处理的工具
+        # Add direct MCP client tools (SSE format) - but skip tools already handled
         if self.direct_mcp_initialized and self.direct_mcp_client:
             try:
-                # Get available MCP tools from direct MCP client
+                # Get available MCP tools from the direct MCP client
                 direct_mcp_tools = self.direct_mcp_client.get_available_tools()
                 
                 if direct_mcp_tools:
                     direct_mcp_tools_added = []
                     for tool_name in direct_mcp_tools:
-                        # 智能检查SSE MCP工具是否被FastMCP处理
+                        # Intelligently check if the SSE MCP tool is already handled by FastMCP
                         should_skip = False
                         skip_reason = ""
                         
-                        # SSE MCP工具名通常就是服务器名
-                        # 检查1: 服务器名是否被FastMCP处理
+                        # SSE MCP tool names are usually the server name
+                        # Check 1: Is the server name handled by FastMCP?
                         for fastmcp_server in fastmcp_server_names:
                             if (tool_name == fastmcp_server or 
                                 tool_name.replace('-', '_') == fastmcp_server.replace('-', '_')):
@@ -743,15 +751,15 @@ class ToolExecutor:
                                 skip_reason = f"server {fastmcp_server} handled by FastMCP"
                                 break
                         
-                        # 检查2: 工具名是否直接在FastMCP工具列表中
+                        # Check 2: Is the tool name directly in the FastMCP tool list?
                         if not should_skip and tool_name in fastmcp_tools_added:
                             should_skip = True
                             skip_reason = f"exact tool name in FastMCP"
                         
-                        # 检查3: 如果有FastMCP工具且服务器名匹配模式
+                        # Check 3: If there are FastMCP tools and the server name matches the pattern
                         if not should_skip and fastmcp_tools_added:
                             for fastmcp_tool in fastmcp_tools_added:
-                                # 检查FastMCP工具是否来自同一服务器
+                                # Check if the FastMCP tool is from the same server
                                 if (tool_name in fastmcp_tool or 
                                     fastmcp_tool.startswith(tool_name.replace('-', '_')) or 
                                     tool_name.replace('-', '_') in fastmcp_tool):
@@ -1010,7 +1018,7 @@ class ToolExecutor:
                 # Load only rules and plugin prompts (excluding deprecated tool files)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
-                    os.path.join(self.prompts_folder, "plugin_tool_prompts.txt"),
+                    os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
                     os.path.join(self.prompts_folder, "user_rules.txt")
                 ]
                 
@@ -1044,7 +1052,7 @@ class ToolExecutor:
                 # For standard tool calling, load only rules (no tool descriptions needed)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
-                    os.path.join(self.prompts_folder, "plugin_tool_prompts.txt"),
+                    os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
                     os.path.join(self.prompts_folder, "user_rules.txt")
                 ]
                 
@@ -1105,8 +1113,18 @@ class ToolExecutor:
             if record.get("role") == "system":
                 continue
             elif "prompt" in record and "result" in record:
-                # Add clear separator line for each round
-                message_parts.append(f"### Previous round {i}:")
+                # Add clear separator line for each round with improved labeling
+                if record.get("is_summary", False):
+                    message_parts.append(f"### Summary of Earlier Rounds:")
+                else:
+                    # Calculate position relative to end for recent rounds
+                    position_from_end = len(task_history) - i
+                    if position_from_end == 0:
+                        message_parts.append(f"### Most Recent Round:")
+                    elif position_from_end == 1:
+                        message_parts.append(f"### Second Most Recent Round:")
+                    else:
+                        message_parts.append(f"### Recent Round (T-{position_from_end}):")
                 message_parts.append("")
                 
                 # Format user request with consistent line breaks
@@ -1150,9 +1168,9 @@ class ToolExecutor:
                 
                 # Display tool calls if present
                 if tool_calls_section:
-                    message_parts.append("**Tool Calls:**")
+                    message_parts.append("**LLM Called Following Tools:**")
                     message_parts.append(tool_calls_section)
-                    message_parts.append("")
+                    #message_parts.append("")
                 
                 # Display tool execution results if present
                 if tool_results_section:
@@ -1323,11 +1341,11 @@ class ToolExecutor:
         original_history_id = id(task_history)  # Track if we modify the history
         history_was_optimized = False
         
-        # 🔧 Initialize current_round_images if not exists
+        # Initialize current_round_images if not exists
         if not hasattr(self, 'current_round_images'):
             self.current_round_images = []
         
-        # �� NEW: Track if get_sensor_data was called in current round
+        # Track if get_sensor_data was called in current round
         current_round_has_sensor_data = False
         round_counter = execution_round
         
@@ -1363,8 +1381,6 @@ class ToolExecutor:
             # Execute LLM call with standard tools
             content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
             
-            # 🔧 DEBUG: Check current_round_images status
-            #print_current(f"🔍 DEBUG: After LLM call, current_round_images status: {len(self.current_round_images) if self.current_round_images else 0} images")
             
             # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
             print_debug(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
@@ -1415,7 +1431,7 @@ class ToolExecutor:
             
             # If TASK_COMPLETED but no tool calls, complete the task
             if has_task_completed and not has_tool_calls:
-                print_debug(f"🎉 TASK_COMPLETED flag detected in content, task completed!")
+                # Remove unnecessary log output
                 # Extract the completion message
                 task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
                 if task_completed_match:
@@ -1658,11 +1674,8 @@ class ToolExecutor:
             if not self.multi_agent_tools:
                 return None
 
-            # Fix: Directly get unread messages from mailbox, do not mark as read automatically
-            from tools.message_system import get_message_router
-            from tools.print_system import get_agent_id
 
-            current_agent_id = get_agent_id()
+            current_agent_id = get_current_agent_id()
             if not current_agent_id:
                 return None
 
@@ -1922,13 +1935,13 @@ class ToolExecutor:
                             "name": tool_data["name"],
                             "arguments": tool_data["content"]
                         }]
-                    # Check if it's a valid tool call format with tool_name and parameters (新的JSON格式)
+                    # Check if it's a valid tool call format with tool_name and parameters (new JSON format)
                     elif 'tool_name' in tool_data and 'parameters' in tool_data:
                         return [{
                             "name": tool_data["tool_name"],
                             "arguments": tool_data["parameters"]
                         }]
-                    # Check if it's a valid tool call format with name and parameters (兼容旧格式)
+                    # Check if it's a valid tool call format with name and parameters (compatible with old format)
                     elif 'name' in tool_data and 'parameters' in tool_data:
                         return [{
                             "name": tool_data["name"],
@@ -1955,7 +1968,7 @@ class ToolExecutor:
                             elif 'relative_workspace_path' in tool_data:
                                 inferred_tool = 'list_dir'
                             elif 'query' in tool_data and 'target_directories' in tool_data:
-                                inferred_tool = 'codebase_search'
+                                inferred_tool = 'workspace_search'
                             elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
                                 inferred_tool = 'grep_search'
                             elif 'command' in tool_data and 'is_background' in tool_data:
@@ -2263,7 +2276,7 @@ class ToolExecutor:
                             
                             # Enhanced async handling for different thread contexts
                             try:
-                                loop = asyncio.get_event_loop()
+                                loop = asyncio.get_running_loop()
                                 if loop.is_running():
                                     # We're in an async context, use thread pool for initialization
                                     import concurrent.futures
@@ -2328,7 +2341,7 @@ class ToolExecutor:
                 
                 # Enhanced async execution handling
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     if loop.is_running():
                         # We're in an async context, use thread pool for execution
                         import concurrent.futures
@@ -2371,7 +2384,7 @@ class ToolExecutor:
                         retry_count += 1
                         print_current(f"🔄 Direct MCP initialization attempt {retry_count}/{max_retries}")
                         
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         if loop.is_running():
                             # We're in an async context, use thread pool for initialization
                             import concurrent.futures
@@ -2407,7 +2420,7 @@ class ToolExecutor:
                 
                 # Check if in async environment
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     if loop.is_running():
                         # In async environment, use thread pool for execution
                         import concurrent.futures
@@ -2461,8 +2474,8 @@ class ToolExecutor:
                     filtered_params["code_edit"] = filtered_params.pop("content")
                     print_current(f"🔧 Auto-corrected parameter: content -> code_edit for {tool_name}")
                 
-                # Robustness handling for codebase_search: auto-correct search_term to query
-                if tool_name == "codebase_search" and "search_term" in filtered_params:
+                # Robustness handling for workspace_search: auto-correct search_term to query
+                if tool_name == "workspace_search" and "search_term" in filtered_params:
                     # Map search_term to query
                     filtered_params["query"] = filtered_params.pop("search_term")
                     print_current(f"🔧 Auto-corrected parameter: search_term -> query for {tool_name}")
@@ -2704,9 +2717,7 @@ class ToolExecutor:
             # Create timestamp
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
             
-            # 🔧 获取当前agent ID并添加到文件名中
-            from tools.print_system import get_agent_id
-            current_agent_id = get_agent_id()
+            current_agent_id = get_current_agent_id()
             if current_agent_id:
                 log_filename = f"llm_call_{current_agent_id}_{self.llm_call_counter:03d}_{timestamp}.json"
             else:
@@ -3120,7 +3131,7 @@ class ToolExecutor:
 
     def _format_search_result_for_terminal(self, data: Dict[str, Any], tool_name: str) -> str:
         """
-        Format search results (codebase_search and web_search) for simplified terminal display.
+        Format search results (workspace_search and web_search) for simplified terminal display.
         Only shows brief summary with limited characters to reduce terminal clutter.
         
         Args:
@@ -3139,8 +3150,8 @@ class ToolExecutor:
         if 'error' in data:
             return f"❌ {tool_name} failed: {data['error']}"
         
-        # Handle codebase_search results
-        if tool_name == 'codebase_search':
+        # Handle workspace_search results
+        if tool_name == 'workspace_search':
             query = data.get('query', 'unknown')
             results = data.get('results', [])
             total_results = len(results)
@@ -3589,7 +3600,7 @@ class ToolExecutor:
                     tool_calls = []
                     
                     with streaming_context(show_start_message=False) as printer:
-                        # print_current("🔄 Starting streaming generation with standard tools...")
+
                         response = self.client.chat.completions.create(
                             model=self.model,
                             messages=api_messages,
@@ -3612,11 +3623,10 @@ class ToolExecutor:
                                     printer.write(delta.content)
                                     content += delta.content
                                 
-                                # Handle tool calls (collect but don't execute yet)
+                                # Handle tool calls with streaming display
                                 if delta.tool_calls:
                                     if not tool_calls_detected:
-                                        # Show detection message once, but don't execute yet
-                                        printer.write("\n")  # Add newline after text
+                                        printer.write("\n")
                                         tool_calls_detected = True
                                     
                                     for tool_call_delta in delta.tool_calls:
@@ -3626,7 +3636,8 @@ class ToolExecutor:
                                                 tool_calls.append({
                                                     "id": "",
                                                     "type": "function",
-                                                    "function": {"name": "", "arguments": ""}
+                                                    "function": {"name": "", "arguments": ""},
+                                                    "_stream_shown_name": False
                                                 })
                                             
                                             current_tool_call = tool_calls[tool_call_delta.index]
@@ -3637,14 +3648,17 @@ class ToolExecutor:
                                             if tool_call_delta.function:
                                                 if tool_call_delta.function.name:
                                                     current_tool_call["function"]["name"] = tool_call_delta.function.name
+                                                    # Show tool name when first detected
+                                                    if not current_tool_call.get("_stream_shown_name", False):
+                                                        #printer.write(f"\n🔧 calling tool: {tool_call_delta.function.name}\n")
+                                                        current_tool_call["_stream_shown_name"] = True
                                                 
                                                 if tool_call_delta.function.arguments:
                                                     current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
-                    
-                    # Phase 2: Tool execution
+                                                    #printer.write(tool_call_delta.function.arguments)
+                    print_current("")
+                    # Phase 2: Tool execution with completion feedback
                     if tool_calls_detected:
-                        print_current("🔧 Detecting tool calls...")
-                        
                         executed_tool_calls = []
                         
                         # Execute complete tool calls
@@ -3654,22 +3668,29 @@ class ToolExecutor:
                                 i not in executed_tool_calls):
                                 
                                 try:
-                                    import json
-                                    json.loads(tool_call["function"]["arguments"])
+                                    parsed_args = json.loads(tool_call["function"]["arguments"])
                                     
-                                    # Show tool name
-                                    print_current(f"🎯 Tool {i + 1}: {tool_call['function']['name']}")
+                                    if tool_call.get("_stream_shown_name", True):
+                                        print_current(f"🎯 Tool {i + 1}: {tool_call['function']['name']}")
                                     
                                     # Execute tool immediately (no lock!)
                                     self._execute_tool_immediately(tool_call, i + 1)
                                     executed_tool_calls.append(i)
                                     
                                 except json.JSONDecodeError:
-                                    # Arguments incomplete, skip
+                                    # Arguments incomplete, show error if we were tracking this
+                                    if tool_call.get("_stream_shown_name", False):
+
+                                        print_error(f"Failed to parse tool arguments: {tool_call['function']['arguments']}")
                                     continue
                         
                         if executed_tool_calls:
                             print_debug("✅ All detected tools have been executed")
+                    
+                    # Clean up streaming metadata from tool_calls
+                    for tool_call in tool_calls:
+                        tool_call.pop("_stream_shown_name", None)
+                        tool_call.pop("_stream_args_started", None)
                     
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
@@ -3764,7 +3785,6 @@ class ToolExecutor:
             
             print_current(f"⚡ Executing tool {tool_index} immediately: {tool_name}")
             print_current(f"   Parameters: {tool_params}")
-            print_current(f"   Results:")
             
             # Convert to standard format for execute_tool
             standard_tool_call = {
@@ -3817,9 +3837,10 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # Phase 1: LLM text streaming
+                    # Phase 1: Enhanced LLM streaming with tool call visibility
                     content = ""
                     tool_calls = []
+                    tool_call_buffers = {}  # Track partial tool calls by index
                     
                     with streaming_context(show_start_message=True) as printer:
                         with self.client.messages.stream(
@@ -3830,37 +3851,110 @@ class ToolExecutor:
                             tools=tools,
                             temperature=0.7
                         ) as stream:
-                            last_content_length = 0
-                            stream_finished = False
+                            # Try to process all stream events, with fallback to text-only streaming
+                            try:
+                                # Process all stream events, not just text
+                                for event in stream:
+                                    event_type = getattr(event, 'type', None)
+                                    
+                                    if event_type == "content_block_start":
+                                        content_block = getattr(event, 'content_block', None)
+                                        if content_block and hasattr(content_block, 'type'):
+                                            if content_block.type == "text":
+                                                # Text content block started
+                                                pass
+                                            elif content_block.type == "tool_use":
+                                                # Tool use block started - show tool name immediately
+                                                tool_name = getattr(content_block, 'name', 'Unknown Tool')
+                                                printer.write(f"\n\n🔧 Calling tool: {tool_name}\n")
+                                                tool_call_buffers[getattr(event, 'index', 0)] = {
+                                                    "id": getattr(content_block, 'id', ''),
+                                                    "name": tool_name,
+                                                    "input_json": ""
+                                                }
+                                    
+                                    elif event_type == "content_block_delta":
+                                        delta = getattr(event, 'delta', None)
+                                        if delta and hasattr(delta, 'type'):
+                                            if delta.type == "text_delta":
+                                                # Stream text content
+                                                text = getattr(delta, 'text', '')
+                                                printer.write(text)
+                                                content += text
+                                            elif delta.type == "input_json_delta":
+                                                # Stream tool input construction
+                                                event_index = getattr(event, 'index', 0)
+                                                if event_index in tool_call_buffers:
+                                                    partial_json = getattr(delta, 'partial_json', '')
+                                                    tool_call_buffers[event_index]["input_json"] += partial_json
+                                                    # Show partial JSON construction with chunked display for long content
+                                                    if partial_json:  # Only print if there's actual content
+                                                        # Break long partial_json into smaller chunks for smoother display
+                                                        chunk_size = 50  # Display 50 characters at a time
+                                                        if len(partial_json) > chunk_size:
+                                                            # For long content, display in small chunks with micro delays
+                                                            for i in range(0, len(partial_json), chunk_size):
+                                                                chunk = partial_json[i:i+chunk_size]
+                                                                printer.write(chunk)
+                                                                sys.stdout.flush()
+                                                                # Tiny delay to allow terminal to process and display
+                                                                time.sleep(0.001)  # 1ms delay for smooth display
+                                                        else:
+                                                            # For short content, display immediately
+                                                            printer.write(partial_json)
+                                                            sys.stdout.flush()
+                                                        
+                                                        # Add periodic progress indicator for very long content
+                                                        buffer = tool_call_buffers[event_index]
+                                                        current_length = len(buffer["input_json"])
+                                                        if not hasattr(buffer, '_last_progress_length'):
+                                                            buffer['_last_progress_length'] = 0
+                                                        
+                                                        # Show progress every 1000 characters
+                                                        if current_length - buffer['_last_progress_length'] >= 1000:
+                                                            buffer['_last_progress_length'] = current_length
+                                                            sys.stdout.flush()
+                                    
+                                    elif event_type == "content_block_stop":
+                                        event_index = getattr(event, 'index', 0)
+                                        if event_index in tool_call_buffers:
+                                            # Tool use block completed - parse final JSON
+                                            buffer = tool_call_buffers[event_index]
+                                            try:
+                                                parsed_input = json.loads(buffer["input_json"])
+                                                tool_calls.append({
+                                                    "id": buffer["id"],
+                                                    "name": buffer["name"],
+                                                    "input": parsed_input
+                                                })
+                                                # Parameters were already shown during streaming, no need to repeat
+                                            except json.JSONDecodeError:
+                                                print_error(f"Failed to parse tool input JSON: {buffer['input_json']}")
+                                            
+                                            del tool_call_buffers[event_index]
                             
-                            # Stream text content only
-                            for text in stream.text_stream:
-                                printer.write(text)
-                                content += text
-                                
-                                # Show tool processing indicator when stream seems to have paused on content
-                                # (heuristic: if content stopped growing for this iteration)
-                                if len(content) == last_content_length and len(content) > 50:
-                                    if not stream_finished:
-                                        printer.write("\n🔧 Processing tool calls (Claude API limitation: tools detected after stream completion)...\n")
-                                        stream_finished = True
-                                last_content_length = len(content)
+                            except Exception as e:
+                                # Fallback to text-only streaming if event processing fails
+                                print_error(f"Enhanced streaming failed, falling back to text-only: {e}")
+                                for text in stream.text_stream:
+                                    printer.write(text)
+                                    content += text
                         
-                        # Get final message to extract tool use blocks (still in lock)
+                        print_current("")
+                        # Get final message - if we missed any tool calls in streaming, extract them here
                         final_message = stream.get_final_message()
                         
-                        # Extract tool use blocks (but don't execute yet)
-                        for content_block in final_message.content:
-                            if content_block.type == "tool_use":
-                                tool_calls.append({
-                                    "id": content_block.id,
-                                    "name": content_block.name,
-                                    "input": content_block.input
-                                })
+                        # Check if we missed any tool calls during streaming (backup extraction)
+                        if not tool_calls:
+                            for content_block in final_message.content:
+                                if content_block.type == "tool_use":
+                                    tool_calls.append({
+                                        "id": content_block.id,
+                                        "name": content_block.name,
+                                        "input": content_block.input
+                                    })
                     
                     if tool_calls:
-                        print()
-                        
                         for content_block_data in tool_calls:
                             # Execute tool immediately (no lock!) - let streaming_output handle all display
                             try:
@@ -4010,7 +4104,7 @@ class ToolExecutor:
                         return json.loads(arguments)
                     except json.JSONDecodeError as e:
                         # JSON parsing failed, return empty dict to avoid crashes
-                        print_current(f"Failed to parse JSON arguments: {str(e)[:200]}")
+                        print_current(f"Failed to parse JSON arguments: {arguments}")
                         return {}
                 return arguments
             # Anthropic/Chat-based format: {"id": "...", "name": "...", "input": {...}}
@@ -4029,7 +4123,7 @@ class ToolExecutor:
                         return json.loads(arguments)
                     except json.JSONDecodeError as e:
                         # JSON parsing failed, return empty dict to avoid crashes
-                        print_current(f"Failed to parse JSON arguments: {str(e)[:200]}")
+                        print_current(f"Failed to parse JSON arguments: {arguments}")
                         return {}
                 return arguments
             elif hasattr(tool_call, 'input'):
@@ -4053,7 +4147,7 @@ class ToolExecutor:
             return ""
         
         formatted_calls = []
-        formatted_calls.append("**Tool Calls:**")
+        #formatted_calls.append("**Tool Calls:**")
         
         for i, tool_call in enumerate(tool_calls, 1):
             tool_name = self._get_tool_name_from_call(tool_call)
@@ -4432,6 +4526,14 @@ class ToolExecutor:
             message_parts.append(prompt_components['system_environment'])
             message_parts.append("")
         
+        # 3.5. Mailbox status information (if multi-agent mode is enabled)
+        mailbox_status = self._get_mailbox_status_info()
+        if mailbox_status:
+            message_parts.append("---")
+            message_parts.append("")
+            message_parts.append(mailbox_status)
+            message_parts.append("")
+        
         # 4. Workspace information
         if prompt_components['workspace_info']:
             message_parts.append("---")
@@ -4484,6 +4586,74 @@ class ToolExecutor:
                 pass
         
         return final_message
+
+    def _get_mailbox_status_info(self) -> Optional[str]:
+        """
+        Get mailbox status information for the current agent.
+        
+        Returns:
+            Mailbox status information string if there are unread messages, None otherwise
+        """
+        try:
+            # Only check mailbox status in multi-agent mode
+            if not self.multi_agent:
+                return None
+            
+            # Get current agent ID
+            from src.tools.agent_context import get_current_agent_id
+            current_agent_id = get_current_agent_id()
+            if not current_agent_id:
+                return None
+            
+            # Get message router and mailbox
+            from src.tools.message_system import get_message_router
+            router = get_message_router(self.workspace_dir, cleanup_on_init=False)
+            if not router:
+                return None
+            
+            mailbox = router.get_mailbox(current_agent_id)
+            if not mailbox:
+                return None
+            
+            # Get unread messages count
+            unread_messages = mailbox.get_unread_messages()
+            unread_count = len(unread_messages)
+            
+            if unread_count > 0:
+                # Format mailbox status information
+                status_info = f"## 📬 Mailbox Status\n"
+                status_info += f"**Agent {current_agent_id}** has **{unread_count} unread message(s)** in mailbox.\n\n"
+                status_info += f"💡 **Action Required**: You can use the `read_received_messages` tool to read these messages.\n"
+                status_info += f"   - Use `read_received_messages(include_read=False)` to read only unread messages\n"
+                status_info += f"   - Use `read_received_messages(include_read=True)` to read all messages (including already read ones)\n\n"
+                
+                # Add priority information if available
+                if unread_messages:
+                    priority_counts = {}
+                    for msg in unread_messages:
+                        if hasattr(msg, 'priority') and hasattr(msg.priority, 'value'):
+                            priority = msg.priority.value
+                        else:
+                            priority = 'normal'
+                        priority_counts[priority] = priority_counts.get(priority, 0) + 1
+                    
+                    if priority_counts:
+                        status_info += f"📊 **Message Priority Breakdown**:\n"
+                        for priority, count in sorted(priority_counts.items(), reverse=True):
+                            # Ensure priority is a string before calling upper()
+                            priority_str = str(priority).upper()
+                            status_info += f"   - {priority_str}: {count} message(s)\n"
+                        status_info += "\n"
+                
+                return status_info
+            
+            return None
+            
+        except Exception as e:
+            # Silently fail to avoid disrupting normal operation
+            if self.debug_mode:
+                print_current(f"⚠️ Error checking mailbox status: {e}")
+            return None
 
     def enhanced_tool_help(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
@@ -4548,7 +4718,7 @@ class ToolExecutor:
                         return {
                             "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
                             "parameters": tool_def.get("input_schema", {}),
-                            "notes": f"MCP工具 (cli-mcp): {tool_name}. 请注意使用正确的参数格式（通常为camelCase）。",
+                            "notes": f"MCP tool (cli-mcp): {tool_name}. Please note to use the correct parameter format (usually camelCase).",
                             "tool_type": "cli-mcp"
                         }
             
@@ -4646,25 +4816,25 @@ class ToolExecutor:
             # For certain tools, show important parameters in terminal
             if tool_name == 'run_terminal_cmd':
                 command = params.get('command', 'unknown command')
-                print_tool_call(f"🚀 Command execution started, real-time output as follows:")
+                print_current(f"🚀 Command execution started, real-time output as follows:")
                 print_debug(f"   Working directory: {os.getcwd()}")
                 
             elif tool_name == 'read_file':
                 target_file = params.get('target_file', 'unknown file')
-                print_tool_call(f"🎯 Requested to read file: {target_file}")
+                print_current(f"🎯 Requested to read file: {target_file}")
                 
             elif tool_name == 'edit_file':
                 target_file = params.get('target_file', 'unknown file')
                 edit_mode = params.get('edit_mode', 'unknown mode')
-                print_tool_call(f"📝 Editing file: {target_file} (mode: {edit_mode})")
+                print_current(f"📝 Editing file: {target_file} (mode: {edit_mode})")
                 
             elif tool_name == 'web_search':
                 search_term = params.get('search_term', 'unknown query')
-                print_tool_call(f"🔍 Starting web search: {search_term}")
+                print_current(f"🔍 Starting web search: {search_term}")
                 
-            elif tool_name == 'codebase_search':
+            elif tool_name == 'workspace_search':
                 query = params.get('query', 'unknown query')
-                print_tool_call(f"🔍 Searching codebase: {query}")
+                print_current(f"🔍 Searching workspace: {query}")
             
         except Exception as e:
             print_error(f"⚠️ Error showing tool execution progress: {e}")
@@ -4686,9 +4856,9 @@ class ToolExecutor:
             if isinstance(result, dict):
                 # Use simplified formatting for search tools if enabled in config
                 if (self.simplified_search_output and 
-                    tool_name in ['codebase_search', 'web_search']):
+                    tool_name in ['workspace_search', 'web_search']):
                     formatted_result = self._format_search_result_for_terminal(result, tool_name)
-                    print_tool_result(formatted_result)
+                    print_current(formatted_result)
                 
                 # Handle MCP tools (FastMCP, CLI-MCP, Direct MCP) results
                 elif tool_name in getattr(self, 'tool_source_map', {}) or any(prefix in tool_name for prefix in ['jina_', 'cli_mcp_']):
@@ -4700,23 +4870,23 @@ class ToolExecutor:
                         # Format the result content appropriately - NO TRUNCATION
                         if isinstance(tool_result_content, str):
                             # For string results, show directly without truncation
-                            print_tool_result(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
                         elif isinstance(tool_result_content, dict):
                             # For dict results, format as text without truncation
                             formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=params)
-                            print_tool_result(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
                         else:
-                            print_tool_result(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
                     elif result.get('status') == 'error':
                         error_msg = result.get('error', 'Unknown error')
-                        print_tool_result(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
+                        print_current(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
                     else:
-                        print_tool_result(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
+                        print_current(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
                 
                 # For file operations, only show if there's an error
                 elif 'status' in result and result.get('status') in ['error', 'failed']:
                     status = result.get('status', 'unknown')
-                    print_tool_result(f"Status: {status}")
+                    print_current(f"Status: {status}")
             
         except Exception as e:
             print_error(f"⚠️ Error streaming tool result: {e}")

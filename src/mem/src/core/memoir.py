@@ -241,8 +241,8 @@ class MemoirManager:
             if self.preliminary_memory is None:
                 logger.warning("_get_day_memories method requires basic memory manager support")
                 return []
-            # 获取当天所有记忆，top_k设为极大值，避免遗漏
-            # 移除缓存，确保每次都能获取最新的记忆列表
+            # Get All Memories for the Day
+            # Remove Cache
             return self.preliminary_memory.search_memories_by_time(target_date, top_k=10000)
         except Exception as e:
             logger.error(f"Failed to get date memories: {e}")
@@ -368,7 +368,7 @@ class MemoirManager:
         for i in range(max_days_back):
             target_date = current_date - datetime.timedelta(days=i)
             # Use Chinese format to match preliminary memory search format
-            date_str = f"{target_date.year}年{target_date.month}月{target_date.day}日"
+            date_str = f"{target_date.year}Year{target_date.month}Month{target_date.day}Day"
 
             dates_to_update.append({
                 "year": target_date.year,
@@ -435,12 +435,12 @@ class MemoirManager:
         for year, month in updated_months:
             try:
                 memoir_data = self._load_memoir(year)
-                # 检查该月是否有实际的daily summary
+                # Check if the Month Has Actual Daily Summary
                 months = memoir_data.get("months", {})
                 month_data = months.get(str(month), {})
                 days = month_data.get("days", {})
                 
-                # 只有当该月有实际的daily summary时才生成月总结
+                # Only Generate Monthly Summary When the Month Has Actual Daily Summary
                 has_daily_summaries = any(day_data.get("summary") for day_data in days.values())
                 
                 if has_daily_summaries and self._needs_month_update(memoir_data, year, month, force_update):
@@ -458,10 +458,10 @@ class MemoirManager:
         for year in updated_years:
             try:
                 memoir_data = self._load_memoir(year)
-                # 检查该年是否有实际的月总结
+                # Check if the Year Has Actual Monthly Summary
                 months = memoir_data.get("months", {})
                 
-                # 只有当该年有实际的月总结时才生成年总结
+                # Only Generate Yearly Summary When the Year Has Actual Monthly Summary
                 has_monthly_summaries = any(month_data.get("month_summary") for month_data in months.values())
                 
                 if has_monthly_summaries and self._needs_year_update(memoir_data, year, force_update):
@@ -475,7 +475,7 @@ class MemoirManager:
             except Exception as e:
                 logger.error(f"Failed to update yearly summary for {year}: {e}")
 
-        # 清理空的月节点（没有实际daily summary的月）
+        # Clean Up Empty Month Nodes (Months Without Actual Daily Summary)
         for year in set([date_info["year"] for date_info in dates_to_update]):
             try:
                 memoir_data = self._load_memoir(year)
@@ -484,19 +484,19 @@ class MemoirManager:
                 
                 for month, month_data in months.items():
                     days = month_data.get("days", {})
-                    # 检查该月是否有实际的daily summary
+                    # Check if the Month Has Actual Daily Summary
                     has_daily_summaries = any(day_data.get("summary") for day_data in days.values())
                     
-                    # 如果没有daily summary，标记为删除
+                    # If No Daily Summary
                     if not has_daily_summaries:
                         empty_months.append(month)
                 
-                # 删除空的月节点
+                # Delete Empty Month Nodes
                 for month in empty_months:
                     del months[month]
                     logger.info(f"Removed empty month {year}-{month}")
                 
-                # 保存清理后的数据
+                # Save Cleaned Data
                 if empty_months:
                     self._save_memoir(year, memoir_data)
                     
@@ -881,7 +881,7 @@ Please return the summary content directly without any additional formatting:"""
 
             # Create TF-IDF vectorizer
             self.tfidf_vectorizer = TfidfVectorizer(
-                max_features=10000,
+                max_features=6000,  # Reduced from 10000 to 6000 for better performance
                 stop_words=None
             )
 
@@ -1054,9 +1054,9 @@ Please return the summary content directly without any additional formatting:"""
         try:
             # Support multiple date formats
             date_formats = [
-                ("%Y年%m月%d日", "full_date"),
-                ("%Y年%m月", "year_month"),
-                ("%Y年", "year_only"),
+                ("%YYear%mMonth%dDay", "full_date"),
+                ("%YYear%mMonth", "year_month"),
+                ("%YYear", "year_only"),
                 ("%Y-%m-%d", "full_date"),
                 ("%Y/%m/%d", "full_date"),
                 ("%B %d, %Y", "full_date"),
@@ -1082,14 +1082,14 @@ Please return the summary content directly without any additional formatting:"""
             now = datetime.datetime.now()
 
             # Chinese expressions
-            if "今天" in date_str or "today" in date_str.lower():
+            if "Today" in date_str or "today" in date_str.lower():
                 return {
                     "type": "full_date",
                     "year": now.year,
                     "month": now.month,
                     "day": now.day
                 }
-            elif "昨天" in date_str or "yesterday" in date_str.lower():
+            elif "Yesterday" in date_str or "yesterday" in date_str.lower():
                 yesterday = now - datetime.timedelta(days=1)
                 return {
                     "type": "full_date",
@@ -1097,7 +1097,7 @@ Please return the summary content directly without any additional formatting:"""
                     "month": yesterday.month,
                     "day": yesterday.day
                 }
-            elif "明天" in date_str or "tomorrow" in date_str.lower():
+            elif "Tomorrow" in date_str or "tomorrow" in date_str.lower():
                 tomorrow = now + datetime.timedelta(days=1)
                 return {
                     "type": "full_date",
@@ -1105,14 +1105,14 @@ Please return the summary content directly without any additional formatting:"""
                     "month": tomorrow.month,
                     "day": tomorrow.day
                 }
-            elif "这个月" in date_str or "本月" in date_str or "this month" in date_str.lower():
+            elif "This Month" in date_str or "This Month" in date_str or "this month" in date_str.lower():
                 return {
                     "type": "year_month",
                     "year": now.year,
                     "month": now.month,
                     "day": None
                 }
-            elif "上个月" in date_str or "last month" in date_str.lower():
+            elif "Last Month" in date_str or "last month" in date_str.lower():
                 if now.month == 1:
                     return {
                         "type": "year_month",
@@ -1127,28 +1127,28 @@ Please return the summary content directly without any additional formatting:"""
                         "month": now.month - 1,
                         "day": None
                     }
-            elif "今年" in date_str or "this year" in date_str.lower():
+            elif "This Year" in date_str or "this year" in date_str.lower():
                 return {
                     "type": "year_only",
                     "year": now.year,
                     "month": None,
                     "day": None
                 }
-            elif "去年" in date_str or "last year" in date_str.lower():
+            elif "Last Year" in date_str or "last year" in date_str.lower():
                 return {
                     "type": "year_only",
                     "year": now.year - 1,
                     "month": None,
                     "day": None
                 }
-            elif "这周" in date_str or "本周" in date_str or "this week" in date_str.lower():
+            elif "This Week" in date_str or "This Week" in date_str or "this week" in date_str.lower():
                 return {
                     "type": "year_month",
                     "year": now.year,
                     "month": now.month,
                     "day": None
                 }
-            elif "上周" in date_str or "last week" in date_str.lower():
+            elif "Last Week" in date_str or "last week" in date_str.lower():
                 last_week = now - datetime.timedelta(weeks=1)
                 return {
                     "type": "year_month",
@@ -1334,7 +1334,7 @@ Please return the summary content directly without any additional formatting:"""
                     day_summaries.append(f"Day {day}: {day_summary}")
 
             if not day_summaries:
-                return existing_month_memoir if existing_month_memoir else f"{year}年{month}月: No records for this month."
+                return existing_month_memoir if existing_month_memoir else f"{year}Year{month}Month: No records for this month."
 
             # Build LLM prompt with intelligent integration
             summaries_content = "\n".join(day_summaries)
@@ -1352,7 +1352,7 @@ Requirements:
 
 Please generate an integrated monthly summary based on the provided existing monthly summary and daily summaries."""
 
-            user_prompt = f"""Please generate a monthly summary for {year}年{month}月 based on the following information:
+            user_prompt = f"""Please generate a monthly summary for {year}Year{month}Month based on the following information:
 
 Existing monthly summary:
 {existing_month_memoir if existing_month_memoir else "None"}
@@ -1399,15 +1399,15 @@ Please return the summary content directly without any additional formatting:"""
 
                     # Update version
                     self._update_summary_version(
-                        memoir_data, "months", f"{year}年{month}月")
+                        memoir_data, "months", f"{year}Year{month}Month")
 
-                    logger.info(f"Generated integrated monthly memoir for {year}年{month}月: {summary[:50]}...")
+                    logger.info(f"Generated integrated monthly memoir for {year}Year{month}Month: {summary[:50]}...")
                     return summary
                 else:
                     logger.warning(f"LLM returned empty monthly summary")
 
             # Fallback to simple summary if LLM fails
-            memoir = f"{year}年{month}月: Recorded content for {len(day_summaries)} days this month."
+            memoir = f"{year}Year{month}Month: Recorded content for {len(day_summaries)} days this month."
             if day_summaries:
                 memoir += f" Main activities include: {day_summaries[0][:50]}..."
             if len(day_summaries) > 1:
@@ -1419,13 +1419,13 @@ Please return the summary content directly without any additional formatting:"""
                     day_data["month_processed"] = True
 
             # Update version
-            self._update_summary_version(memoir_data, "months", f"{year}年{month}月")
+            self._update_summary_version(memoir_data, "months", f"{year}Year{month}Month")
 
             return memoir
 
         except Exception as e:
             logger.error(f"Failed to generate monthly memoir: {e}")
-            return existing_month_memoir if existing_month_memoir else f"{year}年{month}月: Error occurred while generating summary."
+            return existing_month_memoir if existing_month_memoir else f"{year}Year{month}Month: Error occurred while generating summary."
 
     def _generate_year_memoir(self, year: int, memoir_data: Dict[str, Any]) -> str:
         """Generate yearly memoir with intelligent integration"""

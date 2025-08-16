@@ -336,7 +336,7 @@ class DebugSystem:
         self.memory_monitor_thread = threading.Thread(
             target=self._memory_monitor_loop,
             args=(interval,),
-            name="MemoryMonitor",
+            name="DebugMonitor",
             daemon=True
         )
         self.memory_monitor_thread.start()

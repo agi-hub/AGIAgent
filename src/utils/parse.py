@@ -411,20 +411,20 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         
         # Add header
         if language == 'zh':
-            prompt_parts.append("## 可用工具")
+            prompt_parts.append("## Available tools")
             prompt_parts.append("")
-            prompt_parts.append("您可以使用以下工具来完成任务。请使用JSON格式调用工具：")
+            prompt_parts.append("You can use the following tools to complete tasks. Please use JSON format to call tools:")
             prompt_parts.append("")
             prompt_parts.append("```json")
             prompt_parts.append("{")
-            prompt_parts.append('  "tool_name": "工具名称",')
+            prompt_parts.append('  "tool_name": "Tool name",')
             prompt_parts.append('  "parameters": {')
-            prompt_parts.append('    "参数名": "参数值"')
+            prompt_parts.append('    "Parameter name": "Parameter value"')
             prompt_parts.append("  }")
             prompt_parts.append("}")
             prompt_parts.append("```")
             prompt_parts.append("")
-            prompt_parts.append("### 工具列表：")
+            prompt_parts.append("### Tool list:")
         else:
             prompt_parts.append("## Available Tools")
             prompt_parts.append("")
@@ -452,17 +452,17 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
             
             # Tool header
             prompt_parts.append(f"#### {tool_name}")
-            prompt_parts.append(f"**描述**: {description}" if language == 'zh' else f"**Description**: {description}")
+            prompt_parts.append(f"**Description**: {description}" if language == 'zh' else f"**Description**: {description}")
             prompt_parts.append("")
             
             # Parameters
             if properties:
-                prompt_parts.append("**参数**:" if language == 'zh' else "**Parameters**:")
+                prompt_parts.append("**Parameters**:" if language == 'zh' else "**Parameters**:")
                 for param_name, param_def in properties.items():
                     param_type = param_def.get('type', 'string')
                     param_desc = param_def.get('description', 'No description')
                     param_required = param_name in required
-                    required_marker = " (必需)" if language == 'zh' else " (required)" if param_required else ""
+                    required_marker = " (Required)" if language == 'zh' else " (required)" if param_required else ""
                     
                     # Handle array type
                     if param_type == 'array':
@@ -473,12 +473,12 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
                 
                 prompt_parts.append("")
             else:
-                prompt_parts.append("**参数**: 无" if language == 'zh' else "**Parameters**: None")
+                prompt_parts.append("**Parameters**: None" if language == 'zh' else "**Parameters**: None")
                 prompt_parts.append("")
             
             # Example usage
             if language == 'zh':
-                prompt_parts.append("**使用示例**:")
+                prompt_parts.append("**Usage Example**:")
             else:
                 prompt_parts.append("**Example Usage**:")
             
@@ -522,12 +522,12 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         
         # Add footer instructions
         if language == 'zh':
-            prompt_parts.append("### 重要说明：")
-            prompt_parts.append("1. 请严格按照上述JSON格式调用工具")
-            prompt_parts.append("2. 工具名称必须完全匹配")
-            prompt_parts.append("3. 必需参数不能省略")
-            prompt_parts.append("4. 参数类型必须正确")
-            prompt_parts.append("5. 可以同时调用多个工具")
+            prompt_parts.append("### Important notes:")
+            prompt_parts.append("1. Please strictly follow the above JSON format to call tools")
+            prompt_parts.append("2. Tool name must match exactly")
+            prompt_parts.append("3. Required parameters cannot be omitted")
+            prompt_parts.append("4. Parameter types must be correct")
+            prompt_parts.append("5. Multiple tools can be called simultaneously")
         else:
             prompt_parts.append("### Important Notes:")
             prompt_parts.append("1. Please strictly follow the JSON format above for tool calls")

@@ -12,7 +12,7 @@ import jieba
 import re
 import warnings
 
-# 设置sklearn警告处理：将警告重定向到日志而不是终端
+# Set sklearn warning handling: redirect warnings to logs instead of terminal
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -305,16 +305,16 @@ class PreliminaryMemoryManager:
         try:
             date_str = date_str.strip().replace(' ', '').replace('\n', '')
 
-            # Match "2024年" format
-            year_match = re.match(r'^(\d{4})年$', date_str)
+            # Match "2024Year" format
+            year_match = re.match(r'^(\d{4})Year$', date_str)
             if year_match:
                 return {
                     "type": "year_only",
                     "year": int(year_match.group(1))
                 }
 
-            # Match "2024年3月" format
-            year_month_match = re.match(r'^(\d{4})年(\d{1,2})月$', date_str)
+            # Match "2024Year3Month" format
+            year_month_match = re.match(r'^(\d{4})Year(\d{1,2})Month$', date_str)
             if year_month_match:
                 return {
                     "type": "year_month",
@@ -322,9 +322,9 @@ class PreliminaryMemoryManager:
                     "month": int(year_month_match.group(2))
                 }
 
-            # Match "2024年3月15日" format
+            # Match "2024Year3Month15日" format
             full_date_match = re.match(
-                r'^(\d{4})年(\d{1,2})月(\d{1,2})日$', date_str)
+                r'^(\d{4})Year(\d{1,2})Month(\d{1,2})Day$', date_str)
             if full_date_match:
                 return {
                     "type": "full_date",
@@ -336,14 +336,14 @@ class PreliminaryMemoryManager:
             # Handle fuzzy time expressions as fallback
             now = time.localtime()
             
-            if "今天" in date_str:
+            if "Today" in date_str:
                 return {
                     "type": "full_date",
                     "year": now.tm_year,
                     "month": now.tm_mon,
                     "day": now.tm_mday
                 }
-            elif "昨天" in date_str:
+            elif "Yesterday" in date_str:
                 yesterday = time.localtime(time.time() - 24*60*60)
                 return {
                     "type": "full_date",
@@ -351,7 +351,7 @@ class PreliminaryMemoryManager:
                     "month": yesterday.tm_mon,
                     "day": yesterday.tm_mday
                 }
-            elif "明天" in date_str:
+            elif "Tomorrow" in date_str:
                 tomorrow = time.localtime(time.time() + 24*60*60)
                 return {
                     "type": "full_date",
@@ -359,13 +359,13 @@ class PreliminaryMemoryManager:
                     "month": tomorrow.tm_mon,
                     "day": tomorrow.tm_mday
                 }
-            elif "这个月" in date_str or "本月" in date_str:
+            elif "This Month" in date_str or "This Month" in date_str:
                 return {
                     "type": "year_month",
                     "year": now.tm_year,
                     "month": now.tm_mon
                 }
-            elif "上个月" in date_str:
+            elif "Last Month" in date_str:
                 if now.tm_mon == 1:
                     return {
                         "type": "year_month",
@@ -378,12 +378,12 @@ class PreliminaryMemoryManager:
                         "year": now.tm_year,
                         "month": now.tm_mon - 1
                     }
-            elif "今年" in date_str:
+            elif "This Year" in date_str:
                 return {
                     "type": "year_only",
                     "year": now.tm_year
                 }
-            elif "去年" in date_str:
+            elif "Last Year" in date_str:
                 return {
                     "type": "year_only",
                     "year": now.tm_year - 1
@@ -518,8 +518,8 @@ class PreliminaryMemoryManager:
             # Create TF-IDF vectorizer, using class-level word segmentation function
             self.tfidf_vectorizer = TfidfVectorizer(
                 tokenizer=self._tokenize_chinese,
-                token_pattern=None,  # 显式设置为None以避免警告
-                max_features=10000,
+                token_pattern=None,  # Explicitly set to None to avoid warnings
+                max_features=6000,  # Reduced from 10000 to 6000 for better performance
                 stop_words=None,
                 ngram_range=(1, 2)
             )
