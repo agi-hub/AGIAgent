@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from .print_system import print_system, print_current, print_system_info, print_error, print_debug
+from .print_system import print_system, print_current, print_system, print_error, print_debug
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -100,7 +100,7 @@ class WebSearchTools:
                     features.append("content filtering")
                 if enable_summary:
                     features.append("search results summarization")
-                print_system_info(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
+                print_system(f"🤖 LLM features enabled with model {llm_model}: {', '.join(features)}")
             except Exception as e:
                 print_error(f"⚠️ Failed to setup LLM client, disabling LLM features: {e}")
                 self.enable_llm_filtering = False
@@ -601,7 +601,7 @@ For each webpage result, provide:
 
 TECHNICAL NOTE:
 Always end your summary with this important notice:
-"📁 **Original Content Storage**: Complete HTML source files and plain text versions of all webpages have been automatically saved to the `web_search_result` folder. For more detailed original content or in-depth analysis, you can use the `read_file` tool to directly access these files, or use the `codebase_search` tool to search for specific information within the folder. File names include search keywords, webpage titles, and timestamps for easy identification and retrieval."
+"📁 **Original Content Storage**: Complete HTML source files and plain text versions of all webpages have been automatically saved to the `web_search_result` folder. For more detailed original content or in-depth analysis, you can use the `read_file` tool to directly access these files, or use the `workspace_search` tool to search for specific information within the folder. File names include search keywords, webpage titles, and timestamps for easy identification and retrieval."
 
 Create a detailed, informative summary that provides substantial value by analyzing each webpage individually."""
 
@@ -1294,10 +1294,10 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 files_str = " and ".join(files_info)
                 file_notice_parts.append(f"📁 {files_str} saved to folder: {self.web_result_dir}/")
-                file_notice_parts.append("💡 You can use codebase_search or grep_search tools to search within these files")
+                file_notice_parts.append("💡 You can use workspace_search or grep_search tools to search within these files")
                 
                 print_current(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
-                print_current(f"💡 You can use codebase_search or grep_search tools to search within these files")
+                print_current(f"💡 You can use workspace_search or grep_search tools to search within these files")
             
             # Always add notice about original content access
             if summary:
@@ -2549,9 +2549,9 @@ Please create a detailed, structured analysis that preserves important informati
                     if saved_txt_path:
                         result_data['saved_txt_path'] = saved_txt_path
                     
-                    result_data['file_notice'] = f"📁 Webpage content saved to folder: {self.web_result_dir}/\n💡 You can use codebase_search or grep_search tools to search within these files"
+                    result_data['file_notice'] = f"📁 Webpage content saved to folder: {self.web_result_dir}/\n💡 You can use workspace_search or grep_search tools to search within these files"
                     print_current(f"\n📁 Webpage content saved to folder: {self.web_result_dir}/")
-                    print_current(f"💡 You can use codebase_search or grep_search tools to search within these files")
+                    print_current(f"💡 You can use workspace_search or grep_search tools to search within these files")
                 
                 return result_data
                 
@@ -2988,8 +2988,8 @@ Please create a detailed, structured analysis that preserves important informati
                         print_debug(f"✅ {engine['name']} found {len(valid_images)} valid images")
                         
                         if valid_images:
-                            # Save multiple valid images (max 8)
-                            max_images = min(8, len(valid_images))
+                            # Save multiple valid images (max 20)
+                            max_images = min(20, len(valid_images))
                             saved_images = []
                             
                             print_current(f"📥 Downloading {max_images} images...")

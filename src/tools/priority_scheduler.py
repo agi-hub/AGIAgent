@@ -17,7 +17,7 @@ import statistics
 from collections import deque, defaultdict
 import uuid
 
-from .print_system import print_current, print_agent, print_system_info, print_debug, print_error
+from .print_system import print_current, print_current, print_system, print_debug, print_error
 
 
 @dataclass
@@ -284,7 +284,7 @@ class PriorityAgentScheduler:
         self.lock_contention_threshold = 10  # Lock contention threshold
         self.lock_acquire_timeout = 2.0  # Lowered lock acquire timeout
         
-        print_system_info("🎯 Priority Agent Scheduler initialized with aggressive deadlock protection")
+        print_system("🎯 Priority Agent Scheduler initialized with aggressive deadlock protection")
         
         
     def start(self):
@@ -330,7 +330,7 @@ class PriorityAgentScheduler:
             )
             self.health_monitor_thread.start()
         
-        print_system_info(f"🚀 Priority scheduler started with {self.max_workers} workers and round-level fairness control")
+        print_system(f"🚀 Priority scheduler started with {self.max_workers} workers and round-level fairness control")
     
     def stop(self):
         """Stop the scheduler"""
@@ -390,7 +390,7 @@ class PriorityAgentScheduler:
         self.task_queue.put(task)
         self.total_tasks_submitted += 1
         
-        print_agent(agent_id, f"📋 Task {task_id} submitted with priority {priority:.2f}")
+        print_current(agent_id, f"📋 Task {task_id} submitted with priority {priority:.2f}")
         
         # Auto-start scheduler if not already running
         if not self.scheduler_active:
@@ -528,7 +528,7 @@ class PriorityAgentScheduler:
             # Register agent start execution
             self.resource_monitor.register_agent_start(agent_id)
             
-            print_agent(agent_id, f"▶️ Starting task {task_id} on {worker_name}")
+            print_current(agent_id, f"▶️ Starting task {task_id} on {worker_name}")
             
             # Execute task function with timeout awareness
             result = task.task_func()
@@ -542,10 +542,10 @@ class PriorityAgentScheduler:
             
             if success:
                 self.total_tasks_completed += 1
-                print_agent(agent_id, f"✅ Task {task_id} completed successfully in {execution_time:.1f}s")
+                print_current(agent_id, f"✅ Task {task_id} completed successfully in {execution_time:.1f}s")
             else:
                 self.total_tasks_failed += 1
-                print_agent(agent_id, f"⚠️ Task {task_id} completed with issues in {execution_time:.1f}s")
+                print_current(agent_id, f"⚠️ Task {task_id} completed with issues in {execution_time:.1f}s")
                 
         except Exception as e:
             execution_time = time.time() - start_time
@@ -555,13 +555,13 @@ class PriorityAgentScheduler:
             with self.metrics_lock:
                 self.agent_metrics[agent_id].update_execution(execution_time, False)
             
-            print_agent(agent_id, f"❌ Task {task_id} failed after {execution_time:.1f}s: {e}")
+            print_current(agent_id, f"❌ Task {task_id} failed after {execution_time:.1f}s: {e}")
             
             # Consider retry
             if task.retry_count < task.max_retries:
                 task.retry_count += 1
                 task.priority += 1.0  # Lower priority
-                print_agent(agent_id, f"🔄 Retrying task {task_id} (attempt {task.retry_count}/{task.max_retries})")
+                print_current(agent_id, f"🔄 Retrying task {task_id} (attempt {task.retry_count}/{task.max_retries})")
                 self.task_queue.put(task)
             
         finally:
@@ -885,7 +885,7 @@ class PriorityAgentScheduler:
         
         # Submit to round scheduling queue
         self.round_request_queue.put(round_request)
-        print_agent(agent_id, f"🎫 Round {current_round+1} execution request submitted (priority: {priority:.2f})")
+        print_current(agent_id, f"🎫 Round {current_round+1} execution request submitted (priority: {priority:.2f})")
         
         # Wait for permission using short lock acquisition
         start_wait = time.time()
@@ -899,7 +899,7 @@ class PriorityAgentScheduler:
                 
             time.sleep(0.1)
         
-        print_agent(agent_id, f"⏰ Round {current_round+1} request timeout after {wait_timeout}s")
+        print_current(agent_id, f"⏰ Round {current_round+1} request timeout after {wait_timeout}s")
         return False
     
     def _round_scheduler_loop(self):
@@ -1017,7 +1017,7 @@ class PriorityAgentScheduler:
         result = self._safe_lock_operation(grant_operation, timeout=1.0)
         
         if result:
-            print_agent(request.agent_id, f"✅ Round {request.next_round} execution granted")
+            print_current(request.agent_id, f"✅ Round {request.next_round} execution granted")
         else:
             print_current(f"⚠️ Failed to grant round permission for {request.agent_id}")
             self.round_execution_counts[request.agent_id] = request.next_round
@@ -1399,9 +1399,9 @@ def get_priority_scheduler(max_workers: int = 5, auto_start: bool = False) -> Pr
             # Improved: Default to lazy loading, only start when explicitly requested
             if auto_start:
                 _global_scheduler.start()
-                print_system_info(f"🚀 Priority scheduler auto-started with {max_workers} workers")
+                print_system(f"🚀 Priority scheduler auto-started with {max_workers} workers")
             else:
-                print_system_info(f"🏗️ Priority scheduler created (will start when first task is submitted)")
+                print_system(f"🏗️ Priority scheduler created (will start when first task is submitted)")
         
         return _global_scheduler
 

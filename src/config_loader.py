@@ -19,13 +19,13 @@ limitations under the License.
 import os
 from typing import Dict, Optional, Tuple
 
-# 全局缓存配置
+# Global cache configuration
 _config_cache: Dict[str, Dict[str, str]] = {}
 _config_file_mtime: Dict[str, float] = {}
 
 def clear_config_cache() -> None:
     """
-    清除配置文件缓存
+    Clear configuration file cache
     """
     global _config_cache, _config_file_mtime
     _config_cache.clear()
@@ -44,17 +44,17 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
     """
     global _config_cache, _config_file_mtime
     
-    # 检查文件是否存在
+    # Check if file exists
     if not os.path.exists(config_file):
         if verbose:
             print(f"Warning: Configuration file {config_file} not found")
         return {}
     
     try:
-        # 获取文件修改时间
+        # Get file modification time
         current_mtime = os.path.getmtime(config_file)
         
-        # 检查缓存是否有效
+        # Check if cache is valid
         if (config_file in _config_cache and 
             config_file in _config_file_mtime and 
             _config_file_mtime[config_file] == current_mtime):
@@ -62,7 +62,7 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                 print(f"Using cached configuration for {config_file}")
             return _config_cache[config_file].copy()
         
-        # 需要重新解析文件
+        # Need to re-parse file
         if verbose:
             print(f"Loading configuration from {config_file}")
         
@@ -75,7 +75,7 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                 original_line = line.rstrip('\n\r')  # Keep original line for debugging
                 line = line.strip()
                 
-                # 跳过空行
+                # Skip empty lines
                 if not line:
                     continue
                 
@@ -85,18 +85,18 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                         print(f"Skipping commented line {line_number}: {original_line}")
                     continue
                 
-                # 处理包含等号的行
+                # Process lines containing equals sign
                 if '=' in line:
                     # 处理行内注释：在#之前分割
                     if '#' in line:
                         line = line.split('#')[0].strip()
                     
-                    # 分割键值对
+                    # Split key-value pairs
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
                     
-                    if key:  # 确保键不为空
+                    if key:  # Ensure key is not empty
                         config[key] = value
                         if verbose:
                             print(f"Loaded config: {key} = {value}")
@@ -107,7 +107,7 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                     if verbose:
                         print(f"Warning: Invalid config line {line_number} (no '=' found): {original_line}")
         
-        # 更新缓存
+        # Update cache
         _config_cache[config_file] = config.copy()
         _config_file_mtime[config_file] = current_mtime
         
@@ -167,6 +167,38 @@ def get_config_value(key: str, default: Optional[str] = None, config_file: str =
     """
     config = load_config(config_file)
     return config.get(key, default)
+
+def get_enable_round_sync(config_file: str = "config/config.txt") -> bool:
+    """
+    Get whether round synchronization barrier is enabled
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        True if enabled, False otherwise (default: False)
+    """
+    config = load_config(config_file)
+    value = config.get('enable_round_sync', 'false').strip().lower()
+    return value in ('1', 'true', 'yes', 'on')
+
+def get_sync_round(config_file: str = "config/config.txt") -> int:
+    """
+    Get sync round step (N), number of rounds allowed per sync window
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Integer N (default: 2)
+    """
+    config = load_config(config_file)
+    value = config.get('sync_round', '2').strip()
+    try:
+        n = int(value)
+        return max(1, n)
+    except Exception:
+        return 2
 
 def get_model(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -267,7 +299,7 @@ def get_language(config_file: str = "config/config.txt") -> str:
     lang = config.get('LANG', 'en').lower()
     
     # Support common language codes
-    if lang in ('zh', 'zh-cn', 'chinese', '中文'):
+    if lang in ('zh', 'zh-cn', 'chinese', 'Chinese'):
         return 'zh'
     elif lang in ('en', 'english', 'eng'):
         return 'en'
@@ -326,7 +358,7 @@ def get_truncation_length(config_file: str = "config/config.txt") -> int:
 #             print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be an integer, using default 1000")
 #             return 1000
 #     
-#     # 如果没有设置，则使用主截断长度的 1/10，但不少于1000
+#     # If not set
 #     main_truncation = get_truncation_length(config_file)
 #     return max(1000, main_truncation // 10)
 
@@ -613,6 +645,40 @@ def get_enable_jieba(config_file: str = "config/config.txt") -> bool:
     else:
         # Default to False if invalid value
         return False
+
+def get_emoji_disabled(config_file: str = "config/config.txt") -> bool:
+    """
+    Get emoji display configuration from configuration file or environment variable
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether emoji display is disabled (default: False, meaning emoji enabled)
+    """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_EMOJI_DISABLED')
+    if env_value is not None:
+        env_value_lower = env_value.lower()
+        if env_value_lower in ('true', '1', 'yes', 'on'):
+            return True
+        elif env_value_lower in ('false', '0', 'no', 'off'):
+            return False
+    
+    # Fall back to config file
+    config = load_config(config_file)
+    emoji_disabled_str = config.get('emoji_disabled', 'False').lower()
+    
+    # Convert string to boolean
+    if emoji_disabled_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif emoji_disabled_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to False if invalid value (emoji enabled)
+        return False
+
+
 
 def get_tool_calling_format(config_file: str = "config/config.txt") -> bool:
     """

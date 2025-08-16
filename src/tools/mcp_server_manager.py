@@ -168,7 +168,7 @@ class MCPServerManager:
         print_current(f"📡 Received signal {signum}, initiating shutdown...")
         
         # Schedule shutdown in the event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             loop.create_task(self.shutdown())
         else:
@@ -244,7 +244,7 @@ class MCPServerManager:
             async with self._lock:
                 server.process = process
                 server.state = ServerState.RUNNING
-                server.start_time = asyncio.get_event_loop().time()
+                server.start_time = asyncio.get_running_loop().time()
                 server.failure_count = 0
             
             print_current(f"✅ MCP server {server_name} started (PID: {process.pid})")
@@ -371,9 +371,9 @@ class MCPServerManager:
     
     async def wait_for_server(self, server_name: str, timeout: float = 30.0) -> bool:
         """Wait for a server to be ready"""
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         
-        while asyncio.get_event_loop().time() - start_time < timeout:
+        while asyncio.get_running_loop().time() - start_time < timeout:
             if await self.is_server_ready(server_name):
                 return True
             await asyncio.sleep(0.1)

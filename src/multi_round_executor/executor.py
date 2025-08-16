@@ -21,35 +21,52 @@ Main executor class for multi-round task execution
 """
 
 import os
-import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_truncation_length, get_summary_history
-from tools.print_system import print_manager, print_current, print_agent, print_debug
-from tools.debug_system import track_operation, finish_operation
-from .config import (
-    DEFAULT_SUBTASK_LOOPS, DEFAULT_LOGS_DIR, DEFAULT_MODEL,
-    DEFAULT_DETAILED_SUMMARY, extract_session_timestamp
-)
-from .task_loader import TaskLoader
-from .summary_generator import SummaryGenerator
-from .report_generator import ReportGenerator
+from config_loader import get_model, get_truncation_length, get_summary_history, get_enable_round_sync, get_sync_round
+from src.tools.print_system import print_current, print_current, print_current, print_debug
+from src.tools.agent_context import get_current_agent_id
+from src.tools.debug_system import track_operation, finish_operation
 from .debug_recorder import DebugRecorder
 from .task_checker import TaskChecker
+import re
 
+def extract_session_timestamp(logs_dir: str) -> str:
+    """
+    Extract session timestamp from logs directory path
+    
+    Args:
+        logs_dir: Log directory path
+        
+    Returns:
+        Session timestamp or None
+    """
+    session_timestamp = None
+    if logs_dir:
+        # Extract parent directory name
+        parent_dir = os.path.dirname(logs_dir) if logs_dir != "logs" else logs_dir
+        parent_name = os.path.basename(parent_dir)
+        
+        # Check if it matches output_YYYYMMDD_HHMMSS format
+        match = re.search(r'(\d{8}_\d{6})', parent_name)
+        if match:
+            session_timestamp = match.group(1)
+            
+    return session_timestamp
 
 class MultiRoundTaskExecutor:
     """Main executor for multi-round task execution"""
     
-    def __init__(self, subtask_loops: int = DEFAULT_SUBTASK_LOOPS, 
-                 logs_dir: str = DEFAULT_LOGS_DIR, workspace_dir: str = None, 
+    def __init__(self, subtask_loops: int = 50, 
+                 logs_dir: str = "logs", workspace_dir: str = None, 
                  debug_mode: bool = False, api_key: str = None, 
-                 model: str = DEFAULT_MODEL, api_base: str = None, 
-                 detailed_summary: bool = DEFAULT_DETAILED_SUMMARY,
+                 model: str = 'GPT-4.1', api_base: str = None, 
+                 detailed_summary: bool = False,
                  interactive_mode: bool = False, streaming: bool = None,
-                 MCP_config_file: str = None, prompts_folder: str = None):
+                 MCP_config_file: str = None, prompts_folder: str = None,
+                 user_id: str = None):
         """
         Initialize multi-round task executor
         
@@ -66,19 +83,16 @@ class MultiRoundTaskExecutor:
             streaming: Whether to use streaming output (None to use config.txt)
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
+            user_id: User ID for MCP knowledge base tools
         """
         # Ensure subtask_loops is an integer to prevent type comparison errors
-        self.subtask_loops = int(subtask_loops) if subtask_loops is not None else DEFAULT_SUBTASK_LOOPS
+        self.subtask_loops = int(subtask_loops) 
         self.logs_dir = logs_dir
         self.workspace_dir = workspace_dir
         self.debug_mode = debug_mode
         self.api_key = api_key
         
         # Load model from config.txt if not provided
-        if model is None:
-            model = get_model()
-            if model is None:
-                raise ValueError("Model not found. Please provide model parameter or set it in config.txt")
         self.model = model
         
         self.api_base = api_base
@@ -87,6 +101,7 @@ class MultiRoundTaskExecutor:
         self.streaming = streaming
         self.MCP_config_file = MCP_config_file
         self.prompts_folder = prompts_folder
+        self.user_id = user_id
         self.task_summaries = []  # Store summaries of all tasks
         
         # Extract session timestamp
@@ -109,50 +124,135 @@ class MultiRoundTaskExecutor:
             interactive_mode=interactive_mode,
             streaming=streaming,
             MCP_config_file=MCP_config_file,
-            prompts_folder=prompts_folder
+            prompts_folder=prompts_folder,
+            user_id=user_id
         )
         
         # Initialize module components
-        self.task_loader = TaskLoader()
-        self.summary_generator = SummaryGenerator(self.executor, detailed_summary)
-        self.report_generator = ReportGenerator(self.executor, logs_dir, workspace_dir)
         self.debug_recorder = DebugRecorder(debug_mode)
         self.task_checker = TaskChecker()
+        # Track last seen sync epoch per agent to avoid file race conditions
+        self._agent_last_sync_epoch: Dict[str, int] = {}
         
-        # Print configuration
-        self._print_configuration()
+    def _get_status_file_path(self, agent_id: str) -> Optional[str]:
+        """Compute status file path for agent if available via multi_agent_tools workspace"""
+        try:
+            if not agent_id:
+                return None
+            if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
+                workspace_root = self.executor.multi_agent_tools.workspace_root
+                import os
+                if workspace_root:
+                    if os.path.basename(workspace_root) == 'workspace':
+                        outdir = os.path.dirname(workspace_root)
+                        return f"{outdir}/.agibot_spawn_{agent_id}_status.json"
+                    return f"{workspace_root}/.agibot_spawn_{agent_id}_status.json"
+        except Exception:
+            return None
+        return None
+
+    def _is_agent_finished(self, data: Dict[str, Any]) -> bool:
+        """Determine if an agent has finished based on simplified status field"""
+        try:
+            status_val = (data.get('status') or '').lower()
+            return status_val in ('completed', 'terminated', 'failed', 'success', 'max_rounds_reached')
+        except Exception:
+            return False
+
+    def _list_running_participants(self, exclude_agent_id: Optional[str] = None) -> list:
+        """Return list of agent_ids that are started (current_loop>=1) and not finished"""
+        participants = []
+        try:
+            from tools.message_system import get_message_router
+            import json, os
+            router = get_message_router(self.executor.multi_agent_tools.workspace_root, cleanup_on_init=False) if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools else None
+            agents = router.get_all_agents() if router else []
+            for aid in agents:
+                if aid == 'manager':
+                    continue
+                if exclude_agent_id and aid == exclude_agent_id:
+                    continue
+                path = self._get_status_file_path(aid)
+                if not path or not os.path.exists(path):
+                    continue
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except Exception:
+                    continue
+                if self._is_agent_finished(data):
+                    continue
+                try:
+                    if int(data.get('current_loop', 0)) < 1:
+                        continue
+                except Exception:
+                    continue
+                participants.append(aid)
+        except Exception:
+            return participants
+        return participants
+
+    def _set_agent_wait_for_sync(self, agent_id: str, waiting: bool) -> None:
+        """Mark agent status file with wait_for_sync flag"""
+        path = self._get_status_file_path(agent_id)
+        if not path:
+            return
+        try:
+            import json, os
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            else:
+                data = {}
+            data['wait_for_sync'] = bool(waiting)
+            data['wait_for_sync_updated_at'] = datetime.now().isoformat()
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+        except Exception as e:
+            if self.debug_mode:
+                print_debug(f"⚠️ Failed to write wait_for_sync to {path}: {e}")
+
+    def _wait_for_global_sync_signal(self) -> None:
+        """Block current thread until a global sync signal epoch increases; each agent consumes once per window.
+        If no participants remain, return immediately to avoid deadlock."""
+        try:
+            import time, os
+            # Determine base directory to place sync files: use workspace root or current dir
+            base_dir = None
+            if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
+                base_dir = self.executor.multi_agent_tools.workspace_root
+                if base_dir and os.path.basename(base_dir) == 'workspace':
+                    base_dir = os.path.dirname(base_dir)
+            if not base_dir:
+                base_dir = os.getcwd()
+            signal_file = os.path.join(base_dir, '.agibot_round_sync.signal')
+            # read current epoch
+            def read_epoch() -> int:
+                try:
+                    with open(signal_file, 'r', encoding='utf-8') as f:
+                        txt = f.read().strip()
+                        return int(txt) if txt.isdigit() else 0
+                except Exception:
+                    return 0
+            current_agent_id = get_current_agent_id()
+            last_seen = self._agent_last_sync_epoch.get(current_agent_id or 'manager', 0)
+            # wait until epoch increases
+            while True:
+                # If no other participants remain, stop waiting
+                others = self._list_running_participants(exclude_agent_id=current_agent_id)
+                if not others:
+                    break
+                epoch = read_epoch()
+                if epoch > last_seen:
+                    self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
+                    break
+                time.sleep(0.3)
+        except Exception as e:
+            if self.debug_mode:
+                print_debug(f"⚠️ Error waiting for sync signal: {e}")
     
-    def _print_configuration(self):
-        """Print executor configuration"""
-        # print_current(f"\n📋 Task executor configuration:")  # Commented out to reduce terminal noise
-        # print_current(f"   Subtask execution rounds: {self.subtask_loops}")  # Commented out to reduce terminal noise
-        # print_current(f"   Log directory: {self.logs_dir}")  # Commented out to reduce terminal noise
-        # if self.workspace_dir:
-        #     print_current(f"   Workspace directory: {self.workspace_dir}")  # Commented out to reduce terminal noise
-        # if self.debug_mode:
-        #     print_current(f"   DEBUG mode: Enabled")  # Commented out to reduce terminal noise
-        # if self.detailed_summary:
-        #     print_current(f"   Detailed summary: Enabled (retain more technical information)")  # Commented out to reduce terminal noise
-        # else:
-        #     print_current(f"   Detailed summary: Disabled (use simplified summary)")  # Commented out to reduce terminal noise
-        
-        # Print history summarization status
-        # summary_history_enabled = get_summary_history()
-        # print_current(f"   History Summarization: {'✅ Enabled' if summary_history_enabled else '❌ Disabled'}")  # Commented out to reduce terminal noise
-        # print()  # Commented out to reduce terminal noise
-        pass
-    
-    def load_todo_csv(self, csv_file: str) -> List[Dict[str, Any]]:
-        """
-        Load todo.csv file
-        
-        Args:
-            csv_file: CSV file path
-            
-        Returns:
-            Task list
-        """
-        return self.task_loader.load_todo_csv(csv_file)
     
     def execute_single_task(self, task: Dict[str, Any], task_index: int, 
                            total_tasks: int, previous_tasks_summary: str = "") -> Dict[str, Any]:
@@ -168,24 +268,11 @@ class MultiRoundTaskExecutor:
         Returns:
             Task execution results and history
         """
-        task_id = task.get('Task ID', task.get('任务编号', '')) or ''
-        task_name = task.get('Task Name', task.get('任务名称', '')) or ''
-        task_desc = task.get('Task Description', task.get('任务详细描述', '')) or ''
+        task_id = task.get('Task ID', task.get('Task Number', '')) or ''
+        task_name = task.get('Task Name', task.get('Task Name', '')) or ''
+        task_desc = task.get('Task Description', task.get('Task Detailed Description', '')) or ''
         
-        # 🔧 Set agent_id at the beginning of task execution
-        from tools.print_system import get_agent_id, set_agent_id
-        current_agent_id = get_agent_id()
-        if not current_agent_id and task_id and 'agent' in task_id.lower():
-            # If agent_id not set but task_id contains agent, set it
-            if task_id.startswith('agent_'):
-                set_agent_id(task_id)
-                print_current(f"🏷️ Set agent ID from task_id: {task_id}")
-            else:
-                import re
-                agent_match = re.search(r'agent[_\-]?\d+', task_id, re.IGNORECASE)
-                if agent_match:
-                    set_agent_id(agent_match.group())
-                    print_current(f"🏷️ Set agent ID from task_id pattern: {agent_match.group()}")
+
         
         track_operation(f"Execute task: {task_name} ({task_id})")
         
@@ -275,25 +362,87 @@ class MultiRoundTaskExecutor:
         max_rounds = self.subtask_loops
         task_round = 1  # Renamed from round_num to task_round for clarity
         task_completed = False
+        # Sync barrier config
+        enable_round_sync = get_enable_round_sync()
+        sync_step = get_sync_round() if enable_round_sync else None
         
-        # 🔧 新增：获取当前智能体ID用于轮次调度
-        from tools.print_system import get_agent_id
-        current_agent_id = get_agent_id()
+        current_agent_id = get_current_agent_id()
         
-        # 🔧 新增：检查是否启用了轮次调度器
+        # 🔧 New: Check if Round Scheduler is Enabled
         round_scheduler = None
         try:
             from tools.priority_scheduler import get_priority_scheduler
             round_scheduler = get_priority_scheduler()
-            if hasattr(round_scheduler, 'request_next_round'):
-                print_debug(f"🎮 Using round-level fairness scheduler for {current_agent_id or 'manager'}")
-            else:
+            if not hasattr(round_scheduler, 'request_next_round'):
                 round_scheduler = None
         except:
             round_scheduler = None
+        # If Round Synchronization Barrier is Enabled
+        try:
+            if get_enable_round_sync():
+                round_scheduler = None
+
+        except Exception:
+            pass
         
         while task_round <= max_rounds and not task_completed:
             print_current(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
+
+            # Barrier check before executing this round
+            # Changed to: When There is at Least One Started and Unfinished Non-manager Agent
+            is_manager = (current_agent_id == 'manager' or not current_agent_id)
+            multi_agent_active = False
+            try:
+                participants = self._list_running_participants()
+                multi_agent_active = bool(participants)
+            except Exception:
+                multi_agent_active = False
+            barrier_applicable = (
+                bool(enable_round_sync)
+                and bool(sync_step)
+                and (
+                    (not is_manager)  # Regular Spawned Agent Always Follows
+                    or (is_manager and multi_agent_active)  # Manager Also Follows When Other Agents Exist
+                )
+            )
+            if barrier_applicable:
+                try:
+                    # Determine if this agent should wait (when next round would exceed its sync window)
+                    # An agent can run rounds: 1..sync_step, then wait; (sync_step+1)..(2*sync_step), then wait; etc.
+                    # We block when we are at the first round of a new window: rounds (sync_step+1), (2*sync_step+1), ...
+                    need_sync = ((task_round - 1) % sync_step == 0) and (task_round > 1)
+                    if need_sync:
+                        # Update Status File to Indicate Waiting for Sync (Only for Non-manager)
+                        if (
+                            current_agent_id
+                            and current_agent_id != 'manager'
+                            and hasattr(self.executor, 'multi_agent_tools')
+                            and self.executor.multi_agent_tools
+                        ):
+                            try:
+                                # Reuse status file update util to set wait flag
+                                self._set_agent_wait_for_sync(current_agent_id, True)
+                                print_current(current_agent_id, f"⏸️ Waiting for sync barrier before round {task_round}")
+                            except Exception as e:
+                                print_current(current_agent_id, f"⚠️ Failed to mark wait_for_sync: {e}")
+                        elif is_manager:
+                            # Manager Only Outputs Prompt When Waiting
+                            print_current(f"⏸️ Waiting for sync barrier before round {task_round}")
+                        # Block until sync signal epoch increases (barrier release)
+                        self._wait_for_global_sync_signal()
+                        # Clear wait flag after sync
+                        if (
+                            current_agent_id
+                            and current_agent_id != 'manager'
+                            and hasattr(self.executor, 'multi_agent_tools')
+                            and self.executor.multi_agent_tools
+                        ):
+                            try:
+                                self._set_agent_wait_for_sync(current_agent_id, False)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    print_debug(f"⚠️ Sync barrier check error: {e}")
             
             # Interactive mode confirmation before each round
             if self.interactive_mode and task_round > 1:  # Skip confirmation for first round
@@ -345,45 +494,74 @@ class MultiRoundTaskExecutor:
                     # Check if we can use executor's summarization capability
                     if hasattr(self.executor, 'conversation_summarizer') and self.executor.conversation_summarizer:
                         try:
-                            # Convert to conversation format
-                            conversation_records = []
-                            for record in history_for_llm:
-                                conversation_records.append({
-                                    "role": "user",
-                                    "content": record["prompt"]
-                                })
-                                conversation_records.append({
-                                    "role": "assistant", 
-                                    "content": record["result"]
-                                })
-                            
-                            # Generate summary
-                            latest_result = history_for_llm[-1]["result"] if history_for_llm else ""
-                            history_summary = self.executor.conversation_summarizer.generate_conversation_history_summary(
-                                conversation_records, 
-                                latest_result
-                            )
-                            
-                            # Replace history with summary record
-                            summary_record = {
-                                "prompt": "Previous task execution summary",
-                                "result": f"## Task History Summary\n\n{history_summary}",
-                                "task_completed": False,
-                                "timestamp": datetime.now().isoformat(),
-                                "is_summary": True  # Mark as summary record
-                            }
-                            
                             # Keep only the summary and recent records (last 2 rounds)
                             recent_records = history_for_llm[-2:] if len(history_for_llm) > 2 else []
-                            history_for_llm = [summary_record] + recent_records
                             
-                            # Update the main task_history to prevent future growth
-                            # Keep non-LLM records (system messages, etc.) and replace LLM history
-                            non_llm_records = [record for record in task_history 
-                                             if not ("prompt" in record and "result" in record) or record.get("error")]
-                            task_history = non_llm_records + history_for_llm
+                            # Convert to conversation format, excluding recent records to avoid overlap
+                            conversation_records = []
+                            records_to_summarize = history_for_llm[:-2] if len(history_for_llm) > 2 else []
                             
-                            print_current(f"✅ History summarized and replaced: {total_history_length} → {len(history_summary)} chars")
+                            # Check if we have enough records to summarize
+                            if not records_to_summarize:
+                                print_current(f"📋 Not enough history to summarize (only {len(history_for_llm)} records), using recent records only")
+                                # Keep recent history only as fallback
+                                history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
+                                # Skip summarization and proceed with current history_for_llm
+                            else:
+                                # Convert records to conversation format
+                                for record in records_to_summarize:
+                                    conversation_records.append({
+                                        "role": "user",
+                                        "content": record["prompt"]
+                                    })
+                                    conversation_records.append({
+                                        "role": "assistant", 
+                                        "content": record["result"]
+                                    })
+                                
+                                # Generate summary (excluding recent records)
+                                latest_result = recent_records[-1]["result"] if recent_records else ""
+                                history_summary = self.executor.conversation_summarizer.generate_conversation_history_summary(
+                                    conversation_records, 
+                                    latest_result
+                                )
+                                
+                                # Validate summary content
+                                if not history_summary or len(history_summary.strip()) < 10:
+                                    print_current("⚠️ Generated summary is too short or empty, using basic fallback")
+                                    # Use basic conversation summary as fallback
+                                    history_summary = self.executor.conversation_summarizer._generate_basic_conversation_summary(
+                                        conversation_records, latest_result
+                                    )
+                                
+                                # Replace history with summary record
+                                summary_record = {
+                                    "prompt": "Summary of Earlier Conversation History",
+                                    "result": f"## Earlier Conversation Summary\n\n{history_summary}",
+                                    "task_completed": False,
+                                    "timestamp": datetime.now().isoformat(),
+                                    "is_summary": True  # Mark as summary record
+                                }
+                                
+                                # Combine summary with recent records (no overlap now)
+                                history_for_llm = [summary_record] + recent_records
+                                
+                                # Update the main task_history to prevent future growth
+                                # Keep non-LLM records (system messages, etc.) and replace LLM history
+                                non_llm_records = [record for record in task_history 
+                                                 if not ("prompt" in record and "result" in record) or record.get("error")]
+                                task_history = non_llm_records + history_for_llm
+                                
+                                # Calculate actual new length after replacement
+                                summary_length = len(history_summary) if history_summary else 0
+                                summary_record_length = len(summary_record["result"])
+                                recent_records_length = sum(len(str(r.get("prompt", ""))) + len(str(r.get("result", ""))) for r in recent_records)
+                                new_total_length = summary_record_length + recent_records_length
+                                
+                                if history_summary:
+                                    print_current(f"✅ History summarized and replaced: {total_history_length} → {new_total_length} chars (summary: {summary_length} chars)")
+                                else:
+                                    print_current(f"⚠️ History summary generated empty content, using recent records only: {total_history_length} → {recent_records_length} chars")
                             
                         except Exception as e:
                             print_current(f"⚠️ History summarization failed: {e}")
@@ -391,21 +569,8 @@ class MultiRoundTaskExecutor:
                             history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
                             print_current(f"📋 Using recent history subset: {len(history_for_llm)} records")
                 
-                # 🔧 Fix display label issue: ensure correct agent_id is set before executing subtask
-                from tools.print_system import get_agent_id, set_agent_id
-                current_agent_id = get_agent_id()
-                if current_agent_id is None:
-                    # Try to infer agent_id from task ID
-                    if task_id and task_id.startswith('agent_'):
-                        set_agent_id(task_id)
-                        print_current(f"🏷️ Set agent ID: {task_id}")
-                    elif task_id and 'agent' in task_id.lower():
-                        # Handle other possible agent ID formats
-                        import re
-                        agent_match = re.search(r'agent[_\-]?\d+', task_id, re.IGNORECASE)
-                        if agent_match:
-                            set_agent_id(agent_match.group())
-                            print_current(f"🏷️ Set agent ID: {agent_match.group()}")
+                # 🔧 Ensure correct agent_id is set in agent context before executing subtask
+                current_agent_id = get_current_agent_id()
                 
                 # Execute task - this will handle internal tool calling rounds
                 # The tool executor's internal rounds are separate from task rounds
@@ -489,11 +654,11 @@ class MultiRoundTaskExecutor:
                             current_loop=task_round
                         )
                         if update_result.get("status") == "success":
-                            print_agent(current_agent_id, f"📝 Status file updated: current_loop = {task_round}")
+                            print_current(current_agent_id, f"📝 Status file updated: current_loop = {task_round}")
                         else:
-                            print_agent(current_agent_id, f"⚠️ Status update failed: {update_result.get('message', 'Unknown error')}")
+                            print_current(current_agent_id, f"⚠️ Status update failed: {update_result.get('message', 'Unknown error')}")
                     except Exception as e:
-                        print_agent(current_agent_id, f"⚠️ Status update error: {e}")
+                        print_current(current_agent_id, f"⚠️ Status update error: {e}")
                 
                 # 🔧 Remove synchronous incremental update call, now handled automatically by background thread
                 # Commented out original synchronous update code:
@@ -507,25 +672,25 @@ class MultiRoundTaskExecutor:
                 if task_completed:
                     break
                 else:
-                    # 🔧 新增：轮次级别的公平性调度
+                    # 🔧 New: Round-level Fairness Scheduling
                     if round_scheduler and current_agent_id:
-                        # 请求执行下一轮的权限
-                        print_agent(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/{max_rounds}")
+                        # Request Permission to Execute Next Round
+                        print_current(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/{max_rounds}")
                         
-                        # 调用轮次调度器
+                        # Call Round Scheduler
                         permission_granted = round_scheduler.request_next_round(
                             agent_id=current_agent_id,
                             current_round=task_round,
                             max_rounds=max_rounds,
-                            wait_timeout=60.0  # 等待60秒
+                            wait_timeout=60.0  # Wait 60 Seconds
                         )
                         
                         if permission_granted:
                             task_round += 1
-                            print_agent(current_agent_id, f"✅ Permission granted, proceeding to round {task_round}")
+                            print_current(current_agent_id, f"✅ Permission granted, proceeding to round {task_round}")
                         else:
-                            print_agent(current_agent_id, f"⏰ Round permission timeout, stopping execution")
-                            # 添加超时记录
+                            print_current(current_agent_id, f"⏰ Round permission timeout, stopping execution")
+                            # Add Timeout Record
                             timeout_record = {
                                 "task_round": task_round,
                                 "message": "Round scheduling timeout - execution stopped for fairness",
@@ -535,7 +700,7 @@ class MultiRoundTaskExecutor:
                             task_history.append(timeout_record)
                             break
                     else:
-                        # 传统模式：直接递增轮次
+                        # Traditional Mode: Directly Increment Round
                         task_round += 1
                 
             except Exception as e:
@@ -566,7 +731,7 @@ class MultiRoundTaskExecutor:
                     "timestamp": datetime.now().isoformat()
                 }
                 task_history.append(error_record)
-                print_manager(f"❌ Task round {task_round} execution error: {e}")
+                print_current(f"❌ Task round {task_round} execution error: {e}")
                 task_round += 1
         
         return task_history
@@ -616,165 +781,8 @@ class MultiRoundTaskExecutor:
             task_completed=task_completed,
             history_length=history_length
         )
-    
-    def execute_all_tasks(self, todo_file: str) -> Dict[str, Any]:
-        """
-        Process todo file (CSV or Markdown) as a single comprehensive task
-        
-        Args:
-            todo_file: Todo file path (CSV or Markdown)
-            
-        Returns:
-            Execution report
-        """
-        # Determine file type and validate
-        file_ext = os.path.splitext(todo_file)[1].lower()
-        
-        if file_ext == '.csv':
-            # Handle CSV file
-            if not self.task_loader.validate_csv_file(todo_file):
-                return {"error": f"CSV file validation failed: {todo_file}"}
-            
-            try:
-                file_content = self.task_loader.read_csv_content(todo_file)
-                file_type = "CSV"
-            except Exception as e:
-                return {"error": str(e)}
-                
-        elif file_ext == '.md':
-            # Handle Markdown file
-            if not os.path.exists(todo_file):
-                return {"error": f"Markdown file not found: {todo_file}"}
-            
-            try:
-                with open(todo_file, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-                file_type = "Markdown"
-            except Exception as e:
-                return {"error": f"Failed to read Markdown file: {e}"}
-        else:
-            return {"error": f"Unsupported file type: {file_ext}. Only .csv and .md files are supported."}
-        
-        print_manager(f"\n🚀 Starting task execution")
-        print_manager(f"📄 Task file: {todo_file} ({file_type})")
+ 
 
-        
-        # Initialize execution report
-        execution_report = {
-            "start_time": datetime.now().isoformat(),
-            "todo_file": todo_file,
-            "file_type": file_type,
-            "subtask_loops": self.subtask_loops,
-            "task_result": None,
-            "task_history": [],
-            "execution_summary": "",
-            "workspace_dir": self.workspace_dir,
-            "success": False
-        }
-        
-        # Construct overall task description
-        task_info = {
-            "Task ID": "TODO_FILE",
-            "Task Name": f"Process todo file: {os.path.basename(todo_file)}",
-            "Task Description": f"""
-Please process all tasks in the following todo {file_type.lower()} file. File content:
-
-{file_content}
-
-Please execute all tasks listed in the file in a reasonable order. You can use various tools to complete these tasks, including but not limited to:
-- Creating files and directories
-- Writing code
-- Running commands
-- Searching content
-- Editing files
-- Updating task status using the todo_update tool
-
-For Markdown todo files, you can use the todo_update tool to mark tasks as completed:
-- todo_update(task_id=1, status="in_progress", description="Starting task")  
-- todo_update(task_id=1, status="completed", description="Task finished")
-
-Please ensure all tasks are properly handled. If some tasks have dependencies, please execute them in the correct order.
-"""
-        }
-        
-        try:
-            print_manager(f"\n🎯 Starting todo file processing")
-            
-            # Execute overall task
-            task_result = self.execute_single_task(task_info, 0, 1, "")
-            execution_report["task_result"] = task_result
-            execution_report["task_history"] = task_result.get("history", [])
-            execution_report["success"] = True
-            
-            print_manager(f"✅ Todo file processing completed")
-            
-        except Exception as e:
-            execution_report["error"] = str(e)
-            execution_report["success"] = False
-            print_manager(f"❌ Todo file processing failed: {e}")
-        
-        # Complete execution
-        execution_report["end_time"] = datetime.now().isoformat()
-        execution_report["execution_summary"] = self.report_generator.generate_execution_summary(execution_report)
-        
-        # Save execution report
-        print_current(f"\n💾 Saving execution report...")
-        self.report_generator.save_execution_report(execution_report)
-        
-        # Output completion information
-        self.print_completion_report(execution_report)
-        
-        return execution_report
-    
-    def print_completion_report(self, report: Dict[str, Any]):
-        """
-        Print completion report
-        
-        Args:
-            report: Execution report
-        """
-        print(report["execution_summary"])
-        
-        # Check if it's the new todo file processing mode
-        if "todo_file" in report:
-            # New mode: process entire todo file
-            if not report.get("success", False) and "error" in report:
-                print_current(f"\n❌ Error occurred during execution:")
-                print_current(f"  Error message: {report['error']}")
-            
-            task_history = report.get("task_history", [])
-            if task_history:
-                rounds_completed = len([h for h in task_history if isinstance(h, dict) and "task_round" in h])
-                print_current(f"\n📊 Execution details:")
-                print_current(f"  Completed rounds: {rounds_completed}")
-                
-                # Check if there are task completion flags
-                completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
-                if completed_rounds:
-                    print_current(f"  Early completion: Task completion detected in round {completed_rounds[0].get('task_round', '?')}")
-                    
-        else:
-            # Legacy mode: compatibility support
-            failed_tasks = report.get("failed_tasks", [])
-            if failed_tasks:
-                print_current("\n❌ Failed tasks:")
-                for failed_task in failed_tasks:
-                    print_current(f"  - Task {failed_task['task_id']}: {failed_task['task_name']}")
-                    print_current(f"    Error: {failed_task['error']}")
-        
-        print_current(f"\n📁 Detailed log files saved in: {self.logs_dir}/")
-    
-    def generate_smart_summary(self, completed_tasks: List[Dict[str, Any]]) -> str:
-        """
-        Generate intelligent summary of completed tasks
-        
-        Args:
-            completed_tasks: List of completed tasks
-            
-        Returns:
-            Intelligent summary text
-        """
-        return self.summary_generator.generate_smart_summary(completed_tasks)
     
     def cleanup(self):
         """Clean up all resources and threads"""

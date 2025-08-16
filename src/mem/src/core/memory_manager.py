@@ -538,9 +538,17 @@ class MemManagerAgent:
         # Initialize submodules
         self._init_submodules()
 
-        # Start background worker threads
-        if self.enable_async:
+        # Check if long-term memory is enabled
+        enable_long_term_memory = self.config.get('enable_long_term_memory', True)
+        if isinstance(enable_long_term_memory, str):
+            enable_long_term_memory = enable_long_term_memory.lower() in ('true', '1', 'yes', 'on')
+        
+        # Start background worker threads only if long-term memory is enabled
+        if self.enable_async and enable_long_term_memory:
             self._start_workers()
+        elif not enable_long_term_memory:
+            logger.info("Long-term memory is disabled, skipping worker thread initialization")
+            self.enable_async = False
 
     def _load_config(self, config_file: str) -> Dict[str, Any]:
         """Load configuration from file"""
@@ -1433,7 +1441,7 @@ Please analyze the above query, select the most appropriate search tool, and ret
 1. Must select a tool call, cannot return empty results
 2. Must use the above JSON format, do not add any other content
 3. All required parameters must be provided
-4. Time parameters must use standard format (e.g.: 2025年, 2025年7月, 2025年7月8日)
+4. Time parameters must use standard format (e.g.: 2025 Year, 2025 July, 2025 July 8)
 
 Please return the tool call JSON immediately, do not add any explanatory text."""
 
@@ -1472,14 +1480,14 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 
             # More strict time pattern matching to ensure query mainly contains time information
             time_patterns = [
-                # Full date: 2025年7月8日
-                r'^(\d{4}年\d{1,2}月\d{1,2}日)$',
-                # Year-month: 2025年7月
-                r'^(\d{4}年\d{1,2}月)$',
-                # Year: 2025年
-                r'^(\d{4}年)$',
+                # Full date: 2025 July 8
+                r'^(\d{4}Year\d{1,2}Month\d{1,2}Day)$',
+                # Year-month: 2025 July
+                r'^(\d{4}Year\d{1,2}Month)$',
+                # Year: 2025
+                r'^(\d{4}Year)$',
                 # Fuzzy time expressions (as standalone queries)
-                r'^(今天|昨天|明天|这个月|上个月|今年|去年|前年)$'
+                r'^(Today|Yesterday|Tomorrow|This Month|Last Month|This Year|Last Year|Year Before Last)$'
             ]
 
             # Check if query mainly contains time information
@@ -1513,13 +1521,13 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
             # Check if query contains embedded time information (as part of the query)
             embedded_time_patterns = [
                 # Embedded full date
-                r'(\d{4}年\d{1,2}月\d{1,2}日)',
+                r'(\d{4}Year\d{1,2}Month\d{1,2}Day)',
                 # Embedded year-month
-                r'(\d{4}年\d{1,2}月)',
+                r'(\d{4}Year\d{1,2}Month)',
                 # Embedded year
-                r'(\d{4}年)',
+                r'(\d{4}Year)',
                 # Embedded fuzzy time
-                r'(今天|昨天|明天|这个月|上个月|今年|去年|前年)'
+                r'(Today|Yesterday|Tomorrow|This Month|Last Month|This Year|Last Year|Year Before Last)'
             ]
 
             for pattern in embedded_time_patterns:
@@ -1529,13 +1537,13 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
                     logger.info(f"Detected embedded time expression: {time_expr} in query: {query}")
 
                     # Check if query contains general vocabulary, if so use LLM search
-                    summary_keywords = ['总结', '发展', '趋势', '回顾', '概况', '整体', '模式', '进展', '经验', '分享', '内容', '分析']
+                    summary_keywords = ['Summary', 'Development', 'Trend', 'Review', 'Overview', 'Overall', 'Pattern', 'Progress', 'Experience', 'Share', 'Content', 'Analysis']
                     if any(keyword in query for keyword in summary_keywords):
                         logger.info(f"Query contains general vocabulary, using LLM search: {query}")
                         return None
 
                     # Check if query asks for specific content
-                    specific_keywords = ['具体', '详细', '内容', '记录', '原始', '完整', '做了什么', '有什么']
+                    specific_keywords = ['Specific', 'Detailed', 'Content', 'Record', 'Original', 'Complete', 'What Was Done', 'What Is There']
                     if any(keyword in query for keyword in specific_keywords):
                         logger.info(f"Query asks for specific content, using preliminary time search: {query}")
                         normalized_time = self._normalize_time_expression(time_expr)
@@ -1591,7 +1599,7 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 
 ### 1. Time Query Priority Judgment
 **Time query characteristics:**
-- Contains specific dates: 2025年, 2025年7月, 2025年7月8日
+- Contains specific dates: 2025 Year, 2025 July, 2025 July 8
 - Contains fuzzy time: today, yesterday, tomorrow, this month, last month, this year, last year
 - Contains time-related vocabulary: date, time, when, which day
 
@@ -1602,16 +1610,16 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 ### 2. Time Standardization Rules (Important!)
 
 **Fuzzy time expressions must be standardized to specific times:**
-- "today" → "2025年7月11日" (current date)
-- "yesterday" → "2025年7月10日" (current date - 1 day)
-- "tomorrow" → "2025年7月12日" (current date + 1 day)
-- "this month" → "2025年7月" (current year-month)
-- "last month" → "2025年6月" (current year-month - 1 month)
-- "this year" → "2025年" (current year)
-- "last year" → "2024年" (current year - 1 year)
-- "year before last" → "2023年" (current year - 2 years)
-- "this week" → "2025年7月" (current year-month)
-- "last week" → "2025年7月" (current year-month, simplified processing)
+- "today" → "2025 July11Day" (current date)
+- "yesterday" → "2025 July10Day" (current date - 1 day)
+- "tomorrow" → "2025 July12Day" (current date + 1 day)
+- "this month" → "2025 July" (current year-month)
+- "last month" → "2025 Year6Month" (current year-month - 1 month)
+- "this year" → "2025 Year" (current year)
+- "last year" → "2024Year" (current year - 1 year)
+- "year before last" → "2023Year" (current year - 2 years)
+- "this week" → "2025 July" (current year-month)
+- "last week" → "2025 July" (current year-month, simplified processing)
 
 **Important:** All fuzzy time expressions must be converted to standard format when passed to tools!
 
@@ -1670,13 +1678,13 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 ## Example Analysis
 
 **Time query examples:**
-- "2025年7月8日做了什么" → search_preliminary_memories_by_time (specific content)
-- "2025年的学习总结" → search_memoir_memories_by_time (summary content)
-- "今天的工作内容" → search_preliminary_memories_by_time (specific content)
-- "这个月的发展趋势" → search_memoir_memories_by_time (trend content)
-- "2024年的技术发展" → search_memoir_memories_by_time (development content)
-- "去年做了什么" → search_preliminary_memories_by_time (specific content, target_date: "2024年")
-- "去年的总结" → search_memoir_memories_by_time (summary content, target_date: "2024年")
+- "2025 July 8做了什么" → search_preliminary_memories_by_time (specific content)
+- "2025 Year的学习总结" → search_memoir_memories_by_time (summary content)
+- "Today的工作内容" → search_preliminary_memories_by_time (specific content)
+- "This Month的发展趋势" → search_memoir_memories_by_time (trend content)
+- "2024Year的技术发展" → search_memoir_memories_by_time (development content)
+- "Last Year做了什么" → search_preliminary_memories_by_time (specific content, target_date: "2024Year")
+- "Last Year的总结" → search_memoir_memories_by_time (summary content, target_date: "2024Year")
 
 **Content query examples:**
 - "Python编程" → search_preliminary_memories_by_query (specific technology)
@@ -1691,7 +1699,7 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 ## Parameter Requirements
 
 **Time search parameters:**
-- target_date: Must be in standard format (2025年, 2025年7月, 2025年7月8日)
+- target_date: Must be in standard format (2025 Year, 2025 July, 2025 July 8)
 - top_k: Number of results to return
 
 **Content search parameters:**
@@ -1706,7 +1714,7 @@ Please return the tool call JSON immediately, do not add any explanatory text.""
 4. **Prioritize the most matching search method** - choose the most appropriate tool based on query characteristics
 5. **Key to time queries is judging content type** - specific content uses preliminary, general content uses memoir
 6. **For uncertain queries, prioritize preliminary search** - safer choice
-7. **Fuzzy time expressions must be standardized** - "去年"→"2024年", "今天"→"2025年7月11日", etc.
+7. **Fuzzy time expressions must be standardized** - "Last Year"→"2024Year", "Today"→"2025 July11Day", etc.
 8. **General/Summary queries ALWAYS use memoir** - if query asks for trends, experiences, patterns, or summaries, use memoir search
 
 ## Output Format
@@ -1760,7 +1768,7 @@ You must return strictly in the following JSON format, do not add any other cont
                         "properties": {
                             "target_date": {
                                 "type": "string",
-                                "description": "Target date, must be in standard format: 2025年, 2025年7月, 2025年7月8日"
+                                "description": "Target date, must be in standard format: 2025 Year, 2025 July, 2025 July 8"
                             },
                             "top_k": {
                                 "type": "integer",
@@ -1804,7 +1812,7 @@ You must return strictly in the following JSON format, do not add any other cont
                         "properties": {
                             "target_date": {
                                 "type": "string",
-                                "description": "Target date, must be in standard format: 2025年, 2025年7月, 2025年7月8日"
+                                "description": "Target date, must be in standard format: 2025 Year, 2025 July, 2025 July 8"
                             },
                             "top_k": {
                                 "type": "integer",
@@ -1948,66 +1956,66 @@ You must return strictly in the following JSON format, do not add any other cont
             time_expr = time_expr.strip()
 
             # Handle "today"
-            if time_expr in ["今天", "today"]:
+            if time_expr in ["Today", "today"]:
                 today = datetime.now()
-                result = f"{today.year}年{today.month}月{today.day}日"
+                result = f"{today.year}Year{today.month}Month{today.day}Day"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "yesterday"
-            elif time_expr in ["昨天", "yesterday"]:
+            elif time_expr in ["Yesterday", "yesterday"]:
                 yesterday = datetime.now() - timedelta(days=1)
-                result = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日"
+                result = f"{yesterday.year}Year{yesterday.month}Month{yesterday.day}Day"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "tomorrow"
-            elif time_expr in ["明天", "tomorrow"]:
+            elif time_expr in ["Tomorrow", "tomorrow"]:
                 tomorrow = datetime.now() + timedelta(days=1)
-                result = f"{tomorrow.year}年{tomorrow.month}月{tomorrow.day}日"
+                result = f"{tomorrow.year}Year{tomorrow.month}Month{tomorrow.day}Day"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "this week"
-            elif time_expr in ["这周", "本周", "this week"]:
+            elif time_expr in ["This Week", "This Week", "this week"]:
                 today = datetime.now()
-                result = f"{today.year}年{today.month}月"
+                result = f"{today.year}Year{today.month}Month"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "last week"
-            elif time_expr in ["上周", "last week"]:
+            elif time_expr in ["Last Week", "last week"]:
                 last_week = datetime.now() - timedelta(weeks=1)
-                result = f"{last_week.year}年{last_week.month}月"
+                result = f"{last_week.year}Year{last_week.month}Month"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "this month"
-            elif time_expr in ["这个月", "本月", "this month"]:
+            elif time_expr in ["This Month", "This Month", "this month"]:
                 today = datetime.now()
-                result = f"{today.year}年{today.month}月"
+                result = f"{today.year}Year{today.month}Month"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "last month"
-            elif time_expr in ["上个月", "last month"]:
+            elif time_expr in ["Last Month", "last month"]:
                 today = datetime.now()
                 if today.month == 1:
-                    result = f"{today.year-1}年12月"
+                    result = f"{today.year-1}Year December"
                 else:
-                    result = f"{today.year}年{today.month-1}月"
+                    result = f"{today.year}Year{today.month-1}Month"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "this year"
-            elif time_expr in ["今年", "this year"]:
+            elif time_expr in ["This Year", "this year"]:
                 today = datetime.now()
-                result = f"{today.year}年"
+                result = f"{today.year}Year"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "last year"
-            elif time_expr in ["去年", "last year"]:
+            elif time_expr in ["Last Year", "last year"]:
                 today = datetime.now()
-                result = f"{today.year-1}年"
+                result = f"{today.year-1}Year"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # Handle "year before last"
-            elif time_expr in ["前年", "year before last"]:
+            elif time_expr in ["Year Before Last", "year before last"]:
                 today = datetime.now()
-                result = f"{today.year-2}年"
+                result = f"{today.year-2}Year"
                 return result.replace(' ', '').replace('\n', '').strip()
 
             # If already in standard format, return directly

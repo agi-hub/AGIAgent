@@ -24,8 +24,6 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from .config import DEBUG_PROMPT_LIMIT, DEBUG_OUTPUT_LIMIT, DEBUG_RESULT_LIMIT
-
 
 class DebugRecorder:
     """Debug recorder for tracking LLM calls and execution details"""
@@ -74,11 +72,11 @@ class DebugRecorder:
                 'task_id': task_id,
                 'task_name': task_name,
                 'round_num': round_num,
-                'prompt': prompt[:DEBUG_PROMPT_LIMIT],  # Limit length for memory efficiency
-                'llm_output': llm_output[:DEBUG_OUTPUT_LIMIT],
+                'prompt': prompt,  # Limit length for memory efficiency
+                'llm_output': llm_output,
                 'tool_name': tool_name,
                 'tool_params': tool_params,
-                'tool_result': tool_result[:DEBUG_RESULT_LIMIT],
+                'tool_result': tool_result,
                 'task_completed': task_completed,
                 'history_length': history_length,
                 'error_msg': error_msg
@@ -90,77 +88,3 @@ class DebugRecorder:
         except Exception as e:
             print(f"❌ Failed to record LLM call: {e}")
     
-    def get_records(self) -> List[Dict[str, Any]]:
-        """
-        Get all recorded LLM call records
-        
-        Returns:
-            List of LLM call records
-        """
-        return self.llm_call_records.copy()
-    
-    def get_records_for_task(self, task_id: str) -> List[Dict[str, Any]]:
-        """
-        Get LLM call records for a specific task
-        
-        Args:
-            task_id: Task ID to filter by
-            
-        Returns:
-            List of LLM call records for the task
-        """
-        return [record for record in self.llm_call_records 
-                if record.get('task_id') == task_id]
-    
-    def clear_records(self):
-        """Clear all recorded LLM call records"""
-        self.llm_call_records.clear()
-        if self.debug_mode:
-            print("🐛 DEBUG: Cleared all LLM call records")
-    
-    def export_records_to_json(self, output_file: str):
-        """
-        Export all records to JSON file
-        
-        Args:
-            output_file: Output JSON file path
-        """
-        if not self.debug_mode:
-            return
-            
-        try:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(self.llm_call_records, f, ensure_ascii=False, indent=2)
-            print(f"🐛 DEBUG: Exported {len(self.llm_call_records)} records to {output_file}")
-        except Exception as e:
-            print(f"❌ Failed to export debug records: {e}")
-    
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get debug statistics
-        
-        Returns:
-            Dictionary containing debug statistics
-        """
-        if not self.debug_mode:
-            return {}
-        
-        total_calls = len(self.llm_call_records)
-        error_calls = len([r for r in self.llm_call_records if r.get('error_msg')])
-        completed_calls = len([r for r in self.llm_call_records if r.get('task_completed')])
-        
-        # Group by task
-        tasks = {}
-        for record in self.llm_call_records:
-            task_id = record.get('task_id', 'unknown')
-            if task_id not in tasks:
-                tasks[task_id] = 0
-            tasks[task_id] += 1
-        
-        return {
-            'total_calls': total_calls,
-            'error_calls': error_calls,
-            'completed_calls': completed_calls,
-            'tasks_count': len(tasks),
-            'calls_per_task': tasks
-        }

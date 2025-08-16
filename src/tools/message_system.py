@@ -101,7 +101,7 @@ class StatusUpdateMessage:
         return {
             "round_number": round_number,
             "task_completed": task_completed,
-            "llm_response_preview": llm_response_preview,  # 不再截断，显示完整内容
+            "llm_response_preview": llm_response_preview,  # No longer truncate
             "tool_calls_summary": tool_calls_summary,
             "current_task_description": current_task_description,
             "error_message": error_message,
@@ -155,7 +155,7 @@ class Mailbox:
                 with open(inbox_file, 'w', encoding='utf-8') as f:
                     json.dump(message.to_dict(), f, indent=2, ensure_ascii=False)
                 
-                print_current(f"📥 Agent {self.agent_id} received message {message.message_id} from {message.sender_id}")
+                #print_current(f"📥 Agent {self.agent_id} received message {message.message_id} from {message.sender_id}")
                 return True
         except Exception as e:
             print_current(f"❌ Failed to receive message: {e}")
@@ -286,29 +286,7 @@ class MessageRouter:
             cleanup_on_init: Whether to cleanup old mailboxes on initialization
         """
         self.workspace_root = workspace_root
-        
-        # 🔧 Fix: Ensure mailboxes are created in appropriate output directory
-        if mailbox_root is None:
-            # If workspace_root ends with 'workspace', place mailboxes in its parent directory
-            if os.path.basename(workspace_root) == "workspace":
-                outdir = os.path.dirname(workspace_root)
-                
-                # 🔧 Additional fix: If outdir is the AGIBot project root (contains src/, agibot.py),
-                # place mailboxes in the workspace directory instead to avoid cluttering project root
-                if (os.path.exists(os.path.join(outdir, "src")) and 
-                    os.path.exists(os.path.join(outdir, "src", "main.py")) and 
-                    os.path.exists(os.path.join(outdir, "agibot.py"))):
-                    # This indicates we're running from AGIBot project root
-                    # Place mailboxes in workspace directory to keep project root clean
-                    self.mailbox_root = os.path.join(workspace_root, "mailboxes")
-                else:
-                    # Normal case: place mailboxes in output directory
-                    self.mailbox_root = os.path.join(outdir, "mailboxes")
-            else:
-                # workspace_root is not a 'workspace' subdirectory, place mailboxes in it
-                self.mailbox_root = os.path.join(workspace_root, "mailboxes")
-        else:
-            self.mailbox_root = mailbox_root
+        self.mailbox_root = mailbox_root or os.path.join(os.path.dirname(workspace_root), "mailboxes")
             
         self.mailboxes = {}
         self._lock = threading.Lock()
@@ -325,12 +303,12 @@ class MessageRouter:
         # Ensure manager mailbox is always registered
         self.register_agent("manager")
         
-        # 🔧 修复：暂时禁用后台处理，避免与手动处理冲突
+        # 🔧 Fix: temporarily disable background processing to avoid conflicts with manual processing
         # self._start_background_processing()
 
 
     def _start_background_processing(self):
-        """启动后台消息处理线程"""
+        """Start background message processing thread"""
         if self._background_thread is None or not self._background_thread.is_alive():
             self._background_thread = threading.Thread(
                 target=self._process_messages_continuously,
@@ -340,20 +318,20 @@ class MessageRouter:
             self._background_thread.start()
 
     def _process_messages_continuously(self):
-        """持续处理消息的后台线程"""
+        """Background thread that continuously processes messages"""
         while not self._stop_event.is_set():
             try:
-                # 处理所有邮箱的消息
+                # Process messages from all mailboxes
                 processed_count = self.process_all_messages_once()
                 if processed_count > 0:
                     print_current(f"📬 Processed {processed_count} messages")
                 
-                # 短暂休眠，避免CPU过度占用
+                # Brief sleep to avoid excessive CPU usage
                 time.sleep(0.1)
                 
             except Exception as e:
                 print_current(f"⚠️ Error in background message processing: {e}")
-                time.sleep(1)  # 出错时等待更长时间
+                time.sleep(1)  # Wait longer when errors occur
                 
     def register_agent(self, agent_id: str) -> Optional[Mailbox]:
         """
@@ -366,7 +344,7 @@ class MessageRouter:
             Created mailbox
         """
         with self._lock:
-            # 验证agent ID格式
+            # Validate agent ID format
             if not self._is_valid_agent_id(agent_id):
                 print_current(f"⚠️ Invalid agent ID format: {agent_id}. Expected format: agent_XXX")
                 return None
@@ -394,7 +372,7 @@ class MessageRouter:
                 target_mailbox = self.mailboxes.get(message.receiver_id)
                 if not target_mailbox:
                     print_current(f"⚠️ Target agent {message.receiver_id} not found, auto-registering")
-                    # 自动注册目标agent
+                    # Automatically register target agent
                     target_mailbox = self.register_agent(message.receiver_id)
                     if not target_mailbox:
                         print_current(f"❌ Failed to register agent {message.receiver_id} - invalid agent ID format")
@@ -474,7 +452,7 @@ class MessageRouter:
 
     def _route_message_direct(self, message: Message) -> bool:
         """
-        直接路由消息（线程安全版本）
+        Direct route messages (thread-safe version)
         
         Args:
             message: Message to route
@@ -483,20 +461,20 @@ class MessageRouter:
             True if message routed successfully
         """
         try:
-            # 使用锁来保护mailbox字典的访问和修改
+            # Use locks to protect access and modification of mailbox dictionary
             with self._lock:
                 target_mailbox = self.mailboxes.get(message.receiver_id)
                 if not target_mailbox:
-                    # 🔧 修复：检查是否已经有其他线程注册了这个agent
+                    # 🔧 Fix: check if another thread has already registered this agent
                     target_mailbox = self.mailboxes.get(message.receiver_id)
                     if not target_mailbox:
                         print_current(f"⚠️ Target agent {message.receiver_id} not found for message {message.message_id}")
-                        # 尝试自动注册目标agent
+                        # Try to automatically register target agent
                         target_mailbox = Mailbox(message.receiver_id, self.mailbox_root)
                         self.mailboxes[message.receiver_id] = target_mailbox
                         print_current(f"📬 Auto-registered mailbox for agent {message.receiver_id}")
             
-            # Deliver message (在锁外执行，避免死锁)
+            # Deliver message (execute outside lock to avoid deadlock)
             success = target_mailbox.receive_message(message)
             return success
             
@@ -519,12 +497,12 @@ class MessageRouter:
         """
         processed_count = 0
         try:
-            # 🔧 修复：创建mailboxes的副本以避免迭代时字典大小变化的问题
+            # 🔧 Fix: create copy of mailboxes to avoid dictionary size change during iteration
             with self._lock:
-                # 创建当前mailboxes的副本，避免在迭代过程中字典被修改
+                # Create copy of current mailboxes to avoid dictionary modification during iteration
                 mailboxes_snapshot = list(self.mailboxes.values())
             
-            # 在锁外处理消息，避免长时间持锁
+            # Process messages outside lock to avoid holding lock for long time
             for mailbox in mailboxes_snapshot:
                 try:
                     count = self._process_outbox_direct(mailbox)
@@ -539,7 +517,7 @@ class MessageRouter:
 
     def _process_outbox_direct(self, mailbox: Mailbox) -> int:
         """
-        直接处理outbox消息（不加锁，由调用者负责同步）
+        Directly process outbox messages (no lock
         
         Args:
             mailbox: Mailbox to process
@@ -575,7 +553,7 @@ class MessageRouter:
                             if os.path.exists(filepath):
                                 os.remove(filepath)
                                 processed_count += 1
-                                print_current(f"📨 Successfully routed and removed message {message.message_id} from outbox")
+                                #print_current(f"📨 Successfully routed and removed message {message.message_id} from outbox")
                         except FileNotFoundError:
                             # File already removed by another thread, this is fine
                             processed_count += 1
@@ -595,7 +573,7 @@ class MessageRouter:
         return processed_count
 
     def _cleanup_all_mailboxes(self):
-        """Clean up all historical mailbox directories (cleanup before running)"""
+        """Clean up all historical mailbox content (cleanup before running)"""
         try:
             if not os.path.exists(self.mailbox_root):
                 return
@@ -612,23 +590,34 @@ class MessageRouter:
                 if agent_dir == "manager":
                     continue
                 
-                # Delete all other mailbox directories
+                # Clean up mailbox content instead of deleting the directory
                 try:
-                    import shutil
-                    shutil.rmtree(agent_path, ignore_errors=True)
+                    # Clean up inbox, outbox, and sent directories
+                    for subdir in ["inbox", "outbox", "sent"]:
+                        subdir_path = os.path.join(agent_path, subdir)
+                        if os.path.exists(subdir_path):
+                            # Remove all JSON files in the subdirectory
+                            for filename in os.listdir(subdir_path):
+                                if filename.endswith('.json'):
+                                    file_path = os.path.join(subdir_path, filename)
+                                    try:
+                                        os.remove(file_path)
+                                    except Exception as e:
+                                        print_current(f"⚠️ Failed to remove message file {filename}: {e}")
+                    
                     cleaned_count += 1
-                    print_current(f"🧹 Cleaned up mailbox: {agent_dir}")
+                    print_current(f"🧹 Cleaned up mailbox content: {agent_dir}")
                 except Exception as e:
-                    print_current(f"⚠️ Failed to cleanup mailbox {agent_dir}: {e}")
+                    print_current(f"⚠️ Failed to cleanup mailbox content {agent_dir}: {e}")
             
             if cleaned_count > 0:
-                print_current(f"🧹 Cleaned up {cleaned_count} mailboxes before startup")
+                print_current(f"🧹 Cleaned up content of {cleaned_count} mailboxes before startup")
                 
         except Exception as e:
-            print_current(f"⚠️ Failed to cleanup all mailboxes: {e}")
+            print_current(f"⚠️ Failed to cleanup all mailbox content: {e}")
     
     def _cleanup_old_mailboxes(self, max_age_hours: int = 24):
-        """Clean up expired mailbox directories"""
+        """Clean up expired mailbox content"""
         try:
             import time
             current_time = time.time()
@@ -649,19 +638,33 @@ class MessageRouter:
                 try:
                     dir_mtime = os.path.getmtime(agent_path)
                     if current_time - dir_mtime > max_age_seconds:
-                        # Delete expired mailbox
-                        import shutil
-                        shutil.rmtree(agent_path, ignore_errors=True)
-                        cleaned_count += 1
-                        print_current(f"🧹 Cleaned up old mailbox: {agent_dir}")
+                        # Clean up expired mailbox content instead of deleting the directory
+                        try:
+                            # Clean up inbox, outbox, and sent directories
+                            for subdir in ["inbox", "outbox", "sent"]:
+                                subdir_path = os.path.join(agent_path, subdir)
+                                if os.path.exists(subdir_path):
+                                    # Remove all JSON files in the subdirectory
+                                    for filename in os.listdir(subdir_path):
+                                        if filename.endswith('.json'):
+                                            file_path = os.path.join(subdir_path, filename)
+                                            try:
+                                                os.remove(file_path)
+                                            except Exception as e:
+                                                print_current(f"⚠️ Failed to remove old message file {filename}: {e}")
+                            
+                            cleaned_count += 1
+                            print_current(f"🧹 Cleaned up old mailbox content: {agent_dir}")
+                        except Exception as e:
+                            print_current(f"⚠️ Failed to cleanup old mailbox content {agent_dir}: {e}")
                 except Exception as e:
                     print_current(f"⚠️ Failed to check mailbox {agent_dir}: {e}")
             
             if cleaned_count > 0:
-                print_current(f"🧹 Cleaned up {cleaned_count} old mailboxes")
+                print_current(f"🧹 Cleaned up content of {cleaned_count} old mailboxes")
                 
         except Exception as e:
-            print_current(f"⚠️ Failed to cleanup old mailboxes: {e}")
+            print_current(f"⚠️ Failed to cleanup old mailbox content: {e}")
 
     def get_mailbox(self, agent_id: str) -> Optional[Mailbox]:
         """Get agent mailbox"""
@@ -684,13 +687,13 @@ class MessageRouter:
         sent_count = 0
         
         with self._lock:
-            # 直接访问 mailboxes 避免递归锁
+            # Directly access mailboxes to avoid recursive lock
             sender_mailbox = self.mailboxes.get(sender_id)
             if not sender_mailbox:
                 return 0
                 
             for agent_id in self.mailboxes.keys():
-                # 移除 agent_id != sender_id 条件，让发送者也能收到广播消息
+                # Remove agent_id != sender_id condition
                 if agent_id not in exclude_agents:
                     message = Message(
                         sender_id=sender_id,
@@ -811,7 +814,7 @@ class MessageFormatter:
             parts.append(f"  Current Task: {content['current_task_description']}")
         
         if content.get('llm_response_preview'):
-            # 不再截断 LLM 响应预览，显示完整内容
+            # No longer truncate LLM response preview
             parts.append(f"  LLM Response Preview: {content['llm_response_preview']}")
         
         if content.get('tool_calls_summary'):
@@ -870,7 +873,7 @@ class MessageFormatter:
         """Format broadcast message"""
         parts = []
         
-        # 处理常见的广播消息字段
+        # Handle common broadcast message fields
         if content.get('announcement'):
             parts.append(f"  📢 Announcement: {content['announcement']}")
         
@@ -884,7 +887,7 @@ class MessageFormatter:
             else:
                 parts.append(f"  Content: {content['content']}")
         
-        # 处理其他所有字段（不截断内容）
+        # Handle all other fields (don't truncate content)
         handled_keys = {'announcement', 'type', 'content'}
         for key, value in content.items():
             if key not in handled_keys and key not in ['timestamp', 'message_id']:
@@ -933,7 +936,7 @@ class MessageFormatter:
             parts.append(f"  Error Type: {content['error_type']}")
         
         if content.get('stack_trace'):
-            # 不再截断堆栈跟踪信息，显示完整内容
+            # No longer truncate stack trace information
             parts.append(f"  Stack Trace: {content['stack_trace']}")
         
         if content.get('suggested_action'):
@@ -950,16 +953,16 @@ class MessageFormatter:
             if key in ['timestamp', 'message_id']:  # Skip metadata
                 continue
             
-            # 不再截断内容，显示完整信息
+            # No longer truncate content
             if isinstance(value, (dict, list)):
-                # 对于字典和列表，使用更好的格式化
+                # For dictionaries and lists
                 if isinstance(value, dict):
-                    # 字典格式化为多行显示
+                    # Format dictionary as multi-line display
                     parts.append(f"  {key}:")
                     for sub_key, sub_value in value.items():
                         parts.append(f"    {sub_key}: {sub_value}")
                 else:
-                    # 列表格式化
+                    # List formatting
                     parts.append(f"  {key}: {str(value)}")
             else:
                 parts.append(f"  {key}: {value}")
@@ -971,14 +974,14 @@ class MessageFormatter:
 _global_message_router = None
 _router_lock = threading.Lock()
 
-def get_global_message_router(workspace_root: str = None) -> MessageRouter:
+def get_global_message_router(workspace_root: str = None, cleanup_on_init: bool = True) -> MessageRouter:
     """Get or create global MessageRouter instance"""
     global _global_message_router
     
     if _global_message_router is None:
         if workspace_root is None:
             return None
-        _global_message_router = MessageRouter(workspace_root)
+        _global_message_router = MessageRouter(workspace_root, cleanup_on_init=cleanup_on_init)
     return _global_message_router
 
 
@@ -997,14 +1000,14 @@ def format_inbox_for_llm_context(agent_id: str, workspace_root: str = None,
         Formatted message string for LLM
     """
     try:
-        # 确定workspace_root
+        # Determine workspace_root
         if workspace_root is None:
             if output_directory:
                 workspace_root = output_directory
             else:
                 workspace_root = os.getcwd()
         
-        router = get_global_message_router(workspace_root)
+        router = get_global_message_router(workspace_root, cleanup_on_init=False)
         mailbox = router.get_mailbox(agent_id)
         
         if not mailbox:
@@ -1033,9 +1036,9 @@ def format_inbox_for_llm_context(agent_id: str, workspace_root: str = None,
 class MessageSystem:
     """Message System - facade for message routing functionality"""
     
-    def __init__(self, workspace_root: str = None):
+    def __init__(self, workspace_root: str = None, cleanup_on_init: bool = True):
         self.workspace_root = workspace_root or os.getcwd()
-        self.router = get_global_message_router(self.workspace_root)
+        self.router = get_global_message_router(self.workspace_root, cleanup_on_init=cleanup_on_init)
     
     def send_message(self, sender_id: str, receiver_id: str, message_type: MessageType, 
                     content: Dict[str, Any], priority: MessagePriority = MessagePriority.NORMAL) -> bool:
@@ -1063,11 +1066,11 @@ def get_message_router(workspace_root: str = None, output_directory: str = None,
     Args:
         workspace_root: Workspace root directory
         output_directory: Output directory (alternative to workspace_root) 
-        cleanup_on_init: Whether to cleanup old mailboxes on initialization (ignored)
+        cleanup_on_init: Whether to cleanup old mailboxes on initialization
         
     Returns:
         MessageRouter instance
     """
     if workspace_root is None and output_directory is not None:
         workspace_root = output_directory
-    return get_global_message_router(workspace_root) 
+    return get_global_message_router(workspace_root, cleanup_on_init=cleanup_on_init) 

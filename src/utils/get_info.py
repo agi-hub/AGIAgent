@@ -25,57 +25,6 @@ import requests
 from typing import Dict, Any
 from tools.print_system import print_current
 
-def get_ip_location_info():
-    """
-    Get IP geolocation information
-    
-    Returns:
-        Dict containing IP and location information
-    """
-    
-    try:
-        # Try to get public IP and location info
-        response = requests.get('http://ipapi.co/json/', timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                'ip': data.get('ip', 'Unknown'),
-                'city': data.get('city', 'Unknown'),
-                'region': data.get('region', 'Unknown'),
-                'country': data.get('country_name', 'Unknown'),
-                'country_code': data.get('country_code', 'Unknown'),
-                'timezone': data.get('timezone', 'Unknown')
-            }
-    except Exception as e:
-        print_current(f"Warning: Could not retrieve IP location info: {e}")
-    
-    # Fallback: try alternative service
-    try:
-        response = requests.get('https://ipinfo.io/json', timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            location = data.get('loc', '').split(',')
-            return {
-                'ip': data.get('ip', 'Unknown'),
-                'city': data.get('city', 'Unknown'),
-                'region': data.get('region', 'Unknown'),
-                'country': data.get('country', 'Unknown'),
-                'country_code': data.get('country', 'Unknown'),
-                'timezone': data.get('timezone', 'Unknown')
-            }
-    except Exception as e:
-        print_current(f"Warning: Could not retrieve IP location info from fallback: {e}")
-    
-    # Final fallback: return unknown values
-    return {
-        'ip': 'Unknown',
-        'city': 'Unknown',
-        'region': 'Unknown',
-        'country': 'Unknown',
-        'country_code': 'Unknown',
-        'timezone': 'Unknown'
-    }
-
 
 def check_command_available(command: str) -> bool:
     """
@@ -165,12 +114,12 @@ def get_system_environment_info(language: str = 'en', model: str = None, api_bas
         if language == 'zh':
             language_instruction = """
 
-**重要的语言设置指令**:
-- 系统语言配置为中文，请尽量使用中文进行回复和生成报告
-- 当生成分析报告、总结文档或其他输出文件时，请使用中文
-- 代码注释和说明文档也请尽量使用中文
-- 只有在涉及英文专业术语或代码本身时才使用英语
-- 报告标题、章节名称等都应使用中文"""
+**Important Language Setting Instructions**:
+- System language is configured as Chinese
+- When generating analysis reports
+- Code comments and documentation should also try to use Chinese
+- Only use English when involving English professional terms or code itself
+- Report titles"""
         else:
             language_instruction = """
 
@@ -187,13 +136,6 @@ def get_system_environment_info(language: str = 'en', model: str = None, api_bas
 - Current Date: {current_date.strftime('%Y-%m-%d')}
 - Current Time: [STANDARDIZED_FOR_CACHE]"""
         
-        # Add IP geolocation information
-        location_info = get_ip_location_info()
-        location_instruction = f"""
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
         
         # Add current model information if provided
         if model and api_base:
@@ -206,7 +148,7 @@ def get_system_environment_info(language: str = 'en', model: str = None, api_bas
         else:
             model_instruction = ""
         
-        return os_instruction + language_instruction + date_instruction + location_instruction + model_instruction
+        return os_instruction + language_instruction + date_instruction + model_instruction
         
     except Exception as e:
         print_current(f"Warning: Could not retrieve system environment information: {e}")
@@ -295,7 +237,7 @@ def get_workspace_context(workspace_dir: str) -> str:
     # Add basic summary statistics only
     context_parts.append(f"📊 **Basic Statistics**: {total_files} files, total size {format_file_size(total_size)}\n")
     context_parts.append("⚠️ **Important**: File names and statistics shown above are for reference only.\n")
-    context_parts.append("**You MUST use tools (list_dir, read_file, codebase_search) to get actual file contents before making any analysis or conclusions.**\n")
+    context_parts.append("**You MUST use tools (list_dir, read_file, workspace_search) to get actual file contents before making any analysis or conclusions.**\n")
     
     return ''.join(context_parts)
 
