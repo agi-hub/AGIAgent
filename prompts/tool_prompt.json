@@ -1,5 +1,5 @@
 {
-  "codebase_search": {
+  "workspace_search": {
     "description": "Find snippets of code from the codebase most relevant to the search query. This is a semantic search tool, so the query should ask for something semantically matching what is needed.",
     "parameters": {
       "type": "object",
@@ -110,16 +110,16 @@
         },
         "edit_mode": {
           "type": "string",
-          "description": "Editing mode: 'lines_replace' (Smart merge mode - use existing code markers for precise insertion, or directly replace the entire file), 'append' (safest - append to the end of the file), 'full_replace' (completely replace file content). **For short files (under 100 lines), prefer 'full_replace' over 'lines_replace' for better reliability.** Note: 'append' only adds content to the end, while 'full_replace' completely overwrites the file.",
+          "description": "Editing mode: 'lines_replace' (precise replacement using exact code matching), 'append' (safest - append to the end of the file), 'full_replace' (completely replace file content).",
           "enum": ["lines_replace", "append", "full_replace"]
+        },
+        "old_code": {
+          "type": "string",
+          "description": "For 'lines_replace' mode: The exact code snippet to find and replace. Must match the existing code 100% precisely (including whitespace and indentation). Required for lines_replace mode, ignored for other modes."
         },
         "code_edit": {
           "type": "string",
-          "description": "Edit content instructions:\n1. lines_replace mode has two usages:\n   a) Smart merge: Use '// ... existing code ...' or '# ... existing code ...' markers to indicate where to preserve original code, and the system will merge precisely based on context\n      **IMPORTANT for precise matching**: When using existing code markers, always include at least 3 lines of original code BEFORE the content to be replaced, then the replacement content, then at least 3 lines of original code AFTER. This provides sufficient context for accurate anchor detection and prevents ambiguous matches in files with similar code blocks.\n      Example format:\n      ```\n      # ... existing code ...\n      function_call_before()\n      another_line_before()\n      previous_context_line()\n      old_buggy_line()  // This line will be replaced\n      next_context_line()\n      following_line_after()\n      final_line_after()\n      # ... existing code ...\n      ```\n   b) Full replacement: Provide the complete new file content (without existing code markers), equivalent to full_replace\n2. append mode: Directly provide the content to append to the end of the file\n3. full_replace mode: Provide the complete new file content, fully replacing the original file"
-        },
-        "instructions": {
-          "type": "string",
-          "description": "A single sentence instruction describing what you are going to do for the sketched edit."
+          "description": "Edit content instructions:\n- lines_replace mode: Provide the new code to replace the old_code with.\n- append mode: Directly provide the content to append to the end of the file\n- full_replace mode: Provide the complete new file content, fully replacing the original file"
         }
       },
       "required": ["target_file", "edit_mode", "code_edit"]
@@ -165,13 +165,13 @@
     }
   },
   "search_img": {
-    "description": "通过输入的query获取多张相关图片（最多5张），图片保存到本地文件，返回图片文件列表的JSON格式。使用多搜索引擎策略：Google可用时按 Google->百度->Bing 顺序搜索，Google不可用时按 百度->Bing 顺序搜索。",
+    "description": "Obtain up to 5 relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses a multi-search engine strategy: If Google is available, search in the order Google->Baidu->Bing; if Google is not available, search in the order Baidu->Bing.",
     "parameters": {
       "type": "object",
       "properties": {
         "query": {
           "type": "string",
-          "description": "图片搜索查询字符串，描述要查找的图片内容。请使用具体、清晰的描述词，例如'红色玫瑰花'、'蓝天白云风景'等。"
+          "description": "Image search query string, describing the content of the images to find. Please use specific and clear descriptive terms, such as 'red rose flower', 'blue sky and white clouds landscape', etc."
         }
       },
       "required": ["query"]

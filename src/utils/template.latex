@@ -1,0 +1,173 @@
+% 最简日志模板 - 优化版
+\documentclass[a4paper,12pt]{article}
+
+\usepackage{xeCJK}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{datetime2}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage{framed}
+\usepackage{listings}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+
+% 页面设置
+\geometry{margin=2.5cm}
+
+% 字体设置
+\setCJKmainfont{Noto Serif CJK SC}
+
+% 图片设置 - 防止超出边界并控制合理大小
+\usepackage{adjustbox}
+\setkeys{Gin}{width=0.8\linewidth,height=0.9\textheight,keepaspectratio}
+
+% 重定义includegraphics以提供更好的默认大小控制
+\let\originalincludegraphics\includegraphics
+\renewcommand{\includegraphics}[2][]{%
+  \begingroup
+  \setkeys{Gin}{width=0.8\linewidth,height=0.9\textheight,keepaspectratio}%
+  \setkeys{Gin}{#1}%
+  \originalincludegraphics{#2}%
+  \endgroup
+}
+
+% 代码高亮设置
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codecomment}{RGB}{106,153,85}
+\definecolor{codekeyword}{RGB}{86,156,214}
+\definecolor{codestring}{RGB}{206,145,120}
+
+% 定义代码块环境
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+  commandchars=\\\{\},
+  fontsize=\footnotesize
+}
+
+% 定义带背景的代码块
+\newenvironment{Shaded}{%
+  \begin{snugshade}%
+}{%
+  \end{snugshade}%
+}
+
+% 定义语法高亮命令（完整版）
+\providecommand{\CommentTok}[1]{\textcolor{codecomment}{#1}}
+\providecommand{\KeywordTok}[1]{\textcolor{codekeyword}{\textbf{#1}}}
+\providecommand{\StringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\NormalTok}[1]{#1}
+\providecommand{\FunctionTok}[1]{\textcolor{blue}{#1}}
+\providecommand{\VariableTok}[1]{\textcolor{purple}{#1}}
+\providecommand{\OperatorTok}[1]{\textcolor{brown}{#1}}
+\providecommand{\ControlFlowTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\DataTypeTok}[1]{\textcolor{green}{\textbf{#1}}}
+\providecommand{\DecValTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\BaseNTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\FloatTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\CharTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\RegionMarkerTok}[1]{#1}
+\providecommand{\ErrorTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\AlertTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\WarningTok}[1]{\textcolor{orange}{\textbf{#1}}}
+\providecommand{\AttributeTok}[1]{\textcolor{teal}{#1}}
+\providecommand{\InformationTok}[1]{\textcolor{blue}{#1}}
+\providecommand{\OtherTok}[1]{\textcolor{violet}{#1}}
+\providecommand{\DocumentationTok}[1]{\textcolor{codecomment}{\textit{#1}}}
+\providecommand{\AnnotationTok}[1]{\textcolor{codecomment}{\textbf{#1}}}
+\providecommand{\ImportTok}[1]{\textcolor{magenta}{#1}}
+\providecommand{\PreprocessorTok}[1]{\textcolor{magenta}{\textbf{#1}}}
+\providecommand{\ExtensionTok}[1]{#1}
+\providecommand{\SpecialCharTok}[1]{\textcolor{red}{#1}}
+\providecommand{\SpecialStringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\VerbatimStringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\BuiltInTok}[1]{\textcolor{blue}{\textbf{#1}}}
+\providecommand{\ConstantTok}[1]{\textcolor{purple}{\textbf{#1}}}
+\providecommand{\NameBuiltinTok}[1]{\textcolor{blue}{\textbf{#1}}}
+\providecommand{\CloseingTok}[1]{#1}
+\providecommand{\ParameterTok}[1]{#1}
+
+% 定义tightlist命令（Pandoc生成的紧凑列表）
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% 设置代码背景色
+\definecolor{shadecolor}{RGB}{248,248,248}
+
+% listings设置（备用）
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\footnotesize,
+  commentstyle=\color{codecomment},
+  keywordstyle=\color{codekeyword},
+  stringstyle=\color{codestring},
+  breaklines=true,
+  breakatwhitespace=true,
+  frame=single,
+  framesep=3pt,
+  framexleftmargin=3pt,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  tabsize=2,
+  showspaces=false,
+  showstringspaces=false,
+  xleftmargin=17pt,
+  framexleftmargin=17pt,
+  framexrightmargin=5pt,
+  framexbottommargin=4pt,
+  rulecolor=\color{gray!30}
+}
+
+% 链接设置
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+% 页眉页脚
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{\today}
+\fancyfoot[C]{\thepage\ / \pageref{LastPage}}
+
+% 关闭自动章节编号（因为Markdown中可能已有编号）
+\setcounter{secnumdepth}{0}
+
+% 开始文档
+\begin{document}
+
+% 标题
+$if(title)$
+\begin{center}
+{\Huge\bfseries $title$}\\[1cm]
+$if(subtitle)$
+{\Large $subtitle$}\\[0.5cm]
+$endif$
+$if(author)$
+{\large 作者: $author$}\\[0.5cm]
+$endif$
+{\large 生成时间: \DTMnow}\\[1cm]
+
+% 生成日志框
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{文档生成日志}\\[0.3cm]
+\begin{tabular}{ll}
+转换引擎 & XeLaTeX \\
+模板版本 & 最简日志版 v1.0 \\
+SVG处理 & 中文优化过滤器 \\
+生成状态 & 正常 \\
+开始时间 & \DTMnow \\
+\end{tabular}
+\end{minipage}}
+\end{center}
+
+\tableofcontents
+\newpage
+$endif$
+
+% 文档正文
+$body$
+
+\end{document}

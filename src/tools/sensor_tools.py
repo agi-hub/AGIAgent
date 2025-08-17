@@ -387,14 +387,14 @@ class SensorDataCollector:
                 result_info += f" (resized to {target_resolution})"
             print_current(result_info)
             
-            # 在base64数据前添加文件路径元数据标记（供历史优化器识别）
+            # Add file path metadata tag before base64 data (for history optimizer identification)
             source_path_marker = f"[FILE_SOURCE:{filepath}]"
             marked_base64_data = f"{source_path_marker}{base64_data}"
             
             if vision_mode == 'reference':
                 # For vision mode, return a minimal reference format
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': marked_base64_data, # Still include full base64 for vision API
                     'dataformat': f'base64 encoded {format_type}',
                     'source': filepath,
@@ -407,7 +407,7 @@ class SensorDataCollector:
             else:
                 # For full mode, return the full base64 data
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': marked_base64_data,
                     'dataformat': f'base64 encoded {format_type}',
                     'source': filepath,
@@ -432,10 +432,10 @@ class SensorDataCollector:
             # Generate output filename
             output_file = os.path.join(self.output_dir, f"image_{timestamp}.jpg")
             
-            # Device number extraction - 确保正确处理 source='0' 的情况
+            # Device number extraction - ensure correct handling of source='0' case
             if source.isdigit():
                 device_num = source  # 保持字符串格式用于命令行
-                device_int = int(source)  # 数字格式用于日志
+                device_int = int(source)  # Numeric format for logging
             elif source.startswith('/dev/video'):
                 device_num = source.replace('/dev/video', '')
                 device_int = int(device_num)
@@ -451,7 +451,7 @@ class SensorDataCollector:
             # Try different capture methods
             capture_success = False
             
-            # Method 1: Try fswebcam (Linux) - 最常用且依赖最小
+            # Method 1: Try fswebcam (Linux) - most commonly used and minimal dependencies
             if os.name == 'posix':
                 try:
                     cmd = [
@@ -459,7 +459,7 @@ class SensorDataCollector:
                         '-d', f'/dev/video{device_num}',
                         '-r', f'{width}x{height}',
                         '--no-banner',
-                        '--skip', '5',  # 跳过前5帧以确保摄像头稳定
+                        '--skip', '5',  # Skip first 5 frames to ensure camera stability
                         output_file
                     ]
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
@@ -471,7 +471,7 @@ class SensorDataCollector:
                 except (subprocess.TimeoutExpired, FileNotFoundError):
                     pass  # Try next method
             
-            # Method 2: Try ffmpeg (跨平台支持)
+            # Method 2: Try ffmpeg (cross-platform support)
             if not capture_success:
                 try:
                     if os.name == 'posix':
@@ -509,7 +509,7 @@ class SensorDataCollector:
             # Method 3: Try imagesnap (macOS)
             if not capture_success and os.uname().sysname == 'Darwin':
                 try:
-                    # 首先获取可用的摄像头设备列表
+                    # First get available camera device list
                     list_result = subprocess.run(['imagesnap', '-l'], capture_output=True, text=True, timeout=5)
                     available_cameras = []
                     
@@ -517,30 +517,30 @@ class SensorDataCollector:
                         lines = list_result.stdout.strip().split('\n')
                         for line in lines:
                             if '=>' in line:
-                                # 找到默认摄像头
+                                # Find default camera
                                 camera_name = line.split('=>')[1].strip()
-                                available_cameras.append((camera_name, True))  # True表示默认
+                                available_cameras.append((camera_name, True))  # True indicates default
                             elif line.strip() and not line.startswith('Video Devices:'):
-                                # 其他摄像头
+                                # Other cameras
                                 camera_name = line.strip()
                                 if camera_name:
                                     available_cameras.append((camera_name, False))
                     
-                    # 根据设备号选择摄像头
+                    # Select camera based on device number
                     if available_cameras:
                         if device_int == 0 and any(is_default for _, is_default in available_cameras):
-                            # 使用默认摄像头（device 0）
+                            # Use default camera (device 0)
                             selected_camera = next(name for name, is_default in available_cameras if is_default)
                             cmd = ['imagesnap', '-d', selected_camera, output_file]
                         elif device_int < len(available_cameras):
-                            # 使用指定索引的摄像头
+                            # Use camera with specified index
                             selected_camera = available_cameras[device_int][0]
                             cmd = ['imagesnap', '-d', selected_camera, output_file]
                         else:
-                            # 回退到数字设备号
+                            # Fallback to numeric device number
                             cmd = ['imagesnap', '-d', device_num, output_file]
                     else:
-                        # 没有找到摄像头列表，使用默认
+                        # No camera list found
                         cmd = ['imagesnap', output_file]
                     
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -560,14 +560,14 @@ class SensorDataCollector:
                 # Convert to base64
                 base64_data = base64.b64encode(image_data).decode('utf-8')
                 
-                # 在base64数据前添加文件路径元数据标记（供历史优化器识别）
+                # Add file path metadata tag before base64 data (for history optimizer identification)
                 file_path_marker = f"[FILE_SAVED:{output_file}]"
                 marked_base64_data = f"{file_path_marker}{base64_data}"
                 
                 if vision_mode == 'reference':
                     # For vision mode, return a minimal reference format
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': marked_base64_data, # Still include full base64 for vision API
                         'dataformat': 'base64 encoded image/jpeg',
                         'source': source,
@@ -580,7 +580,7 @@ class SensorDataCollector:
                 else:
                     # For full mode, return the full base64 data
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': marked_base64_data,
                         'dataformat': 'base64 encoded image/jpeg',
                         'source': source,
@@ -608,10 +608,10 @@ class SensorDataCollector:
             # Generate output filename
             output_file = os.path.join(self.output_dir, f"video_{timestamp}.mp4")
             
-            # Device number extraction - 确保正确处理 source='0' 的情况
+            # Device number extraction - ensure correct handling of source='0' case
             if source.isdigit():
                 device_num = source  # 保持字符串格式用于命令行
-                device_int = int(source)  # 数字格式用于日志
+                device_int = int(source)  # Numeric format for logging
             elif source.startswith('/dev/video'):
                 device_num = source.replace('/dev/video', '')
                 device_int = int(device_num)
@@ -627,7 +627,7 @@ class SensorDataCollector:
             # Try different capture methods
             capture_success = False
             
-            # Method 1: Try ffmpeg (最常用的视频捕获工具)
+            # Method 1: Try ffmpeg (most commonly used video capture tool)
             try:
                 if os.name == 'posix':
                     # Linux/macOS
@@ -638,7 +638,7 @@ class SensorDataCollector:
                         '-t', str(duration),
                         '-s', f'{width}x{height}',
                         '-c:v', 'libx264',
-                        '-preset', 'ultrafast',  # 快速编码
+                        '-preset', 'ultrafast',  # Fast encoding
                         '-y',
                         output_file
                     ]
@@ -664,7 +664,7 @@ class SensorDataCollector:
                     print_current(f"🎥 Video captured successfully using ffmpeg")
                     
                     return {
-                        'success': True,
+                        'status': 'success',
                         'data': output_file,
                         'dataformat': 'MP4 video file',
                         'source': source,
@@ -679,7 +679,7 @@ class SensorDataCollector:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass  # Continue to error handling
             
-            # 如果所有方法都失败了
+            # If all methods fail
             if not capture_success:
                 return self._create_error_result(f"Failed to capture video: No suitable capture method available")
                 
@@ -739,7 +739,7 @@ class SensorDataCollector:
             if capture_success:
                 file_size = os.path.getsize(output_file)
                 return {
-                    'success': True,
+                    'status': 'success',
                     'data': output_file,
                     'dataformat': 'WAV audio file',
                     'source': source,
@@ -764,7 +764,7 @@ class SensorDataCollector:
             
             print_current(f"🎥 Successfully loaded video from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': filepath,
                 'dataformat': f'{file_ext.upper()} video file',
                 'source': filepath,
@@ -784,7 +784,7 @@ class SensorDataCollector:
             
             print_current(f"🎤 Successfully loaded audio from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': filepath,
                 'dataformat': f'{file_ext.upper()} audio file',
                 'source': filepath,
@@ -812,7 +812,7 @@ class SensorDataCollector:
             
             print_current(f"📊 Successfully loaded sensor data from file: {filepath}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': parsed_data,
                 'dataformat': dataformat,
                 'source': filepath,
@@ -850,7 +850,7 @@ class SensorDataCollector:
             
             print_current(f"📊 Successfully read sensor data from device: {source}")
             return {
-                'success': True,
+                'status': 'success',
                 'data': parsed_data,
                 'dataformat': dataformat,
                 'source': source,
@@ -864,7 +864,7 @@ class SensorDataCollector:
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """Create standardized error result."""
         return {
-            'success': False,
+            'status': 'failed',
             'data': None,
             'dataformat': None,
             'error': error_message,

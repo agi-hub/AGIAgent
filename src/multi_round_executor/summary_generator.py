@@ -21,10 +21,8 @@ Summary generator for creating intelligent task summaries
 """
 
 from typing import List, Dict, Any
-from .config import SUMMARY_WORD_LIMIT
 from tools.print_system import print_system, print_current
-
-
+from config_loader import get_summary_max_length
 class SummaryGenerator:
     """Summary generator for creating intelligent task summaries using LLM"""
     
@@ -133,7 +131,7 @@ Problems Encountered:
 """
         
         summary_prompt += f"""
-Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMIT} words based on the above information, ensuring:
+Please generate a detailed summary of {get_summary_max_length()//2}-{get_summary_max_length()} words based on the above information, ensuring:
 1. Retain all information valuable for reference in subsequent tasks
 2. Highlight technical choices, workflows, and solutions
 3. Include important context information and experience summaries
@@ -171,20 +169,20 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
                 result = record['result']
                 
                 # Extract tool usage information
-                if 'Tool Execution Result' in result or '工具执行结果' in result:
-                    separator = 'Tool Execution Result' if 'Tool Execution Result' in result else '工具执行结果'
+                if 'Tool Execution Result' in result or 'Tool Execution Result' in result:
+                    separator = 'Tool Execution Result' if 'Tool Execution Result' in result else 'Tool Execution Result'
                     parts = result.split(separator)
                     if len(parts) > 1:
                         tool_part = parts[1][:500]
                         tools_used.append(tool_part.strip())
                 
                 # Extract file operation information
-                if 'edit_file' in result or 'create' in result.lower() or '创建' in result:
+                if 'edit_file' in result or 'create' in result.lower() or 'Create' in result:
                     if len(result) < 800:
                         files_created.append(result[:300])
                 
                 # Extract technical decisions
-                if any(keyword in result.lower() for keyword in ['decide', 'choose', 'adopt', 'use', 'config', 'setup', 'solve', 'implement', '决定', '选择', '采用', '使用', '配置', '设置', '解决', '实现']):
+                if any(keyword in result.lower() for keyword in ['decide', 'choose', 'adopt', 'use', 'config', 'setup', 'solve', 'implement', 'Decide', 'Select', 'Adopt', 'Use', 'Configure', 'Set', 'Solve', 'Implement']):
                     if len(result) < 1000:
                         technical_decisions.append(result[:400])
                 
@@ -211,37 +209,14 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
     def _generate_with_claude(self, prompt: str) -> str:
         """Generate summary using Claude API"""
         import datetime
-        import requests
-        
-        def get_ip_location_info():
-            try:
-                response = requests.get('http://ipapi.co/json/', timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    return {
-                        'ip': data.get('ip', 'Unknown'),
-                        'city': data.get('city', 'Unknown'),
-                        'region': data.get('region', 'Unknown'),
-                        'country': data.get('country_name', 'Unknown'),
-                        'country_code': data.get('country_code', 'Unknown'),
-                        'timezone': data.get('timezone', 'Unknown')
-                    }
-            except:
-                pass
-            return {'ip': 'Unknown', 'city': 'Unknown', 'region': 'Unknown', 'country': 'Unknown', 'country_code': 'Unknown', 'timezone': 'Unknown'}
         
         current_date = datetime.datetime.now()
-        location_info = get_ip_location_info()
         
         system_prompt = f"""You are a professional technical project summary assistant, skilled at extracting and retaining key technical information, workflows, and experience summaries to provide valuable references for subsequent tasks.
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
+- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}"""
         
         # print_current("🔄 Starting summary generation...")
         response = self.executor.client.messages.create(
@@ -262,37 +237,14 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
     def _generate_with_openai(self, prompt: str) -> str:
         """Generate summary using OpenAI API"""
         import datetime
-        import requests
-        
-        def get_ip_location_info():
-            try:
-                response = requests.get('http://ipapi.co/json/', timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    return {
-                        'ip': data.get('ip', 'Unknown'),
-                        'city': data.get('city', 'Unknown'),
-                        'region': data.get('region', 'Unknown'),
-                        'country': data.get('country_name', 'Unknown'),
-                        'country_code': data.get('country_code', 'Unknown'),
-                        'timezone': data.get('timezone', 'Unknown')
-                    }
-            except:
-                pass
-            return {'ip': 'Unknown', 'city': 'Unknown', 'region': 'Unknown', 'country': 'Unknown', 'country_code': 'Unknown', 'timezone': 'Unknown'}
         
         current_date = datetime.datetime.now()
-        location_info = get_ip_location_info()
         
         system_prompt = f"""You are a professional technical project summary assistant, skilled at extracting and retaining key technical information, workflows, and experience summaries to provide valuable references for subsequent tasks.
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
+- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}"""
         
         # print_current("🔄 Starting summary generation...")
         response = self.executor.client.chat.completions.create(
@@ -340,7 +292,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
             rounds_count = len([h for h in history if 'round' in h])
             
             # Check if successfully completed
-            has_success = any('成功' in h.get('result', '') or '完成' in h.get('result', '') 
+            has_success = any('Success' in h.get('result', '') or 'Complete' in h.get('result', '') 
                             for h in history if 'result' in h)
             
             # Extract key files
@@ -371,7 +323,7 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
             task_id = task_result.get('task_id', i)
             task_name = task_result.get('task_name', f'Task{i}')
             history = task_result.get('history', [])
-            tools_count = len([h for h in history if 'Tool Execution Result' in h.get('result', '') or '工具执行结果' in h.get('result', '')])
+            tools_count = len([h for h in history if 'Tool Execution Result' in h.get('result', '') or 'Tool Execution Result' in h.get('result', '')])
             rounds_count = len([h for h in history if 'round' in h])
             
             enhanced_summary += f"Task{task_id} - {task_name}:\n"
@@ -426,26 +378,32 @@ Please generate a detailed summary of {SUMMARY_WORD_LIMIT//2}-{SUMMARY_WORD_LIMI
         # Get max summary length from executor configuration
         max_summary_length = self.executor.summary_max_length
         
-        summary_prompt = f"""Please create a comprehensive summary of the following conversation history to preserve important context for future interactions. The summary should be approximately {max_summary_length} characters or less.
+        summary_prompt = f"""Please create a comprehensive summary of the following EARLIER conversation history to preserve important context for future interactions. This summary will be combined with recent detailed conversation rounds, so focus on earlier context that provides background and foundation.
 
-**Key information to retain:**
-1. User's original request and objectives
-2. Actions taken and tools used
-3. Important findings and discoveries
-4. Files created, modified, or analyzed
-5. Problems encountered and solutions applied
-6. Current project state and progress
-7. Technical decisions and their rationale
-8. Key insights and learnings
-9. Context needed for future actions
+**CRITICAL - Must preserve completely:**
+1. User's original request and main objectives
+2. Key technical decisions and their reasoning
+3. Error messages and their verified solutions
+4. Important file paths, function names, and configuration values
+5. Project structure and architectural decisions
+6. Successful approaches and methodologies that were established
 
-**What to exclude:**
-- Detailed tool execution output (keep only key results)
-- Repetitive information
-- Debugging details unless critical
-- Raw data that can be re-obtained
+**IMPORTANT - Preserve with detail:**
+7. Tools and commands that worked successfully
+8. Important discoveries and insights
+9. Technical constraints and requirements identified
+10. Workflow patterns that were established
 
-**Conversation History:**
+**MODERATE - Summarize concisely:**
+11. Intermediate debugging steps (keep only key learnings)
+12. Tool execution details (keep only successful outcomes)
+13. Exploratory conversations (keep only conclusions)
+
+**Note:** Recent conversation rounds will be preserved separately in full detail, so focus this summary on providing essential background context from earlier interactions.
+
+**Summary target length:** {max_summary_length//2} to {max_summary_length} characters
+
+**Earlier Conversation History to Summarize:**
 
 """
         

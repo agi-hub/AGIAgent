@@ -27,11 +27,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from tool_executor import ToolExecutor
 from config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length
+from routine_utils import read_routine_content, format_routine_for_todo_mode
 
 class TaskDecomposer:
     def __init__(self, api_key: str = None, 
                  model: str = None, 
-                 api_base: str = None):
+                 api_base: str = None,
+                 out_dir: str = None):
         """
         Initialize task decomposer
         
@@ -57,10 +59,10 @@ class TaskDecomposer:
             api_base = get_api_base()
             if api_base is None:
                 raise ValueError("API base URL not found. Please provide api_base parameter or set it in config/config.txt")
+        workspace_dir = out_dir + '/workspace'
+        self.executor = ToolExecutor(api_key, model, api_base, workspace_dir = workspace_dir)
         
-        self.executor = ToolExecutor(api_key, model, api_base)
-        
-    def decompose_task(self, user_requirement: str, output_file: str = "todo.md", workspace_dir: str = None) -> str:
+    def decompose_task(self, user_requirement: str, output_file: str = "todo.md", workspace_dir: str = None, routine_file: str = None) -> str:
         """
         Decompose user requirements into subtasks and create todo.md file
         
@@ -68,13 +70,14 @@ class TaskDecomposer:
             user_requirement: User requirement description
             output_file: Output file path (supports .md and .csv)
             workspace_dir: Workspace directory path
+            routine_file: Optional routine file path to include in task planning
             
         Returns:
             Task decomposition result information
         """
         
         # Build specialized system prompt
-        system_prompt = self._create_task_decomposition_prompt()
+        system_prompt = self._create_task_decomposition_prompt(routine_file)
         
         # Build user prompt
         user_prompt = f"User requirement: {user_requirement}"
@@ -112,8 +115,6 @@ class TaskDecomposer:
                 
                 # Get complete response content
                 content = response.content[0].text
-                print("\n🤖 Task decomposition completed")
-                print("✅ Generation completed")
                 
             else:
                 # Use OpenAI API - batch call
@@ -136,7 +137,7 @@ class TaskDecomposer:
                 print("✅ Generation completed")
             
             # No longer repeat display response content since it's already streamed
-            print(f"\n📝 Decomposition content length: {len(content)} characters")
+            #print(f"\n📝 Decomposition content length: {len(content)} characters")
             
             # Extract task list from response and create CSV file
             tasks = self._extract_tasks_from_response(content)
@@ -312,14 +313,28 @@ class TaskDecomposer:
         self._create_markdown_file(tasks, md_path)
         return md_path
 
-    def _create_task_decomposition_prompt(self) -> str:
+    def _create_task_decomposition_prompt(self, routine_file: str = None) -> str:
         """
         Create system prompt for task decomposition
         
+        Args:
+            routine_file: Optional routine file path to include in prompt
+            
         Returns:
             System prompt string
         """
-        return """You are a professional task decomposition expert, skilled at breaking down complex user requirements into specific executable subtasks.
+        # Read routine file if provided
+        routine_content = read_routine_content(routine_file)
+        
+        # Build base prompt
+        base_prompt = """You are a professional task decomposition expert, skilled at breaking down complex user requirements into specific executable subtasks."""
+        
+        # Add routine content if available
+        if routine_content:
+            routine_section = format_routine_for_todo_mode(routine_content)
+            base_prompt += routine_section
+        
+        return base_prompt + """
 
 Your task is to:
 1. Analyze the requirements provided by the user

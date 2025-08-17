@@ -10,8 +10,30 @@ import os
 import asyncio
 import threading
 import shutil
+import logging
 from typing import Dict, Any, List, Optional, Union
-from .print_system import print_current
+from contextlib import asynccontextmanager
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+# Handle import based on context
+try:
+    from .print_system import print_current
+    from .mcp_server_manager import get_mcp_server_manager, mcp_operation_context
+except ImportError:
+    # For standalone testing
+    def print_current(msg):
+        print(f"[FastMCP] {msg}")
+    
+    # Mock server manager for standalone testing
+    @asynccontextmanager
+    async def get_mcp_server_manager(config_path: str = "config/mcp_servers.json"):
+        yield None
+    
+    @asynccontextmanager 
+    async def mcp_operation_context(config_path: str = "config/mcp_servers.json"):
+        yield None
 
 # Check if fastmcp is available
 try:
@@ -32,6 +54,8 @@ class FastMcpWrapper:
         self.servers = {}
         self.clients = {}  # Store FastMCP client instances
         self.initialized = False
+        self.server_manager = None  # Reference to persistent server manager
+        self.use_persistent_servers = True  # Flag to enable persistent server mode
         
         # Check if FastMCP is available
         if not FASTMCP_AVAILABLE:
@@ -48,6 +72,37 @@ class FastMcpWrapper:
         if not FASTMCP_AVAILABLE:
             return False
             
+        try:
+            if self.use_persistent_servers:
+                return await self._initialize_with_server_manager()
+            else:
+                return await self._initialize_legacy()
+        except Exception as e:
+            logger.error(f"FastMCP client initialization failed: {e}")
+            return False
+    
+    async def _initialize_with_server_manager(self) -> bool:
+        """Initialize using persistent server manager"""
+        try:
+            #print_current("🚀 Initializing FastMCP with persistent server manager...")
+            
+            # The server manager will be provided externally via context
+            # We just load the configuration for tool discovery
+            await self._load_config()
+            
+            # Discover tools from configuration (servers will be managed externally)
+            await self._discover_tools_from_config()
+            
+            self.initialized = True
+            logger.info(f"FastMCP client initialized with server manager, discovered {len(self.available_tools)} tools")
+            return True
+            
+        except Exception as e:
+            logger.error(f"FastMCP server manager initialization failed: {e}")
+            return False
+    
+    async def _initialize_legacy(self) -> bool:
+        """Legacy initialization method (temporary client per call)"""
         try:
             # Check if config file exists
             if not os.path.exists(self.config_path):
@@ -66,11 +121,11 @@ class FastMcpWrapper:
             await self._discover_tools()
             
             self.initialized = True
-            print_current(f"✅ FastMCP client initialized successfully, discovered {len(self.available_tools)} tools")
+            logger.info(f"FastMCP client initialized successfully, discovered {len(self.available_tools)} tools")
             return True
             
         except Exception as e:
-            print_current(f"❌ FastMCP client initialization failed: {e}")
+            logger.error(f"FastMCP client initialization failed: {e}")
             return False
     
     async def _load_config(self):
@@ -147,15 +202,9 @@ class FastMcpWrapper:
         # Use the main client with context manager
         if self.main_client:
             try:
-                # Ensure client is properly connected before listing tools
-                if not hasattr(self.main_client, '_connected') or not self.main_client._connected:
-                    print_current("🔄 FastMCP client not connected, attempting to connect...")
-                
-                # Use FastMCP client to list tools
-                async with self.main_client:
-                    tools = await self.main_client.list_tools()
-                    
-                    print_current(f"🔧 FastMCP discovered {len(tools)} tools from servers")
+                # Use FastMCP client to list tools - establish connection once
+                async with self.main_client as client:
+                    tools = await client.list_tools()
                     
                     for tool in tools:
                         # FastMCP returns complete tool names, use them as-is
@@ -181,20 +230,77 @@ class FastMcpWrapper:
                             "description": tool.description or "",
                             "parameters": self._convert_tool_schema(tool.inputSchema) if hasattr(tool, 'inputSchema') else []
                         }
-                
-                print_current(f"✅ FastMCP tool discovery completed: {len(self.available_tools)} tools available")
+                    
+            
+                logger.info(f"FastMCP tool discovery completed: {len(self.available_tools)} tools available")
                 
             except Exception as e:
-                print_current(f"❌ FastMCP tool discovery failed: {e}")
-                # Try to reinitialize the client on discovery failure
-                print_current("🔄 Attempting to reinitialize FastMCP client...")
-                try:
-                    await self._initialize_clients()
-                    print_current("✅ FastMCP client reinitialized successfully")
-                except Exception as reinit_error:
-                    print_current(f"❌ FastMCP client reinitialization failed: {reinit_error}")
+                logger.error(f"FastMCP tool discovery failed: {e}")
+                raise
         else:
-            print_current("⚠️ No FastMCP main client available for tool discovery")
+            logger.warning("No FastMCP main client available for tool discovery")
+    
+    async def _discover_tools_from_config(self):
+        """Discover tools from configuration without starting servers"""
+        self.available_tools = {}
+        
+        # For now, we'll create placeholder tool definitions based on configuration
+        # In a real implementation, you'd query the running servers for their tools
+        for server_name in self.servers.keys():
+            if self.servers[server_name].get("enabled", True):
+                # Create placeholder tools - these would be populated from actual server queries
+                # when servers are running
+                placeholder_tools = self._create_placeholder_tools(server_name)
+                self.available_tools.update(placeholder_tools)
+        
+        logger.info(f"FastMCP tool discovery from config completed: {len(self.available_tools)} placeholder tools")
+    
+    def _create_placeholder_tools(self, server_name: str) -> Dict[str, Dict[str, Any]]:
+        """Create placeholder tools for a server (to be replaced with actual discovery)"""
+        # This is a simplified implementation
+        # In practice, you'd need to know what tools each server provides
+        placeholder_tools = {}
+        
+        # Common tools based on server name patterns
+        if "jina" in server_name.lower():
+            tools = ["jina_reader", "jina_search"]
+            descriptions = ["Read web content using Jina Reader", "Search web using Jina Search"]
+            parameters_list = [
+                [{"name": "url", "type": "string", "required": True, "description": "URL to read"}],
+                [{"name": "query", "type": "string", "required": True, "description": "Search query"}]
+            ]
+        elif "tuzi" in server_name.lower():
+            tools = ["submit_gpt_image", "submit_flux_image", "task_barrier"]
+            descriptions = ["Generate image using GPT", "Generate image using FLUX", "Wait for tasks to complete"]
+            parameters_list = [
+                [
+                    {"name": "prompt", "type": "string", "required": True, "description": "Image generation prompt"},
+                    {"name": "output_path", "type": "string", "required": True, "description": "Path where the generated image will be saved"}
+                ],
+                [
+                    {"name": "prompt", "type": "string", "required": True, "description": "Image generation prompt"},
+                    {"name": "output_path", "type": "string", "required": True, "description": "Path where the generated image will be saved"}
+                ],
+                []  # task_barrier has no parameters
+            ]
+        else:
+            # Generic placeholder
+            tools = ["generic_tool"]
+            descriptions = ["Generic tool"]
+            parameters_list = [[]]
+        
+        for tool, desc, params in zip(tools, descriptions, parameters_list):
+            tool_name = f"{server_name}_{tool}"
+            placeholder_tools[tool_name] = {
+                "server": server_name,
+                "tool": tool,
+                "original_name": tool_name,
+                "api_name": tool_name,
+                "description": desc,
+                "parameters": params
+            }
+        
+        return placeholder_tools
     
     def _convert_tool_schema(self, input_schema: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Convert FastMCP tool schema to our internal format"""
@@ -225,10 +331,10 @@ class FastMcpWrapper:
         return parameters
     
     def call_tool_sync(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool synchronously using FastMCP (primary method)"""
+        """Call a tool synchronously using FastMCP"""
         if not FASTMCP_AVAILABLE:
             return {
-                "status": "error",
+                "status": "failed",
                 "error": "FastMCP not available. Please install it using: pip install fastmcp",
                 "tool_name": tool_name,
                 "arguments": arguments
@@ -236,40 +342,47 @@ class FastMcpWrapper:
             
         if not self.initialized:
             return {
-                "status": "error", 
+                "status": "failed", 
                 "error": "MCP client not initialized",
                 "tool_name": tool_name,
                 "arguments": arguments
             }
 
-        if tool_name not in self.available_tools:
-            return {
-                "status": "error",
-                "error": f"Tool {tool_name} does not exist",
-                "tool_name": tool_name,
-                "arguments": arguments
-            }
-
-        tool_info = self.available_tools[tool_name]
-        
         # Use FastMCP call synchronously by wrapping async call
         import asyncio
         try:
-            result = asyncio.run(self._call_tool_fastmcp_async(tool_name, tool_info, arguments))
-            return result
+            # Check if we're already in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, need to handle differently
+                import concurrent.futures
+                import threading
+                
+                def run_in_thread():
+                    return asyncio.run(self.call_tool(tool_name, arguments))
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_in_thread)
+                    result = future.result(timeout=60)  # 60 second timeout
+                    return result
+                    
+            except RuntimeError:
+                # No running event loop, safe to use asyncio.run
+                result = asyncio.run(self.call_tool(tool_name, arguments))
+                return result
         except Exception as e:
             return {
-                "status": "error",
+                "status": "failed",
                 "error": f"FastMCP call failed: {e}",
                 "tool_name": tool_name,
                 "arguments": arguments
             }
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool (async version - kept for compatibility)"""
+        """Call a tool using FastMCP"""
         if not FASTMCP_AVAILABLE:
             return {
-                "status": "error",
+                "status": "failed",
                 "error": "FastMCP not available. Please install it using: pip install fastmcp",
                 "tool_name": tool_name,
                 "arguments": arguments
@@ -277,329 +390,68 @@ class FastMcpWrapper:
 
         if not self.initialized:
             raise Exception("MCP client not initialized")
-
-        # Debug: Log available tools status
-        print_current(f"🔍 FastMCP debug: Checking tool {tool_name}")
-        print_current(f"🔍 Available tools count: {len(self.available_tools)}")
-        print_current(f"🔍 Available tools: {list(self.available_tools.keys())[:10]}...")  # Show first 10
         
         if tool_name not in self.available_tools:
-            # Try to rediscover tools before failing
-            print_current(f"🔄 Tool {tool_name} not found, attempting to rediscover tools...")
-            try:
-                await self._discover_tools()
-                print_current(f"🔍 After rediscovery, available tools count: {len(self.available_tools)}")
-                
-                if tool_name not in self.available_tools:
-                    raise Exception(f"Tool {tool_name} does not exist even after rediscovery")
-                else:
-                    print_current(f"✅ Tool {tool_name} found after rediscovery")
-            except Exception as e:
-                print_current(f"❌ Failed to rediscover tools: {e}")
-                raise Exception(f"Tool {tool_name} does not exist")
+            raise Exception(f"Tool {tool_name} does not exist")
 
         tool_info = self.available_tools[tool_name]
-        server_name = tool_info["server"]
 
-        try:
-            # Use the main FastMCP client with proper context management
-            if not self.main_client:
-                raise Exception("No FastMCP main client available")
-
-            # CRITICAL FIX: Ensure tools are available in the new connection context
-            # Call the tool using FastMCP with context manager and tool verification
-            async with self.main_client:
-                # First, verify tools are available in this connection context
-                print_current(f"🔧 Verifying tools in new connection context...")
+        # Use fresh client approach for better reliability (same as call_server_tool)
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            try:
+                # Create fresh client for each call to avoid connection state issues
+                fresh_client = self._create_fresh_client()
+                
+                print_current(f"🚀 Calling FastMCP tool: {tool_name} (attempt {attempt + 1})")
+                
+                # Use FastMCP with proper cleanup to avoid event loop issues
                 try:
-                    context_tools = await self.main_client.list_tools()
-                    context_tool_names = [tool.name for tool in context_tools]
-                    print_current(f"🔍 Tools available in connection context: {len(context_tool_names)}")
-                    print_current(f"🔍 Context tools: {context_tool_names[:10]}...")
-                    
-                    if tool_name not in context_tool_names:
-                        print_current(f"❌ Tool {tool_name} not found in connection context")
-                        print_current(f"🔍 Looking for similar tools...")
-                        for ctx_tool in context_tool_names:
-                            if tool_name in ctx_tool or ctx_tool in tool_name:
-                                print_current(f"🔍 Similar tool found: {ctx_tool}")
-                        raise Exception(f"Tool {tool_name} not available in connection context")
-                    else:
-                        print_current(f"✅ Tool {tool_name} verified in connection context")
+                    async with fresh_client as client:
+                        result = await client.call_tool(tool_name, arguments)
                         
-                except Exception as list_error:
-                    print_current(f"⚠️ Failed to list tools in connection context: {list_error}")
-                    # Continue anyway, might still work
-                
-                # Now attempt the actual tool call
-                print_current(f"🔧 Attempting FastMCP call with name: {tool_name}")
-                result = await self.main_client.call_tool(tool_name, arguments)
-                
-                # If successful, return the result
-                print_current(f"✅ FastMCP call successful with name: {tool_name}")
-                return {
-                    "status": "success",
-                    "result": self._format_tool_result(result),
-                    "tool_name": tool_name,  # Return API compatible name
-                    "original_tool_name": tool_info.get("original_name", tool_name),
-                    "arguments": arguments
-                }
-                
-        except Exception as e:
-            print_current(f"❌ FastMCP call failed: {e}")
-            
-            # Check if it's a connection error and try to recover
-            if "not connected" in str(e).lower() or "context manager" in str(e).lower():
-                print_current(f"🔄 Connection error detected, attempting recovery for tool {tool_name}")
-                try:
-                    # Try to reinitialize the client
-                    await self._initialize_clients()
-                    if self.main_client:
-                        # Retry the call with new client
-                        async with self.main_client:
-                            result = await self.main_client.call_tool(tool_name, arguments)
-                            
-                            return {
-                                "status": "success",
-                                "result": self._format_tool_result(result),
-                                "tool_name": tool_name,
-                                "original_tool_name": tool_info.get("original_name", tool_name),
-                                "arguments": arguments
-                            }
-                    else:
-                        raise Exception("Failed to recover FastMCP client")
-                except Exception as recovery_error:
-                    error_msg = f"Tool call failed and recovery failed: {recovery_error}"
-                    print_current(f"❌ {error_msg}")
-                    return {
-                        "status": "error",
-                        "error": error_msg,
-                        "tool_name": tool_name,
-                        "arguments": arguments
-                    }
-                    
-            # If all name variations failed, try direct command line fallback
-            else:
-                print_current(f"🔄 All FastMCP calls failed, trying direct command line fallback...")
-                
-                # Try to call the tool directly using command line if possible
-                server_name = tool_info["server"]
-                if server_name in self.servers:
-                    server_config = self.servers[server_name]
-                    if server_config.get("command"):
-                        try:
-                            # Build direct command
-                            import subprocess
-                            import json
-                            
-                            cmd = [server_config["command"]] + server_config.get("args", [])
-                            
-                            # Create MCP request
-                            request = {
-                                "jsonrpc": "2.0",
-                                "id": 1,
-                                "method": "tools/call",
-                                "params": {
-                                    "name": tool_name,
-                                    "arguments": arguments
-                                }
-                            }
-                            
-                            print_current(f"🔧 Direct command fallback: {' '.join(cmd)}")
-                            
-                            # Call the MCP server directly
-                            process = subprocess.Popen(
-                                cmd,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True
-                            )
-                            
-                            request_json = json.dumps(request)
-                            stdout, stderr = process.communicate(input=request_json, timeout=30)
-                            
-                            # Debug logging
-                            print_current(f"🔍 Direct command exit code: {process.returncode}")
-                            print_current(f"🔍 STDOUT length: {len(stdout) if stdout else 0}")
-                            print_current(f"🔍 STDERR: {stderr[:200] if stderr else 'None'}...")
-                            
-                            if process.returncode == 0:
-                                if stdout and stdout.strip():
-                                    try:
-                                        response = json.loads(stdout)
-                                        if "result" in response:
-                                            print_current(f"✅ Direct command fallback successful!")
-                                            return {
-                                                "status": "success",
-                                                "result": self._format_tool_result(response["result"]),
-                                                "tool_name": tool_name,
-                                                "original_tool_name": tool_info.get("original_name", tool_name),
-                                                "arguments": arguments
-                                            }
-                                        elif "error" in response:
-                                            print_current(f"❌ Direct command returned error: {response['error']}")
-                                        else:
-                                            print_current(f"⚠️ Unexpected response format: {response}")
-                                    except json.JSONDecodeError as e:
-                                        print_current(f"❌ Failed to parse direct command response: {e}")
-                                        print_current(f"Raw stdout: {stdout[:500]}...")
-                                else:
-                                    # Empty stdout but successful exit - this might be normal for some MCP servers
-                                    print_current(f"⚠️ Direct command succeeded but returned empty stdout")
-                                    # Check if stderr contains any useful information  
-                                    print_current(f"🔍 Checking stderr for server startup: '{stderr}'")
-                                    if stderr and "running on stdio" in stderr.lower():
-                                        print_current(f"✅ MCP server started successfully (detected from stderr)")
-                                        # For memory operations, we can assume success if the server started
-                                        return {
-                                            "status": "success", 
-                                            "result": {"message": f"Memory operation '{tool_name}' completed successfully"},
-                                            "tool_name": tool_name,
-                                            "original_tool_name": tool_info.get("original_name", tool_name),
-                                            "arguments": arguments
-                                        }
-                                    else:
-                                        print_current(f"⚠️ No server startup indicator found in stderr")
-                            else:
-                                print_current(f"❌ Direct command failed with return code {process.returncode}")
-                                if stderr:
-                                    print_current(f"STDERR: {stderr}")
-                                    
-                        except subprocess.TimeoutExpired:
-                            print_current(f"⏰ Direct command timeout")
-                        except Exception as cmd_error:
-                            print_current(f"❌ Direct command exception: {cmd_error}")
-                
-                # If direct command also failed, raise the original FastMCP error
-                raise e
-    
-    async def _call_tool_fastmcp_async(self, tool_name: str, tool_info: Dict[str, Any], arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call tool using FastMCP asynchronously (fixed approach)"""
-        if not self.main_client:
-            raise Exception("No FastMCP main client available")
-
-        # Use the FastMCP tool name (with prefix) for FastMCP calls
-        fastmcp_tool_name = tool_info["api_name"]  # This is the FastMCP discovered name
-        print_current(f"🔧 FastMCP async call - API tool: {tool_name} -> FastMCP tool: {fastmcp_tool_name}")
-        
-        # STRATEGY 1: Try to use existing connection first
-        try:
-            # Attempt to use FastMCP with a persistent connection approach
-            print_current(f"🔧 Attempting FastMCP call with tool: {fastmcp_tool_name}")
-            
-            # Use main client context but try to ensure tools are available
-            async with self.main_client:
-                # First, verify that tools are available in this context
-                available_tools = await self.main_client.list_tools()
-                available_tool_names = [tool.name for tool in available_tools]
-                print_current(f"🔍 FastMCP context has {len(available_tool_names)} tools available")
-                
-                if fastmcp_tool_name in available_tool_names:
-                    print_current(f"✅ Tool {fastmcp_tool_name} found in FastMCP context")
-                    result = await self.main_client.call_tool(fastmcp_tool_name, arguments)
-                    print_current(f"✅ FastMCP call successful for tool: {fastmcp_tool_name}")
-                    return {
-                        "status": "success",
-                        "result": self._format_tool_result(result),
-                        "tool_name": tool_name,
-                        "original_tool_name": tool_info.get("original_name", tool_name),
-                        "arguments": arguments
-                    }
-                else:
-                    print_current(f"❌ Tool {fastmcp_tool_name} not found in FastMCP context")
-                    print_current(f"🔍 Available tools: {available_tool_names[:10]}...")
-                    raise Exception(f"Tool {fastmcp_tool_name} not available in FastMCP context")
-        
-        except Exception as e:
-            print_current(f"❌ FastMCP async call failed: {e}")
-            raise e
-    
-    def _call_tool_direct_sync(self, tool_name: str, tool_info: Dict[str, Any], arguments: Dict[str, Any], server_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Call tool directly using MCP command line (synchronous version)"""
-        import subprocess
-        import json
-        
-        cmd = [server_config["command"]] + server_config.get("args", [])
-        
-        # Get the actual tool name (remove prefix)
-        actual_tool_name = self._get_actual_tool_name(tool_name, tool_info["server"])
-        
-        # Create MCP request
-        request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": actual_tool_name,
-                "arguments": arguments
-            }
-        }
-        
-        print_current(f"🔧 Direct MCP call (sync): {' '.join(cmd)}")
-        print_current(f"🔍 API tool name: {tool_name}")
-        print_current(f"🔍 Actual tool name: {actual_tool_name}")
-        print_current(f"🔍 MCP request: {json.dumps(request, ensure_ascii=False)}")
-        
-        # Call the MCP server directly
-        process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        request_json = json.dumps(request)
-        print_current(f"🔍 Sending request: {request_json}")
-        
-        # Send request and close stdin to signal end of input
-        stdout, stderr = process.communicate(input=request_json + '\n', timeout=30)
-        
-        # Debug logging
-        print_current(f"🔍 Direct command exit code: {process.returncode}")
-        print_current(f"🔍 STDOUT length: {len(stdout) if stdout else 0}")
-        print_current(f"🔍 STDERR: {stderr[:200] if stderr else 'None'}...")
-        
-        if process.returncode == 0:
-            if stdout and stdout.strip():
-                try:
-                    response = json.loads(stdout)
-                    if "result" in response:
-                        print_current(f"✅ Direct MCP call (sync) successful!")
+                        print_current(f"✅ FastMCP call successful for tool: {tool_name}")
                         return {
                             "status": "success",
-                            "result": self._format_tool_result(response["result"]),
+                            "result": self._format_tool_result(result),
                             "tool_name": tool_name,
                             "original_tool_name": tool_info.get("original_name", tool_name),
                             "arguments": arguments
                         }
-                    elif "error" in response:
-                        print_current(f"❌ Direct MCP returned error: {response['error']}")
-                        raise Exception(f"MCP tool returned error: {response['error']}")
-                    else:
-                        print_current(f"⚠️ Unexpected response format: {response}")
-                        raise Exception(f"Unexpected MCP response format: {response}")
-                except json.JSONDecodeError as e:
-                    print_current(f"❌ Failed to parse direct MCP response: {e}")
-                    print_current(f"Raw stdout: {stdout[:500]}...")
-                    raise Exception(f"Failed to parse MCP response: {e}")
-            else:
-                # Empty stdout - this is NOT success, it means the MCP call didn't work
-                print_current(f"❌ Direct MCP returned empty stdout - tool call failed")
-                print_current(f"🔍 STDERR (for debugging): '{stderr}'")
+                except Exception as ctx_e:
+                    # Handle context manager exceptions specifically
+                    raise ctx_e
+                    
+            except Exception as e:
+                error_msg = str(e)
+                print_current(f"⚠️ FastMCP call attempt {attempt + 1} failed for tool {tool_name}: {error_msg}")
                 
-                # Server startup alone is NOT tool execution success
-                if stderr and "running on stdio" in stderr.lower():
-                    print_current(f"ℹ️ MCP server started but tool call failed (empty response)")
-                    raise Exception(f"MCP server started but tool '{tool_name}' execution failed - no response received")
+                # FastMCP connection diagnostic info
+                if "Client failed to connect" in error_msg:
+                    print_current(f"🔍 FastMCP Connection Analysis:")
+                    print_current(f"   - This is normal FastMCP behavior - each call creates a new process")
+                    print_current(f"   - Server process startup time: ~1 second")  
+                    print_current(f"   - STDIO mode requires fresh connections for reliability")
+                
+                # If this is the last attempt, return error
+                if attempt == max_retries:
+                    print_current(f"❌ FastMCP call failed after {max_retries + 1} attempts")
+                    print_current(f"💡 Note: FastMCP uses fresh processes for each call - this is by design")
+                    return {
+                        "status": "failed",
+                        "error": error_msg,
+                        "tool_name": tool_name,
+                        "arguments": arguments,
+                        "attempts": max_retries + 1,
+                        "diagnosis": "fastmcp_process_startup_failed"
+                    }
                 else:
-                    raise Exception(f"MCP tool call failed - no response and no server startup detected")
-        else:
-            print_current(f"❌ Direct MCP failed with return code {process.returncode}")
-            if stderr:
-                print_current(f"STDERR: {stderr}")
-            raise Exception(f"MCP command failed with return code {process.returncode}: {stderr}")
+                    # Brief wait before retry
+                    import asyncio
+                    await asyncio.sleep(0.5)
+                    continue
+    
+
     
     def _format_tool_result(self, result) -> Any:
         """Format FastMCP tool result to our standard format"""
@@ -698,15 +550,249 @@ class FastMcpWrapper:
         
         return tool_def
     
-    def _get_actual_tool_name(self, tool_name: str, server_name: str) -> str:
-        """Get the actual tool name by removing server prefix"""
-        # If tool name starts with server prefix, remove it
-        server_prefix = f"{server_name}_"
-        if tool_name.startswith(server_prefix):
-            return tool_name[len(server_prefix):]
+    def supports_server(self, server_name: str) -> bool:
+        """Check if FastMCP supports a specific server"""
+        return server_name in self.servers
+    
+    def get_server_tools(self, server_name: str) -> List[str]:
+        """Get tools available for a specific server"""
+        if not self.supports_server(server_name):
+            return []
         
-        # If no prefix, return as is
-        return tool_name
+        server_tools = []
+        for tool_name, tool_info in self.available_tools.items():
+            if tool_info.get("server") == server_name:
+                server_tools.append(tool_name)
+        
+        return server_tools
+    
+    async def call_server_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on a specific server using FastMCP"""
+        if not FASTMCP_AVAILABLE:
+            return {
+                "status": "failed",
+                "error": "FastMCP not available. Please install it using: pip install fastmcp",
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "arguments": arguments
+            }
+
+        if not self.initialized:
+            raise Exception("FastMCP client not initialized")
+        
+        if not self.supports_server(server_name):
+            raise Exception(f"Server {server_name} is not supported by FastMCP")
+
+        # Find the actual tool to call with improved name matching
+        actual_tool_name = self._find_matching_tool(server_name, tool_name)
+        
+        if not actual_tool_name:
+            available_tools = self.get_server_tools(server_name)
+            raise Exception(f"Tool '{tool_name}' not found in server '{server_name}'. Available tools: {available_tools}")
+
+        # FastMCP design philosophy: use new client instance for each call
+        # This is FastMCP's standard working mode
+        print_current(f"🔧 Creating fresh FastMCP client for tool: {actual_tool_name} on server: {server_name}")
+        
+        max_retries = 1  # 由于每次都是新连接，减少重试次数
+        for attempt in range(max_retries + 1):
+            try:
+                # According to FastMCP documentation
+                fresh_client = self._create_fresh_client()
+                
+                print_current(f"🚀 Calling FastMCP tool: {actual_tool_name} (attempt {attempt + 1})")
+                
+                # Use FastMCP with proper cleanup to avoid event loop issues
+                try:
+                    async with fresh_client as client:
+                        result = await client.call_tool(actual_tool_name, arguments)
+                        
+                        print_current(f"✅ FastMCP call successful for tool: {actual_tool_name}")
+                        return {
+                            "status": "success",
+                            "result": self._format_tool_result(result),
+                            "tool_name": actual_tool_name,
+                            "server_name": server_name,
+                            "arguments": arguments
+                        }
+                except Exception as ctx_e:
+                    # Handle context manager exceptions specifically
+                    raise ctx_e
+                    
+            except Exception as e:
+                error_msg = str(e)
+                print_current(f"⚠️ FastMCP call attempt {attempt + 1} failed for tool {actual_tool_name}: {error_msg}")
+                
+                # FastMCP connection diagnostic information
+                if "Client failed to connect" in error_msg:
+                    print_current(f"🔍 FastMCP Connection Analysis:")
+                    print_current(f"   - This is normal FastMCP behavior - each call creates a new process")
+                    print_current(f"   - Server process startup time: ~1 second")
+                    print_current(f"   - STDIO mode requires fresh connections for reliability")
+                
+                # If it's the last attempt
+                if attempt == max_retries:
+                    print_current(f"❌ FastMCP call failed after {max_retries + 1} attempts")
+                    print_current(f"💡 Note: FastMCP uses fresh processes for each call - this is by design")
+                    return {
+                        "status": "failed",
+                        "error": error_msg,
+                        "tool_name": actual_tool_name,
+                        "server_name": server_name,
+                        "arguments": arguments,
+                        "attempts": max_retries + 1,
+                        "diagnosis": "fastmcp_process_startup_failed"
+                    }
+                else:
+                    # Brief wait then retry
+                    import asyncio
+                    await asyncio.sleep(0.5)
+                    continue
+    
+    def _find_matching_tool(self, server_name: str, tool_name: str) -> Optional[str]:
+        """Find matching tool name with flexible matching strategies"""
+        # Strategy 1: Exact match
+        for available_tool, tool_info in self.available_tools.items():
+            if tool_info.get("server") == server_name and available_tool == tool_name:
+                return available_tool
+        
+        # Strategy 2: Remove server prefix if present
+        if tool_name.startswith(f"{server_name}_"):
+            stripped_name = tool_name[len(f"{server_name}_"):]
+            for available_tool, tool_info in self.available_tools.items():
+                if tool_info.get("server") == server_name and available_tool == stripped_name:
+                    print_current(f"🔧 Tool name mapping: {tool_name} -> {available_tool}")
+                    return available_tool
+        
+        # Strategy 3: Add server prefix if not present
+        prefixed_name = f"{server_name}_{tool_name}"
+        for available_tool, tool_info in self.available_tools.items():
+            if tool_info.get("server") == server_name and available_tool == prefixed_name:
+                print_current(f"🔧 Tool name mapping: {tool_name} -> {available_tool}")
+                return available_tool
+        
+        # Strategy 4: Partial match (contains)
+        for available_tool, tool_info in self.available_tools.items():
+            if (tool_info.get("server") == server_name and 
+                (tool_name in available_tool or available_tool in tool_name)):
+                print_current(f"🔧 Tool name partial match: {tool_name} -> {available_tool}")
+                return available_tool
+        
+        # Strategy 5: Case insensitive match
+        tool_name_lower = tool_name.lower()
+        for available_tool, tool_info in self.available_tools.items():
+            if (tool_info.get("server") == server_name and 
+                available_tool.lower() == tool_name_lower):
+                print_current(f"🔧 Tool name case match: {tool_name} -> {available_tool}")
+                return available_tool
+        
+        return None
+    
+    def _create_fresh_client(self) -> Any:
+        """Create a fresh FastMCP client instance to avoid connection state issues"""
+        try:
+            if not self.servers:
+                raise Exception("No servers configured for fresh client creation")
+            
+            # Create new configuration
+            mcp_config = {
+                "mcpServers": self.servers
+            }
+            
+            # Create fresh client instance with proper resource management
+            from fastmcp import Client
+            fresh_client = Client(mcp_config)
+            
+            print_current(f"🔄 Created fresh FastMCP client instance")
+            return fresh_client
+            
+        except Exception as e:
+            print_current(f"⚠️ Failed to create fresh FastMCP client: {e}")
+            raise
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform a health check on the FastMCP client"""
+        health_status = {
+            "healthy": False,
+            "fastmcp_available": FASTMCP_AVAILABLE,
+            "initialized": self.initialized,
+            "main_client_exists": self.main_client is not None,
+            "servers_count": len(self.servers),
+            "tools_count": len(self.available_tools),
+            "errors": []
+        }
+        
+        try:
+            if not FASTMCP_AVAILABLE:
+                health_status["errors"].append("FastMCP library not available")
+                return health_status
+            
+            if not self.initialized:
+                health_status["errors"].append("FastMCP wrapper not initialized")
+                return health_status
+            
+            if not self.main_client:
+                health_status["errors"].append("Main FastMCP client not available")
+                return health_status
+            
+            # Try a simple test call if tools are available
+            if self.available_tools:
+                test_tool = next(iter(self.available_tools.keys()))
+                test_server = self.available_tools[test_tool]["server"]
+                
+                # Quick connection test
+                try:
+                    async with self.main_client as client:
+                        # Just check if we can establish connection, don't actually call tool
+                        health_status["connection_test"] = "passed"
+                        
+                except Exception as conn_e:
+                    health_status["errors"].append(f"Connection test failed: {str(conn_e)}")
+                    health_status["connection_test"] = "failed"
+            
+            health_status["healthy"] = len(health_status["errors"]) == 0
+            
+        except Exception as e:
+            health_status["errors"].append(f"Health check exception: {str(e)}")
+            health_status["healthy"] = False
+        
+        return health_status
+    
+    def call_server_tool_sync(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on a specific server synchronously using FastMCP"""
+        if not FASTMCP_AVAILABLE:
+            return {
+                "status": "failed",
+                "error": "FastMCP not available. Please install it using: pip install fastmcp",
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "arguments": arguments
+            }
+            
+        if not self.initialized:
+            return {
+                "status": "failed", 
+                "error": "FastMCP client not initialized",
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "arguments": arguments
+            }
+
+        # Use FastMCP call synchronously by wrapping async call
+        import asyncio
+        try:
+            result = asyncio.run(self.call_server_tool(server_name, tool_name, arguments))
+            return result
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": f"FastMCP call failed: {e}",
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "arguments": arguments
+            }
+    
+
     
     def get_status(self) -> Dict[str, Any]:
         """Get client status"""
@@ -721,7 +807,15 @@ class FastMcpWrapper:
     async def cleanup(self):
         """Cleanup resources"""
         try:
-            # FastMCP clients are context managers, they clean up automatically
+            # Ensure all FastMCP clients are properly closed before cleanup
+            if self.main_client:
+                try:
+                    # Force close any remaining connections
+                    await asyncio.sleep(0.1)  # Brief delay to let pending operations complete
+                except Exception:
+                    pass
+            
+            # Clear references
             self.main_client = None
             self.clients.clear()
             self.available_tools.clear()
@@ -761,20 +855,49 @@ async def initialize_fastmcp_wrapper(config_path: str = "config/mcp_servers.json
     with _fastmcp_lock:
         wrapper = get_fastmcp_wrapper(config_path)
         if wrapper.initialized:
-            print_current(f"✅ FastMCP wrapper already initialized, reusing existing instance")
+            #print_current(f"✅ FastMCP wrapper already initialized, reusing existing instance")
             return True
     
     # Initialize outside the lock to avoid blocking other threads
     try:
         result = await wrapper.initialize()
         if result:
-            print_current(f"✅ FastMCP wrapper initialized successfully in thread {threading.current_thread().name}")
+            logger.info(f"FastMCP wrapper initialized successfully")
         else:
-            print_current(f"⚠️ FastMCP wrapper initialization failed in thread {threading.current_thread().name}")
+            logger.warning(f"FastMCP wrapper initialization failed")
         return result
     except Exception as e:
-        print_current(f"❌ FastMCP wrapper initialization error in thread {threading.current_thread().name}: {e}")
+        logger.error(f"FastMCP wrapper initialization error: {e}")
         return False
+
+@asynccontextmanager
+async def initialize_fastmcp_with_server_manager(config_path: str = "config/mcp_servers.json"):
+    """Initialize FastMCP wrapper with persistent server manager"""
+    global _fastmcp_wrapper
+    
+    # Create wrapper instance
+    with _fastmcp_lock:
+        wrapper = get_fastmcp_wrapper(config_path)
+        wrapper.use_persistent_servers = True
+    
+    # Use MCP operation context for structured concurrency
+    async with mcp_operation_context(config_path) as server_manager:
+        try:
+            # Set server manager reference
+            wrapper.server_manager = server_manager
+            
+            # Initialize wrapper
+            result = await wrapper.initialize()
+            if not result:
+                raise Exception("FastMCP wrapper initialization failed")
+            
+            print_current(f"✅ FastMCP wrapper initialized with persistent server manager")
+            yield wrapper
+            
+        finally:
+            # Clean up
+            wrapper.server_manager = None
+            print_current("🔄 FastMCP wrapper with server manager context exiting...")
 
 def is_fastmcp_initialized(config_path: str = "config/mcp_servers.json") -> bool:
     """Check if FastMCP wrapper is initialized (thread-safe)"""
@@ -838,24 +961,119 @@ def safe_cleanup_fastmcp_wrapper():
     global _fastmcp_wrapper, _fastmcp_config_path
     if _fastmcp_wrapper:
         wrapper_instance = _fastmcp_wrapper  # Store reference before clearing
+        _fastmcp_wrapper = None
+        _fastmcp_config_path = None
+        
         try:
             # Try to get the current event loop
             loop = asyncio.get_running_loop()
-            # If there's a running loop, schedule the cleanup
-            async def async_cleanup():
-                await wrapper_instance.cleanup()
-            loop.create_task(async_cleanup())
+            # If there's a running loop and it's not closed, schedule the cleanup
+            if not loop.is_closed():
+                async def async_cleanup():
+                    try:
+                        await wrapper_instance.cleanup()
+                    except Exception as cleanup_e:
+                        print_current(f"⚠️ Async cleanup error: {cleanup_e}")
+                
+                # Schedule the cleanup task
+                try:
+                    loop.create_task(async_cleanup())
+                except RuntimeError:
+                    # Loop is closing or closed, use sync cleanup
+                    wrapper_instance.cleanup_sync()
+            else:
+                # Loop is closed, use sync cleanup
+                wrapper_instance.cleanup_sync()
         except RuntimeError:
             # No event loop running, try to create one for cleanup
             try:
-                asyncio.run(wrapper_instance.cleanup())
-            except RuntimeError:
+                # Check if we can create a new event loop
+                import threading
+                if threading.current_thread() is threading.main_thread():
+                    # Only create new event loop in main thread
+                    asyncio.run(wrapper_instance.cleanup())
+                else:
+                    # In non-main thread, use sync cleanup
+                    wrapper_instance.cleanup_sync()
+            except (RuntimeError, ImportError):
                 # If that fails too, use synchronous cleanup
                 wrapper_instance.cleanup_sync()
         except Exception as e:
             # If all else fails, just clean up the references
             print_current(f"⚠️ FastMCP client cleanup failed: {e}")
             wrapper_instance.cleanup_sync()
+
+
+# Test function for FastMCP wrapper
+async def test_fastmcp_wrapper():
+    """Test FastMCP wrapper functionality"""
+    print_current("🧪 Starting FastMCP wrapper test...")
+    
+    # Use the provided config file
+    config_path = "config/mcp_servers.json"
+    
+    # Initialize wrapper
+    wrapper = get_fastmcp_wrapper(config_path)
+    
+    # Test initialization
+    print_current("📋 Testing initialization...")
+    init_result = await wrapper.initialize()
+    print_current(f"Initialization result: {init_result}")
+    
+    if not init_result:
+        print_current("❌ Initialization failed, cannot continue test")
+        return
+    
+    # Test status
+    print_current("📊 Testing status...")
+    status = wrapper.get_status()
+    print_current(f"Status: {json.dumps(status, indent=2)}")
+    
+    # Test available tools
+    print_current("🔧 Testing available tools...")
+    tools = wrapper.get_available_tools()
+    print_current(f"Available tools: {tools}")
+    
+    if tools:
+        # Test tool info
+        first_tool = tools[0]
+        print_current(f"📋 Testing tool info for: {first_tool}")
+        tool_info = wrapper.get_tool_info(first_tool)
+        print_current(f"Tool info: {json.dumps(tool_info, indent=2)}")
         
-        _fastmcp_wrapper = None
-        _fastmcp_config_path = None 
+        # Test tool definition
+        print_current(f"📝 Testing tool definition for: {first_tool}")
+        tool_def = wrapper.get_tool_definition(first_tool)
+        print_current(f"Tool definition: {json.dumps(tool_def, indent=2)}")
+        
+        # Test tool call with a simple filesystem operation
+        if "read" in first_tool.lower() or "list" in first_tool.lower():
+            print_current(f"🔧 Testing tool call for: {first_tool}")
+            try:
+                # Try to list current directory or read a file
+                if "list" in first_tool.lower():
+                    result = await wrapper.call_tool(first_tool, {"path": "."})
+                elif "read" in first_tool.lower():
+                    # Try to read the config file itself
+                    result = await wrapper.call_tool(first_tool, {"path": config_path})
+                else:
+                    result = await wrapper.call_tool(first_tool, {})
+                
+                print_current(f"Tool call result: {json.dumps(result, indent=2)}")
+            except Exception as e:
+                print_current(f"❌ Tool call failed: {e}")
+    
+    # Test cleanup
+    print_current("🧹 Testing cleanup...")
+    await wrapper.cleanup()
+    print_current("✅ FastMCP wrapper test completed!")
+
+
+def test_fastmcp_wrapper_sync():
+    """Synchronous test wrapper"""
+    asyncio.run(test_fastmcp_wrapper())
+
+
+if __name__ == "__main__":
+    """Test FastMCP wrapper when run directly"""
+    test_fastmcp_wrapper_sync() 

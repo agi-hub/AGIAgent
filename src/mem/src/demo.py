@@ -18,15 +18,15 @@ logger = get_logger(__name__)
 
 
 def async_callback(result):
-    """异步写入完成回调函数"""
-    print(f"   🔔 回调通知: 写入完成 - 成功: {result.get('success', False)}")
+    """Asynchronous Write Completion Callback Function"""
+    print(f"   🔔 Callback Notification: Write Complete - Success: {result.get('success', False)}")
     if result.get('success'):
         prelim_result = result.get('preliminary_result', {})
         action = prelim_result.get('action', 'unknown')
-        print(f"      📝 写入动作: {action}")
+        print(f"      📝 Write Action: {action}")
         if action == 'updated':
             similarity = prelim_result.get('similarity_score', 0)
-            print(f"      📊 相似度: {similarity:.3f}")
+            print(f"      📊 Similarity: {similarity:.3f}")
 
 
 def main():
@@ -51,11 +51,11 @@ def main():
         print(f"Storage path: {storage_path}")
         print(f"Configuration file: {config_file}")
 
-        # 创建异步内存管理器
+        # Create Asynchronous Memory Manager
         agent = MemManagerAgent(
             storage_path=storage_path, 
             config_file=config_file,
-            enable_async=True,  # 启用异步模式
+            enable_async=True,  # Enable Asynchronous Mode
             worker_threads=2
         )
         print(f"✅ System initialization completed")
@@ -64,58 +64,58 @@ def main():
         print(f"   Async mode: {agent.enable_async}")
         print(f"   Worker threads: {agent.worker_threads}")
 
-        # 2. 演示异步写入功能
-        print("\n2. 演示异步写入功能")
+        # 2. Demonstrate Asynchronous Write Function
+        print("\n2. Demonstrate Asynchronous Write Function")
         print("-" * 40)
 
         async_memories = [
-            # 技术学习类记忆
+            # Technical Learning Memory
             {
-                "text": "今天学习了量子计算的基础知识。量子比特（qubit）是量子计算的基本单位，与经典比特不同，它可以同时处于多个状态的叠加。量子纠缠是量子计算的核心特性，两个或多个量子比特可以形成纠缠态，即使相距很远也能瞬间影响彼此的状态。",
+                "text": "Today I learned the basics of quantum computing. Quantum bits (qubits) are the basic units of quantum computing. Unlike classical bits",
                 "priority": 1
             },
             {
-                "text": "深入研究了Python的异步编程，使用asyncio库来处理并发任务。异步编程可以显著提高I/O密集型应用的性能，通过协程实现非阻塞操作。学会了使用async/await语法，以及如何管理异步上下文。",
+                "text": "I deeply studied Python's asynchronous programming",
                 "priority": 2
             },
             {
-                "text": "学习了机器学习中的深度学习技术，特别是卷积神经网络（CNN）在图像识别中的应用。理解了卷积层、池化层和全连接层的作用，以及反向传播算法的工作原理。",
+                "text": "I learned deep learning techniques in machine learning",
                 "priority": 1
             },
             {
-                "text": "研究了区块链技术的基本原理，包括去中心化、共识机制、密码学哈希等核心概念。比特币作为第一个区块链应用，展示了分布式账本技术的潜力。",
+                "text": "I studied the basic principles of blockchain technology",
                 "priority": 0
             },
             {
-                "text": "学习了Docker容器化技术，理解了容器与虚拟机的区别。Docker通过镜像和容器实现了应用程序的标准化部署，大大简化了开发环境的配置和部署流程。",
-                "priority": 1
-            },
-            
-            # 生活技能类记忆
-            {
-                "text": "参加了烹饪课程，学习了法式料理的基本技巧。法式烹饪强调食材的新鲜度和烹饪的精确性。我学会了制作基础的法式高汤（stock），这是很多法式菜肴的基础。",
-                "priority": 0
-            },
-            {
-                "text": "学习了摄影的基本构图技巧，包括三分法、对称构图、引导线等。理解了光圈、快门速度和ISO的关系，以及如何在不同光线条件下调整参数。",
-                "priority": 0
-            },
-            {
-                "text": "参加了瑜伽课程，学习了基础的体式和呼吸技巧。瑜伽不仅能提高身体的柔韧性，还能帮助放松心情，改善睡眠质量。",
-                "priority": 0
-            },
-            {
-                "text": "学习了时间管理技巧，包括番茄工作法、四象限法则等。合理的时间管理能显著提高工作效率，减少压力和焦虑。",
-                "priority": 1
-            },
-            {
-                "text": "参加了公共演讲培训，学习了如何克服紧张情绪，提高表达能力。掌握了肢体语言、语速控制和观众互动的技巧。",
+                "text": "I learned Docker containerization technology and understood the difference between containers and virtual machines. Docker achieves standardized deployment of applications through images and containers",
                 "priority": 1
             },
             
-            # 阅读学习类记忆
+            # Life Skills Memory
             {
-                "text": "阅读了《百年孤独》这本魔幻现实主义文学经典。作者加西亚·马尔克斯通过布恩迪亚家族七代人的故事，展现了拉丁美洲的历史变迁。",
+                "text": "I attended a cooking course and learned basic French cuisine techniques. French cooking emphasizes the freshness of ingredients and precision in cooking. I learned to make basic French stock",
+                "priority": 0
+            },
+            {
+                "text": "I learned basic photography composition techniques",
+                "priority": 0
+            },
+            {
+                "text": "I attended a yoga class and learned basic poses and breathing techniques. Yoga not only improves body flexibility but also helps relax the mind and improve sleep quality.",
+                "priority": 0
+            },
+            {
+                "text": "I learned time management techniques",
+                "priority": 1
+            },
+            {
+                "text": "I attended public speaking training and learned how to overcome nervousness and improve expression skills. I mastered techniques for body language",
+                "priority": 1
+            },
+            
+            # Reading and Learning Memory
+            {
+                "text": "I read "One Hundred Years of Solitude",
                 "priority": 2
             },
             {
@@ -123,220 +123,220 @@ def main():
                 "priority": 1
             },
             {
-                "text": "阅读了《思考，快与慢》，丹尼尔·卡尼曼详细介绍了人类思维的两种模式：快速直觉和慢速理性，以及认知偏差对决策的影响。",
+                "text": "I read "Thinking",
                 "priority": 1
             },
             {
-                "text": "阅读了《原则》这本书，雷·达里奥分享了他的人生和工作原则，强调了透明度和独立思考的重要性。",
+                "text": "I read the book "Principles." Ray Dalio shared his life and work principles",
                 "priority": 0
             },
             {
-                "text": "阅读了《三体》科幻小说，刘慈欣通过三体文明与地球文明的接触，探讨了宇宙文明、科技发展和人性等深刻主题。",
+                "text": "I read the science fiction novel "The Three-Body Problem." Liu Cixin",
                 "priority": 1
             },
             
-            # 工作项目类记忆
+            # Work Project Memory
             {
-                "text": "完成了公司新产品的需求分析，与产品经理和设计师进行了深入讨论。确定了核心功能模块，制定了开发计划和时间节点。",
+                "text": "I completed the requirements analysis for the company's new product and had in-depth discussions with product managers and designers. Core functional modules were determined",
                 "priority": 2
             },
             {
-                "text": "参加了技术团队会议，讨论了系统架构的优化方案。决定采用微服务架构来提升系统的可扩展性和维护性。",
+                "text": "I attended a technical team meeting and discussed system architecture optimization plans. It was decided to adopt a microservices architecture to improve system scalability and maintainability.",
                 "priority": 1
             },
             {
-                "text": "与客户进行了项目进度汇报，展示了已完成的功能模块和下一步的开发计划。客户对项目进展表示满意。",
+                "text": "I conducted a project progress report with the client",
                 "priority": 1
             },
             {
-                "text": "完成了代码审查工作，检查了团队成员的代码质量，提出了改进建议。代码审查是保证软件质量的重要环节。",
+                "text": "I completed code review work",
                 "priority": 0
             },
             {
-                "text": "参加了行业技术会议，听取了关于人工智能发展趋势的演讲，了解了最新的技术动态和应用案例。",
+                "text": "I attended an industry technical conference",
                 "priority": 1
             },
             
-            # 社交活动类记忆
+            # Social Activity Memory
             {
-                "text": "与老朋友聚会，分享了各自的工作和生活近况。朋友间的交流能带来新的想法和启发，是人生中重要的精神支持。",
+                "text": "I gathered with old friends and shared our respective work and life updates. Communication between friends can bring new ideas and inspiration",
                 "priority": 0
             },
             {
-                "text": "参加了社区志愿者活动，帮助老年人学习使用智能手机。通过志愿服务，感受到了帮助他人的快乐和成就感。",
+                "text": "I participated in community volunteer activities",
                 "priority": 0
             },
             {
-                "text": "与同事一起参加了团建活动，通过团队游戏增进了彼此的了解，提升了团队凝聚力。",
+                "text": "I participated in team building activities with colleagues",
                 "priority": 0
             },
             {
-                "text": "参加了读书会，与书友们讨论了《活着》这本书的主题和意义。不同观点的碰撞让阅读体验更加丰富。",
+                "text": "I attended a book club and discussed the themes and significance of the book "To Live" with fellow readers. The collision of different viewpoints made the reading experience more enriching.",
                 "priority": 0
             },
             {
-                "text": "与家人一起度过了愉快的周末时光，一起做饭、看电影，享受了温馨的家庭时光。",
+                "text": "I spent a pleasant weekend with family",
                 "priority": 1
             },
             
-            # 健康生活类记忆
+            # Healthy Living Memory
             {
-                "text": "开始坚持每天跑步30分钟，跑步不仅能锻炼身体，还能释放压力，提高精神状态。",
+                "text": "I started to persist in running for 30 minutes every day. Running not only exercises the body but also releases stress and improves mental state.",
                 "priority": 1
             },
             {
-                "text": "调整了作息时间，保证每天7-8小时的睡眠。充足的睡眠对身体健康和工作效率都很重要。",
+                "text": "I adjusted my sleep schedule to ensure 7-8 hours of sleep daily. Adequate sleep is important for physical health and work efficiency.",
                 "priority": 1
             },
             {
-                "text": "学习了营养搭配知识，开始注意饮食的均衡性。合理的营养摄入是保持健康的基础。",
+                "text": "I learned about nutritional matching and started paying attention to dietary balance. Reasonable nutritional intake is the foundation for maintaining health.",
                 "priority": 0
             },
             {
-                "text": "参加了心理健康讲座，学习了如何管理压力和情绪，保持积极的心态。",
+                "text": "I attended a mental health lecture and learned how to manage stress and emotions",
                 "priority": 1
             },
             {
-                "text": "开始练习冥想，每天花10分钟进行正念练习，这有助于提高专注力和情绪管理能力。",
+                "text": "I started practicing meditation",
                 "priority": 0
             }
         ]
 
-        print(f"\n📝 异步写入 {len(async_memories)} 个记忆")
+        print(f"\n📝 Asynchronous Write {len(async_memories)} Memories")
         print("-" * 40)
 
         request_ids = []
         for i, memory in enumerate(async_memories, 1):
-            print(f"\n异步写入记忆 {i}: {memory['text'][:30]}...")
-            print(f"  优先级: {memory['priority']}")
+            print(f"\nAsynchronous Write Memory {i}: {memory['text'][:30]}...")
+            print(f"  Priority: {memory['priority']}")
 
             try:
                 result = agent.write_memory_auto(
                     text=memory['text'],
-                    update_memoir_all=True,  # 自动生成 memoir
+                    update_memoir_all=True,  # Auto-generate Memoir
                     callback=async_callback,
                     priority=memory['priority']
                 )
 
                 if result.get('success', False):
-                    print(f"✅ 异步写入请求已提交")
-                    print(f"   请求ID: {result['request_id']}")
-                    print(f"   状态: {result['status']}")
-                    print(f"   队列位置: {result['queue_position']}")
-                    print(f"   估算等待时间: {result['estimated_wait_time']}秒")
-                    print(f"   文本预览: {result['text_preview']}")
+                    print(f"✅ Asynchronous Write Request Submitted")
+                    print(f"   Request ID: {result['request_id']}")
+                    print(f"   Status: {result['status']}")
+                    print(f"   Queue Position: {result['queue_position']}")
+                    print(f"   Estimated Wait Time: {result['estimated_wait_time']}Seconds")
+                    print(f"   Text Preview: {result['text_preview']}")
                     
                     request_ids.append(result['request_id'])
                 else:
-                    print(f"❌ 异步写入失败: {result.get('error', 'unknown error')}")
+                    print(f"❌ Asynchronous Write Failed: {result.get('error', 'unknown error')}")
 
             except Exception as e:
-                print(f"❌ 异步写入异常: {e}")
+                print(f"❌ Asynchronous Write Exception: {e}")
 
-        # 3. 演示请求状态查询
-        print("\n3. 演示请求状态查询")
+        # 3. Demonstrate Request Status Query
+        print("\n3. Demonstrate Request Status Query")
         print("-" * 40)
 
         for i, request_id in enumerate(request_ids, 1):
-            print(f"\n🔍 查询请求 {i} 状态: {request_id}")
+            print(f"\n🔍 Query Request {i} Status: {request_id}")
             
-            # 等待一段时间让请求开始处理
+            # Wait for a While to Let Request Start Processing
             time.sleep(0.5)
             
             try:
                 status = agent.get_request_status(request_id)
                 if status.get('success', False):
-                    print(f"   状态: {status['status']}")
-                    print(f"   优先级: {status['priority']}")
-                    print(f"   提交时间: {datetime.datetime.fromtimestamp(status['timestamp']).strftime('%H:%M:%S')}")
+                    print(f"   Status: {status['status']}")
+                    print(f"   Priority: {status['priority']}")
+                    print(f"   Submission Time: {datetime.datetime.fromtimestamp(status['timestamp']).strftime('%H:%M:%S')}")
                     
                     if 'start_time' in status:
-                        print(f"   开始时间: {datetime.datetime.fromtimestamp(status['start_time']).strftime('%H:%M:%S')}")
+                        print(f"   Start Time: {datetime.datetime.fromtimestamp(status['start_time']).strftime('%H:%M:%S')}")
                     
                     if 'processing_time' in status:
-                        print(f"   处理时间: {status['processing_time']:.2f}秒")
+                        print(f"   Processing Time: {status['processing_time']:.2f}Seconds")
                     
                     if 'error' in status:
-                        print(f"   错误信息: {status['error']}")
+                        print(f"   Error Message: {status['error']}")
                 else:
-                    print(f"   ❌ 状态查询失败: {status.get('error', 'unknown error')}")
+                    print(f"   ❌ Status查询失败: {status.get('error', 'unknown error')}")
                     
             except Exception as e:
-                print(f"   ❌ 状态查询异常: {e}")
+                print(f"   ❌ Status查询异常: {e}")
 
-        # 4. 等待所有异步请求完成
-        print("\n4. 等待所有异步请求完成")
+        # 4. Wait for All Asynchronous Requests to Complete
+        print("\n4. Wait for All Asynchronous Requests to Complete")
         print("-" * 40)
         
-        print("⏳ 等待队列中的请求处理完成...")
+        print("⏳ Wait for Requests in Queue to Complete Processing...")
         agent.wait_for_completion()
-        print("✅ 所有异步请求已处理完成")
+        print("✅ All Asynchronous Requests Have Been Processed")
 
-        # 5. 查看最终状态
-        print("\n5. 查看最终处理状态")
+        # 5. 查看最终Status
+        print("\n5. 查看最终处理Status")
         print("-" * 40)
 
         for i, request_id in enumerate(request_ids, 1):
-            print(f"\n📊 请求 {i} 最终状态: {request_id}")
+            print(f"\n📊 Request {i} 最终Status: {request_id}")
             
             try:
                 final_status = agent.get_request_status(request_id)
                 if final_status.get('success', False):
-                    print(f"   最终状态: {final_status['status']}")
-                    print(f"   处理时间: {final_status.get('processing_time', 0):.2f}秒")
+                    print(f"   最终Status: {final_status['status']}")
+                    print(f"   Processing Time: {final_status.get('processing_time', 0):.2f}Seconds")
                     
                     if 'result' in final_status:
                         result_data = final_status['result']
                         if result_data.get('success'):
                             prelim_result = result_data.get('preliminary_result', {})
                             action = prelim_result.get('action', 'unknown')
-                            print(f"   写入动作: {action}")
+                            print(f"   Write Action: {action}")
                             if action == 'updated':
                                 similarity = prelim_result.get('similarity_score', 0)
-                                print(f"   相似度: {similarity:.3f}")
+                                print(f"   Similarity: {similarity:.3f}")
                         else:
-                            print(f"   处理失败: {result_data.get('error', 'unknown error')}")
+                            print(f"   Processing Failed: {result_data.get('error', 'unknown error')}")
                 else:
-                    print(f"   ❌ 状态查询失败: {final_status.get('error', 'unknown error')}")
+                    print(f"   ❌ Status查询失败: {final_status.get('error', 'unknown error')}")
                     
             except Exception as e:
-                print(f"   ❌ 状态查询异常: {e}")
+                print(f"   ❌ Status查询异常: {e}")
 
-        # 6. 演示同步写入（对比）
-        print("\n6. 演示同步写入（对比）")
+        # 6. Demonstrate Synchronous Write (Comparison)
+        print("\n6. Demonstrate Synchronous Write (Comparison)")
         print("-" * 40)
 
         sync_memories = [
-            "今天学习了Python的面向对象编程，理解了类、继承、多态和封装的概念。面向对象编程能更好地组织代码结构，提高代码的可维护性和复用性。",
-            "学习了Python的装饰器模式，这是一个非常强大的特性，可以用于日志记录、性能监控、权限验证等功能。装饰器让代码更加简洁和优雅。",
-            "研究了Python的异步编程，使用asyncio库来处理并发任务，提高了程序的性能。异步编程特别适合I/O密集型应用，如网络请求和文件操作。",
-            "学习了数据结构和算法的基础知识，包括数组、链表、栈、队列、树等。良好的算法设计能显著提升程序的执行效率。",
-            "研究了软件设计模式，包括单例模式、工厂模式、观察者模式等。设计模式是解决常见软件设计问题的标准方案。",
-            "学习了版本控制系统Git的使用，包括分支管理、合并策略、冲突解决等。Git是现代软件开发中不可或缺的工具。",
-            "研究了数据库设计和优化，学习了关系型数据库的范式理论，以及如何设计高效的数据库结构。",
-            "学习了Web开发的基础知识，包括HTML、CSS、JavaScript等前端技术，以及HTTP协议和RESTful API设计。",
-            "研究了网络安全的基本概念，包括加密算法、身份认证、访问控制等。网络安全在当今数字化时代越来越重要。",
-            "学习了云计算的基本概念，包括IaaS、PaaS、SaaS等服务模式，以及云原生应用的设计原则。"
+            "Today I learned Python's object-oriented programming",
+            "I learned Python's decorator pattern",
+            "I studied Python's asynchronous programming",
+            "I learned the basics of data structures and algorithms",
+            "I studied software design patterns",
+            "I learned to use the version control system Git",
+            "I studied database design and optimization",
+            "I learned the basics of web development",
+            "I studied the basic concepts of network security",
+            "I learned the basic concepts of cloud computing"
         ]
 
-        print(f"\n📝 同步写入 {len(sync_memories)} 个记忆")
+        print(f"\n📝 Synchronous Write {len(sync_memories)} Memories")
         print("-" * 40)
 
-        # 新建同步模式管理器
+        # Create New Synchronous Mode Manager
         sync_agent = MemManagerAgent(
-            storage_path="demo_memory",  # 与异步写入保持一致
+            storage_path="demo_memory",  # Keep Consistent with Asynchronous Write
             config_file=config_file,
             enable_async=False
         )
 
         for i, text in enumerate(sync_memories, 1):
-            print(f"\n同步写入记忆 {i}: {text[:30]}...")
+            print(f"\nSynchronous Write Memory {i}: {text[:30]}...")
             
             start_time = time.time()
             try:
                 result = sync_agent.write_memory_auto(
                     text=text,
-                    update_memoir_all=True  # 自动生成 memoir
+                    update_memoir_all=True  # Auto-generate Memoir
                 )
                 end_time = time.time()
                 
@@ -344,55 +344,55 @@ def main():
                     prelim_result = result.get('preliminary_result', {})
                     action = prelim_result.get('action', 'unknown')
                     mem_id = prelim_result.get('mem_id', 'unknown')
-                    print(f"✅ 同步写入完成")
-                    print(f"   动作: {action}")
-                    print(f"   内存ID: {mem_id}")
-                    print(f"   耗时: {end_time - start_time:.2f}秒")
+                    print(f"✅ 同步Write Complete")
+                    print(f"   Action: {action}")
+                    print(f"   Memory ID: {mem_id}")
+                    print(f"   Time Taken: {end_time - start_time:.2f}Seconds")
 
                     if action == 'updated':
                         similarity = prelim_result.get('similarity_score', 0)
-                        print(f"   相似度: {similarity:.3f}")
+                        print(f"   Similarity: {similarity:.3f}")
                 else:
-                    print(f"❌ 同步写入失败: {result.get('error', 'unknown error')}")
+                    print(f"❌ Synchronous Write Failed: {result.get('error', 'unknown error')}")
                     if 'preliminary_result' in result:
                         prelim_result = result['preliminary_result']
                         action = prelim_result.get('action', 'unknown')
-                        print(f"   动作: {action}")
+                        print(f"   Action: {action}")
 
             except Exception as e:
-                print(f"❌ 同步写入异常: {e}")
+                print(f"❌ Synchronous Write Exception: {e}")
         
         sync_agent.shutdown()
 
-        # 7. 演示异步状态管理
-        print("\n7. 演示异步状态管理")
+        # 7. 演示异步Status管理
+        print("\n7. 演示异步Status管理")
         print("-" * 40)
 
         try:
-            # 获取所有请求状态
+            # 获取所有请求Status
             all_status = agent.get_all_request_status()
-            print(f"📋 总请求数: {all_status['total_requests']}")
+            print(f"📋 Total Request Count: {all_status['total_requests']}")
             
-            # 统计不同状态的请求
+            # 统计不同Status的请求
             status_counts = {}
             for request_id, status_info in all_status['requests'].items():
                 status = status_info.get('status', 'unknown')
                 status_counts[status] = status_counts.get(status, 0) + 1
             
-            print("📊 状态统计:")
+            print("📊 Status统计:")
             for status, count in status_counts.items():
-                print(f"   {status}: {count} 个")
+                print(f"   {status}: {count} Items")
             
-            # 清理已完成的请求
-            print("\n🧹 清理已完成的请求状态...")
+            # Clean Up Completed Requests
+            print("\n🧹 Clean Up Completed RequestsStatus...")
             agent.cleanup_completed_requests(max_age_hours=1)
             
-            # 再次获取状态
+            # 再次获取Status
             all_status_after = agent.get_all_request_status()
-            print(f"📋 清理后总请求数: {all_status_after['total_requests']}")
+            print(f"📋 Total Request Count After Cleanup: {all_status_after['total_requests']}")
             
         except Exception as e:
-            print(f"❌ 状态管理异常: {e}")
+            print(f"❌ Status管理异常: {e}")
 
         # 8. Test intelligent search (read_memory_auto)
         print("\n8. Test intelligent search (read_memory_auto)")
@@ -405,8 +405,8 @@ def main():
             "Decorator",      # Should find related memory
             "French cuisine",    # Should find unrelated memory
             "Asynchronous programming",    # Should find related memory
-            "今年干了啥",
-            "今天干了啥",
+            "What Did I Do This Year",
+            "What Did I Do Today",
         ]
 
         for i, query in enumerate(search_queries, 1):
@@ -443,11 +443,11 @@ def main():
         current_day = current_time.day
 
         time_queries = [
-            f"{current_year}年",
-            f"{current_year}年{current_month}月",
-            f"{current_year}年{current_month}月{current_day}日",
-            "今天",
-            "这个月"
+            f"{current_year}Year",
+            f"{current_year}Year{current_month}Month",
+            f"{current_year}Year{current_month}Month{current_day}Day",
+            "Today",
+            "This Month"
         ]
 
         for i, time_query in enumerate(time_queries, 1):
@@ -485,12 +485,12 @@ def main():
             if summary['success']:
                 print(f"✅ Status summary retrieved successfully")
                 
-                # 显示基本统计信息
+                # Display Basic Statistics
                 print(f"   Storage path: {summary.get('storage_path', 'unknown')}")
                 print(f"   Similarity threshold: {summary.get('similarity_threshold', 'unknown')}")
                 print(f"   Max tokens: {summary.get('max_tokens', 'unknown')}")
 
-                # 显示模块统计信息
+                # Display Module Statistics
                 if 'preliminary_memory' in summary:
                     prelim = summary['preliminary_memory']
                     print(f"   Preliminary memory: {prelim.get('memory_count', 0)} entries")
@@ -501,7 +501,7 @@ def main():
                     print(f"   Memoir memory: {memoir.get('total_memoirs', 0)} entries")
                     print(f"     Storage size: {memoir.get('total_size_mb', 0)} MB")
 
-                # 显示异步处理统计信息
+                # Display Asynchronous Processing Statistics
                 if 'async_summary' in summary:
                     async_summary = summary['async_summary']
                     print(f"   Async processing:")
@@ -511,20 +511,20 @@ def main():
                     print(f"     Processed requests: {async_summary.get('processed_requests', 0)}")
                     print(f"     Failed requests: {async_summary.get('failed_requests', 0)}")
                     print(f"     Success rate: {async_summary.get('success_rate', 0):.1f}%")
-                    print(f"     Average processing time: {async_summary.get('average_processing_time', 0):.2f}秒")
+                    print(f"     Average processing time: {async_summary.get('average_processing_time', 0):.2f}Seconds")
             else:
                 print(f"❌ Status summary retrieval failed: {summary.get('error', 'unknown error')}")
 
         except Exception as e:
             print(f"❌ Status summary retrieval exception: {e}")
 
-        # 11. 关闭系统
-        print("\n11. 关闭系统")
+        # 11. Shutdown System
+        print("\n11. Shutdown System")
         print("-" * 40)
         
-        print("🔒 正在关闭异步内存管理器...")
+        print("🔒 Shutting Down Asynchronous Memory Manager...")
         agent.shutdown(wait=True)
-        print("✅ 系统已安全关闭")
+        print("✅ System Has Been Safely Shut Down")
 
         print("\n" + "=" * 60)
         print("🎉 Intelligent Memory Management System Demo Completed!")

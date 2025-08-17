@@ -21,7 +21,7 @@ AGI Bot project installation script
 """
 
 # Application name macro definition
-APP_NAME = "AGI Bot"
+APP_NAME = "AGIBot"
 
 from setuptools import setup, find_packages
 
@@ -30,7 +30,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="agibot",
-    version="0.1.0",
+    version="1.0.0",
     author=f"{APP_NAME} Team",
     description="AI Code Auto-Generator - Intelligent code generation and task execution system based on Claude Sonnet",
     long_description=long_description,

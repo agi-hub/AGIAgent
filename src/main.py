@@ -29,8 +29,10 @@ A complete automated task processing workflow:
 # Application name macro definition
 APP_NAME = "AGI Bot"
 
-from src.tools.print_system import set_agent_id, print_manager, print_system, print_current
+# Imports
+from src.tools.print_system import print_current, print_system
 from src.tools import Tools
+import importlib
 from src.tools.debug_system import install_debug_system, track_operation, finish_operation
 from typing import Dict, Any, Optional, List
 import os
@@ -38,12 +40,12 @@ import sys
 import argparse
 import json
 import atexit
-import signal
 from datetime import datetime
 from src.task_decomposer import TaskDecomposer
 from src.multi_round_executor import MultiRoundTaskExecutor
 from src.config_loader import get_api_key, get_api_base, get_model, get_truncation_length, get_summary_report
-
+from src.routine_utils import append_routine_to_requirement
+from src.tools.agent_context import get_current_agent_id, set_current_agent_id
 # Configuration file to store last output directory
 LAST_OUTPUT_CONFIG_FILE = ".agibot_last_output.json"
 
@@ -58,9 +60,29 @@ def global_cleanup():
     _cleanup_executed = True
     
     try:
+        #print_current("🔄 Starting global cleanup...")
         
         # Import here to avoid circular imports
         # Note: AgentManager class is not implemented, skipping cleanup
+        
+        # Cleanup MCP clients first (most important for subprocess cleanup)
+        try:
+            from tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+            safe_cleanup_cli_mcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ CLI-MCP cleanup warning: {e}")
+        
+        try:
+            from tools.fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+            safe_cleanup_fastmcp_wrapper()
+        except Exception as e:
+            print_current(f"⚠️ FastMCP cleanup warning: {e}")
+        
+        try:
+            from tools.mcp_client import safe_cleanup_mcp_client
+            safe_cleanup_mcp_client()
+        except Exception as e:
+            print_current(f"⚠️ MCP client cleanup warning: {e}")
         
         # Stop message router if it exists
         try:
@@ -68,28 +90,33 @@ def global_cleanup():
             router = get_message_router()
             if router:
                 router.stop()
-        except:
-            pass
+        except Exception as e:
+            print_current(f"⚠️ Message router cleanup warning: {e}")
         
         # Cleanup debug system
         try:
             from tools.debug_system import get_debug_system
             debug_sys = get_debug_system()
             debug_sys.cleanup()
-        except:
-            pass
+        except Exception as e:
+            print_current(f"⚠️ Debug system cleanup warning: {e}")
+        
+        # Small delay to allow cleanup to complete
+        import time
+        time.sleep(0.2)
         
         # Force garbage collection
         import gc
         gc.collect()
         
+        #print_current("✅ Global cleanup completed")
         
     except Exception as e:
         print_current(f"⚠️ Error during final cleanup: {e}")
 
 def signal_handler(signum, frame):
     """Handle interrupt signals"""
-    print_current(f"\n⚠️ 收到信号 {signum}，正在清理...")
+    print_current(f"\n⚠️ Signal received {signum}，正在清理...")
     global_cleanup()
     sys.exit(1)
 
@@ -103,8 +130,7 @@ def save_last_output_dir(out_dir: str, requirement: str = None):
     """
     try:
         # Check if current agent is manager - only manager should update the file
-        from src.tools.print_system import get_agent_id
-        current_agent_id = get_agent_id()
+        current_agent_id = get_current_agent_id()
         
         # Only allow manager (None or "manager") to update the configuration file
         if current_agent_id is not None and current_agent_id != "manager":
@@ -180,7 +206,9 @@ class AGIBotMain:
                  streaming: Optional[bool] = None,
                  MCP_config_file: Optional[str] = None,
                  prompts_folder: Optional[str] = None,
-                 link_dir: Optional[str] = None):
+                 link_dir: Optional[str] = None,
+                 user_id: Optional[str] = None,
+                 routine_file: Optional[str] = None):
 
         """
         Initialize AGI Bot main program
@@ -199,6 +227,7 @@ class AGIBotMain:
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             link_dir: Link to external code directory (optional)
+            routine_file: Routine file path to include in task planning (optional)
         """
         # Handle continue mode - load last output directory and requirement if requested
         self.last_requirement = None
@@ -257,6 +286,8 @@ class AGIBotMain:
         self.MCP_config_file = MCP_config_file
         self.prompts_folder = prompts_folder
         self.link_dir = link_dir
+        self.user_id = user_id
+        self.routine_file = routine_file
         
         # Ensure output directory exists
         os.makedirs(out_dir, exist_ok=True)
@@ -276,23 +307,18 @@ class AGIBotMain:
         if self.link_dir:
             self._create_workspace_link()
         
-        # Set agent ID for main AGIBot
-        set_agent_id("manager")
+        ps_mod = importlib.import_module('src.tools.print_system')
+        ps_mod.set_output_directory(self.out_dir)
         
-        # Initialize tools with workspace root
-        self.tools = Tools(
-            workspace_root=self.workspace_dir,
-            llm_api_key=self.api_key,
-            llm_model=self.model,
-            llm_api_base=self.api_base,
-            enable_llm_filtering=False,
-            enable_summary=True,
-            out_dir=self.out_dir  # Pass output directory to Tools
-        )
+        # 🔧 Initialize execution report storage
+        self.last_execution_report = None
+        
+        # Tools will be initialized in ToolExecutor to avoid duplicate initialization
+        self.tools = None
         
         # Only create task decomposer in multi-task mode
         if not single_task_mode:
-            self.task_decomposer = TaskDecomposer(api_key=api_key, model=model, api_base=api_base)
+            self.task_decomposer = TaskDecomposer(api_key=api_key, model=model, api_base=api_base, out_dir=self.out_dir)
         else:
             self.task_decomposer = None
             
@@ -360,18 +386,16 @@ class AGIBotMain:
             merged_requirement = f"{requirement}. This is a task that continues to be executed. The previous task requirements is: {self.last_requirement}"
             print_system(f"🔄 Continue mode: Merging new requirement with previous context")
             print_system(f"   New requirement: {requirement}")
-            print_system(f"   Previous requirement: {self.last_requirement[:100]}{'...' if len(self.last_requirement) > 100 else ''}")
+            print_system(f"   Previous requirement: {self.last_requirement}")
             print_system(f"   Final merged requirement will be passed to AI")
             return merged_requirement
         
         if requirement:
-            # 🔧 修复：根据当前agent ID打印信息，而不是总是使用manager
-            from tools.print_system import get_agent_id
-            current_agent_id = get_agent_id()
+            current_agent_id = get_current_agent_id()
             if current_agent_id:
                 print_current(f"Received user requirement: {requirement}")
             else:
-                print_manager(f"Received user requirement: {requirement}")
+                print_current(f"Received user requirement: {requirement}")
             return requirement
         
         # Check if we should use last requirement from continue mode
@@ -387,7 +411,7 @@ class AGIBotMain:
                     # Merge new requirement with previous requirement
                     merged_requirement = f"{user_input}. This is a task that continues to be executed. The previous task requirements is: {self.last_requirement}"
                     print_system(f"Using merged requirement: {user_input}")
-                    print_system(f"With context: Previous task - {self.last_requirement[:100]}{'...' if len(self.last_requirement) > 100 else ''}")
+                    print_system(f"With context: Previous task - {self.last_requirement}")
                     return merged_requirement
                 else:
                     print_system("Using previous requirement")
@@ -398,32 +422,17 @@ class AGIBotMain:
         
         print_system(f"=== {APP_NAME} Automated Task Processing System ===")
         print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
-        print_system("(Press Enter on empty line to finish, supports multi-line paste)")
+        print_system("(Press Enter to finish)")
         print_system("-" * 50)
         
-        lines = []
         try:
-            while True:
-                try:
-                    line = input("" if lines else "Enter your requirement: ")
-                    if line.strip() == "":
-                        # Empty line - check if we have content
-                        if lines:
-                            break  # End input if we have content
-                        else:
-                            print_current("❌ No valid requirement entered")
-                            sys.exit(1)
-                    else:
-                        lines.append(line)
-                except EOFError:
-                    # Handle Ctrl+D or end of input
-                    if lines:
-                        break
-                    else:
-                        print_current("❌ No valid requirement entered")
-                        sys.exit(1)
-            
-            requirement = "\n".join(lines).strip()
+            requirement = input("Enter your requirement: ").strip()
+            if not requirement:
+                print_current("❌ No valid requirement entered")
+                sys.exit(1)
+        except EOFError:
+            print_current("❌ No valid requirement entered")
+            sys.exit(1)
             
         except KeyboardInterrupt:
             print_current("\nUser cancelled input")
@@ -441,7 +450,7 @@ class AGIBotMain:
         Returns:
             Whether todo.md was successfully created
         """
-        print_manager("🔧 Starting task decomposition...")
+        print_current("🔧 Starting task decomposition...")
         
         try:
             # Set working directory
@@ -451,7 +460,8 @@ class AGIBotMain:
             result = self.task_decomposer.decompose_task(
                 user_requirement, 
                 self.todo_md_path,
-                workspace_dir=workspace_dir
+                workspace_dir=workspace_dir,
+                routine_file=self.routine_file
             )
             print_current(f"Task decomposition result: {result}")
             
@@ -480,7 +490,7 @@ class AGIBotMain:
     
     def execute_tasks(self, loops: int = 3) -> bool:
         """
-        Execute tasks
+        Execute tasks (delegates to execute_single_task)
         
         Args:
             loops: Execution rounds for each task
@@ -490,51 +500,19 @@ class AGIBotMain:
         """
         
         try:
-            # Set working directory
-            workspace_dir = os.path.join(self.out_dir, "workspace")
-            
-            # Create multi-round task executor, pass all configuration parameters
-            executor = MultiRoundTaskExecutor(
-                subtask_loops=loops,
-                logs_dir=self.logs_dir,
-                workspace_dir=workspace_dir,
-                debug_mode=self.debug_mode,
-                api_key=self.api_key,
-                model=self.model,
-                api_base=self.api_base,
-                detailed_summary=self.detailed_summary,
-                interactive_mode=self.interactive_mode,
-                MCP_config_file=self.MCP_config_file,
-                prompts_folder=self.prompts_folder
-            )
-            
-            # Execute all tasks
-            report = executor.execute_all_tasks(self.todo_md_path)
-            
-            if "error" in report:
-                print_current(f"❌ Task execution failed: {report['error']}")
-                # Clean up resources before returning
-                try:
-                    executor.cleanup()
-                except:
-                    pass
+            # Read todo.md content as user requirement
+            if not os.path.exists(self.todo_md_path):
+                print_current(f"❌ Todo file not found: {self.todo_md_path}")
                 return False
+                
+            with open(self.todo_md_path, 'r', encoding='utf-8') as f:
+                todo_content = f.read()
             
-            # Clean up resources before returning
-            try:
-                executor.cleanup()
-            except:
-                pass
-            return True
+            # Use execute_single_task with todo content as requirement
+            return self.execute_single_task(todo_content, loops)
             
         except Exception as e:
             print_current(f"❌ Task execution error: {e}")
-            # Clean up resources if executor was created
-            try:
-                if 'executor' in locals():
-                    executor.cleanup()
-            except:
-                pass
             return False
     
     def execute_single_task(self, user_requirement: str, loops: int = 3) -> bool:
@@ -553,9 +531,8 @@ class AGIBotMain:
             # Set working directory
             workspace_dir = os.path.join(self.out_dir, "workspace")
             
-            # 🔧 检查当前agent_id并传递给执行器
-            from tools.print_system import get_agent_id, set_agent_id
-            current_agent_id = get_agent_id()
+            # 🔧 Check current agent_id and pass to executor
+            current_agent_id = get_current_agent_id()
             if current_agent_id:
                 print_current(f"🏷️ Using agent ID for task execution: {current_agent_id}")
             
@@ -572,28 +549,34 @@ class AGIBotMain:
                 interactive_mode=self.interactive_mode,
                 streaming=self.streaming,
                 MCP_config_file=self.MCP_config_file,
-                prompts_folder=self.prompts_folder
+                prompts_folder=self.prompts_folder,
+                user_id=self.user_id
             )
             
-            # 🔧 确保executor使用正确的agent_id
+            # 🔧 Ensure executor uses correct agent_id
             if current_agent_id and hasattr(executor, 'executor') and hasattr(executor.executor, 'tools'):
                 try:
-                    # 在executor的工具中设置agent_id
+                    # Set agent_id in executor's tools
                     if hasattr(executor.executor.tools, 'set_agent_context'):
                         executor.executor.tools.set_agent_context(current_agent_id)
                 except Exception as e:
                     print_current(f"⚠️ Warning: Could not set agent context: {e}")
             
+            # Append routine content to user requirement if provided
+            enhanced_requirement = user_requirement
+            if self.routine_file:
+                enhanced_requirement = append_routine_to_requirement(user_requirement, self.routine_file)
+            
             # Construct single task
             single_task = {
                 'Task ID': '1',
                 'Task Name': 'User Requirement Execution',
-                'Task Description': user_requirement,
+                'Task Description': enhanced_requirement,
                 'Execution Status': '0',
                 'Dependent Tasks': ''
             }
             
-            print_manager(f"🚀 Starting task execution ({loops} rounds max)")
+            print_system(f"🚀 Starting task execution ({loops} rounds max)")
             
             # Execute single task
             task_result = executor.execute_single_task(single_task, 0, 1, "")
@@ -620,14 +603,14 @@ class AGIBotMain:
                     "failed_tasks": [],
                     "execution_summary": f"Single task mode execution completed\nTask: {user_requirement}",
                     "workspace_dir": workspace_dir,
-                    "mode": "single_task"
+                    "mode": "single_task",
+                    "current_loop": task_result.get("current_loop", 0)  # Add current loop information
                 }
                 
                 # Save execution report
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 🔧 添加agent ID到报告文件名
-                from tools.print_system import get_agent_id
-                current_agent_id = get_agent_id()
+                # 🔧 Add agent ID to report filename
+                current_agent_id = get_current_agent_id()
                 if current_agent_id:
                     report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
                 else:
@@ -653,6 +636,9 @@ class AGIBotMain:
                     except Exception as e:
                         print_current(f"⚠️ Detailed summary report generation failed: {e}")
                 
+                # 🔧 Store execution report for AGIBotClient access
+                self.last_execution_report = execution_report
+                
                 # Clean up resources before returning
                 try:
                     executor.cleanup()
@@ -670,17 +656,17 @@ class AGIBotMain:
                     "end_time": datetime.now().isoformat(),
                     "total_tasks": 1,
                     "completed_tasks": [],
-                    "max_rounds_reached_tasks": [task_result],  # 🔧 修复：不再标记为failed_tasks
+                    "max_rounds_reached_tasks": [task_result],  # 🔧 Fix: no longer mark as failed_tasks
                     "execution_summary": f"Single task mode execution reached max rounds\nTask: {user_requirement}",
                     "workspace_dir": workspace_dir,
-                    "mode": "single_task"
+                    "mode": "single_task",
+                    "current_loop": task_result.get("current_loop", loops)  # Add loop information
                 }
                 
                 # Save execution report
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 🔧 添加agent ID到报告文件名
-                from tools.print_system import get_agent_id
-                current_agent_id = get_agent_id()
+                # 🔧 Add agent ID to report filename
+                current_agent_id = get_current_agent_id()
                 if current_agent_id:
                     report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
                 else:
@@ -694,6 +680,9 @@ class AGIBotMain:
                 except Exception as e:
                     print_current(f"⚠️ Report save failed: {e}")
                 
+                # 🔧 Store execution report for AGIBotClient access (max_rounds_reached case)
+                self.last_execution_report = execution_report
+                
                 # Clean up resources before returning
                 try:
                     executor.cleanup()
@@ -702,7 +691,7 @@ class AGIBotMain:
                 
                 return False
             else:
-                # 🔧 修复：区分真正的失败和达到最大轮数  
+                # 🔧 Fix: distinguish between real failure and reaching max rounds  
                 print_current("⚠️ Single task execution reached maximum rounds")
                 # Clean up resources before returning
                 try:
@@ -730,9 +719,8 @@ class AGIBotMain:
             timestamp: Timestamp
         """
         try:
-            # 🔧 添加agent ID到markdown报告文件名
-            from tools.print_system import get_agent_id
-            current_agent_id = get_agent_id()
+            # 🔧 Add agent ID to markdown report filename
+            current_agent_id = get_current_agent_id()
             if current_agent_id:
                 markdown_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.md")
             else:
@@ -883,9 +871,8 @@ This report was generated by {APP_NAME} Automated Task Processing System.
         try:
             # Save summary report to workspace directory for easy user access
             workspace_dir = report.get("workspace_dir")
-            # 🔧 添加agent ID到summary文件名
-            from tools.print_system import get_agent_id
-            current_agent_id = get_agent_id()
+            # 🔧 Add agent ID to summary filename
+            current_agent_id = get_current_agent_id()
             if current_agent_id:
                 summary_filename = f"task_summary_{current_agent_id}_{timestamp}.md"
             else:
@@ -982,7 +969,8 @@ Please generate a markdown format detailed summary report, retaining all importa
                     api_key=self.api_key,
                     model=self.model,
                     api_base=self.api_base,
-                    detailed_summary=False
+                    detailed_summary=False,
+                    user_id=self.user_id
                 )
                 
                 # Use LLM to generate summary
@@ -990,34 +978,11 @@ Please generate a markdown format detailed summary report, retaining all importa
                     # Use Anthropic Claude API - batch call
                     import requests
                     
-                    def get_ip_location_info():
-                        try:
-                            response = requests.get('http://ipapi.co/json/', timeout=5)
-                            if response.status_code == 200:
-                                data = response.json()
-                                return {
-                                    'ip': data.get('ip', 'Unknown'),
-                                    'city': data.get('city', 'Unknown'),
-                                    'region': data.get('region', 'Unknown'),
-                                    'country': data.get('country_name', 'Unknown'),
-                                    'country_code': data.get('country_code', 'Unknown'),
-                                    'timezone': data.get('timezone', 'Unknown')
-                                }
-                        except:
-                            pass
-                        return {'ip': 'Unknown', 'city': 'Unknown', 'region': 'Unknown', 'country': 'Unknown', 'country_code': 'Unknown', 'timezone': 'Unknown'}
-                    
                     current_date = datetime.now()
-                    location_info = get_ip_location_info()
                     system_prompt = f"""You are a professional technical document organization assistant, skilled at retaining technical details while organizing clear and coherent reports. You need to retain all important technical information, analysis processes and specific implementations, just remove multi-round execution markers to make content more flowing.
 
 **Current Date Information**:
-- Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
+- Current Date: {current_date.strftime('%Y-%m-%d')}"""
                     
                     print_current("🔄 Starting generation of single task summary...")
                     response = temp_executor.executor.client.messages.create(
@@ -1042,34 +1007,12 @@ Please generate a markdown format detailed summary report, retaining all importa
                     # Use OpenAI API - batch call
                     import requests
                     
-                    def get_ip_location_info():
-                        try:
-                            response = requests.get('http://ipapi.co/json/', timeout=5)
-                            if response.status_code == 200:
-                                data = response.json()
-                                return {
-                                    'ip': data.get('ip', 'Unknown'),
-                                    'city': data.get('city', 'Unknown'),
-                                    'region': data.get('region', 'Unknown'),
-                                    'country': data.get('country_name', 'Unknown'),
-                                    'country_code': data.get('country_code', 'Unknown'),
-                                    'timezone': data.get('timezone', 'Unknown')
-                                }
-                        except:
-                            pass
-                        return {'ip': 'Unknown', 'city': 'Unknown', 'region': 'Unknown', 'country': 'Unknown', 'country_code': 'Unknown', 'timezone': 'Unknown'}
-                    
                     current_date = datetime.now()
-                    location_info = get_ip_location_info()
                     system_prompt = f"""You are a professional technical document organization assistant, skilled at retaining technical details while organizing clear and coherent reports. You need to retain all important technical information, analysis processes and specific implementations, just remove multi-round execution markers to make content more flowing.
 
 **Current Date Information**:
 - Current Date: {current_date.strftime('%Y-%m-%d')}
-- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}
-
-**Location Information**:
-- City: {location_info['city']}
-- Country: {location_info['country']}"""
+- Current Time: {current_date.strftime('%Y-%m-%d %H:%M:%S')}"""
                     
                     print_current("🔄 Starting generation of single task summary...")
                     response = temp_executor.executor.client.chat.completions.create(
@@ -1285,6 +1228,13 @@ Please generate a markdown format detailed summary report, retaining all importa
         save_last_output_dir(self.out_dir, requirement)
         print_system(f"💾 Configuration saved for future --continue operations")
         
+        # Interactive mode confirmation before task execution
+        if self.interactive_mode:
+            task_description = f"Execute task: {requirement}"
+            if not self.ask_user_confirmation(f"🤖 Ready to execute task:\n   {requirement}\n\nProceed with execution?"):
+                print_current("❌ Task execution cancelled by user")
+                return False
+        
         # Choose execution path based on mode
         if self.single_task_mode:
             # Single task mode: directly execute user requirement
@@ -1306,8 +1256,12 @@ Please generate a markdown format detailed summary report, retaining all importa
                 return False
             finish_operation("Task Decomposition")
             
-            # Interactive mode confirmation is handled by individual task execution
-            # No need for pre-execution confirmation here
+            # Interactive mode confirmation after task decomposition
+            if self.interactive_mode:
+                if not self.ask_user_confirmation(f"🤖 Task decomposition completed. Ready to execute all tasks?\n\nProceed with task execution?"):
+                    print_current("❌ Task execution cancelled by user")
+                    finish_operation("Main Program Execution")
+                    return False
             
             # Step 3: Execute tasks
             track_operation("Multi-Task Execution")
@@ -1362,7 +1316,10 @@ class AGIBotClient:
                  streaming: Optional[bool] = None,
                  MCP_config_file: Optional[str] = None,
                  prompts_folder: Optional[str] = None,
-                 link_dir: Optional[str] = None):
+                 link_dir: Optional[str] = None,
+                 user_id: Optional[str] = None,
+                 agent_id: Optional[str] = None,
+                 routine_file: Optional[str] = None):
         """
         Initialize AGI Bot Client
         
@@ -1378,6 +1335,7 @@ class AGIBotClient:
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             link_dir: Link to external code directory (optional)
+            routine_file: Routine file path to include in task planning (optional)
         """
         # Import config loader functions
         from .config_loader import get_api_key, get_model, get_api_base
@@ -1401,6 +1359,11 @@ class AGIBotClient:
         self.MCP_config_file = MCP_config_file
         self.prompts_folder = prompts_folder
         self.link_dir = link_dir
+        self.routine_file = routine_file
+        # Store agent id and publish to agent context
+        self.agent_id = agent_id
+        
+        set_current_agent_id(agent_id)
         
     def chat(self, 
              messages: list,
@@ -1468,9 +1431,12 @@ class AGIBotClient:
             dir = f"agibot_output_{timestamp}"
         
         try:
-            # 🔧 检查当前线程的agent_id并设置到主线程
-            from tools.print_system import get_agent_id, set_agent_id
-            current_agent_id = get_agent_id()
+            # 🔧 Check current thread's agent_id (set in agent_context when AGIBotClient initializes)
+            current_agent_id = get_current_agent_id()
+            
+
+            from src.tools.print_system import set_output_directory
+            set_output_directory(dir)
             
             # Create AGI Bot main instance
             main_app = AGIBotMain(
@@ -1486,19 +1452,19 @@ class AGIBotClient:
                 streaming=self.streaming,
                 MCP_config_file=self.MCP_config_file,
                 prompts_folder=self.prompts_folder,
-                link_dir=self.link_dir
+                link_dir=self.link_dir,
+                routine_file=self.routine_file
             )
             
-            # 🔧 如果有agent_id，设置到主线程中
+            # 🔧 If agent_id exists
             if current_agent_id:
-                set_agent_id(current_agent_id)
                 print_current(f"🏷️ AGIBotClient using agent ID: {current_agent_id}")
             
             # Execute the task
             if current_agent_id:
                 print_current(f"🚀 Executing task: {user_message}")
             else:
-                print_manager(f"🚀 Executing task: {user_message}")
+                print_current(f"🚀 Executing task: {user_message}")
             success = main_app.run(
                 user_requirement=user_message,
                 loops=loops
@@ -1508,12 +1474,18 @@ class AGIBotClient:
             workspace_dir = os.path.join(dir, "workspace")
             
             if success:
+                # 🔧 Get loop information
+                current_loop = 0
+                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
+                    current_loop = main_app.last_execution_report.get("current_loop", 0)
+                
                 return {
                     "success": True,
                     "message": "Task completed successfully",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
+                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
@@ -1522,13 +1494,19 @@ class AGIBotClient:
                     }
                 }
             else:
-                # 🔧 修复：区分失败和达到最大轮数
+                # 🔧 Get loop information (failure case)
+                current_loop = loops  # Default to maximum loops
+                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
+                    current_loop = main_app.last_execution_report.get("current_loop", loops)
+                
+                # 🔧 Fix: distinguish between failure and reaching max rounds
                 return {
                     "success": False,
                     "message": "Task execution reached maximum execution rounds",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
+                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
@@ -1589,19 +1567,20 @@ class AGIBotClient:
 
 
 # Convenience function for quick usage
-def create_client(api_key: Optional[str] = None, model: Optional[str] = None, **kwargs) -> AGIBotClient:
+def create_client(api_key: Optional[str] = None, model: Optional[str] = None, user_id: Optional[str] = None, **kwargs) -> AGIBotClient:
     """
     Convenience function to create AGI Bot client
     
     Args:
         api_key: API key for LLM service (optional, will read from config/config.txt if not provided)
         model: Model name (optional, will read from config/config.txt if not provided)
+        user_id: User ID for MCP knowledge base tools (optional)
         **kwargs: Additional configuration parameters
         
     Returns:
         AGIBotClient instance
     """
-    return AGIBotClient(api_key=api_key, model=model, **kwargs)
+    return AGIBotClient(api_key=api_key, model=model, user_id=user_id, **kwargs)
 
 
 def print_ascii_banner():
@@ -1614,12 +1593,16 @@ def main():
     """
     Main function - handle command line parameters
     """
-    # Install debug system first (re-enabled for debugging freeze issues)
-    debug_system = install_debug_system(
-        enable_stack_trace=True,
-        enable_memory_monitor=True, 
-        enable_execution_tracker=True
-    )
+    from config_loader import load_config
+    config = load_config()
+    enable_debug_system = config.get('enable_debug_system', 'False').lower() == 'true'
+    if enable_debug_system:
+        install_debug_system(
+            enable_stack_trace=True,
+            enable_memory_monitor=True, 
+            enable_execution_tracker=True,
+            show_activation_message=False  # Always silent by default
+        )
     
     # Register cleanup handlers
     atexit.register(global_cleanup)
@@ -1770,7 +1753,6 @@ Usage Examples:
         print_current("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
         print_current("    The --continue/-c parameter takes priority and --dir will be ignored.")
         print_current("    If you want to use a specific output directory, don't use --continue/-c.")
-        print()
     
     # Check if no parameters provided, if so use default parameters
     if len(sys.argv) == 1:  # Only script name, no other parameters
@@ -1788,7 +1770,7 @@ Usage Examples:
         print_current(f"📁 Output directory: {args.dir}")
         print_current(f"🔄 Execution rounds: {args.loops}")
         print_current(f"🤖 Model: Will load from config/config.txt")
-        print()
+
     
     # Get API key
     api_key = args.api_key

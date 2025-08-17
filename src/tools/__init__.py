@@ -27,6 +27,13 @@ from .terminal_tools import TerminalTools
 from .web_search_tools import WebSearchTools
 from .help_tools import HelpTools
 
+# Import MCP knowledge base tools
+try:
+    from .mcp_knowledge_base_tools import MCPKnowledgeBaseTools, get_mcp_kb_tools, is_mcp_kb_enabled
+    MCP_KB_TOOLS_AVAILABLE = True
+except ImportError as e:
+    MCP_KB_TOOLS_AVAILABLE = False
+
 # Import plugin tools
 try:
     import sys
@@ -41,7 +48,7 @@ except ImportError as e:
     # print_current(f"⚠️ Plugin tools not available: {e}")  # Moved warning display to main.py
 
 
-if PLUGIN_TOOLS_AVAILABLE:
+if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
     class Tools(
         BaseTools,
         CodeSearchTools,
@@ -49,12 +56,13 @@ if PLUGIN_TOOLS_AVAILABLE:
         TerminalTools,
         WebSearchTools,
         HelpTools,
+        MCPKnowledgeBaseTools,
         PluginTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
                      enable_llm_filtering: bool = False, enable_summary: bool = True, 
-                     out_dir: str = None):
+                     out_dir: str = None, user_id: str = None):
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root, llm_model)  # Pass model to BaseTools
             CodeSearchTools.__init__(self)
@@ -62,11 +70,31 @@ if PLUGIN_TOOLS_AVAILABLE:
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
+            MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
             PluginTools.__init__(self, workspace_root)
         
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                # Clean up MCP clients first (most critical for subprocess cleanup)
+                try:
+                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                    safe_cleanup_cli_mcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                
+                try:
+                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                    safe_cleanup_fastmcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                
+                try:
+                    from .mcp_client import safe_cleanup_mcp_client
+                    safe_cleanup_mcp_client()
+                except Exception as e:
+                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
                     try:
@@ -92,6 +120,76 @@ if PLUGIN_TOOLS_AVAILABLE:
                     
             except Exception as e:
                 print_current(f"⚠️ Error during Tools cleanup: {e}")
+elif MCP_KB_TOOLS_AVAILABLE:
+    class Tools(
+        BaseTools,
+        CodeSearchTools,
+        FileSystemTools,
+        TerminalTools,
+        WebSearchTools,
+        HelpTools,
+        MCPKnowledgeBaseTools
+    ):
+        def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
+                     llm_model: str = None, llm_api_base: str = None, 
+                     enable_llm_filtering: bool = False, enable_summary: bool = True, 
+                     out_dir: str = None, user_id: str = None):
+            # Initialize all parent classes with workspace_root parameter
+            BaseTools.__init__(self, workspace_root, llm_model)  # Pass model to BaseTools
+            CodeSearchTools.__init__(self)
+            FileSystemTools.__init__(self, workspace_root)
+            TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
+            HelpTools.__init__(self)
+            MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
+        
+        def cleanup(self):
+            """Clean up resources used by tools"""
+            try:
+                # Clean up MCP clients first (most critical for subprocess cleanup)
+                try:
+                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                    safe_cleanup_cli_mcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                
+                try:
+                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                    safe_cleanup_fastmcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                
+                try:
+                    from .mcp_client import safe_cleanup_mcp_client
+                    safe_cleanup_mcp_client()
+                except Exception as e:
+                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                
+                # Clean up LLM client if it exists
+                if hasattr(self, 'llm_client') and self.llm_client:
+                    try:
+                        if hasattr(self.llm_client, 'close'):
+                            self.llm_client.close()
+                    except:
+                        pass
+                
+                # Clean up code parser if it exists
+                if hasattr(self, 'code_parser') and self.code_parser:
+                    try:
+                        if hasattr(self.code_parser, 'cleanup'):
+                            self.code_parser.cleanup()
+                    except:
+                        pass
+                
+                # Clean up knowledge base tools if they have cleanup method
+                try:
+                    if hasattr(super(), 'cleanup'):
+                        super().cleanup()
+                except:
+                    pass
+                    
+            except Exception as e:
+                print_current(f"⚠️ Error during Tools cleanup: {e}")
 else:
     class Tools(
         BaseTools,
@@ -104,7 +202,7 @@ else:
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
                      enable_llm_filtering: bool = False, enable_summary: bool = True, 
-                     out_dir: str = None):
+                     out_dir: str = None, user_id: str = None):
             # Initialize all parent classes with workspace_root parameter
             BaseTools.__init__(self, workspace_root, llm_model)  # Pass model to BaseTools
             CodeSearchTools.__init__(self)
@@ -116,6 +214,25 @@ else:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                # Clean up MCP clients first (most critical for subprocess cleanup)
+                try:
+                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                    safe_cleanup_cli_mcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                
+                try:
+                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                    safe_cleanup_fastmcp_wrapper()
+                except Exception as e:
+                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                
+                try:
+                    from .mcp_client import safe_cleanup_mcp_client
+                    safe_cleanup_mcp_client()
+                except Exception as e:
+                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
                     try:

@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sys
 import threading
@@ -28,10 +28,21 @@ from werkzeug.utils import secure_filename
 import multiprocessing
 import queue
 import re
+import time
+import psutil
+from collections import defaultdict
+from threading import Lock, Semaphore
+
+# Determine template and static directories FIRST - always relative to this app.py file
+# Get the directory where app.py is located (before any directory changes)
+app_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(app_dir, 'templates')
+static_dir = os.path.join(app_dir, 'static')
 
 # Add parent directory to path to import config_loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config_loader import get_language, get_gui_default_data_directory
+from auth_manager import AuthenticationManager
 
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
@@ -52,19 +63,183 @@ APP_NAME = "AGI Bot"
 
 from src.main import AGIBotMain
 
-# Determine template directory - always relative to this app.py file
-app_dir = os.path.dirname(os.path.abspath(__file__))
-template_dir = os.path.join(app_dir, 'templates')
+# Concurrency control and performance monitoring class
+class ConcurrencyManager:
+    """Concurrency Control and Performance Monitoring Manager"""
+    
+    def __init__(self, max_concurrent_tasks=16, max_connections=40, task_timeout=3600):  # 60 minute timeout (Expand by 1x)
+        self.max_concurrent_tasks = max_concurrent_tasks
+        self.max_connections = max_connections
+        self.task_timeout = task_timeout  # 任务超时时间（Seconds）
+        
+        # Concurrency control
+        self.task_semaphore = Semaphore(max_concurrent_tasks)
+        self.active_tasks = {}  # session_id -> task_info
+        self.task_queue = queue.Queue()  # Task queuing
+        self.connection_count = 0
+        self.lock = Lock()
+        
+        # Performance monitoring
+        self.metrics = {
+            'total_tasks': 0,
+            'completed_tasks': 0,
+            'failed_tasks': 0,
+            'avg_task_duration': 0.0,
+            'active_connections': 0,
+            'peak_memory_usage': 0.0,
+            'last_updated': time.time()
+        }
+        
+        # Resource monitoring
+        self.resource_monitor_active = True
+        self.resource_thread = threading.Thread(target=self._monitor_resources, daemon=True)
+        self.resource_thread.start()
+        
+        # Timeout monitoring
+        self.timeout_monitor_active = True
+        self.timeout_thread = threading.Thread(target=self._monitor_timeouts, daemon=True)
+        self.timeout_thread.start()
+        
+        print(f"🚀 Concurrency manager initialization: Maximum tasks={max_concurrent_tasks}, Maximum connections={max_connections}, Task timeout={task_timeout}Seconds")
+    
+    def can_accept_connection(self):
+        """Check if new connections can be accepted"""
+        with self.lock:
+            return self.connection_count < self.max_connections
+    
+    def add_connection(self):
+        """Add connection"""
+        with self.lock:
+            if self.connection_count < self.max_connections:
+                self.connection_count += 1
+                self.metrics['active_connections'] = self.connection_count
+                return True
+            return False
+    
+    def remove_connection(self):
+        """Remove connection"""
+        with self.lock:
+            if self.connection_count > 0:
+                self.connection_count -= 1
+                self.metrics['active_connections'] = self.connection_count
+    
+    def can_start_task(self, session_id):
+        """Check if new tasks can be started"""
+        # Non-blocking check semaphore
+        acquired = self.task_semaphore.acquire(blocking=False)
+        if acquired:
+            with self.lock:
+                self.active_tasks[session_id] = {
+                    'start_time': time.time(),
+                    'status': 'running'
+                }
+                self.metrics['total_tasks'] += 1
+            return True
+        return False
+    
+    def finish_task(self, session_id, success=True):
+        """Complete task"""
+        self.task_semaphore.release()
+        
+        with self.lock:
+            if session_id in self.active_tasks:
+                task_info = self.active_tasks.pop(session_id)
+                duration = time.time() - task_info['start_time']
+                
+                if success:
+                    self.metrics['completed_tasks'] += 1
+                else:
+                    self.metrics['failed_tasks'] += 1
+                
+                # Update average execution time
+                total_completed = self.metrics['completed_tasks'] + self.metrics['failed_tasks']
+                if total_completed > 0:
+                    current_avg = self.metrics['avg_task_duration']
+                    self.metrics['avg_task_duration'] = (current_avg * (total_completed - 1) + duration) / total_completed
+    
+    def get_metrics(self):
+        """Get performance metrics"""
+        with self.lock:
+            metrics_copy = self.metrics.copy()
+            metrics_copy['active_tasks'] = len(self.active_tasks)
+            metrics_copy['queue_size'] = self.task_queue.qsize()
+            return metrics_copy
+    
+    def _monitor_resources(self):
+        """Resource monitoring thread"""
+        while self.resource_monitor_active:
+            try:
+                # Monitor memory usage
+                process = psutil.Process()
+                memory_info = process.memory_info()
+                memory_mb = memory_info.rss / 1024 / 1024
+                
+                with self.lock:
+                    if memory_mb > self.metrics['peak_memory_usage']:
+                        self.metrics['peak_memory_usage'] = memory_mb
+                    self.metrics['last_updated'] = time.time()
+                
+                time.sleep(30)  # Monitor every 30 seconds
+            except Exception as e:
+                print(f"⚠️ Resource monitoring error: {e}")
+                time.sleep(60)
+    
+    def _monitor_timeouts(self):
+        """Timeout monitoring thread"""
+        while self.timeout_monitor_active:
+            try:
+                current_time = time.time()
+                timeout_sessions = []
+                
+                with self.lock:
+                    for session_id, task_info in self.active_tasks.items():
+                        if current_time - task_info['start_time'] > self.task_timeout:
+                            timeout_sessions.append(session_id)
+                
+                # Handle timeout tasks
+                for session_id in timeout_sessions:
+                    print(f"⏰ Task timeout detected for user {session_id}")
+                    self._handle_task_timeout(session_id)
+                
+                time.sleep(60)  # Check timeout every minute
+            except Exception as e:
+                print(f"⚠️ Timeout monitoring error: {e}")
+                time.sleep(120)
+    
+    def _handle_task_timeout(self, session_id):
+        """Handle task timeout"""
+        # This method needs to set callback after GUI instance initialization
+        if hasattr(self, '_timeout_callback') and self._timeout_callback:
+            self._timeout_callback(session_id)
+        else:
+            print(f"⚠️ Timeout handling callback not set: {session_id}")
+    
+    def set_timeout_callback(self, callback):
+        """Set timeout handling callback"""
+        self._timeout_callback = callback
+    
+    def get_task_runtime(self, session_id):
+        """Get task running time"""
+        with self.lock:
+            if session_id in self.active_tasks:
+                return time.time() - self.active_tasks[session_id]['start_time']
+            return 0
+    
+    def stop(self):
+        """Stop monitoring"""
+        self.resource_monitor_active = False
+        self.timeout_monitor_active = False
 
 print(f"📁 Template directory: {template_dir}")
 print(f"📁 Template exists: {os.path.exists(template_dir)}")
+print(f"📁 Static directory: {static_dir}")
+print(f"📁 Static exists: {os.path.exists(static_dir)}")
 
-app = Flask(__name__, template_folder=template_dir)
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
                    ping_timeout=60, ping_interval=25)
 
-# Internationalization text configuration
 I18N_TEXTS = {
     'zh': {
         # Page title and basic information
@@ -87,6 +262,7 @@ I18N_TEXTS = {
         'delete': '删除',
         'confirm': '确认',
         'cancel': '取消',
+        'clear_chat': '清扫',
         
         # Button tooltips
         'direct_tooltip': '直接执行 - 不进行任务分解',
@@ -94,9 +270,10 @@ I18N_TEXTS = {
         'new_tooltip': '新建目录 - 创建新的工作目录',
         'refresh_tooltip': '刷新目录列表',
         'upload_tooltip': '上传文件到Workspace',
-        'download_tooltip': '下载目录为ZIP（排除workspace_code_index）',
+        'download_tooltip': '下载目录为ZIP（排除code_index）',
         'rename_tooltip': '重命名目录',
         'delete_tooltip': '删除目录',
+        'clear_chat_tooltip': '清空日志显示区域和历史对话',
         
         # Input boxes and placeholders
         'input_placeholder': '请输入您的需求...',
@@ -120,6 +297,8 @@ I18N_TEXTS = {
         'directory_deleted': '目录删除成功',
         'files_uploaded': '文件上传成功',
         'refresh_success': '目录列表已刷新',
+        'chat_cleared': '日志和历史对话已清空',
+        'confirm_clear_chat': '确定要清空所有日志和历史对话吗？此操作不可撤销。',
         
         # Mode information
         'plan_mode_info': '🔄 启用计划模式：将先分解任务再执行',
@@ -158,6 +337,8 @@ I18N_TEXTS = {
         'config_options': '配置选项',
         'show_config_options': '显示配置选项',
         'hide_config_options': '隐藏配置选项',
+        'routine_file': '指导文件',
+        'no_routine': '无',
         'enable_web_search': '搜索网络',
         'enable_knowledge_base': '搜索知识库',
         'enable_multi_agent': '启动多智能体',
@@ -208,6 +389,7 @@ I18N_TEXTS = {
         'select_directory_error': '请先选择目录',
         'uploading_files': '正在上传 {0} 个文件...',
         'upload_progress': '上传进度: {0}%',
+        'upload_completed': '上传文档已完成',
         'upload_failed_http': '上传失败: HTTP {0}',
         
         # Directory operations
@@ -218,6 +400,32 @@ I18N_TEXTS = {
         'target_directory_not_exist': '目标目录不存在',
         'upload_success': '成功上传 {0} 个文件',
         'new_name_empty': '新名称不能为空',
+        
+        # Multi-user support
+        'api_key_label': 'API Key:',
+        'api_key_placeholder': '输入API Key (可选)',
+        'api_key_tooltip': '输入您的API Key，留空则使用默认用户模式',
+        'connect_btn': '连接',
+        'disconnect_btn': '断开',
+        'connecting': '连接中...',
+        'user_connected': '已连接',
+        'user_disconnected': '未连接',
+        'user_reconnecting': '重连中...',
+        'user_connection_failed': '连接失败',
+        'default_user': '默认用户',
+        'user_prefix': '用户',
+        'guest_user': '访客用户',
+        'temporary_connection': '临时连接',
+        'auto_login_from_url': '已通过URL参数自动登录',
+        'session_restored': '已恢复上次登录会话',
+        
+        # Model selection
+        'model_label': '模型:',
+        'model_tooltip': '选择要使用的AI模型',
+        'model_claude_sonnet': 'claude-sonnet-4-0 (高精度)',
+        'model_gpt_4': 'gpt-4.1 (高效率)',
+        'config_error_title': '配置错误',
+        'config_error_invalid_key': 'API Key配置无效，请检查config/config.txt文件中的GUI API configuration部分',
     },
     'en': {
         # Page title and basic info
@@ -240,6 +448,7 @@ I18N_TEXTS = {
         'delete': 'Delete',
         'confirm': 'Confirm',
         'cancel': 'Cancel',
+        'clear_chat': 'Clean',
         
         # Button tooltips
         'direct_tooltip': 'Direct execution - no task decomposition',
@@ -247,9 +456,10 @@ I18N_TEXTS = {
         'new_tooltip': 'New directory - create new workspace',
         'refresh_tooltip': 'Refresh directory list',
         'upload_tooltip': 'Upload files to Workspace',
-        'download_tooltip': 'Download directory as ZIP (excluding workspace_code_index)',
+        'download_tooltip': 'Download directory as ZIP (excluding code_index)',
         'rename_tooltip': 'Rename directory',
         'delete_tooltip': 'Delete directory',
+        'clear_chat_tooltip': 'Clear chat log and conversation history',
         
         # Input and placeholders
         'input_placeholder': 'Enter your requirements...',
@@ -273,6 +483,8 @@ I18N_TEXTS = {
         'directory_deleted': 'Directory deleted successfully',
         'files_uploaded': 'Files uploaded successfully',
         'refresh_success': 'Directory list refreshed',
+        'chat_cleared': 'Chat log and conversation history cleared',
+        'confirm_clear_chat': 'Are you sure you want to clear all chat logs and conversation history? This operation cannot be undone.',
         
         # Mode info
         'plan_mode_info': '🔄 Plan mode enabled: Tasks will be decomposed before execution',
@@ -311,6 +523,8 @@ I18N_TEXTS = {
         'config_options': 'Configuration Options',
         'show_config_options': 'Show Configuration',
         'hide_config_options': 'Hide Configuration',
+        'routine_file': 'Routine File',
+        'no_routine': 'None',
         'enable_web_search': 'Web Search',
         'enable_knowledge_base': 'Knowledge Base',
         'enable_multi_agent': 'Multi-Agent',
@@ -361,6 +575,7 @@ I18N_TEXTS = {
         'select_directory_error': 'Please select a directory first',
         'uploading_files': 'Uploading {0} files...',
         'upload_progress': 'Upload progress: {0}%',
+        'upload_completed': 'Upload completed',
         'upload_failed_http': 'Upload failed: HTTP {0}',
         
         # Directory operations
@@ -371,6 +586,32 @@ I18N_TEXTS = {
         'target_directory_not_exist': 'Target directory does not exist',
         'upload_success': 'Successfully uploaded {0} files',
         'new_name_empty': 'New name cannot be empty',
+        
+        # Multi-user support
+        'api_key_label': 'API Key:',
+        'api_key_placeholder': 'Enter API Key (optional)',
+        'api_key_tooltip': 'Enter your API Key, leave empty for default user mode',
+        'connect_btn': 'Connect',
+        'disconnect_btn': 'Disconnect',
+        'connecting': 'Connecting...',
+        'user_connected': 'Connected',
+        'user_disconnected': 'Disconnected',
+        'user_reconnecting': 'Reconnecting...',
+        'user_connection_failed': 'Connection Failed',
+        'default_user': 'Default User',
+        'user_prefix': 'User',
+        'guest_user': 'Guest User',
+        'temporary_connection': 'Temporary Connection',
+        'auto_login_from_url': 'Auto-logged in via URL parameter',
+        'session_restored': 'Previous login session restored',
+        
+        # Model selection
+        'model_label': 'Model:',
+        'model_tooltip': 'Select AI model to use',
+        'model_claude_sonnet': 'claude-sonnet-4-0 (High Accuracy)',
+        'model_gpt_4': 'gpt-4.1 (High Efficiency)',
+        'config_error_title': 'Configuration Error',
+        'config_error_invalid_key': 'Invalid API Key configuration, please check GUI API configuration in config/config.txt',
     }
 }
 
@@ -379,7 +620,7 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None):
+def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None):
     # Get i18n texts for this process
     i18n = get_i18n_texts()
     """
@@ -412,37 +653,79 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             gui_config = {}
         
         # Set default values based on user requirements
-        enable_web_search = gui_config.get('enable_web_search', False)
-        enable_knowledge_base = gui_config.get('enable_knowledge_base', False)
+        enable_web_search = gui_config.get('enable_web_search', True)
+        enable_knowledge_base = gui_config.get('enable_knowledge_base', True)  # Default selection
         enable_multi_agent = gui_config.get('enable_multi_agent', False)
-        enable_long_term_memory = gui_config.get('enable_long_term_memory', False)
+        enable_long_term_memory = gui_config.get('enable_long_term_memory', True)  # Default selection
         enable_mcp = gui_config.get('enable_mcp', False)
-        enable_jieba = gui_config.get('enable_jieba', True)
+        enable_jieba = gui_config.get('enable_jieba', True)  # Default selection
+        
+        # Routine file configuration from GUI
+        routine_file = gui_config.get('routine_file')
+        if routine_file:
+            # Construct full path to routine file
+            routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+            if not os.path.exists(routine_file):
+                output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
+                routine_file = None
+
+        # Model configuration from GUI
+        selected_model = gui_config.get('selected_model', 'claude-sonnet-4')
+        model_api_key = gui_config.get('model_api_key')
+        model_api_base = gui_config.get('model_api_base')
         
         # Log GUI configuration
         output_queue.put({'event': 'output', 'data': {'message': f"GUI Configuration:", 'type': 'info'}})
+        output_queue.put({'event': 'output', 'data': {'message': f"  - Model: {selected_model}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Web Search: {enable_web_search}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Knowledge Base: {enable_knowledge_base}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Multi-Agent: {enable_multi_agent}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Long-term Memory: {enable_long_term_memory}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - MCP: {enable_mcp}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"  - Chinese Segmentation: {enable_jieba}", 'type': 'info'}})
+        if routine_file:
+            output_queue.put({'event': 'output', 'data': {'message': f"  - Routine File: {os.path.basename(routine_file)}", 'type': 'info'}})
         
         # Create a temporary configuration that overrides config.txt for GUI mode
         # We'll use environment variables to pass these settings to the AGIBot system
         original_env = {}
+        
+        # Model configuration: GUI setting overrides config.txt
+        if model_api_key:
+            original_env['AGIBOT_API_KEY'] = os.environ.get('AGIBOT_API_KEY', '')
+            os.environ['AGIBOT_API_KEY'] = model_api_key
+        if model_api_base:
+            original_env['AGIBOT_API_BASE'] = os.environ.get('AGIBOT_API_BASE', '')
+            os.environ['AGIBOT_API_BASE'] = model_api_base
+        if selected_model:
+            original_env['AGIBOT_MODEL'] = os.environ.get('AGIBOT_MODEL', '')
+            os.environ['AGIBOT_MODEL'] = selected_model
+        
+        # Web search: only set if GUI enables it
         if enable_web_search:
             original_env['AGIBOT_WEB_SEARCH'] = os.environ.get('AGIBOT_WEB_SEARCH', '')
             os.environ['AGIBOT_WEB_SEARCH'] = 'true'
+        
+        # Multi-agent: GUI setting overrides config.txt (set environment variable explicitly)
+        original_env['AGIBOT_MULTI_AGENT'] = os.environ.get('AGIBOT_MULTI_AGENT', '')
         if enable_multi_agent:
-            original_env['AGIBOT_MULTI_AGENT'] = os.environ.get('AGIBOT_MULTI_AGENT', '')
             os.environ['AGIBOT_MULTI_AGENT'] = 'true'
+        else:
+            os.environ['AGIBOT_MULTI_AGENT'] = 'false'
+        
+        # Jieba: GUI setting overrides config.txt (set environment variable explicitly)
+        original_env['AGIBOT_ENABLE_JIEBA'] = os.environ.get('AGIBOT_ENABLE_JIEBA', '')
         if enable_jieba:
-            original_env['AGIBOT_ENABLE_JIEBA'] = os.environ.get('AGIBOT_ENABLE_JIEBA', '')
             os.environ['AGIBOT_ENABLE_JIEBA'] = 'true'
+        else:
+            os.environ['AGIBOT_ENABLE_JIEBA'] = 'false'
+        
+        # Long-term memory: GUI setting overrides config.txt (set environment variable explicitly)
+        original_env['AGIBOT_LONG_TERM_MEMORY'] = os.environ.get('AGIBOT_LONG_TERM_MEMORY', '')
         if enable_long_term_memory:
-            original_env['AGIBOT_LONG_TERM_MEMORY'] = os.environ.get('AGIBOT_LONG_TERM_MEMORY', '')
             os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'true'
+        else:
+            os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'false'
         
         # Set parameters based on mode
         if plan_mode:
@@ -464,13 +747,97 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             detailed_summary=True,
             single_task_mode=single_task_mode,  # Set based on plan_mode
             interactive_mode=False,  # Disable interactive mode
-            continue_mode=continue_mode,
-            MCP_config_file=mcp_config_file  # Set based on GUI MCP option
+            continue_mode=False,  # Always use False for GUI mode to avoid shared .agibot_last_output.json
+            MCP_config_file=mcp_config_file,  # Set based on GUI MCP option
+            user_id=user_id,  # Pass user ID for MCP knowledge base tools
+            routine_file=routine_file  # Pass routine file to main application
         )
+        
+        # Use detailed_requirement if provided (contains conversation history)
+        base_requirement = detailed_requirement if detailed_requirement else user_requirement
+        
+        # Helper function to format file size
+        def format_size(size_bytes):
+            """Format file size"""
+            if size_bytes == 0:
+                return "0 B"
+            size_names = ["B", "KB", "MB", "GB", "TB"]
+            i = 0
+            while size_bytes >= 1024.0 and i < len(size_names) - 1:
+                size_bytes /= 1024.0
+                i += 1
+            return f"{size_bytes:.1f} {size_names[i]}"
+        
+        # Add workspace path information to the prompt
+        workspace_info = ""
+        if out_dir:
+            # Display user-selected directory path
+            workspace_info = f"\n\nCurrently selected directory: {out_dir}"
+            
+            # Check workspace subdirectory
+            workspace_dir = os.path.join(out_dir, "workspace")
+            if os.path.exists(workspace_dir):
+                workspace_info += f"\nworkspace subdirectory path: {workspace_dir}\nworkspace subdirectory content:"
+                try:
+                    # List workspace contents for context
+                    workspace_files = []
+                    md_files = []
+                    for root, dirs, files in os.walk(workspace_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            rel_path = os.path.relpath(file_path, workspace_dir)
+                            file_size = os.path.getsize(file_path)
+                            
+                            if file.endswith('.md'):
+                                md_files.append(f"  - {rel_path} ({format_size(file_size)})")
+                            else:
+                                workspace_files.append(f"  - {rel_path} ({format_size(file_size)})")
+                    
+                    # Prioritize displaying MD files
+                    if md_files:
+                        workspace_info += "\nMD files:"
+                        workspace_info += "\n" + "\n".join(md_files)
+                    
+                    if workspace_files:
+                        workspace_info += "\nOther files:"
+                        workspace_info += "\n" + "\n".join(workspace_files)
+                    
+                    if not md_files and not workspace_files:
+                        workspace_info += "\n  (Empty directory)"
+                        
+                except Exception as e:
+                    workspace_info += f"\n  (Cannot read directory content: {str(e)})"
+            else:
+                workspace_info += f"\nNote: workspace subdirectory does not exist"
+        
+        # Add search configuration hints to the prompt based on GUI settings
+        search_hints = []
+        if not enable_web_search:
+            search_hints.append("[Don't search network]")
+        if not enable_knowledge_base:
+            search_hints.append("[Don't search knowledge base]")
+        elif enable_knowledge_base:
+            search_hints.append("[Searchable knowledge base]")
+        
+        # Combine base requirement with workspace info and search hints
+        requirement_parts = []
+        if search_hints:
+            requirement_parts.append(' '.join(search_hints))
+        requirement_parts.append(base_requirement)
+        if workspace_info:
+            requirement_parts.append(workspace_info)
+        
+        final_requirement = ' '.join(requirement_parts)
         
         output_queue.put({'event': 'output', 'data': {'message': f"Initialized {APP_NAME} with output directory: {out_dir}", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"Starting task execution...", 'type': 'info'}})
         output_queue.put({'event': 'output', 'data': {'message': f"User requirement: {user_requirement}", 'type': 'user'}})
+        if detailed_requirement and detailed_requirement != user_requirement:
+            output_queue.put({'event': 'output', 'data': {'message': f"With conversation context included", 'type': 'info'}})
+        if search_hints:
+            output_queue.put({'event': 'output', 'data': {'message': f"Search configuration: {' '.join(search_hints)}", 'type': 'info'}})
+        if workspace_info:
+            output_queue.put({'event': 'output', 'data': {'message': f"Workspace information included in prompt", 'type': 'info'}})
         
         class QueueSocketHandler:
             def __init__(self, q, socket_type='info'):
@@ -566,7 +933,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             sys.stdout = stdout_handler
             sys.stderr = stderr_handler
             
-            success = agibot.run(user_requirement=user_requirement, loops=50)
+            success = agibot.run(user_requirement=final_requirement, loops=50)
             
             # Ensure important completion information is displayed
             workspace_dir = os.path.join(out_dir, "workspace")
@@ -594,29 +961,180 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
 
 class AGIBotGUI:
     def __init__(self):
-        self.current_process = None
-        self.output_queue = None
-        self.current_output_dir = None  # Track current execution output directory
-        self.last_output_dir = None     # Track last used output directory
-        self.selected_output_dir = None # Track user selected output directory
+        # User session management
+        self.user_sessions = {}  # session_id -> UserSession
+        
+        # Initialize authentication manager
+        self.auth_manager = AuthenticationManager()
+        
+        # Initialize concurrency manager
+        self.concurrency_manager = ConcurrencyManager(
+            max_concurrent_tasks=16,  # Maximum concurrent tasks (Expand by 1x)
+            max_connections=40        # 最大Connect数 (Expand by 1x)
+        )
         
         # Get GUI default data directory from config, fallback to current directory
         config_data_dir = get_gui_default_data_directory()
         if config_data_dir:
-            self.output_dir = config_data_dir
-            print(f"📁 Using configured GUI data directory: {self.output_dir}")
+            self.base_data_dir = config_data_dir
+            print(f"📁 Using configured GUI base data directory: {self.base_data_dir}")
         else:
-            self.output_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            print(f"📁 Using default GUI data directory: {self.output_dir}")
+            self.base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            print(f"📁 Using default GUI base data directory: {self.base_data_dir}")
         
-    def get_output_directories(self):
-        """Get all directories containing workspace subdirectory"""
+        # Ensure base directory exists
+        os.makedirs(self.base_data_dir, exist_ok=True)
+        
+        # Don't create default userdata directory until needed
+        self.default_user_dir = os.path.join(self.base_data_dir, 'userdata')
+        print(f"📁 Default user directory path: {self.default_user_dir} (will be created when needed)")
+        print(f"🔐 Authentication manager initialized")
+        
+        # Start session cleanup thread
+        self.session_cleanup_active = True
+        self.session_cleanup_thread = threading.Thread(target=self._cleanup_idle_sessions, daemon=True)
+        self.session_cleanup_thread.start()
+        
+        # Set timeout handling callback
+        self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
+    
+    def get_user_session(self, session_id, api_key=None):
+        """Get or create user session with authentication"""
+        # Convert empty string to None for guest access
+        if api_key == "":
+            api_key = None
+            
+        # Always authenticate (including guest access)
+        auth_result = self.auth_manager.authenticate_api_key(api_key)
+        if not auth_result["authenticated"]:
+            print(f"🚫 Authentication failed for session {session_id}: {auth_result['error']}")
+            return None
+        
+        # Store guest status and user info
+        is_guest = auth_result.get("is_guest", False)
+        user_info = auth_result["user_info"]
+        
+        if session_id not in self.user_sessions:
+            # Create authenticated session
+            if self.auth_manager.create_session(api_key, session_id):
+                self.user_sessions[session_id] = UserSession(session_id, api_key, user_info)
+                session_type = "guest" if is_guest else "authenticated"
+                print(f"✅ Created {session_type} session for {session_id}")
+            else:
+                print(f"🚫 Failed to create session for {session_id}")
+                return None
+        else:
+            # Update API key if it has changed
+            existing_session = self.user_sessions[session_id]
+            if existing_session.api_key != api_key:
+                print(f"🔄 API key changed for session {session_id}")
+                # Re-authenticate and update session
+                if self.auth_manager.create_session(api_key, session_id):
+                    self.user_sessions[session_id] = UserSession(session_id, api_key, user_info)
+                else:
+                    print(f"🚫 Failed to update session for {session_id}")
+                    return None
+        
+        return self.user_sessions[session_id]
+    
+    def _cleanup_idle_sessions(self):
+        """Clean up idle session thread"""
+        while self.session_cleanup_active:
+            try:
+                current_time = time.time()
+                idle_sessions = []
+                
+                # Check idle sessions (no activity for over 2 hours)
+                for session_id, user_session in self.user_sessions.items():
+                    # Check if authentication session is still valid
+                    session_info = self.auth_manager.validate_session(session_id)
+                    if not session_info:
+                        idle_sessions.append(session_id)
+                        continue
+                    
+                    # Check if there are running processes
+                    if user_session.current_process and user_session.current_process.is_alive():
+                        continue  # 有活动进程，不清理
+                
+                # Clean up idle sessions
+                for session_id in idle_sessions:
+                    print(f"🧹 Cleaning up idle session: {session_id}")
+                    self._cleanup_session(session_id)
+                
+                # Check every 30 minutes
+                time.sleep(1800)
+            except Exception as e:
+                print(f"⚠️ Session cleanup error: {e}")
+                time.sleep(3600)  # Wait 1 hour before retrying on error
+    
+    def _cleanup_session(self, session_id):
+        """Clean up specified session"""
+        try:
+            if session_id in self.user_sessions:
+                user_session = self.user_sessions[session_id]
+                
+                # Clean up running processes
+                if user_session.current_process and user_session.current_process.is_alive():
+                    print(f"🛑 Terminating process for cleanup session {session_id}")
+                    user_session.current_process.terminate()
+                    user_session.current_process.join(timeout=5)
+                
+                # Clean up queue
+                if user_session.output_queue:
+                    try:
+                        while not user_session.output_queue.empty():
+                            user_session.output_queue.get_nowait()
+                    except:
+                        pass
+                
+                # Clean up session history (keep last 5)
+                if len(user_session.conversation_history) > 5:
+                    user_session.conversation_history = user_session.conversation_history[-5:]
+                
+                # Destroy authentication session
+                self.auth_manager.destroy_session(session_id)
+                
+                # Remove user session
+                del self.user_sessions[session_id]
+                
+                print(f"🧹 Session cleaned up: {session_id}")
+        except Exception as e:
+            print(f"⚠️ Session cleanup error {session_id}: {e}")
+    
+    def _handle_user_task_timeout(self, session_id):
+        """Handle user task timeout"""
+        try:
+            if session_id in self.user_sessions:
+                user_session = self.user_sessions[session_id]
+                
+                # Terminate process
+                if user_session.current_process and user_session.current_process.is_alive():
+                    print(f"🛑 Terminating timeout process for user {session_id}")
+                    user_session.current_process.terminate()
+                    user_session.current_process.join(timeout=10)
+                    
+                    # Send timeout message to user
+                    from flask_socketio import emit
+                    emit('task_timeout', {
+                        'message': f'Task execution timeout ({self.concurrency_manager.task_timeout}seconds)'
+                    }, room=session_id)
+                
+                # Release task resources already handled in concurrency_manager.finish_task
+        except Exception as e:
+            print(f"⚠️ Error handling user task timeout: {e}")
+    
+    def get_output_directories(self, user_session):
+        """Get all directories containing workspace subdirectory for specific user"""
         result = []
         
+        # Get user's directory
+        user_output_dir = user_session.get_user_directory(self.base_data_dir)
+        os.makedirs(user_output_dir, exist_ok=True)
+        
         try:
-            # Traverse all subdirectories in current directory
-            for item in os.listdir(self.output_dir):
-                item_path = os.path.join(self.output_dir, item)
+            # Traverse all subdirectories in user's directory
+            for item in os.listdir(user_output_dir):
+                item_path = os.path.join(user_output_dir, item)
                 
                 # Check if it's a directory
                 if os.path.isdir(item_path):
@@ -633,9 +1151,9 @@ class AGIBotGUI:
                             'size': self.format_size(size),
                             'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                             'files': self.get_directory_structure(item_path),
-                            'is_current': item == self.current_output_dir,  # Mark if it's current directory
-                            'is_selected': item == self.selected_output_dir,  # Mark if it's selected directory
-                            'is_last': item == self.last_output_dir  # Mark if it's last used directory
+                            'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
+                            'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
+                            'is_last': item == user_session.last_output_dir  # Mark if it's last used directory
                         })
         except (OSError, PermissionError) as e:
             print(f"Error reading directories: {e}")
@@ -706,52 +1224,139 @@ class AGIBotGUI:
         
         return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
 
+class UserSession:
+    def __init__(self, session_id, api_key=None, user_info=None):
+        self.session_id = session_id
+        self.api_key = api_key
+        self.user_info = user_info or {}
+        self.current_process = None
+        self.output_queue = None
+        self.current_output_dir = None  # Track current execution output directory
+        self.last_output_dir = None     # Track last used output directory
+        self.selected_output_dir = None # Track user selected output directory
+        self.conversation_history = []  # Store conversation history for this user
+        
+        # Determine user directory based on user info
+        if user_info and user_info.get("is_guest", False):
+            # Guest user gets a special directory
+            self.user_dir_name = "guest"
+        elif api_key:
+            # Use API key hash as directory name for security
+            import hashlib
+            api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+            self.user_dir_name = f"user_{api_key_hash}"
+        else:
+            self.user_dir_name = "userdata"
+    
+    def get_user_directory(self, base_dir):
+        """Get the user's base directory path"""
+        return os.path.join(base_dir, self.user_dir_name)
+    
+    def add_to_conversation_history(self, user_input, result_summary=None):
+        """Add a conversation turn to history"""
+        conversation_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'user_input': user_input,
+            'result_summary': result_summary or "Task executed",
+            'output_dir': self.current_output_dir
+        }
+        self.conversation_history.append(conversation_entry)
+        
+        # Keep only last 10 conversations to avoid memory issues
+        if len(self.conversation_history) > 10:
+            self.conversation_history = self.conversation_history[-10:]
+    
+    def get_summarized_requirements(self):
+        """Summarize conversation history into a comprehensive requirement"""
+        if not self.conversation_history:
+            return None
+        
+        # Create a summary of all previous requests
+        history_summary = []
+        for entry in self.conversation_history:
+            history_summary.append(f"User requested: {entry['user_input']}")
+        
+        # Combine into a comprehensive requirement
+        summarized_req = "Previous conversation context:\n" + "\n".join(history_summary[-5:])  # Last 5 entries
+        return summarized_req
+
 gui_instance = AGIBotGUI()
 
-def queue_reader_thread():
+def create_temp_session_id(request, api_key=None):
+    """Create a temporary session ID for API calls with user isolation"""
+    import hashlib
+    api_key_hash = hashlib.sha256((api_key or "default").encode()).hexdigest()[:8]
+    return f"api_{request.remote_addr}_{api_key_hash}_{id(request)}"
+
+def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
-    print("Queue reader thread started.")
+    print(f"Queue reader thread started for user {session_id}.")
+    
+    if session_id not in gui_instance.user_sessions:
+        print(f"❌ User session {session_id} not found")
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
     while True:
         try:
-            if gui_instance.current_process and not gui_instance.current_process.is_alive() and gui_instance.output_queue.empty():
-                print("Process finished and queue is empty, stopping reader.")
+            if user_session.current_process and not user_session.current_process.is_alive() and user_session.output_queue.empty():
+                print(f"Process finished and queue is empty for user {session_id}, stopping reader.")
                 break
 
-            message = gui_instance.output_queue.get(timeout=1)
+            message = user_session.output_queue.get(timeout=1)
             
             if message.get('event') == 'STOP':
-                print("Received STOP sentinel.")
+                print(f"Received STOP sentinel for user {session_id}.")
                 break
             
             # If task completion message, save last used directory and clear current directory mark
             if message.get('event') in ['task_completed', 'error']:
-                if gui_instance.current_output_dir:
-                    gui_instance.last_output_dir = gui_instance.current_output_dir
+                # Release task resources
+                task_success = message.get('event') == 'task_completed'
+                gui_instance.concurrency_manager.finish_task(session_id, success=task_success)
+                
+                # Get updated metrics
+                metrics = gui_instance.concurrency_manager.get_metrics()
+                status_msg = "Complete" if task_success else "Failed"
+                print(f"✅ Task {status_msg} for user {session_id}")
+                print(f"📊 Updated metrics - Active tasks: {metrics['active_tasks']}, Completed: {metrics['completed_tasks']}, Failed: {metrics['failed_tasks']}")
+                
+                if user_session.current_output_dir:
+                    user_session.last_output_dir = user_session.current_output_dir
                     # If current directory is the selected directory, keep the selection
                     # This ensures user can continue in the same directory
-                    if gui_instance.selected_output_dir == gui_instance.current_output_dir:
-                        print(f"🔄 Keeping selected directory: {gui_instance.selected_output_dir}")
+                    if user_session.selected_output_dir == user_session.current_output_dir:
+                        print(f"🔄 Keeping selected directory for user {session_id}: {user_session.selected_output_dir}")
                     else:
                         # If different directories, clear selection to avoid confusion
-                        print(f"🔄 Clearing selected directory (was {gui_instance.selected_output_dir}, current {gui_instance.current_output_dir})")
-                        gui_instance.selected_output_dir = None
-                gui_instance.current_output_dir = None
+                        print(f"🔄 Clearing selected directory for user {session_id} (was {user_session.selected_output_dir}, current {user_session.current_output_dir})")
+                        user_session.selected_output_dir = None
+                
+                # Add to conversation history if we have context from last executed task
+                if hasattr(user_session, '_current_task_requirement'):
+                    result_summary = "Task completed successfully" if task_success else "Task failed or had errors"
+                    user_session.add_to_conversation_history(user_session._current_task_requirement, result_summary)
+                    delattr(user_session, '_current_task_requirement')
+                
+                user_session.current_output_dir = None
             
-            socketio.emit(message['event'], message.get('data', {}))
+            # Emit to user's specific room
+            socketio.emit(message['event'], message.get('data', {}), room=session_id)
         except queue.Empty:
             continue
         except Exception as e:
-            print(f"Error in queue_reader_thread: {e}")
+            print(f"Error in queue_reader_thread for user {session_id}: {e}")
             break
     
-    print("Queue reader thread finished.")
-    if gui_instance.current_process:
-        gui_instance.current_process.join(timeout=1)
-    gui_instance.current_process = None
-    gui_instance.output_queue = None
-    if gui_instance.current_output_dir:
-        gui_instance.last_output_dir = gui_instance.current_output_dir
-    gui_instance.current_output_dir = None  # Clear current directory mark
+    print(f"Queue reader thread finished for user {session_id}.")
+    if user_session.current_process:
+        user_session.current_process.join(timeout=1)
+    user_session.current_process = None
+    user_session.output_queue = None
+    if user_session.current_output_dir:
+        user_session.last_output_dir = user_session.current_output_dir
+    user_session.current_output_dir = None  # Clear current directory mark
 
 @app.route('/')
 def index():
@@ -774,37 +1379,141 @@ def simple_test():
 def get_output_dirs():
     """Get output directory list"""
     try:
-        dirs = gui_instance.get_output_directories()
+        # Get API key from query parameters
+        api_key = request.args.get('api_key')
+        
+        # Create a temporary session for API calls (since no socket connection)
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed'}), 401
+        
+        dirs = gui_instance.get_output_directories(user_session)
         return jsonify({'success': True, 'directories': dirs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/download/<path:dir_name>')
 def download_directory(dir_name):
-    """Download directory as zip file (excluding workspace_code_index directory)"""
+    """Download directory as zip file (excluding code_index directory)"""
     try:
-        dir_path = os.path.join(gui_instance.output_dir, secure_filename(dir_name))
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        dir_path = os.path.join(user_base_dir, secure_filename(dir_name))
         if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
             return jsonify({'success': False, 'error': 'Directory not found'})
         
-        # Create temporary zip file
-        temp_file = f"/tmp/{dir_name}.zip"
+        # Create temporary zip file in a more reliable location
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"{dir_name}_{os.getpid()}_{int(datetime.now().timestamp())}.zip")
         
-        with zipfile.ZipFile(temp_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(dir_path):
-                # Exclude workspace_code_index directory
-                if 'workspace_code_index' in root:
-                    print(f"Excluding directory: {root}")  # Debug info
-                    continue
-                
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    # 计算相对路径
-                    arcname = os.path.join(dir_name, os.path.relpath(file_path, dir_path))
-                    zipf.write(file_path, arcname)
-        
-        return send_file(temp_file, as_attachment=True, download_name=f"{dir_name}.zip")
+        try:
+            with zipfile.ZipFile(temp_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+                for root, dirs, files in os.walk(dir_path):
+                    # Exclude code_index directory and other unwanted directories
+                    dirs_to_exclude = {'code_index', '__pycache__', '.git', '.vscode', 'node_modules'}
+                    if any(excluded in root for excluded in dirs_to_exclude):
+                        print(f"Excluding directory: {root}")  # Debug info
+                        continue
+                    
+                    for file in files:
+                        # Skip unwanted files
+                        if file.startswith('.') and file not in {'.gitignore', '.env.example'}:
+                            continue
+                        if file.endswith(('.pyc', '.pyo', '.DS_Store', 'Thumbs.db')):
+                            continue
+                            
+                        file_path = os.path.join(root, file)
+                        try:
+                            # Calculate relative path for archive
+                            rel_path = os.path.relpath(file_path, dir_path)
+                            arcname = os.path.join(dir_name, rel_path).replace('\\', '/')
+                            zipf.write(file_path, arcname)
+                        except (OSError, IOError) as file_error:
+                            print(f"Warning: Could not add file {file_path} to zip: {file_error}")
+                            continue
+            
+            # Verify that the zip file was created and is not empty
+            if not os.path.exists(temp_file) or os.path.getsize(temp_file) == 0:
+                return jsonify({'success': False, 'error': 'Failed to create zip file or zip file is empty'})
+            
+            print(f"ZIP file created successfully: {temp_file}, size: {os.path.getsize(temp_file)} bytes")
+            
+            # Schedule cleanup after the request is complete
+            @after_this_request
+            def remove_temp_file(response):
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        print(f"Cleaned up temporary file: {temp_file}")
+                except Exception as cleanup_error:
+                    print(f"Warning: Could not clean up temporary file {temp_file}: {cleanup_error}")
+                return response
+            
+            # Return the file with proper headers
+            return send_file(
+                temp_file, 
+                as_attachment=True, 
+                download_name=f"{dir_name}.zip",
+                mimetype='application/zip'
+            )
+            
+        except Exception as zip_error:
+            # Clean up temporary file on error
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+            raise zip_error
     
+    except Exception as e:
+        print(f"Download error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/list-directory', methods=['POST'])
+def list_directory():
+    """List directory contents (single level). Used by Markdown image switcher."""
+    try:
+        data = request.get_json() or {}
+        rel_path = data.get('path', '')
+
+        # Auth
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+
+        full_path = os.path.join(user_base_dir, rel_path)
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+        if not os.path.exists(full_path) or not os.path.isdir(full_path):
+            return jsonify({'success': False, 'error': f'Directory not found: {rel_path}'})
+
+        items = []
+        for name in os.listdir(full_path):
+            item_path = os.path.join(full_path, name)
+            if os.path.isfile(item_path):
+                try:
+                    size = os.path.getsize(item_path)
+                except Exception:
+                    size = 0
+                items.append({'name': name, 'type': 'file', 'size': size})
+            else:
+                items.append({'name': name, 'type': 'directory'})
+
+        items.sort(key=lambda x: (x.get('type') == 'file', x['name']))
+        return jsonify({'success': True, 'files': items})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -812,11 +1521,19 @@ def download_directory(dir_name):
 def get_file_content(file_path):
     """Get file content"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -852,7 +1569,7 @@ def get_file_content(file_path):
                 'size': gui_instance.format_size(file_size)
             })
         elif ext == '.pdf':
-            # PDF文件直接返回文件路径，让前端处理
+            # PDF files directly return file path
             return jsonify({
                 'success': True, 
                 'type': 'pdf',
@@ -860,7 +1577,7 @@ def get_file_content(file_path):
                 'size': gui_instance.format_size(file_size)
             })
         elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']:
-            # Office文档预览
+            # Office document preview
             return jsonify({
                 'success': True, 
                 'type': 'office',
@@ -872,7 +1589,7 @@ def get_file_content(file_path):
                      '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.java', '.go', '.rs', '.php', '.rb', 
                      '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.xml', '.sql', '.r', 
                      '.scala', '.kt', '.swift', '.dart', '.lua', '.perl', '.pl', '.vim', '.dockerfile', 
-                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml']:
+                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml', '.mmd']:
             with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
@@ -922,7 +1639,8 @@ def get_file_content(file_path):
                 '.yml': 'yaml',
                 '.toml': 'toml',
                 '.txt': 'text',
-                '.log': 'text'
+                '.log': 'text',
+                '.mmd': 'mermaid'
             }
             
             language = language_map.get(ext, ext[1:])  # Default to remove dot
@@ -1016,6 +1734,79 @@ def get_file_content(file_path):
             
             except Exception as e:
                 return jsonify({'success': False, 'error': f'CSV file parsing failed: {str(e)}'})
+        elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp', '.ico']:
+            # Image file handling
+            import base64
+            
+            try:
+                # Check if request wants raw image data (from img tag) or JSON (from preview)
+                accept_header = request.headers.get('Accept', '')
+                wants_raw_image = (
+                    'image/' in accept_header or 
+                    request.args.get('raw') == 'true' or
+                    'text/html' in accept_header  # img tags typically send this
+                )
+                
+                # Determine MIME type
+                mime_types = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg', 
+                    '.jpeg': 'image/jpeg',
+                    '.gif': 'image/gif',
+                    '.svg': 'image/svg+xml',
+                    '.bmp': 'image/bmp',
+                    '.webp': 'image/webp',
+                    '.ico': 'image/x-icon'
+                }
+                mime_type = mime_types.get(ext, 'image/jpeg')
+                
+                if wants_raw_image:
+                    # Return raw image data for img tags
+                    with open(full_path, 'rb') as f:
+                        image_data = f.read()
+                    
+                    from flask import Response
+                    return Response(
+                        image_data,
+                        mimetype=mime_type,
+                        headers={
+                            'Content-Length': len(image_data),
+                            'Cache-Control': 'public, max-age=3600'  # Cache for 1 hour
+                        }
+                    )
+                else:
+                    # Return JSON for preview functionality
+                    with open(full_path, 'rb') as f:
+                        image_data = f.read()
+                    
+                    # Convert to base64 for embedding in response
+                    image_base64 = base64.b64encode(image_data).decode('utf-8')
+                    
+                    # Get image dimensions if possible
+                    image_info = {}
+                    try:
+                        from PIL import Image
+                        with Image.open(full_path) as img:
+                            image_info = {
+                                'width': img.width,
+                                'height': img.height,
+                                'format': img.format
+                            }
+                    except (ImportError, Exception):
+                        # PIL not available or image cannot be processed
+                        image_info = {'width': 'Unknown', 'height': 'Unknown', 'format': ext[1:].upper()}
+                    
+                    return jsonify({
+                        'success': True,
+                        'type': 'image',
+                        'data': f"data:{mime_type};base64,{image_base64}",
+                        'file_path': file_path,
+                        'image_info': image_info,
+                        'size': gui_instance.format_size(file_size)
+                    })
+                
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'Failed to load image: {str(e)}'})
         else:
             return jsonify({'success': False, 'error': 'File type not supported for preview'})
     
@@ -1026,36 +1817,83 @@ def get_file_content(file_path):
 def serve_pdf(file_path):
     """Serve PDF file directly"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        print(f"PDF request for: {file_path}")  # Add debug logs
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        print(f"API key: {api_key[:10] + '...' if api_key else 'None'}")  # Add debug logs
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        print(f"Full path: {full_path}")  # Add debug logs
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
+            print(f"Access denied: {real_file_path} not in {real_output_dir}")
             return jsonify({'success': False, 'error': 'Access denied'})
         
         if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            print(f"File not found: {full_path}")
             return jsonify({'success': False, 'error': f'File not found: {file_path}'})
         
         # Check if it's a PDF file
         if not full_path.lower().endswith('.pdf'):
+            print(f"Not a PDF file: {full_path}")
             return jsonify({'success': False, 'error': 'Not a PDF file'})
         
-        return send_file(full_path, mimetype='application/pdf')
+        # Verify PDF file structure
+        try:
+            with open(full_path, 'rb') as f:
+                header = f.read(8)
+                if not header.startswith(b'%PDF-'):
+                    print(f"Invalid PDF header: {header}")
+                    return jsonify({'success': False, 'error': 'Invalid PDF file structure'})
+        except Exception as pdf_check_error:
+            print(f"PDF validation error: {pdf_check_error}")
+            return jsonify({'success': False, 'error': f'PDF validation failed: {str(pdf_check_error)}'})
+        
+        print(f"Serving PDF file: {full_path}")
+        response = send_file(full_path, mimetype='application/pdf')
+        
+        # Add CORS headers
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'X-API-Key, Content-Type'
+        
+        return response
     
     except Exception as e:
+        print(f"PDF serve error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/download-file/<path:file_path>')
 def download_file(file_path):
     """Download file directly"""
     try:
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
@@ -1103,155 +1941,235 @@ def download_file(file_path):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/upload-to-cloud/<path:file_path>')
-def upload_to_cloud(file_path):
-    """Upload file to cloud storage for preview"""
+# Cloud upload functionality has been removed for offline deployment
+
+@app.route('/api/convert-markdown', methods=['POST'])
+def convert_markdown():
+    """Convert Markdown files to Word and PDF formats"""
     try:
-        import requests
+        data = request.get_json()
+        file_path = data.get('file_path')
+        format_type = data.get('format', 'both')  # 'word', 'pdf', or 'both'
         
-        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
-        full_path = os.path.join(gui_instance.output_dir, file_path)
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
         
-        # Security check: ensure path is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        if not file_path:
+            return jsonify({'success': False, 'error': 'File path cannot be empty'})
+        
+        # Use the passed path directly
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied'})
         
         if not os.path.exists(full_path) or not os.path.isfile(full_path):
-            return jsonify({'success': False, 'error': f'File not found: {file_path}'})
+            return jsonify({'success': False, 'error': f'File does not exist: {file_path}'})
         
-        # Check file size (most free services have limits)
-        file_size = os.path.getsize(full_path)
-        if file_size > 100 * 1024 * 1024:  # 100MB limit
-            return jsonify({'success': False, 'error': 'File too large (max 100MB)'})
+        # Check if it's a markdown file
+        _, ext = os.path.splitext(full_path.lower())
+        if ext not in ['.md', '.markdown']:
+            return jsonify({'success': False, 'error': 'Only supports Markdown file conversion'})
         
-        filename = os.path.basename(full_path)
+        # Create an AGI bot instance to access FileSystemTools
+        from src.main import AGIBotMain
+        agi_bot = AGIBotMain(
+            out_dir=user_base_dir,
+            single_task_mode=True
+        )
         
-        # For testing purposes, use local file URL when cloud services fail
-        # This allows us to test the preview functionality
-        # Can be controlled by environment variable CLOUD_PREVIEW_TEST_MODE
-        test_mode = os.environ.get('CLOUD_PREVIEW_TEST_MODE', 'false').lower() == 'true'
+        # Set the workspace root for the tools
+        agi_bot.tools.workspace_root = user_base_dir
         
-        # Disable test mode for now to enable real cloud upload
-        # if test_mode:
-        #     # Return local file URL for testing
-        #     local_url = f"{request.host_url}api/download-file/{file_path}"
-        #     return jsonify({
-        #         'success': True,
-        #         'cloud_url': local_url,
-        #         'service': 'Local Test',
-        #         'expires': 'Session'
-        #     })
+        # Call the conversion method from FileSystemTools
+        print(f"🔍 Conversion debug information:")
+        print(f"  file_path: {file_path}")
+        print(f"  full_path: {full_path}")
+        print(f"  user_base_dir: {user_base_dir}")
+        print(f"  workspace_root: {agi_bot.tools.workspace_root}")
         
-        # Try multiple cloud storage services
-        cloud_services = [
-            {
-                'name': 'transfer.sh',
-                'url': 'https://transfer.sh',
-                'method': 'transfer'
-            },
-            {
-                'name': '0x0.st',
-                'url': 'https://0x0.st',
-                'method': '0x0'
-            },
-            {
-                'name': 'File.io',
-                'url': 'https://file.io',
-                'method': 'fileio'
-            }
-        ]
+        conversion_result = agi_bot.tools._convert_markdown_to_formats(full_path, file_path)
         
-        for service in cloud_services:
-            try:
-                if service['method'] == 'transfer':
-                    # transfer.sh upload
-                    with open(full_path, 'rb') as f:
-                        response = requests.put(f"{service['url']}/{filename}", data=f, timeout=30)
-                    
-                    if response.status_code == 200:
-                        cloud_url = response.text.strip()
-                        if cloud_url.startswith('http'):
-                            return jsonify({
-                                'success': True,
-                                'cloud_url': cloud_url,
-                                'service': service['name'],
-                                'expires': '14 days'
-                            })
-                
-                elif service['method'] == 'fileio':
-                    # File.io upload
-                    with open(full_path, 'rb') as f:
-                        files = {'file': (filename, f)}
-                        response = requests.post(service['url'], files=files, timeout=30)
-                    
-                    if response.status_code == 200:
-                        try:
-                            data = response.json()
-                            if data.get('success'):
-                                return jsonify({
-                                    'success': True,
-                                    'cloud_url': data['link'],
-                                    'service': service['name'],
-                                    'expires': '14 days'
-                                })
-                        except ValueError as e:
-                            print(f"File.io JSON parse error: {e}, response: {response.text[:200]}")
-                            # File.io might return plain text URL
-                            if response.text.startswith('http'):
-                                return jsonify({
-                                    'success': True,
-                                    'cloud_url': response.text.strip(),
-                                    'service': service['name'],
-                                    'expires': '14 days'
-                                })
-                
-                elif service['method'] == '0x0':
-                    # 0x0.st upload
-                    with open(full_path, 'rb') as f:
-                        files = {'file': (filename, f)}
-                        response = requests.post(service['url'], files=files, timeout=30)
-                    
-                    if response.status_code == 200:
-                        cloud_url = response.text.strip()
-                        if cloud_url.startswith('http'):
-                            return jsonify({
-                                'success': True,
-                                'cloud_url': cloud_url,
-                                'service': service['name'],
-                                'expires': '365 days'
-                            })
-                
-
-                            
-            except Exception as e:
-                print(f"Failed to upload to {service['name']}: {e}")
-                continue
+        print(f"  Conversion result: {conversion_result}")
         
-        return jsonify({'success': False, 'error': 'All cloud storage services failed'})
+        if conversion_result.get('status') == 'success':
+            return jsonify({
+                'success': True,
+                'message': 'Conversion completed',
+                'conversions': conversion_result.get('conversions', {}),
+                'converted_files': []
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': conversion_result.get('error', 'Conversion failed'),
+                'message': conversion_result.get('message', 'Unknown error')
+            })
     
+    except Exception as e:
+        print(f"Markdown conversion error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
+
+@app.route('/api/metrics')
+def get_performance_metrics():
+    """Get current performance metrics"""
+    try:
+        metrics = gui_instance.concurrency_manager.get_metrics()
+        
+        # Add system resource information
+        import psutil
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        
+        system_metrics = {
+            'cpu_percent': cpu_percent,
+            'memory_percent': memory.percent,
+            'memory_used_mb': memory.used / 1024 / 1024,
+            'memory_total_mb': memory.total / 1024 / 1024
+        }
+        
+        return jsonify({
+            'success': True,
+            'metrics': metrics,
+            'system': system_metrics,
+            'timestamp': time.time()
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 @socketio.on('connect')
-def handle_connect():
-    """WebSocket connection processing"""
+def handle_connect(auth):
+    """WebSocket connection processing with authentication"""
     i18n = get_i18n_texts()
-    emit('status', {'message': i18n['connected']})
+    session_id = request.sid
+    
+    # Check if new connections can be accepted
+    if not gui_instance.concurrency_manager.can_accept_connection():
+        emit('connection_rejected', {
+            'message': 'Server connection limit reached'
+        }, room=session_id)
+        print(f"🚫 Connection rejected for {session_id}: Server at capacity")
+        return False
+    
+    # Get user authentication info
+    api_key = None
+    if auth and 'api_key' in auth:
+        api_key = auth['api_key']
+    
+    # Create or get user session with authentication
+    user_session = gui_instance.get_user_session(session_id, api_key)
+    
+    if not user_session:
+        # Authentication failed
+        emit('auth_failed', {'message': 'Authentication failed. Please check your API key.'}, room=session_id)
+        print(f"🚫 Connection rejected for {session_id}: Authentication failed")
+        return False
+    
+    # Add connection to concurrency manager
+    if not gui_instance.concurrency_manager.add_connection():
+        emit('connection_rejected', {
+            'message': 'Server connection limit reached'
+        }, room=session_id)
+        print(f"🚫 Connection rejected for {session_id}: Failed to add connection")
+        return False
+    
+    # Create user directory if not exists
+    user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    os.makedirs(user_dir, exist_ok=True)
+    
+    # Join user to their own room for isolated communication
+    join_room(session_id)
+    
+    # Send connection status with user info
+    is_guest = user_session.user_info.get("is_guest", False)
+    user_name = user_session.user_info.get("name", "unknown")
+    
+    # Get current performance metrics
+    metrics = gui_instance.concurrency_manager.get_metrics()
+    
+    print(f"🔗 User connected: {session_id}, User: {user_name}, API Key: {'***' if api_key else 'Guest'}, Directory: {os.path.basename(user_dir)}")
+    print(f"📊 Current metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
+    
+    # Send status with guest indicator and performance info
+    connection_data = {
+        'message': i18n['connected'],
+        'is_guest': is_guest,
+        'user_name': user_name,
+        'user_info': user_session.user_info,
+        'server_metrics': {
+            'active_connections': metrics['active_connections'],
+            'active_tasks': metrics['active_tasks'],
+            'queue_size': metrics['queue_size']
+        }
+    }
+    
+    emit('status', connection_data, room=session_id)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle user disconnection"""
+    session_id = request.sid
+    
+    # Remove connection from concurrency manager
+    gui_instance.concurrency_manager.remove_connection()
+    
+    if session_id in gui_instance.user_sessions:
+        user_session = gui_instance.user_sessions[session_id]
+        
+        # Clean up any running processes and release task slot
+        if user_session.current_process and user_session.current_process.is_alive():
+            print(f"🛑 Terminating process for disconnected user {session_id}")
+            user_session.current_process.terminate()
+            user_session.current_process.join(timeout=5)  # Wait up to 5 seconds
+            # Complete task
+            gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        
+        # Leave room
+        leave_room(session_id)
+        
+        # Destroy authentication session
+        gui_instance.auth_manager.destroy_session(session_id)
+        
+        # Remove user session
+        del gui_instance.user_sessions[session_id]
+        
+        # Get updated metrics
+        metrics = gui_instance.concurrency_manager.get_metrics()
+        print(f"🔌 User disconnected and cleaned up: {session_id}")
+        print(f"📊 Updated metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
+    else:
+        print(f"🔌 User disconnected (no session found): {session_id}")
 
 @socketio.on('execute_task')
 def handle_execute_task(data):
     """Handle task execution request"""
     i18n = get_i18n_texts()
+    session_id = request.sid
     
-    if gui_instance.current_process and gui_instance.current_process.is_alive():
-        socketio.emit('error', {'message': i18n['error_task_running']})
+    # Get user session
+    if session_id not in gui_instance.user_sessions:
+        emit('error', {'message': 'User session not found'}, room=session_id)
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
+    if user_session.current_process and user_session.current_process.is_alive():
+        emit('error', {'message': i18n['error_task_running']}, room=session_id)
         return
 
     user_requirement = data.get('requirement', '')
     if not user_requirement.strip():
-        socketio.emit('error', {'message': i18n['error_no_requirement']})
+        emit('error', {'message': i18n['error_no_requirement']}, room=session_id)
         return
     
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
@@ -1259,13 +2177,26 @@ def handle_execute_task(data):
     selected_directory = data.get('selected_directory')  # Directory name from frontend
     gui_config = data.get('gui_config', {})  # GUI configuration options
     
+    # Generate detailed requirement with conversation history for continuing tasks
+    detailed_requirement = None
+    if task_type in ['continue', 'selected'] and user_session.conversation_history:
+        # For continue/selected tasks, include conversation context
+        history_context = user_session.get_summarized_requirements()
+        if history_context:
+            # 🔧 Fix: adjust prompt order - current first
+            detailed_requirement = f"Current request: {user_requirement}\n\nPrevious conversation context:\n{history_context}"
+    
+    # Get user's base directory
+    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    
     # Debug logging
-    print(f"🔍 Execute task debug info:")
+    print(f"🔍 Execute task debug info for user {session_id}:")
     print(f"   Task type: {task_type}")
     print(f"   Plan mode: {plan_mode}")
     print(f"   Frontend selected_directory: {selected_directory}")
-    print(f"   Backend gui_instance.selected_output_dir: {gui_instance.selected_output_dir}")
-    print(f"   Backend gui_instance.last_output_dir: {gui_instance.last_output_dir}")
+    print(f"   Backend user_session.selected_output_dir: {user_session.selected_output_dir}")
+    print(f"   Backend user_session.last_output_dir: {user_session.last_output_dir}")
+    print(f"   User base directory: {user_base_dir}")
     
     if task_type == 'new':
         # New task: create new output directory
@@ -1273,83 +2204,172 @@ def handle_execute_task(data):
         continue_mode = False
     elif task_type == 'selected':
         # Use selected directory - prioritize frontend passed directory name
-        target_dir_name = selected_directory or gui_instance.selected_output_dir
+        target_dir_name = selected_directory or user_session.selected_output_dir
         if target_dir_name:
-            out_dir = os.path.join(gui_instance.output_dir, target_dir_name)
+            out_dir = os.path.join(user_base_dir, target_dir_name)
             # Update backend state to match frontend
-            gui_instance.selected_output_dir = target_dir_name
+            user_session.selected_output_dir = target_dir_name
             print(f"🎯 Using selected directory: {target_dir_name} (from {'frontend' if selected_directory else 'backend state'})")
         else:
-            out_dir = None
-            print("⚠️ Selected task type but no directory specified")
+            # 🔧 Fix: if user selected selected mode but didn't specify directory
+            emit('error', {'message': 'Please first select or create a working directory'}, room=session_id)
+            return
         # Check if selected directory is newly created (not in last_output_dir)
         # If it's a new directory, should use continue_mode=False
-        if target_dir_name != gui_instance.last_output_dir:
+        if target_dir_name != user_session.last_output_dir:
             continue_mode = False  # New directory, don't continue previous work
         else:
             continue_mode = True   # Existing directory, continue previous work
     else:
         # Continue mode: use last output directory - convert to absolute path
-        if gui_instance.last_output_dir:
-            out_dir = os.path.join(gui_instance.output_dir, gui_instance.last_output_dir)
+        if user_session.last_output_dir:
+            out_dir = os.path.join(user_base_dir, user_session.last_output_dir)
         else:
             out_dir = None
         continue_mode = True
         
-        # If no last directory, create new one
-        if not out_dir:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_dir = os.path.join(gui_instance.output_dir, f"output_{timestamp}")
+        # 🔧 Fix: if user didn't select directory and there's no last used directory
+        if not out_dir and not user_session.selected_output_dir:
+            emit('error', {'message': 'Please first select or create a working directory'}, room=session_id)
+            return
     
-    gui_instance.output_queue = multiprocessing.Queue()
+    # Check if new tasks can be started
+    if not gui_instance.concurrency_manager.can_start_task(session_id):
+        emit('task_queued', {
+            'message': 'Current server tasks are busy...',
+            'queue_position': gui_instance.concurrency_manager.task_queue.qsize() + 1
+        }, room=session_id)
+        print(f"⏳ Task queued for user {session_id}: server at capacity")
+        return
     
-    gui_instance.current_process = multiprocessing.Process(
-                    target=execute_agibot_task_process_target,
-        args=(user_requirement, gui_instance.output_queue, out_dir, continue_mode, plan_mode, gui_config)
-    )
-    gui_instance.current_process.daemon = True
-    gui_instance.current_process.start()
+    user_session.output_queue = multiprocessing.Queue()
+    
+    # Get user ID (sha256_hash) for MCP knowledge base tools
+    user_id = None
+    if user_session.api_key:
+        import hashlib
+        user_id = hashlib.sha256(user_session.api_key.encode()).hexdigest()
+    
+    try:
+        user_session.current_process = multiprocessing.Process(
+            target=execute_agibot_task_process_target,
+            args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id)
+        )
+        user_session.current_process.daemon = True
+        user_session.current_process.start()
+        
+        # Get current performance metrics
+        metrics = gui_instance.concurrency_manager.get_metrics()
+        print(f"🚀 Task started for user {session_id}")
+        print(f"📊 Current metrics - Active tasks: {metrics['active_tasks']}, Completed: {metrics['completed_tasks']}")
+        
+    except Exception as e:
+        # If process startup fails
+        gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        emit('error', {'message': f'Task startup failed: {str(e)}'}, room=session_id)
+        print(f"❌ Failed to start task for user {session_id}: {e}")
+        return
     
     # Set current output directory name (extract from absolute path if needed)
     if out_dir:
-        gui_instance.current_output_dir = os.path.basename(out_dir)
+        user_session.current_output_dir = os.path.basename(out_dir)
     else:
-        gui_instance.current_output_dir = None
+        user_session.current_output_dir = None
+    
+    # Store current task for conversation history
+    user_session._current_task_requirement = user_requirement
 
-    threading.Thread(target=queue_reader_thread, daemon=True).start()
+    threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
 
 @socketio.on('select_directory')
 def handle_select_directory(data):
     """Handle directory selection request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
     dir_name = data.get('dir_name', '')
     if dir_name:
-        gui_instance.selected_output_dir = dir_name
-        socketio.emit('directory_selected', {'dir_name': dir_name})
+        user_session.selected_output_dir = dir_name
+        emit('directory_selected', {'dir_name': dir_name}, room=session_id)
     else:
-        gui_instance.selected_output_dir = None
-        socketio.emit('directory_selected', {'dir_name': None})
+        user_session.selected_output_dir = None
+        emit('directory_selected', {'dir_name': None}, room=session_id)
+
+@socketio.on('get_metrics')
+def handle_get_metrics():
+    """Handle real-time metrics request"""
+    session_id = request.sid
+    try:
+        metrics = gui_instance.concurrency_manager.get_metrics()
+        
+        # Add current user's task running time
+        runtime = gui_instance.concurrency_manager.get_task_runtime(session_id)
+        
+        # Add system resource information (lightweight)
+        import psutil
+        cpu_percent = psutil.cpu_percent(interval=0)  # Don't wait
+        memory = psutil.virtual_memory()
+        
+        response_data = {
+            'metrics': metrics,
+            'system': {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory.percent
+            },
+            'user_task_runtime': runtime,
+            'timestamp': time.time()
+        }
+        
+        emit('metrics_update', response_data, room=session_id)
+    except Exception as e:
+        emit('error', {'message': f'Failed to get performance metrics: {str(e)}'}, room=session_id)
 
 @socketio.on('stop_task')
 def handle_stop_task():
     """Handle stop task request"""
     i18n = get_i18n_texts()
+    session_id = request.sid
     
-    if gui_instance.current_process and gui_instance.current_process.is_alive():
-        print("Received stop request. Terminating process.")
-        gui_instance.current_process.terminate()
-        gui_instance.current_output_dir = None  # Clear current directory mark
-        socketio.emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'})
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
+    if user_session.current_process and user_session.current_process.is_alive():
+        print(f"Received stop request for user {session_id}. Terminating process.")
+        
+        # 🔧 Fix: save current conversation to history when stopping task
+        if hasattr(user_session, '_current_task_requirement'):
+            print(f"💾 Saving interrupted conversation to history for user {session_id}")
+            user_session.add_to_conversation_history(
+                user_session._current_task_requirement, 
+                "Task stopped by user"
+            )
+            delattr(user_session, '_current_task_requirement')
+        
+        user_session.current_process.terminate()
+        user_session.current_output_dir = None  # Clear current directory mark
+        emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'}, room=session_id)
     else:
-        socketio.emit('output', {'message': i18n['no_task_running'], 'type': 'info'})
+        emit('output', {'message': i18n['no_task_running'], 'type': 'info'}, room=session_id)
 
 @socketio.on('create_new_directory')
 def handle_create_new_directory():
     """Handle create new directory request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    
     try:
         i18n = get_i18n_texts()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_dir_name = f"output_{timestamp}"
-        new_dir_path = os.path.join(gui_instance.output_dir, new_dir_name)
+        new_dir_path = os.path.join(user_base_dir, new_dir_name)
         
         # Create main directory
         os.makedirs(new_dir_path, exist_ok=True)
@@ -1359,27 +2379,65 @@ def handle_create_new_directory():
         os.makedirs(workspace_dir, exist_ok=True)
         
         # Set as currently selected directory
-        gui_instance.selected_output_dir = new_dir_name
+        user_session.selected_output_dir = new_dir_name
         
-        socketio.emit('directory_created', {
+        emit('directory_created', {
             'dir_name': new_dir_name,
             'success': True,
             'message': i18n['directory_created_with_workspace'].format(new_dir_name)
-        })
+        }, room=session_id)
         
     except Exception as e:
-        socketio.emit('directory_created', {
+        emit('directory_created', {
             'success': False,
             'error': str(e)
-        })
+        }, room=session_id)
+
+@socketio.on('clear_chat')
+def handle_clear_chat():
+    """Handle clear chat request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    try:
+        i18n = get_i18n_texts()
+        
+        # Clear server-side conversation history
+        user_session = gui_instance.user_sessions[session_id]
+        user_session.conversation_history.clear()
+        print(f"🧹 Cleared conversation history for user {session_id}")
+        
+        emit('chat_cleared', {
+            'success': True,
+            'message': i18n['chat_cleared']
+        }, room=session_id)
+        
+    except Exception as e:
+        emit('chat_cleared', {
+            'success': False,
+            'error': str(e)
+        }, room=session_id)
 
 @app.route('/api/refresh-dirs', methods=['POST'])
 def refresh_directories():
     """Manually refresh directory list"""
     try:
         i18n = get_i18n_texts()
-        # Use existing method to get directory list
-        directories = gui_instance.get_output_directories()
+        
+        # Get API key from JSON data, query parameters or headers
+        api_key = None
+        if request.json:
+            api_key = request.json.get('api_key')
+        if not api_key:
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # Use existing method to get directory list for this user
+        directories = gui_instance.get_output_directories(user_session)
         return jsonify({
             'success': True,
             'directories': directories,
@@ -1398,6 +2456,15 @@ def upload_files(dir_name):
     """Upload files to workspace of specified directory"""
     try:
         i18n = get_i18n_texts()
+        
+        # Get API key from form data, query parameters or headers
+        api_key = request.form.get('api_key') or request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         if 'files' not in request.files:
             return jsonify({'success': False, 'error': i18n['no_files_selected']})
         
@@ -1406,7 +2473,7 @@ def upload_files(dir_name):
             return jsonify({'success': False, 'error': i18n['no_valid_files']})
         
         # Target directory path
-        target_dir = os.path.join(gui_instance.output_dir, secure_filename(dir_name))
+        target_dir = os.path.join(user_base_dir, secure_filename(dir_name))
         if not os.path.exists(target_dir):
             return jsonify({'success': False, 'error': i18n['target_directory_not_exist']})
         
@@ -1476,14 +2543,26 @@ def rename_directory(old_name):
     """Rename output directory"""
     try:
         i18n = get_i18n_texts()
+        
+        # Get API key from form data, query parameters or headers
+        api_key = request.json.get('api_key') if request.json else None
+        if not api_key:
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         data = request.get_json()
         new_name = data.get('new_name', '').strip()
         
         if not new_name:
             return jsonify({'success': False, 'error': i18n['new_name_empty']})
         
-        # Check if it's currently executing directory
-        if old_name == gui_instance.current_output_dir:
+        # Check if it's currently executing directory for any user with same API key
+        # (This is a simplification - in practice we might want to check all sessions with same API key)
+        if hasattr(user_session, 'current_output_dir') and old_name == user_session.current_output_dir:
             return jsonify({'success': False, 'error': 'Cannot rename directory currently in use'})
         
         # Use custom secure filename handling, preserve more characters
@@ -1492,8 +2571,8 @@ def rename_directory(old_name):
             return jsonify({'success': False, 'error': 'Invalid directory name'})
         
         # Build complete path
-        old_path = os.path.join(gui_instance.output_dir, secure_filename(old_name))
-        new_path = os.path.join(gui_instance.output_dir, new_name_safe)
+        old_path = os.path.join(user_base_dir, secure_filename(old_name))
+        new_path = os.path.join(user_base_dir, new_name_safe)
         
         # Debug info
         print(f"Rename debug info:")
@@ -1511,7 +2590,7 @@ def rename_directory(old_name):
         # Security check: ensure paths are within expected directory
         real_old_path = os.path.realpath(old_path)
         real_new_path = os.path.realpath(new_path)
-        expected_parent = os.path.realpath(gui_instance.output_dir)
+        expected_parent = os.path.realpath(user_base_dir)
         
         if not real_old_path.startswith(expected_parent) or not real_new_path.startswith(expected_parent):
             return jsonify({'success': False, 'error': 'Paths are not safe'})
@@ -1529,11 +2608,11 @@ def rename_directory(old_name):
         # Rename directory
         os.rename(old_path, new_path)
         
-        # Update GUI instance related states
-        if gui_instance.selected_output_dir == old_name:
-            gui_instance.selected_output_dir = new_name_safe
-        if gui_instance.last_output_dir == old_name:
-            gui_instance.last_output_dir = new_name_safe
+        # Update user session related states
+        if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == old_name:
+            user_session.selected_output_dir = new_name_safe
+        if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == old_name:
+            user_session.last_output_dir = new_name_safe
         
         print(f"Successfully renamed directory: {old_name} -> {new_name_safe}")
         
@@ -1552,12 +2631,20 @@ def rename_directory(old_name):
 def delete_directory(dir_name):
     """Delete specified output directory"""
     try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         # Security check directory name
         safe_dir_name = secure_filename(dir_name)
-        target_dir = os.path.join(gui_instance.output_dir, safe_dir_name)
+        target_dir = os.path.join(user_base_dir, safe_dir_name)
         
-        # Security check: ensure directory is within output directory
-        real_output_dir = os.path.realpath(gui_instance.output_dir)
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
         real_target_dir = os.path.realpath(target_dir)
         if not real_target_dir.startswith(real_output_dir):
             return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
@@ -1571,8 +2658,8 @@ def delete_directory(dir_name):
         if not os.path.exists(workspace_path) or not os.path.isdir(workspace_path):
             return jsonify({'success': False, 'error': 'Only directories with workspace subdirectory can be deleted'})
         
-        # Check if it's currently executing directory
-        if gui_instance.current_output_dir == dir_name:
+        # Check if it's currently executing directory for any user with same API key
+        if hasattr(user_session, 'current_output_dir') and user_session.current_output_dir == dir_name:
             return jsonify({'success': False, 'error': 'Cannot delete currently executing directory'})
         
         print(f"Deleting directory: {target_dir}")
@@ -1580,11 +2667,11 @@ def delete_directory(dir_name):
         # Delete directory and all its contents
         shutil.rmtree(target_dir)
         
-        # Clean GUI instance related states
-        if gui_instance.last_output_dir == dir_name:
-            gui_instance.last_output_dir = None
-        if gui_instance.selected_output_dir == dir_name:
-            gui_instance.selected_output_dir = None
+        # Clean user session related states
+        if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == dir_name:
+            user_session.last_output_dir = None
+        if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == dir_name:
+            user_session.selected_output_dir = None
         
         print(f"Successfully deleted directory: {dir_name}")
         
@@ -1600,8 +2687,122 @@ def delete_directory(dir_name):
         print(f"Error deleting directory {dir_name}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/routine-files', methods=['GET'])
+def get_routine_files():
+    """Get list of routine files from routine directory"""
+    try:
+        routine_dir = os.path.join(os.getcwd(), 'routine')
+        routine_files = []
+        
+        if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
+            for filename in os.listdir(routine_dir):
+                if os.path.isfile(os.path.join(routine_dir, filename)):
+                    # Remove file extension
+                    name_without_ext = os.path.splitext(filename)[0]
+                    routine_files.append({
+                        'name': name_without_ext,
+                        'filename': filename
+                    })
+        
+        routine_files.sort(key=lambda x: x['name'])  # Sort alphabetically
+        return jsonify({
+            'success': True,
+            'files': routine_files
+        })
+        
+    except Exception as e:
+        print(f"Error getting routine files: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'files': []
+        }), 500
+
+@app.route('/api/validate-config', methods=['POST'])
+def validate_config():
+    """Validate GUI configuration and return model-specific config"""
+    try:
+        from src.config_loader import get_gui_config, validate_gui_config
+        
+        data = request.get_json()
+        selected_model = data.get('model', 'claude-sonnet-4')
+        
+        # Read GUI configuration from config.txt
+        gui_config = get_gui_config()
+        
+        # Validate the configuration
+        is_valid, error_message = validate_gui_config(gui_config)
+        
+        if not is_valid:
+            return jsonify({
+                'success': False,
+                'error': error_message
+            })
+        
+        # Get model-specific configuration
+        api_key = gui_config.get('api_key')
+        api_base = gui_config.get('api_base')
+        
+        # For different models, we might need different api_base URLs
+        if selected_model == 'claude-sonnet-4-0':
+            # For Claude models, ensure we use Anthropic endpoint
+            if api_base:
+                # Remove trailing slash first
+                api_base = api_base.rstrip('/')
+                if api_base.endswith('/v1'):
+                    # Change the suffix from v1 to anthropic for Claude models
+                    api_base = api_base[:-3] + '/anthropic'
+                elif not api_base.endswith('/anthropic'):
+                    # If it doesn't end with /anthropic, append it
+                    api_base = api_base + '/anthropic'
+        
+        return jsonify({
+            'success': True,
+            'config': {
+                'api_key': api_key,
+                'api_base': api_base,
+                'model': selected_model
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error validating configuration: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Configuration validation failed: {str(e)}'
+        })
+
+@app.route('/api/save-markdown', methods=['POST'])
+def save_markdown():
+    """Save modified Markdown content back to disk."""
+    try:
+        data = request.get_json() or {}
+        rel_path = data.get('path')
+        content = data.get('content', '')
+        if not rel_path:
+            return jsonify({'success': False, 'error': 'File path is required'})
+
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+
+        full_path = os.path.join(user_base_dir, rel_path)
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+
+        # Ensure parent dir exists
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        # Save content
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'success': True, 'path': rel_path})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
+    port = int(os.environ.get('PORT', 5002))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
