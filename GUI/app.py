@@ -1529,6 +1529,10 @@ def get_file_content(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
         # Use the passed path directly, don't use secure_filename as we need to maintain path structure
         full_path = os.path.join(user_base_dir, file_path)
         
@@ -1828,6 +1832,10 @@ def serve_pdf(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
         # Use the passed path directly, don't use secure_filename as we need to maintain path structure
         full_path = os.path.join(user_base_dir, file_path)
         print(f"Full path: {full_path}")  # Add debug logs
@@ -1886,6 +1894,10 @@ def download_file(file_path):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
         
         # Use the passed path directly, don't use secure_filename as we need to maintain path structure
         full_path = os.path.join(user_base_dir, file_path)
@@ -1961,6 +1973,10 @@ def convert_markdown():
         
         if not file_path:
             return jsonify({'success': False, 'error': 'File path cannot be empty'})
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
         
         # Use the passed path directly
         full_path = os.path.join(user_base_dir, file_path)

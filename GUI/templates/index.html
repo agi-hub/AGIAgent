@@ -1342,13 +1342,18 @@
         }
 
         /* Markdown预览样式 */
+        #markdownPreview {
+            background: #ffffff !important;
+            color: #000000 !important;
+        }
+        
         #markdownPreview h1,
         #markdownPreview h2,
         #markdownPreview h3,
         #markdownPreview h4,
         #markdownPreview h5,
         #markdownPreview h6 {
-            color: #24292f;
+            color: #000000 !important;
             margin: 24px 0 16px 0;
             font-weight: 600;
             line-height: 1.25;
@@ -1373,10 +1378,11 @@
         #markdownPreview p {
             margin: 16px 0;
             line-height: 1.6;
+            color: #000000 !important;
         }
 
         #markdownPreview a {
-            color: #58a6ff;
+            color: #0066cc;
             text-decoration: none;
         }
 
@@ -1392,13 +1398,14 @@
 
         #markdownPreview li {
             margin: 4px 0;
+            color: #000000 !important;
         }
 
         #markdownPreview blockquote {
             margin: 16px 0;
             padding: 0 16px;
-            border-left: 4px solid #30363d;
-            color: #8b949e;
+            border-left: 4px solid #666666;
+            color: #333333;
         }
 
         #markdownPreview table {
@@ -1409,9 +1416,10 @@
 
         #markdownPreview th,
         #markdownPreview td {
-            border: 1px solid #30363d;
+            border: 1px solid #dddddd;
             padding: 8px 12px;
             text-align: left;
+            color: #000000 !important;
         }
 
         #markdownPreview th {
@@ -1436,13 +1444,13 @@
         #markdownPreview hr {
             border: none;
             height: 1px;
-            background-color: #d0d7de;
+            background-color: #dddddd;
             margin: 24px 0;
         }
 
         /* MathJax样式 */
         .MathJax {
-            color: #24292f !important;
+            color: #000000 !important;
         }
 
         .MathJax_Display {
@@ -3385,6 +3393,11 @@
                 headers['X-API-Key'] = currentUser;
             }
 
+            // 检查文件扩展名来决定如何处理响应
+            const fileExt = fileName.toLowerCase().split('.').pop();
+            const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
+            const isImageFile = imageExtensions.includes(fileExt);
+
             fetch(`/api/file/${filePath}`, {
                 headers: headers
             })
@@ -3393,9 +3406,39 @@
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
+                    
+                    // 对于图像文件，检查响应类型
+                    if (isImageFile) {
+                        const contentType = response.headers.get('content-type');
+                        console.log('🔍 Content-Type:', contentType);
+                        
+                        if (contentType && contentType.startsWith('image/')) {
+                            // 直接显示图像
+                            return response.blob().then(blob => {
+                                const imageUrl = URL.createObjectURL(blob);
+                                displayImageContent(imageUrl, fileName, filePath);
+                            });
+                        } else {
+                            // 如果返回的是JSON格式的图像数据，则解析JSON
+                            return response.json().then(data => {
+                                if (data.success && data.type === 'image') {
+                                    displayFileContent(data, fileName);
+                                } else {
+                                    throw new Error('Invalid image data format');
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 对于其他文件类型，尝试解析JSON
                     return response.json();
                 })
                 .then(data => {
+                    if (isImageFile) {
+                        // 图像已经处理完成
+                        return;
+                    }
+                    
                     console.log('🔍 Preview response data:', data);
                     if (data.success) {
                         displayFileContent(data, fileName);
@@ -3414,6 +3457,35 @@
                         ${I18N.network_error}: ${error.message}
                     </div>`;
                 });
+        }
+
+        function displayImageContent(imageUrl, fileName, filePath) {
+            // 设置全局变量以便下载使用
+            window.currentActualFilePath = filePath;
+            window.currentOriginalFilePath = filePath;
+            
+            // 获取文件大小信息（如果需要的话）
+            const fileSize = '未知大小';
+            
+            previewContent.innerHTML = `
+                <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                    文件大小: ${fileSize} | 类型: 图片
+                </div>
+                <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
+                    <img src="${imageUrl}" 
+                         alt="${fileName}" 
+                         style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
+                    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <a href="/api/download-file/${filePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 12px;">
+                            <i class="fas fa-download"></i> 下载图片
+                        </a>
+                        <button onclick="window.open('${imageUrl}', '_blank')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+                            <i class="fas fa-external-link-alt"></i> 新窗口打开
+                        </button>
+                    </div>
+                </div>
+            `;
         }
 
         function displayFileContent(data, fileName) {
@@ -3624,7 +3696,7 @@
                             </button>
                         </div>
                     </div>
-                    <div id="markdownPreview" class="tex2jax_process" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; line-height: 1.6; overflow: visible; border: 1px solid #404040;">
+                    <div id="markdownPreview" class="tex2jax_process" style="background: #ffffff; color: #000000; padding: 20px; border-radius: 5px; line-height: 1.6; overflow: visible; border: 1px solid #dddddd;">
                         ${htmlContent}
                     </div>
                     <div id="markdownSource" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: visible; display: none; border: 1px solid #404040;">

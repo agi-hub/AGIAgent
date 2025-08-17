@@ -15,7 +15,6 @@ import tempfile
 import requests
 import base64
 import hashlib
-import urllib.request
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from .print_system import print_current, print_system, print_debug
@@ -36,6 +35,15 @@ except ImportError:
         print_debug("⚠️ Enhanced SVG to PNG converter not available")
 
 # Check for multiple mermaid rendering methods
+def _check_mermaid_cli():
+    """Check if mermaid-cli (mmdc) is available"""
+    try:
+        result = subprocess.run(['mmdc', '--version'], 
+                              capture_output=True, text=True, timeout=10)
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
 def _check_playwright():
     """Check if playwright is available for rendering"""
     try:
@@ -44,47 +52,16 @@ def _check_playwright():
     except ImportError:
         return False
 
-def _ensure_local_mermaid_library():
-    """
-    Ensure local Mermaid library is available.
-    Downloads if not present.
-    
-    Returns:
-        Path to local mermaid.min.js file
-    """
-    # Create assets directory if it doesn't exist
-    assets_dir = Path(__file__).parent.parent.parent / "assets" / "mermaid"
-    assets_dir.mkdir(parents=True, exist_ok=True)
-    
-    mermaid_js_path = assets_dir / "mermaid.min.js"
-    
-    # Check if local file exists
-    if mermaid_js_path.exists():
-        print_debug(f"✅ Local Mermaid library found: {mermaid_js_path}")
-        return mermaid_js_path
-    
-    # Download Mermaid library
-    print_debug(f"📥 Downloading Mermaid library...")
-    mermaid_url = "https://unpkg.com/mermaid@10/dist/mermaid.min.js"
-    
-    try:
-        # Download the file
-        urllib.request.urlretrieve(mermaid_url, mermaid_js_path)
-        
-        # Verify file was downloaded successfully
-        if mermaid_js_path.exists() and mermaid_js_path.stat().st_size > 0:
-            print_debug(f"✅ Mermaid library downloaded successfully: {mermaid_js_path}")
-            return mermaid_js_path
-        else:
-            print_debug(f"❌ Failed to download Mermaid library")
-            return None
-            
-    except Exception as e:
-        print_debug(f"❌ Error downloading Mermaid library: {e}")
-        return None
+def _check_mermaid_py():
+    """Check if mmdc CLI is available (fallback method)"""
+    # This is now just a fallback that uses the same CLI as the primary method
+    return MERMAID_CLI_AVAILABLE
 
 # Check available methods
+MERMAID_CLI_AVAILABLE = _check_mermaid_cli()
 PLAYWRIGHT_AVAILABLE = _check_playwright()
+MERMAID_PY_AVAILABLE = _check_mermaid_py()
+ONLINE_FALLBACK = True  # Always available as fallback
 
 def _is_error_svg(svg_path: Path) -> bool:
     """
@@ -205,7 +182,14 @@ def _generate_smart_filename(mermaid_code: str, following_content: str = "", fal
         return f"mermaid_{fallback_index}"
 
 # Determine best available method
-PREFERRED_METHOD = "playwright" if PLAYWRIGHT_AVAILABLE else "none"
+if MERMAID_CLI_AVAILABLE:
+    PREFERRED_METHOD = "cli"
+elif PLAYWRIGHT_AVAILABLE:
+    PREFERRED_METHOD = "playwright"
+elif MERMAID_PY_AVAILABLE:
+    PREFERRED_METHOD = "python"
+else:
+    PREFERRED_METHOD = "online"
 
 
 class MermaidProcessor:
@@ -222,7 +206,8 @@ class MermaidProcessor:
     def __init__(self, silent_init: bool = False):
         """Initialize the Mermaid processor."""
         self.preferred_method = PREFERRED_METHOD
-        self.mermaid_available = (PLAYWRIGHT_AVAILABLE)
+        self.mermaid_available = (MERMAID_CLI_AVAILABLE or PLAYWRIGHT_AVAILABLE or 
+                                MERMAID_PY_AVAILABLE or ONLINE_FALLBACK)
         
         # Initialize SVG to PNG converter
         if SVG_TO_PNG_AVAILABLE:
@@ -230,79 +215,6 @@ class MermaidProcessor:
         else:
             self.svg_to_png_converter = None
         
-        # 浏览器实例缓存，用于性能优化
-        self._browser = None
-        self._page = None
-        self._browser_initialized = False
-    
-    def _init_browser(self):
-        """初始化浏览器实例（如果还没有初始化）"""
-        if not self._browser_initialized and PLAYWRIGHT_AVAILABLE:
-            try:
-                from playwright.sync_api import sync_playwright
-                playwright = sync_playwright().start()
-                self._browser = playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--disable-web-security',
-                        '--disable-features=VizDisplayCompositor',
-                        '--disable-extensions',
-                        '--disable-plugins',
-                        '--disable-images',
-                        '--disable-javascript-harmony-shipping',
-                        '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding',
-                        '--disable-field-trial-config',
-                        '--disable-ipc-flooding-protection',
-                        '--memory-pressure-off',
-                        '--max_old_space_size=4096'
-                    ]
-                )
-                self._page = self._browser.new_page()
-                self._page.set_viewport_size({"width": 1200, "height": 800})
-                
-                # 设置页面优化选项
-                self._page.set_extra_http_headers({
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                })
-                
-                # 禁用不必要的功能（但保留 SVG 和字体）
-                self._page.route("**/*.{png,jpg,jpeg,gif,woff,woff2,ttf,eot}", lambda route: route.abort())
-                self._page.route("**/analytics/**", lambda route: route.abort())
-                self._page.route("**/tracking/**", lambda route: route.abort())
-                
-                self._browser_initialized = True
-                print(f"🔧 Browser initialized for reuse")
-            except Exception as e:
-                print(f"⚠️ Failed to initialize browser: {e}")
-                self._browser_initialized = False
-    
-    def _cleanup_browser(self):
-        """清理浏览器实例"""
-        if self._browser_initialized:
-            try:
-                if self._page:
-                    self._page.close()
-                if self._browser:
-                    self._browser.close()
-                self._browser = None
-                self._page = None
-                self._browser_initialized = False
-                print(f"🔧 Browser cleaned up")
-            except Exception as e:
-                print(f"⚠️ Error cleaning up browser: {e}")
-    
-    def __del__(self):
-        """析构函数，确保浏览器被清理"""
-        self._cleanup_browser()
-    
     
     def process_markdown_file(self, md_file_path: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -481,10 +393,7 @@ class MermaidProcessor:
             
             processed_count = 0
             
-            # Prepare batch processing tasks
-            mermaid_tasks = []
-            chart_info = []  # Store chart information for later processing
-            
+            # Process from end to beginning to avoid position shifts
             for i, match in enumerate(reversed(matches)):
                 try:
                     code = match.group(1).strip()
@@ -506,54 +415,45 @@ class MermaidProcessor:
                     mermaid_code_path = img_dir / mermaid_code_name
                     rel_mermaid_path = f"images/{mermaid_code_name}"
                     
+                    #print_current(f"🔧 Processing Mermaid chart {len(matches)-i}...")
+                    
                     # Save original Mermaid code to separate file
                     try:
                         with open(mermaid_code_path, 'w', encoding='utf-8') as f:
                             f.write(code)
+                        #print_current(f"📝 Saved Mermaid code: {mermaid_code_name}")
                     except Exception as e:
                         print_current(f"❌ Failed to save Mermaid code: {e}")
                     
-                    # Add to batch processing tasks
-                    mermaid_tasks.append((code, svg_path, png_path))
+                    # Generate SVG image using the best available method
+                    svg_success = self._generate_mermaid_image(code, svg_path)
+                    png_success = False
                     
-                    # Store chart information for later processing
-                    chart_info.append({
-                        'match': match,
-                        'base_filename': base_filename,
-                        'svg_name': svg_name,
-                        'png_name': png_name,
-                        'svg_path': svg_path,
-                        'png_path': png_path,
-                        'rel_svg_path': rel_svg_path,
-                        'rel_png_path': rel_png_path,
-                        'rel_mermaid_path': rel_mermaid_path,
-                        'following_comment': following_comment,
-                        'index': len(matches)-i
-                    })
-                    
-                except Exception as e:
-                    print_current(f"❌ Error preparing Mermaid chart: {e}")
-            
-            # Batch generate all images using a single browser instance
-            if mermaid_tasks:
-                batch_results = self._generate_mermaid_images_batch(mermaid_tasks)
-            else:
-                batch_results = []
-            
-            # Process results and update content
-            for i, (chart_data, (svg_success, png_success)) in enumerate(zip(chart_info, batch_results)):
-                try:
                     # Check if the generated SVG contains errors
                     if svg_success:
-                        is_error_svg = _is_error_svg(chart_data['svg_path'])
+                        is_error_svg = _is_error_svg(svg_path)
                         if is_error_svg:
                             print_current(f"❌ Generated SVG contains errors, treating as failed")
                             svg_success = False
-                            png_success = False
+                    
+                    # If SVG generation successful, try to convert to PNG using enhanced converter
+                    if svg_success and self.svg_to_png_converter:
+                        try:
+                            success, message = self.svg_to_png_converter.convert(svg_path, png_path, enhance_chinese=True)
+                            if success:
+                                png_success = True
+                                #print_current(f"✅ SVG to PNG conversion successful: {message}")
+                            else:
+                                print_current(f"⚠️ SVG generated successfully but PNG conversion failed: {message}")
+                        except Exception as e:
+                            print_current(f"⚠️ SVG to PNG conversion error: {e}")
+                    elif svg_success:
+                        print_current(f"⚠️ SVG generated successfully but PNG converter not available")
                     
                     # If SVG generation successful, replace content
                     if svg_success:
                         # Generate appropriate alt text based on caption from comment
+                        # Extract caption from comment for alt text
                         def extract_caption_from_comment_for_alt(content: str) -> Optional[str]:
                             caption_match = re.search(r'<!--\s*([^-]+?)\s*-->', content.strip(), re.IGNORECASE)
                             if caption_match:
@@ -563,38 +463,45 @@ class MermaidProcessor:
                                     return caption
                             return None
                         
-                        caption = extract_caption_from_comment_for_alt(chart_data['following_comment'])
+                        caption = extract_caption_from_comment_for_alt(following_comment)
                         if caption:
                             alt_text = caption
-                        elif chart_data['base_filename'].startswith('mermaid_sha'):
+                        elif base_filename.startswith('mermaid_sha'):
                             # For SHA-based filenames, use figure number
-                            alt_text = f"Figure {chart_data['index']}"
+                            alt_text = f"Figure {len(matches)-i}"
                         else:
                             # For named files, use the filename as title
-                            alt_text = chart_data['base_filename'].replace('_', ' ').title()
+                            alt_text = base_filename.replace('_', ' ').title()
                         
                         # Use PNG for display in markdown if available, otherwise use SVG
-                        display_path = chart_data['rel_png_path'] if png_success else chart_data['rel_svg_path']
+                        display_path = rel_png_path if png_success else rel_svg_path
                         format_info = ""
                         if svg_success and png_success:
-                            format_info = f"<!-- Available formats: PNG={chart_data['rel_png_path']}, SVG={chart_data['rel_svg_path']} -->\n"
+                            format_info = f"<!-- Available formats: PNG={rel_png_path}, SVG={rel_svg_path} -->\n"
                         elif svg_success:
-                            format_info = f"<!-- Available formats: SVG={chart_data['rel_svg_path']} -->\n"
+                            format_info = f"<!-- Available formats: SVG={rel_svg_path} -->\n"
                         
                         # NEW: Use standard markdown image format for better pandoc compatibility
-                        replacement = f"\n![{alt_text}]({display_path})\n\n{format_info}<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
+                        replacement = f"\n![{alt_text}]({display_path})\n\n{format_info}<!-- Source code file: {rel_mermaid_path} -->\n"
+                        
+                        # OLD: HTML format (commented out for pandoc compatibility)
+                        # Determine appropriate size based on chart type
+                        # chart_type = code.strip().split('\n')[0] if '\n' in code else code.strip()
+                        # Use consistent styling without max-height to prevent distortion
+                        # size_style = "max-width: 80%; height: auto; width: 80%;"
+                        # replacement = f"\n<div align=\"center\">\n\n<img src=\"{display_path}\" alt=\"{alt_text}\" style=\"{size_style}\" />\n\n</div>\n\n{format_info}<!-- Source code file: {rel_mermaid_path} -->\n"
                         
                         # Get complete Mermaid code block positions
-                        start_pos = chart_data['match'].start()
-                        end_pos = chart_data['match'].end()
+                        start_pos = match.start()
+                        end_pos = match.end()
                         
                         # Replace original content
                         content = content[:start_pos] + replacement + content[end_pos:]
                         
-                        #if svg_success and png_success:
-                        #    print_current(f"✅ Successfully generated: {chart_data['svg_name']} and {chart_data['png_name']}")
-                        #elif svg_success:
-                        #    print_current(f"✅ Successfully generated: {chart_data['svg_name']}")
+                        if svg_success and png_success:
+                            print_current(f"✅ Successfully generated: {svg_name} and converted to {png_name}")
+                        elif svg_success:
+                            print_current(f"✅ Successfully generated: {svg_name}")
                         processed_count += 1
                     else:
                         # Mermaid compilation failed, replace with error comment
@@ -610,21 +517,21 @@ class MermaidProcessor:
                                     return caption
                             return None
                         
-                        caption = extract_caption_from_comment_for_error(chart_data['following_comment'])
+                        caption = extract_caption_from_comment_for_error(following_comment)
                         if caption:
-                            error_replacement = f"\n<!-- ❌ Mermaid chart compilation failed: {caption} -->\n<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
+                            error_replacement = f"\n<!-- ❌ Mermaid chart compilation failed: {caption} -->\n<!-- Source code file: {rel_mermaid_path} -->\n"
                         else:
-                            error_replacement = f"\n<!-- ❌ Mermaid chart compilation failed (Figure {chart_data['index']}) -->\n<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
+                            error_replacement = f"\n<!-- ❌ Mermaid chart compilation failed (Figure {len(matches)-i}) -->\n<!-- Source code file: {rel_mermaid_path} -->\n"
                         
                         # Get complete Mermaid code block positions
-                        start_pos = chart_data['match'].start()
-                        end_pos = chart_data['match'].end()
+                        start_pos = match.start()
+                        end_pos = match.end()
                         
                         # Replace original content with error comment
                         content = content[:start_pos] + error_replacement + content[end_pos:]
                         
                 except Exception as e:
-                    print_current(f"❌ Error processing Mermaid chart result: {e}")
+                    print_current(f"❌ Error processing Mermaid chart: {e}")
             
             # Write updated file
             with open(md_path, 'w', encoding='utf-8') as f:
@@ -651,395 +558,284 @@ class MermaidProcessor:
                 'message': f'Failed to process markdown file: {e}'
             }
     
-    def _generate_mermaid_image(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> tuple[bool, bool]:
+    def _generate_mermaid_image(self, mermaid_code: str, output_path: Path) -> bool:
         """
-        Generate Mermaid SVG and PNG images using the best available method.
+        Generate Mermaid SVG image using the best available method.
         
         Args:
             mermaid_code: Mermaid chart code
-            svg_path: Output SVG image path
-            png_path: Output PNG image path (optional)
+            output_path: Output SVG image path
             
         Returns:
-            Tuple of (svg_success, png_success)
+            True if successful, False otherwise
         """
-        # 直接使用 Playwright 方法
-        return self._generate_mermaid_image_playwright(mermaid_code, svg_path, png_path)
+        # Try methods in order of preference
+        methods = [
+            ("cli", self._generate_mermaid_image_cli),
+            ("playwright", self._generate_mermaid_image_playwright),
+            ("python", self._generate_mermaid_image_python),
+            ("online", self._generate_mermaid_image_online)
+        ]
+        
+        # Try preferred method first
+        for method_name, method_func in methods:
+            if method_name == self.preferred_method:
+                try:
+                    if method_func(mermaid_code, output_path):
+                        print_debug(f"✅ Successfully generated using {method_name} method")
+                        return True
+                except Exception as e:
+                    print_debug(f"❌ {method_name} method failed: {e}")
+        
+        # Try other methods as fallbacks
+        for method_name, method_func in methods:
+            if method_name != self.preferred_method:
+                try:
+                    if method_func(mermaid_code, output_path):
+                        print_debug(f"✅ Successfully generated using fallback {method_name} method")
+                        return True
+                except Exception as e:
+                    print_debug(f"❌ Fallback {method_name} method failed: {e}")
+        
+        print_debug("❌ All methods failed to generate image")
+        return False
     
-    def _generate_mermaid_images_batch(self, mermaid_tasks: List[tuple]) -> List[tuple]:
+
+    
+    def _generate_mermaid_image_cli(self, mermaid_code: str, output_path: Path) -> bool:
         """
-        Generate multiple Mermaid images using a single browser instance and single page for better performance.
+        Generate Mermaid SVG image using mermaid CLI (mmdc).
         
         Args:
-            mermaid_tasks: List of tuples (mermaid_code, svg_path, png_path)
+            mermaid_code: Mermaid chart code
+            output_path: Output SVG image path
             
         Returns:
-            List of tuples (svg_success, png_success) for each task
+            True if successful, False otherwise
+        """
+        if not MERMAID_CLI_AVAILABLE:
+            return False
+            
+        try:
+            print_debug(f"🔧 Using Mermaid CLI to generate image...")
+            
+            # Create temporary mermaid file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.mmd', delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(mermaid_code)
+                temp_mermaid_path = temp_file.name
+            
+            try:
+                # Use mermaid CLI to generate high-quality SVG image
+                cmd = [
+                    'mmdc',
+                    '-i', temp_mermaid_path,
+                    '-o', str(output_path),
+                    '-b', 'transparent',  # transparent background
+                    '--quiet',  # suppress output
+                    '-e', 'svg'  # explicitly set SVG format
+                ]
+                
+                # Only add theme if the mermaid code doesn't have custom theme configuration
+                if not ('%%{init:' in mermaid_code and 'theme' in mermaid_code):
+                    cmd.extend(['-t', 'default'])  # use default theme only if no custom theme
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                # Check if command was successful and file was created
+                if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+                    print_debug(f"✅ Mermaid CLI generation successful")
+                    return True
+                else:
+                    print_debug(f"❌ Mermaid CLI generation failed: {result.stderr}")
+                    return False
+                    
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_mermaid_path)
+                except OSError:
+                    pass
+                
+        except subprocess.TimeoutExpired:
+            print_debug(f"❌ Mermaid CLI generation timed out")
+            return False
+        except Exception as e:
+            print_debug(f"❌ Mermaid CLI generation failed: {e}")
+            return False
+    
+    def _generate_mermaid_image_playwright(self, mermaid_code: str, output_path: Path) -> bool:
+        """
+        Generate Mermaid SVG image using Playwright browser automation.
+        
+        Args:
+            mermaid_code: Mermaid chart code
+            output_path: Output SVG image path
+            
+        Returns:
+            True if successful, False otherwise
         """
         if not PLAYWRIGHT_AVAILABLE:
-            print(f"❌ Playwright not available")
-            return [(False, False)] * len(mermaid_tasks)
-        
-        if not mermaid_tasks:
-            return []
-        
-        results = []
-        
+            return False
+            
         try:
-            import tempfile
             from playwright.sync_api import sync_playwright
             
-            # Get local Mermaid library path
-            local_mermaid_path = _ensure_local_mermaid_library()
-            if local_mermaid_path:
-                mermaid_script_src = f"file://{local_mermaid_path}"
-                print_debug(f"🔧 Using local Mermaid library: {local_mermaid_path}")
-            else:
-                mermaid_script_src = "https://unpkg.com/mermaid@10/dist/mermaid.min.js"
-                print_debug(f"⚠️ Using remote Mermaid library as fallback")
+            print_debug(f"🌐 Using Playwright to generate image...")
             
-            # Create HTML with all mermaid charts
-            mermaid_divs = []
-            for i, (mermaid_code, _, _) in enumerate(mermaid_tasks):
-                mermaid_divs.append(f'<div class="mermaid" id="chart_{i}">{mermaid_code}</div>')
-            
-            html_content = f"""<!DOCTYPE html>
+            # Create HTML with Mermaid chart
+            html_content = f"""
+<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Mermaid Charts Batch</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
-        body {{
-            margin: 0;
-            padding: 10px;
-            background: white;
-            font-family: "Microsoft YaHei", "SimHei", "SimSun", "Arial", sans-serif;
-        }}
-        .mermaid {{
-            background: white;
-            text-align: center;
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-        }}
-        .mermaid svg {{
-            max-width: 100%;
-            height: auto;
-        }}
+        body {{ margin: 0; padding: 20px; background: transparent; }}
+        .mermaid {{ background: transparent; }}
     </style>
 </head>
 <body>
-    {chr(10).join(mermaid_divs)}
-    <script src="{mermaid_script_src}"></script>
+    <div class="mermaid">{mermaid_code}</div>
     <script>
-        mermaid.initialize({{
-            startOnLoad: true,
-            theme: 'default',
-            fontFamily: 'Microsoft YaHei, SimHei, SimSun, Arial, sans-serif',
-            flowchart: {{
-                useMaxWidth: true,
-                htmlLabels: true
-            }},
-            securityLevel: 'loose'
-        }});
+        mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
     </script>
 </body>
 </html>"""
             
             with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--disable-web-security',
-                        '--disable-extensions',
-                        '--disable-plugins',
-                        '--disable-images',
-                        '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding',
-                        '--memory-pressure-off',
-                        '--max_old_space_size=4096'
-                    ]
-                )
+                browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
+                
+                # Set viewport
                 page.set_viewport_size({"width": 1200, "height": 800})
                 
-                # Create temporary HTML file with all charts
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as temp_file:
-                    temp_file.write(html_content)
-                    temp_html_path = temp_file.name
+                # Load HTML content
+                page.set_content(html_content)
                 
-                try:
-                    # Load HTML file with all charts
-                    file_url = f"file://{temp_html_path}"
-                    page.goto(file_url, wait_until="domcontentloaded", timeout=5000)
-                    
-                    # Wait for all SVG elements to appear and have content
-                    try:
-                        # Wait for all SVG elements to appear
-                        page.wait_for_selector(".mermaid svg", timeout=5000)
-                        # Wait for all SVGs to have actual content
-                        page.wait_for_function(
-                            "Array.from(document.querySelectorAll('.mermaid svg')).every(svg => svg.innerHTML.length > 0)",
-                            timeout=5000
-                        )
-                    except Exception as e:
-                        print(f"⚠️ Waiting for SVG content failed: {e}")
-                        # Fallback: just wait a bit
-                        page.wait_for_timeout(500)
-                    
-                    # Process each chart
-                    for i, (mermaid_code, svg_path, png_path) in enumerate(mermaid_tasks):
-                        try:
-                            
-                            svg_success = False
-                            png_success = False
-                            
-                            # Extract SVG content for this specific chart
-                            svg_element = page.locator(f"#chart_{i} svg").first
-                            if svg_element:
-                                svg_content = svg_element.evaluate("el => el.outerHTML")
-                                if svg_content:
-                                    # Fix XML issues: convert <br> to <br/> for proper XML formatting
-                                    svg_content = svg_content.replace('<br>', '<br/>')
-                                    
-                                    # Add XML declaration and save SVG
-                                    full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n{svg_content}'
-                                    with open(svg_path, 'w', encoding='utf-8') as f:
-                                        f.write(full_svg)
-                                    svg_success = True
-                            
-                            # Generate PNG if requested
-                            if png_path and svg_success:
-                                try:
-                                    mermaid_element = page.locator(f"#chart_{i}").first
-                                    if mermaid_element:
-                                        mermaid_element.screenshot(
-                                            type="png",
-                                            path=str(png_path),
-                                            omit_background=True
-                                        )
-                                        png_success = True
-                                except Exception as e:
-                                    print(f"⚠️ PNG screenshot failed for chart {i+1}: {e}")
-                            
-                            results.append((svg_success, png_success))
-                            
-                        except Exception as e:
-                            print(f"❌ Error processing chart {i+1}: {e}")
-                            results.append((False, False))
+                # Wait for Mermaid to render
+                page.wait_for_selector(".mermaid svg", timeout=10000)
                 
-                finally:
-                    # Clean up temporary file
-                    try:
-                        import os
-                        os.unlink(temp_html_path)
-                    except OSError:
-                        pass
+                # Extract SVG content from the mermaid element
+                svg_content = page.locator(".mermaid svg").inner_html()
+                if svg_content:
+                    # Get the complete SVG element with proper XML declaration
+                    full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg">{svg_content}</svg>'
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        f.write(full_svg)
+                else:
+                    print_debug("❌ No SVG content found in mermaid element")
+                    return False
                 
                 browser.close()
-                
-            return results
             
+            # Check if file was created successfully
+            if output_path.exists() and output_path.stat().st_size > 0:
+                print_debug(f"✅ Playwright generation successful")
+                return True
+            else:
+                print_debug(f"❌ Playwright generation failed: output file not created or empty")
+                return False
+                
         except Exception as e:
-            print(f"❌ Single-page batch processing failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return [(False, False)] * len(mermaid_tasks)
+            print_debug(f"❌ Playwright generation failed: {e}")
+            return False
     
-
-    
-    def _generate_mermaid_image_playwright(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> tuple[bool, bool]:
+    def _generate_mermaid_image_python(self, mermaid_code: str, output_path: Path) -> bool:
         """
-        Generate Mermaid SVG and PNG images using Playwright browser automation.
+        Generate Mermaid SVG image using mmdc CLI (fallback method).
         
         Args:
             mermaid_code: Mermaid chart code
-            svg_path: Output SVG image path
-            png_path: Output PNG image path (optional)
+            output_path: Output SVG image path
             
         Returns:
-            Tuple of (svg_success, png_success)
+            True if successful, False otherwise
         """
-        if not PLAYWRIGHT_AVAILABLE:
-            print(f"❌ Playwright not available")
-            return False, False
+        if not MERMAID_PY_AVAILABLE:
+            return False
             
         try:
             import tempfile
-            from playwright.sync_api import sync_playwright
+            import subprocess
+            import os
             
-            print(f"🌐 Using Playwright to generate image...")
+            print_debug(f"🐍 Using mmdc CLI (fallback method) to generate image...")
             
-            # Get local Mermaid library path
-            local_mermaid_path = _ensure_local_mermaid_library()
-            if local_mermaid_path:
-                mermaid_script_src = f"file://{local_mermaid_path}"
-                print_debug(f"🔧 Using local Mermaid library: {local_mermaid_path}")
-            else:
-                mermaid_script_src = "https://unpkg.com/mermaid@10/dist/mermaid.min.js"
-                print_debug(f"⚠️ Using remote Mermaid library as fallback")
-            
-            # Create HTML with Mermaid chart - 优化版本
-            html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Mermaid Chart</title>
-    <style>
-        body {{
-            margin: 0;
-            padding: 10px;
-            background: white;
-            font-family: "Microsoft YaHei", "SimHei", "SimSun", "Arial", sans-serif;
-        }}
-        .mermaid {{
-            background: white;
-            text-align: center;
-        }}
-        .mermaid svg {{
-            max-width: 100%;
-            height: auto;
-        }}
-    </style>
-</head>
-<body>
-    <div class="mermaid">{mermaid_code}</div>
-    <script src="{mermaid_script_src}"></script>
-    <script>
-        mermaid.initialize({{
-            startOnLoad: true,
-            theme: 'default',
-            fontFamily: 'Microsoft YaHei, SimHei, SimSun, Arial, sans-serif',
-            flowchart: {{
-                useMaxWidth: true,
-                htmlLabels: true
-            }},
-            securityLevel: 'loose'
-        }});
-    </script>
-</body>
-</html>"""
-            
-            # Create temporary HTML file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as temp_file:
-                temp_file.write(html_content)
-                temp_html_path = temp_file.name
+            # Create temporary mermaid file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.mmd', delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(mermaid_code)
+                temp_mermaid_path = temp_file.name
             
             try:
-                print(f"🔧 Launching browser...")
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=[
-                            '--no-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-gpu',
-                            '--disable-web-security',
-                            '--disable-extensions',
-                            '--disable-plugins',
-                            '--disable-images',
-                            '--disable-background-timer-throttling',
-                            '--disable-backgrounding-occluded-windows',
-                            '--disable-renderer-backgrounding',
-                            '--memory-pressure-off',
-                            '--max_old_space_size=4096'
-                        ]
-                    )
-                    page = browser.new_page()
-                    page.set_viewport_size({"width": 1200, "height": 800})
-                    
-                    print(f"🔧 Loading HTML file...")
-                    # Load HTML file with optimized settings
-                    file_url = f"file://{temp_html_path}"
-                    page.goto(file_url, wait_until="domcontentloaded", timeout=3000)
-                    
-                    print(f"🔧 Waiting for Mermaid to render...")
-                    # Wait for Mermaid to render with more precise conditions
-                    try:
-                        # Wait for SVG element to appear
-                        page.wait_for_selector(".mermaid svg", timeout=2000)
-                        # Wait for SVG to have actual content (not empty)
-                        page.wait_for_function(
-                            "document.querySelector('.mermaid svg').innerHTML.length > 0",
-                            timeout=2000
-                        )
-                    except Exception as e:
-                        print(f"⚠️ Waiting for SVG content failed: {e}")
-                        # Fallback: just wait a bit
-                        page.wait_for_timeout(200)
-                    
-                    print(f"🔧 Extracting SVG content and generating PNG...")
-                    
-                    svg_success = False
-                    png_success = False
-                    
-                    # Get the complete SVG element (not just innerHTML)
-                    svg_element = page.locator(".mermaid svg").first
-                    if svg_element:
-                        # Get the outer HTML (complete SVG tag)
-                        svg_content = svg_element.evaluate("el => el.outerHTML")
-                        if svg_content:
-                            # Fix XML issues: convert <br> to <br/> for proper XML formatting
-                            svg_content = svg_content.replace('<br>', '<br/>')
-                            
-                            # Add XML declaration and save SVG
-                            full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n{svg_content}'
-                            with open(svg_path, 'w', encoding='utf-8') as f:
-                                f.write(full_svg)
-                            print(f"✅ SVG content saved to {svg_path}")
-                            svg_success = True
-                        else:
-                            print(f"❌ No SVG content found in mermaid element")
-                    else:
-                        print(f"❌ No SVG element found")
-                    
-                    # Generate PNG if requested
-                    if png_path and svg_success:
-                        try:
-                            # Take screenshot of the mermaid element
-                            print(f"🔧 Taking PNG screenshot...")
-                            # Get the mermaid container element
-                            mermaid_element = page.locator(".mermaid").first
-                            if mermaid_element:
-                                # Take screenshot with padding
-                                png_bytes = mermaid_element.screenshot(
-                                    type="png",
-                                    path=str(png_path),
-                                    omit_background=True
-                                )
-                                print(f"✅ PNG screenshot saved to {png_path}")
-                                png_success = True
-                            else:
-                                print(f"❌ No mermaid element found for PNG screenshot")
-                        except Exception as e:
-                            print(f"⚠️ PNG screenshot failed: {e}")
-                    
-                    browser.close()
+                # Use mermaid CLI with neutral theme for fallback
+                cmd = [
+                    'mmdc',
+                    '-i', temp_mermaid_path,
+                    '-o', str(output_path),
+                    '-b', 'transparent',  # transparent background
+                    '--quiet',  # suppress output
+                    '-e', 'svg'  # explicitly set SVG format
+                ]
                 
-                # Check if files were created successfully
-                if svg_success and (not png_path or png_success):
-                    print(f"✅ Playwright generation successful")
-                    return svg_success, png_success
+                # Only add theme if the mermaid code doesn't have custom theme configuration
+                if not ('%%{init:' in mermaid_code and 'theme' in mermaid_code):
+                    cmd.extend(['-t', 'neutral'])  # use neutral theme for fallback only if no custom theme
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                # Check if command was successful and file was created
+                if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+                    print_debug(f"✅ CLI fallback generation successful")
+                    return True
                 else:
-                    print(f"❌ Playwright generation failed: SVG={svg_success}, PNG={png_success}")
-                    return svg_success, png_success
+                    print_debug(f"❌ CLI fallback generation failed: {result.stderr}")
+                    return False
                     
             finally:
                 # Clean up temporary file
                 try:
-                    import os
-                    os.unlink(temp_html_path)
+                    os.unlink(temp_mermaid_path)
                 except OSError:
                     pass
                 
         except Exception as e:
-            print(f"❌ Playwright generation failed: {e}")
-            import traceback
-            traceback.print_exc()
+            print_debug(f"❌ CLI fallback generation failed: {e}")
+            return False
+    
+    def _generate_mermaid_image_online(self, mermaid_code: str, output_path: Path) -> bool:
+        """
+        Generate Mermaid SVG image using online mermaid.ink API.
+        
+        Args:
+            mermaid_code: Mermaid chart code
+            output_path: Output SVG image path
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            print_debug(f"🌐 Using online mermaid.ink API to generate image...")
+            
+            # Encode Mermaid code to base64
+            encoded_code = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
+            # Use SVG endpoint for vector graphics
+            api_url = f"https://mermaid.ink/svg/{encoded_code}"
+            
+            # Download SVG
+            response = requests.get(api_url, timeout=30)
+            if response.status_code == 200:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(response.text)
+                print_debug(f"✅ Online API generation successful")
+                return True
+            else:
+                print_debug(f"❌ Online API failed, status code: {response.status_code}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            print_debug(f"❌ Network request failed: {e}")
+            return False
+        except Exception as e:
+            print_debug(f"❌ Online API generation failed: {e}")
             return False
     
     def has_mermaid_charts(self, md_file_path: str) -> bool:
