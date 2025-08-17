@@ -33,112 +33,16 @@ def _log_warning(message: str) -> None:
 
 def fix_json_escapes(json_str: str) -> str:
     """
-    Fix common escape issues in JSON strings to make them valid JSON.
+    Simplified JSON escape function - just returns the original string.
+    Complex regex processing has been removed to avoid catastrophic backtracking.
     
     Args:
-        json_str: Raw JSON string that may have escape issues
+        json_str: Raw JSON string
         
     Returns:
-        Fixed JSON string
+        Original JSON string (no processing)
     """
-    try:
-        # Try to parse as-is first - most of the time it's already valid
-        json.loads(json_str)
-        return json_str
-    except json.JSONDecodeError as e:
-        # Strategy 0: Smart quote escaping - escape all unescaped quotes in JSON values
-        try:
-            smart_fixed = smart_escape_quotes_in_json_values(json_str)
-            if smart_fixed != json_str:
-                json.loads(smart_fixed)
-                return smart_fixed
-        except json.JSONDecodeError:
-            pass
-        
-        # Apply more comprehensive fixes for common issues
-        fixed_json = json_str
-        
-        # Strategy 1: Fix unescaped characters in string values
-        def fix_string_content(match):
-            full_match = match.group(0)
-            quote_char = match.group(1)  # Opening quote
-            string_content = match.group(2)  # Content between quotes
-            closing_quote = match.group(3)  # Closing quote
-            
-            # Fix unescaped control characters
-            string_content = re.sub(r'(?<!\\)\n', '\\n', string_content)
-            string_content = re.sub(r'(?<!\\)\t', '\\t', string_content)
-            string_content = re.sub(r'(?<!\\)\r', '\\r', string_content)
-            string_content = re.sub(r'(?<!\\)\b', '\\b', string_content)
-            string_content = re.sub(r'(?<!\\)\f', '\\f', string_content)
-            
-            # Fix unescaped quotes (but not already escaped ones)
-            if quote_char == '"':
-                string_content = re.sub(r'(?<!\\)"', '\\"', string_content)
-            
-            # Fix unescaped backslashes (but not already escaped ones)
-            string_content = re.sub(r'(?<!\\)\\(?![\\"/bfnrt])', '\\\\', string_content)
-            
-            return f'{quote_char}{string_content}{closing_quote}'
-        
-        # Apply fixes to quoted strings - improved pattern to handle multiline content
-        string_pattern = r'(")((?:[^"\\]|\\.)*)(")'
-        fixed_json = re.sub(string_pattern, fix_string_content, fixed_json, flags=re.DOTALL)
-        
-        try:
-            # Test if our fixes worked
-            json.loads(fixed_json)
-            return fixed_json
-        except json.JSONDecodeError as e2:
-            # Strategy 2: Try to fix structural JSON issues
-            # Look for missing commas between object properties
-            fixed_json2 = fixed_json
-            
-            # Strategy 2a: Handle multiline strings specifically (common in code_edit parameters)
-            # For cases like: "code_edit": "def function():\n    return 1" "edit_mode": "replace"
-            # Pattern: multiline string value followed by key without comma
-            multiline_pattern = r'(":\s*"[^"]*(?:\\.[^"]*)*")\s+("[\w_]+":)'
-            fixed_json2 = re.sub(multiline_pattern, r'\1, \2', fixed_json2, flags=re.DOTALL)
-            
-            # Fix missing commas between key-value pairs with numbers/booleans
-            comma_pattern2 = r'(":\s*(?:\d+|true|false|null))\s+("[\w_]+":)'
-            fixed_json2 = re.sub(comma_pattern2, r'\1, \2', fixed_json2)
-            
-            # Fix missing commas between complex values
-            comma_pattern3 = r'(})\s+("[\w_]+":)'
-            fixed_json2 = re.sub(comma_pattern3, r'\1, \2', fixed_json2)
-            
-            # Special handling for edit_file tool parameters (common problematic case)
-            # Look for patterns specific to edit_file: target_file, edit_mode, code_edit
-            edit_file_pattern = r'("target_file":\s*"[^"]*")\s+("edit_mode":)'
-            fixed_json2 = re.sub(edit_file_pattern, r'\1, \2', fixed_json2)
-            
-            edit_file_pattern2 = r'("edit_mode":\s*"[^"]*")\s+("code_edit":)'
-            fixed_json2 = re.sub(edit_file_pattern2, r'\1, \2', fixed_json2)
-            
-            try:
-                json.loads(fixed_json2)
-                return fixed_json2
-            except json.JSONDecodeError as e3:
-                # Strategy 3: Specialized handling for long JSON with code content
-                try:
-                    specialized_fix = fix_long_json_with_code(json_str)
-                    if specialized_fix != json_str:
-                        json.loads(specialized_fix)
-                        return specialized_fix
-                except json.JSONDecodeError:
-                    pass
-                
-                # Strategy 4: Last resort - try to rebuild the JSON structure
-                try:
-                    rebuilt = rebuild_json_structure(json_str)
-                    if rebuilt != json_str:
-                        return rebuilt
-                except:
-                    pass
-                
-                # If all else fails, return the original
-                return json_str
+    return json_str
 
 
 def smart_escape_quotes_in_json_values(json_str: str) -> str:
@@ -507,20 +411,20 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         
         # Add header
         if language == 'zh':
-            prompt_parts.append("## 可用工具")
+            prompt_parts.append("## Available tools")
             prompt_parts.append("")
-            prompt_parts.append("您可以使用以下工具来完成任务。请使用JSON格式调用工具：")
+            prompt_parts.append("You can use the following tools to complete tasks. Please use JSON format to call tools:")
             prompt_parts.append("")
             prompt_parts.append("```json")
             prompt_parts.append("{")
-            prompt_parts.append('  "tool_name": "工具名称",')
+            prompt_parts.append('  "tool_name": "Tool name",')
             prompt_parts.append('  "parameters": {')
-            prompt_parts.append('    "参数名": "参数值"')
+            prompt_parts.append('    "Parameter name": "Parameter value"')
             prompt_parts.append("  }")
             prompt_parts.append("}")
             prompt_parts.append("```")
             prompt_parts.append("")
-            prompt_parts.append("### 工具列表：")
+            prompt_parts.append("### Tool list:")
         else:
             prompt_parts.append("## Available Tools")
             prompt_parts.append("")
@@ -548,17 +452,17 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
             
             # Tool header
             prompt_parts.append(f"#### {tool_name}")
-            prompt_parts.append(f"**描述**: {description}" if language == 'zh' else f"**Description**: {description}")
+            prompt_parts.append(f"**Description**: {description}" if language == 'zh' else f"**Description**: {description}")
             prompt_parts.append("")
             
             # Parameters
             if properties:
-                prompt_parts.append("**参数**:" if language == 'zh' else "**Parameters**:")
+                prompt_parts.append("**Parameters**:" if language == 'zh' else "**Parameters**:")
                 for param_name, param_def in properties.items():
                     param_type = param_def.get('type', 'string')
                     param_desc = param_def.get('description', 'No description')
                     param_required = param_name in required
-                    required_marker = " (必需)" if language == 'zh' else " (required)" if param_required else ""
+                    required_marker = " (Required)" if language == 'zh' else " (required)" if param_required else ""
                     
                     # Handle array type
                     if param_type == 'array':
@@ -569,12 +473,12 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
                 
                 prompt_parts.append("")
             else:
-                prompt_parts.append("**参数**: 无" if language == 'zh' else "**Parameters**: None")
+                prompt_parts.append("**Parameters**: None" if language == 'zh' else "**Parameters**: None")
                 prompt_parts.append("")
             
             # Example usage
             if language == 'zh':
-                prompt_parts.append("**使用示例**:")
+                prompt_parts.append("**Usage Example**:")
             else:
                 prompt_parts.append("**Example Usage**:")
             
@@ -618,12 +522,12 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         
         # Add footer instructions
         if language == 'zh':
-            prompt_parts.append("### 重要说明：")
-            prompt_parts.append("1. 请严格按照上述JSON格式调用工具")
-            prompt_parts.append("2. 工具名称必须完全匹配")
-            prompt_parts.append("3. 必需参数不能省略")
-            prompt_parts.append("4. 参数类型必须正确")
-            prompt_parts.append("5. 可以同时调用多个工具")
+            prompt_parts.append("### Important notes:")
+            prompt_parts.append("1. Please strictly follow the above JSON format to call tools")
+            prompt_parts.append("2. Tool name must match exactly")
+            prompt_parts.append("3. Required parameters cannot be omitted")
+            prompt_parts.append("4. Parameter types must be correct")
+            prompt_parts.append("5. Multiple tools can be called simultaneously")
         else:
             prompt_parts.append("### Important Notes:")
             prompt_parts.append("1. Please strictly follow the JSON format above for tool calls")

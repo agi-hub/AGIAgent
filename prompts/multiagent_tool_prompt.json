@@ -1,40 +1,28 @@
 {
-  "spawn_agibot": {
-    "description": "Spawn a new AGIBot instance to handle a specific task asynchronously. Useful for complex task decomposition and parallel execution.",
+  "spawn_agent": {
+    "description": "Spawn a new AGIBot agent to handle a specific task asynchronously in a shared workspace. All spawned agents run in the background for parallel execution. Useful for complex task decomposition and parallel execution.",
     "parameters": {
       "type": "object",
       "properties": {
         "task_description": {
           "type": "string",
-          "description": "Description of the task for the new AGIBot instance"
+          "description": "Description of the task for the new AGIBot agent"
         },
         "agent_id": {
           "type": "string",
           "description": "Custom agent ID (optional, will auto-generate if not provided). Must match format 'agent_XXX' where XXX is a 3-digit number"
         },
-        "output_directory": {
-          "type": "string",
-          "description": "Directory where the new AGIBot should save its output (optional, uses parent's if not provided)"
-        },
         "api_key": {
           "type": "string",
-          "description": "API key for the new instance (optional, will use current if not provided)"
+          "description": "API key for the new agent (optional, will use current if not provided)"
         },
         "model": {
           "type": "string",
-          "description": "Model name for the new instance (optional, will use current if not provided)"
+          "description": "Model name for the new agent (optional, will use current if not provided)"
         },
         "max_loops": {
           "type": "integer",
-          "description": "Maximum execution loops for the new instance (default: 25)"
-        },
-        "shared_workspace": {
-          "type": "boolean",
-          "description": "Whether to share parent's workspace directory (default: true)"
-        },
-        "wait_for_completion": {
-          "type": "boolean",
-          "description": "Whether to wait for completion before returning (default: false)"
+          "description": "Maximum execution loops for the new agent (default: 25)"
         },
         "MCP_config_file": {
           "type": "string",
@@ -48,8 +36,8 @@
       "required": ["task_description"]
     }
   },
-  "send_message_to_agent_or_manager": {
-    "description": "Send a direct message to a specific agent or manager for communication between agents. Use 'manager' as receiver_id to send messages to the manager.",
+  "send_P2P_message": {
+    "description": "Send a peer-to-peer (P2P) message to a specific agent or manager for direct communication. Use 'manager' as receiver_id to send messages to the manager. The content parameter is REQUIRED and must be provided as a string or object.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -57,41 +45,29 @@
           "type": "string",
           "description": "Target agent ID to send message to (use 'manager' for manager)"
         },
-        "message_type": {
-          "type": "string",
-          "description": "Message type (status_update, task_request, collaboration, broadcast, system, error)"
-        },
         "content": {
-          "type": "object",
-          "description": "Message content as dictionary"
-        },
-        "priority": {
           "type": "string",
-          "description": "Message priority (low, normal, high, urgent) - default: normal"
+          "description": "Message content as string. This is a REQUIRED parameter. Example: 'Hello, please respond to this message' or 'Task completed successfully'"
         }
       },
-      "required": ["receiver_id", "message_type", "content"]
+      "required": ["receiver_id", "content"]
     }
   },
-  "broadcast_message_to_agents": {
-    "description": "Send a message to all active agents in the system.",
+  "send_broadcast_message": {
+    "description": "Send a message to all active agents in the system. The content parameter is REQUIRED and must be provided as a string.",
     "parameters": {
       "type": "object",
       "properties": {
-        "message_type": {
-          "type": "string",
-          "description": "Message type for broadcast"
-        },
         "content": {
-          "type": "object",
-          "description": "Message content as dictionary"
+          "type": "string",
+          "description": "Message content as string. This is a REQUIRED parameter. Example: 'System maintenance in 5 minutes' or 'All agents please report status'"
         }
       },
-      "required": ["message_type", "content"]
+      "required": ["content"]
     }
   },
-  "get_agent_messages": {
-    "description": "Get messages from current agent's mailbox. Messages are automatically marked as read after retrieval.",
+  "read_received_messages": {
+    "description": "Fetch messages from your own mailbox, including broadcast messages and P2P messages. Messages are automatically marked as read after retrieval.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -110,7 +86,8 @@
       "properties": {
         "agent_id": {
           "type": "string",
-          "description": "ID of the agent sending the update"
+          "description": "ID of the agent sending the update. ALWAYS use 'current_agent' to auto-detect the correct agent ID.",
+          "default": "current_agent"
         },
         "round_number": {
           "type": "integer",
@@ -151,7 +128,7 @@
       "required": []
     }
   },
-  "terminate_agibot": {
+  "terminate_agent": {
     "description": "Terminate a specific AGIBot agent. Use 'self' or leave agent_id empty to terminate current agent. This sends a terminate signal to the agent, causing it to stop execution and clean up resources.",
     "parameters": {
       "type": "object",

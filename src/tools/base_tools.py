@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from .print_system import print_system, print_current
+from .print_system import print_system, print_current, print_error
 """
 Copyright (c) 2025 AGI Bot Research Group.
 
@@ -58,13 +58,34 @@ class BaseTools:
     def _init_code_parser(self):
         """Initialize code repository parser with background update enabled"""
         try:
+            # Only initialize code parser if we have a valid workspace_root
+            # Don't create code index for project root directory
+            if not self.workspace_root:
+                print_current("⚠️ No workspace_root specified, skipping code parser initialization")
+                self.code_parser = None
+                return
+                
+            # Check if workspace_root looks like a valid output directory
+            # (should contain or be a workspace directory)
+            workspace_path = os.path.abspath(self.workspace_root)
+            workspace_name = os.path.basename(workspace_path)
+            
+            # Only create code parser for workspace directories or directories containing workspace
+            is_workspace_dir = workspace_name == "workspace"
+            has_workspace_subdir = os.path.exists(os.path.join(workspace_path, "workspace"))
+            
+            if not (is_workspace_dir or has_workspace_subdir):
+                print_current(f"⚠️ Workspace path '{workspace_path}' doesn't appear to be a valid workspace directory, skipping code parser initialization")
+                self.code_parser = None
+                return
+            
             from .global_code_index_manager import get_global_code_index_manager
             
             # Use global code index manager
             manager = get_global_code_index_manager()
             
             self.code_parser = manager.get_parser(
-                workspace_root=self.workspace_root or os.getcwd(),
+                workspace_root=self.workspace_root,
                 supported_extensions=SUPPORTED_EXTENSIONS
             )
             
@@ -115,7 +136,7 @@ class BaseTools:
             from .terminal_tools import TerminalTools
             self.terminal_tools = TerminalTools(workspace_root=self.workspace_root)
         except Exception as e:
-            print_current(f"❌ Failed to initialize terminal tools: {e}")
+            print_error(f"❌ Failed to initialize terminal tools: {e}")
             self.terminal_tools = None
 
     def _init_sensor_collector(self):
@@ -143,7 +164,7 @@ class BaseTools:
             return self.sensor_collector.get_sensor_data(type, source, para)
         else:
             return {
-                'success': False,
+                'status': 'failed',
                 'data': None,
                 'dataformat': None,
                 'error': 'Sensor data collector not initialized',
@@ -165,7 +186,7 @@ class BaseTools:
             return self.terminal_tools.talk_to_user(query, timeout)
         else:
             return {
-                'status': 'error',
+                'status': 'failed',
                 'query': query,
                 'user_response': 'no user response',
                 'timeout': timeout,
@@ -251,7 +272,7 @@ class BaseTools:
                 # Update task status
                 update_result = todo_tools.update_task_status(task_id, status, description)
                 
-                if update_result['success']:
+                if update_result.get('status') == 'success':
                     result['success'] = True
                     result['message'] = update_result['message']
                     result['new_status'] = update_result.get('new_status')
@@ -263,7 +284,7 @@ class BaseTools:
                 # Get current progress
                 progress_result = todo_tools.get_task_progress()
                 
-                if progress_result['success']:
+                if progress_result.get('status') == 'success':
                     result['success'] = True
                     result['progress'] = progress_result
                     result['message'] = f"Progress: {progress_result['completion_percentage']}% complete"
@@ -274,7 +295,7 @@ class BaseTools:
                 # List all tasks
                 list_result = todo_tools.list_tasks()
                 
-                if list_result['success']:
+                if list_result.get('status') == 'success':
                     result['success'] = True
                     result['tasks'] = list_result['tasks']
                     result['total_count'] = list_result['total_count']
@@ -286,7 +307,7 @@ class BaseTools:
                 # Get next pending task
                 next_result = todo_tools.get_next_pending_task()
                 
-                if next_result['success']:
+                if next_result.get('status') == 'success':
                     result['success'] = True
                     result['next_task'] = next_result.get('next_task')
                     result['message'] = next_result.get('suggestion', next_result.get('message', ''))
@@ -341,6 +362,7 @@ class BaseTools:
             return result
             
         except Exception as e:
+            from datetime import datetime
             error_result = {
                 'success': False,
                 'action': action,

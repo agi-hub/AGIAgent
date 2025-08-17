@@ -31,7 +31,7 @@ class CodeSearchTools:
         if not hasattr(self, 'workspace_root'):
             self.workspace_root = None
     
-    def codebase_search(self, query: str, target_directories: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def workspace_search(self, query: str, target_directories: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
         """
         Use vector database and keyword database for semantic search to find the most relevant code snippets in the codebase.
         
@@ -49,7 +49,7 @@ class CodeSearchTools:
         
         if not self.code_parser:
             print_current(f"❌ Code parser not initialized, using basic search")
-            return self._fallback_codebase_search(query, target_directories)
+            return self._fallback_workspace_search(query, target_directories)
         
         try:
             # Expand query with both Chinese and English terms for better search
@@ -112,7 +112,7 @@ class CodeSearchTools:
             
         except Exception as e:
             print_current(f"❌ Semantic search failed: {e}, using basic search")
-            return self._fallback_codebase_search(query, target_directories)
+            return self._fallback_workspace_search(query, target_directories)
     
     def get_background_update_status(self) -> Dict[str, Any]:
         """
@@ -245,25 +245,25 @@ class CodeSearchTools:
         """
         # Map Chinese terms to English equivalents for better code search
         chinese_to_english = {
-            '多agent': 'multi agent multiagent',
-            '建立': 'create build establish setup',
-            '通信': 'communication message communicate',
-            '实现': 'implement implementation',
-            '方式': 'method way approach',
-            '系统': 'system',
-            '管理': 'manage management',
-            '处理': 'process handle',
-            '配置': 'config configuration',
-            '模块': 'module',
-            '类': 'class',
-            '函数': 'function',
-            '方法': 'method',
-            '接口': 'interface',
-            '服务': 'service',
-            '客户端': 'client',
-            '服务器': 'server',
-            '网络': 'network',
-            '协议': 'protocol'
+            'Multi-agent': 'multi agent multiagent',
+            'Establish': 'create build establish setup',
+            'Communication': 'communication message communicate',
+            'Implementation': 'implement implementation',
+            'Method': 'method way approach',
+            'System': 'system',
+            'Management': 'manage management',
+            'Processing': 'process handle',
+            'Configuration': 'config configuration',
+            'Module': 'module',
+            'Class': 'class',
+            'Function': 'function',
+            'Method': 'method',
+            'Interface': 'interface',
+            'Service': 'service',
+            'Client': 'client',
+            'Server': 'server',
+            'Network': 'network',
+            'Protocol': 'protocol'
         }
         
         expanded_terms = [query]
@@ -276,9 +276,9 @@ class CodeSearchTools:
         # Add related programming terms
         if 'agent' in query.lower():
             expanded_terms.extend(['agent', 'spawn', 'worker', 'process', 'thread'])
-        if '通信' in query or 'communication' in query.lower():
+        if 'Communication' in query or 'communication' in query.lower():
             expanded_terms.extend(['message', 'queue', 'channel', 'socket', 'rpc'])
-        if '建立' in query or 'create' in query.lower():
+        if 'Establish' in query or 'create' in query.lower():
             expanded_terms.extend(['initialize', 'setup', 'spawn', 'start'])
         
         return ' '.join(expanded_terms)
@@ -308,19 +308,19 @@ class CodeSearchTools:
                 continue
                 
             # Skip files with very high non-ASCII ratio (likely data files)
-            content = segment.content
-            if content:
-                non_ascii_count = sum(1 for char in content if ord(char) > 127)
-                if len(content) > 0 and non_ascii_count / len(content) > 0.7:
-                    continue
+            #content = segment.content
+            #if content:
+            #    non_ascii_count = sum(1 for char in content if ord(char) > 127)
+            #    if len(content) > 0 and non_ascii_count / len(content) > 0.7:
+            #        continue
             
             # Boost score for code files
-            if any(ext in file_path for ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.h']):
-                result.score *= 1.2
+            #if any(ext in file_path for ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.h']):
+            #    result.score *= 1.2
             
             # Boost score for files with relevant keywords
-            if any(keyword in content.lower() for keyword in ['agent', 'communication', 'spawn', 'process']):
-                result.score *= 1.1
+            #if any(keyword in content.lower() for keyword in ['agent', 'communication', 'spawn', #'process']):
+            #    result.score *= 1.1
             
             filtered_results.append(result)
         
@@ -329,7 +329,7 @@ class CodeSearchTools:
         
         return filtered_results
 
-    def _fallback_codebase_search(self, query: str, target_directories: List[str] = None) -> Dict[str, Any]:
+    def _fallback_workspace_search(self, query: str, target_directories: List[str] = None) -> Dict[str, Any]:
         """
         Basic search implementation (fallback option)
         """

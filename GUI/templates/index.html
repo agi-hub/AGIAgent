@@ -4,11 +4,215 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ i18n.app_title.replace(' GUI', '') }}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
     <!-- Prism.js for syntax highlighting -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
+    <!-- Custom Prism.js override styles for better visibility -->
+    <style>
+        /* Override Prism.js with dark theme for code preview */
+        .preview-modal code[class*="language-"],
+        .preview-modal pre[class*="language-"] {
+            color: #ffffff !important;
+            background: #1e1e1e !important;
+            font-weight: normal !important;
+        }
+        
+        .preview-modal pre[class*="language-"] {
+            background: #1e1e1e !important;
+            border: 1px solid #404040 !important;
+        }
+        
+        .preview-modal :not(pre) > code[class*="language-"] {
+            background: #2d2d2d !important;
+            color: #ffffff !important;
+            font-weight: normal !important;
+        }
+        
+        /* Syntax highlighting tokens with vibrant colors for dark theme */
+        .preview-modal .token.comment,
+        .preview-modal .token.prolog,
+        .preview-modal .token.doctype,
+        .preview-modal .token.cdata {
+            color: #6a9955 !important;
+        }
+        
+        .preview-modal .token.punctuation {
+            color: #d4d4d4 !important;
+        }
+        
+        .preview-modal .token.property,
+        .preview-modal .token.tag,
+        .preview-modal .token.constant,
+        .preview-modal .token.symbol,
+        .preview-modal .token.deleted {
+            color: #569cd6 !important;
+        }
+        
+        .preview-modal .token.boolean,
+        .preview-modal .token.number {
+            color: #b5cea8 !important;
+        }
+        
+        .preview-modal .token.selector,
+        .preview-modal .token.attr-name,
+        .preview-modal .token.string,
+        .preview-modal .token.char,
+        .preview-modal .token.builtin,
+        .preview-modal .token.inserted {
+            color: #ce9178 !important;
+        }
+        
+        .preview-modal .token.operator,
+        .preview-modal .token.entity,
+        .preview-modal .token.url,
+        .preview-modal .language-css .token.string,
+        .preview-modal .style .token.string {
+            color: #d4d4d4 !important;
+        }
+        
+        .preview-modal .token.atrule,
+        .preview-modal .token.attr-value,
+        .preview-modal .token.keyword {
+            color: #c586c0 !important;
+        }
+        
+        .preview-modal .token.function,
+        .preview-modal .token.class-name {
+            color: #dcdcaa !important;
+        }
+        
+        .preview-modal .token.regex,
+        .preview-modal .token.important,
+        .preview-modal .token.variable {
+            color: #9cdcfe !important;
+        }
+        
+        .preview-modal .token.important,
+        .preview-modal .token.bold {
+            font-weight: bold !important;
+        }
+        
+        .preview-modal .token.italic {
+            font-style: italic !important;
+        }
+    </style>
     <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
+    <!-- MathJax for mathematical formulas with fallback -->
+    <script>
+        // MathJax配置
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+                ignoreHtmlClass: 'tex2jax_ignore',
+                processHtmlClass: 'tex2jax_process'
+            },
+            startup: {
+                ready() {
+                    MathJax.startup.defaultReady();
+                    console.log('✅ MathJax loaded successfully from CDN');
+                    window.mathJaxAvailable = true;
+                }
+            }
+        };
+
+        // MathJax加载状态
+        window.mathJaxAvailable = false;
+        window.mathJaxLoadAttempted = false;
+
+        // Fallback: 简单的数学公式文本替换
+        function fallbackMathRendering(element) {
+            if (!element) return;
+            
+            // 简单的LaTeX到文本的转换
+            const mathReplacements = {
+                // 希腊字母
+                '\\\\alpha': 'α', '\\\\beta': 'β', '\\\\gamma': 'γ', '\\\\delta': 'δ',
+                '\\\\epsilon': 'ε', '\\\\theta': 'θ', '\\\\lambda': 'λ', '\\\\mu': 'μ',
+                '\\\\pi': 'π', '\\\\sigma': 'σ', '\\\\phi': 'φ', '\\\\omega': 'ω',
+                
+                // 数学符号
+                '\\\\sum': '∑', '\\\\prod': '∏', '\\\\int': '∫',
+                '\\\\infty': '∞', '\\\\pm': '±', '\\\\mp': '∓',
+                '\\\\leq': '≤', '\\\\geq': '≥', '\\\\neq': '≠',
+                '\\\\approx': '≈', '\\\\equiv': '≡',
+                
+                // 上下标简化处理
+                '\\\\^\\{([^}]+)\\}': '^($1)',
+                '_\\{([^}]+)\\}': '_($1)',
+                
+                // 分数简化
+                '\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}': '($1)/($2)',
+                
+                // 平方根
+                '\\\\sqrt\\{([^}]+)\\}': '√($1)',
+                
+                // 移除多余的反斜杠和花括号
+                '\\\\\\\\': '\\\\',
+                '\\{': '',
+                '\\}': ''
+            };
+            
+            let content = element.innerHTML;
+            
+            // 处理行内数学公式 $...$
+            content = content.replace(/\$([^$]+)\$/g, function(match, formula) {
+                let processed = formula;
+                for (let pattern in mathReplacements) {
+                    processed = processed.replace(new RegExp(pattern, 'g'), mathReplacements[pattern]);
+                }
+                return '<span style="font-style: italic; color: #0066cc; background: #f0f8ff; padding: 1px 3px; border-radius: 2px;" title="">' + processed + '</span>';
+            });
+            
+            // 处理块级数学公式 $$...$$
+            content = content.replace(/\$\$([^$]+)\$\$/g, function(match, formula) {
+                let processed = formula;
+                for (let pattern in mathReplacements) {
+                    processed = processed.replace(new RegExp(pattern, 'g'), mathReplacements[pattern]);
+                }
+                return '<div style="text-align: center; font-style: italic; color: #0066cc; background: #f0f8ff; padding: 8px; margin: 10px 0; border-radius: 4px; border-left: 3px solid #0066cc;" title="">' + processed + '</div>';
+            });
+            
+            element.innerHTML = content;
+        }
+
+        // 智能数学渲染函数
+        function renderMath(element) {
+            if (window.mathJaxAvailable && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                // 使用MathJax渲染
+                return MathJax.typesetPromise([element]).catch(function (err) {
+                    console.warn('❌ MathJax rendering failed, using fallback:', err);
+                    fallbackMathRendering(element);
+                });
+            } else {
+                // 使用fallback渲染
+                console.log('📝 Using fallback math rendering (MathJax unavailable)');
+                fallbackMathRendering(element);
+                return Promise.resolve();
+            }
+        }
+
+        // 检测MathJax加载状态
+        function checkMathJaxStatus() {
+            setTimeout(function() {
+                if (!window.mathJaxAvailable && window.mathJaxLoadAttempted) {
+                    console.warn('⚠️ MathJax failed to load from CDN, fallback mode activated');
+                    // 静默处理，不显示用户提示
+                }
+            }, 3000); // 3秒后检查
+        }
+    </script>
+    
+    <!-- 尝试加载MathJax CDN -->
+    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mtml-chtml.js" 
+            onload="window.mathJaxLoadAttempted = true; checkMathJaxStatus();"
+            onerror="window.mathJaxLoadAttempted = true; console.error('❌ Failed to load MathJax from primary CDN'); checkMathJaxStatus();"></script>
     <style>
         * {
             margin: 0;
@@ -24,9 +228,150 @@
             color: #cccccc;
         }
 
+        /* User authentication area styles */
+        .user-auth-area {
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 50px;
+        }
+
+        .user-auth-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .user-auth-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .api-key-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .api-key-group label {
+            color: #cccccc;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        .api-key-input {
+            padding: 6px 12px;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            background: #1e1e1e;
+            color: #cccccc;
+            font-size: 0.9em;
+            width: 200px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .api-key-input:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+        }
+
+        .api-key-input::placeholder {
+            color: #6a6a6a;
+        }
+
+        .connect-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .connect-btn.connect {
+            background: #28a745;
+            color: white;
+        }
+
+        .connect-btn.connect:hover {
+            background: #218838;
+        }
+
+        .connect-btn.disconnect {
+            background: #dc3545;
+            color: white;
+        }
+
+        .connect-btn.disconnect:hover {
+            background: #c82333;
+        }
+
+        .connect-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+            color: #9cdcfe;
+        }
+
+        .user-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .user-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .user-status-indicator.connected {
+            background: #28a745;
+            animation: pulse-green 2s infinite;
+        }
+
+        .user-status-indicator.connected.guest {
+            background: #ff5722;
+            animation: pulse-red 2s infinite;
+        }
+
+        .user-status-indicator.connecting {
+            background: #ffc107;
+            animation: pulse-orange 1s infinite;
+        }
+
+        .user-status-indicator.error {
+            background: #dc3545;
+        }
+
         .container {
             display: flex;
-            height: 100vh;
+            height: calc(100vh - 50px);  /* Subtract auth area height */
             background: #252526;
         }
 
@@ -148,6 +493,42 @@
             100% { opacity: 1; }
         }
 
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+            }
+        }
+
+        @keyframes pulse-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 87, 34, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0);
+            }
+        }
+
+        @keyframes pulse-orange {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+            }
+        }
+
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -159,7 +540,7 @@
             margin-bottom: 15px;
             padding: 12px 16px;
             border-radius: 6px;
-            max-width: 80%;
+            max-width: 95%;
             word-wrap: break-word;
             animation: fadeIn 0.3s ease-in;
             white-space: pre-wrap;
@@ -213,6 +594,13 @@
             background: #0f5132;
             color: #75b798;
             border-left: 3px solid #198754;
+        }
+
+        .message.normal {
+            background: transparent;
+            color: #cccccc;
+            border: none;
+            padding: 2px 0;
         }
 
 
@@ -289,6 +677,10 @@
         /* Specific button hover effects */
         #planButton:hover:not(:disabled) {
             background: #f57c00;
+        }
+
+        #clearChatButton:hover:not(:disabled) {
+            background: #5a6268;
         }
 
         .sidebar-header {
@@ -948,13 +1340,236 @@
                 transform: translateY(-2px);
             }
         }
+
+        /* Markdown预览样式 */
+        #markdownPreview h1,
+        #markdownPreview h2,
+        #markdownPreview h3,
+        #markdownPreview h4,
+        #markdownPreview h5,
+        #markdownPreview h6 {
+            color: #24292f;
+            margin: 24px 0 16px 0;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        #markdownPreview h1 {
+            font-size: 2em;
+            border-bottom: 1px solid #d0d7de;
+            padding-bottom: 0.3em;
+        }
+
+        #markdownPreview h2 {
+            font-size: 1.5em;
+            border-bottom: 1px solid #d0d7de;
+            padding-bottom: 0.3em;
+        }
+
+        #markdownPreview h3 {
+            font-size: 1.25em;
+        }
+
+        #markdownPreview p {
+            margin: 16px 0;
+            line-height: 1.6;
+        }
+
+        #markdownPreview a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        #markdownPreview a:hover {
+            text-decoration: underline;
+        }
+
+        #markdownPreview ul,
+        #markdownPreview ol {
+            margin: 16px 0;
+            padding-left: 32px;
+        }
+
+        #markdownPreview li {
+            margin: 4px 0;
+        }
+
+        #markdownPreview blockquote {
+            margin: 16px 0;
+            padding: 0 16px;
+            border-left: 4px solid #30363d;
+            color: #8b949e;
+        }
+
+        #markdownPreview table {
+            border-collapse: collapse;
+            margin: 16px 0;
+            width: 100%;
+        }
+
+        #markdownPreview th,
+        #markdownPreview td {
+            border: 1px solid #30363d;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        #markdownPreview th {
+            background-color: #e9ecef;
+            font-weight: 600;
+        }
+
+        #markdownPreview tr:nth-child(even) {
+            background-color: #f6f8fa;
+        }
+
+        #markdownPreview code {
+            background-color: #2d2d2d;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-size: 85%;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            color: #ffffff !important;
+            font-weight: 500 !important;
+        }
+
+        #markdownPreview hr {
+            border: none;
+            height: 1px;
+            background-color: #d0d7de;
+            margin: 24px 0;
+        }
+
+        /* MathJax样式 */
+        .MathJax {
+            color: #24292f !important;
+        }
+
+        .MathJax_Display {
+            margin: 16px 0 !important;
+        }
+
+        /* 代码块样式增强 */
+        #markdownPreview pre {
+            background-color: #1e1e1e !important;
+            border: 1px solid #404040;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        #markdownPreview pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            color: #ffffff !important;
+            font-weight: 500 !important;
+            font-size: 14px !important;
+        }
+
+        /* 覆盖Prism.js语法高亮颜色，适配深色主题 */
+        #markdownPreview .token.comment,
+        #markdownPreview .token.prolog,
+        #markdownPreview .token.doctype,
+        #markdownPreview .token.cdata {
+            color: #6a9955 !important;
+        }
+
+        #markdownPreview .token.punctuation {
+            color: #d4d4d4 !important;
+        }
+
+        #markdownPreview .token.property,
+        #markdownPreview .token.tag,
+        #markdownPreview .token.boolean,
+        #markdownPreview .token.number,
+        #markdownPreview .token.constant,
+        #markdownPreview .token.symbol {
+            color: #569cd6 !important;
+        }
+
+        #markdownPreview .token.selector,
+        #markdownPreview .token.attr-name,
+        #markdownPreview .token.string,
+        #markdownPreview .token.char,
+        #markdownPreview .token.builtin {
+            color: #ce9178 !important;
+        }
+
+        #markdownPreview .token.operator,
+        #markdownPreview .token.entity,
+        #markdownPreview .token.url,
+        #markdownPreview .language-css .token.string,
+        #markdownPreview .style .token.string {
+            color: #d4d4d4 !important;
+        }
+
+        #markdownPreview .token.atrule,
+        #markdownPreview .token.attr-value,
+        #markdownPreview .token.keyword {
+            color: #c586c0 !important;
+        }
+
+        #markdownPreview .token.function,
+        #markdownPreview .token.class-name {
+            color: #dcdcaa !important;
+        }
+
+        #markdownPreview .token.regex,
+        #markdownPreview .token.important,
+        #markdownPreview .token.variable {
+            color: #9cdcfe !important;
+        }
     </style>
 </head>
 <body>
+    <!-- User Authentication Area -->
+    <div class="user-auth-area">
+        <div class="user-auth-left">
+            <div class="logo-group">
+                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
+                <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
+            </div>
+        </div>
+        <div class="user-auth-right">
+            <div class="api-key-group">
+                <label for="modelSelect">
+                    <i class="fas fa-brain"></i>
+                    {{ i18n.model_label }}
+                </label>
+                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 220px;">
+                    <option value="claude-sonnet-4-0" selected>{{ i18n.model_claude_sonnet }}</option>
+                    <option value="gpt-4.1">{{ i18n.model_gpt_4 }}</option>
+                </select>
+            </div>
+            <div class="api-key-group">
+                <label for="apiKeyInput">
+                    <i class="fas fa-key"></i>
+                    {{ i18n.api_key_label }}
+                </label>
+                <input type="password" id="apiKeyInput" class="api-key-input" 
+                       placeholder="{{ i18n.api_key_placeholder }}" 
+                       title="{{ i18n.api_key_tooltip }}">
+            </div>
+            <button id="connectBtn" class="connect-btn connect">
+                <i class="fas fa-plug"></i>
+                <span>{{ i18n.connect_btn }}</span>
+            </button>
+            <div class="user-info">
+                <div class="user-status">
+                    <div class="user-status-indicator" id="userStatusIndicator"></div>
+                    <span id="userStatusText">{{ i18n.user_disconnected }}</span>
+                </div>
+                <span id="userIdentity" style="margin-left: 10px;"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="main-content">
-            <div class="header">
-                <h1><i class="fas fa-robot"></i> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+            <div class="header" style="display: none;">
+                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -1016,6 +1631,9 @@
                     <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
                         <i class="fas fa-stop"></i>
                     </button>
+                    <button class="send-button" id="clearChatButton" style="background-color: #6c757d;" title="{{ i18n.clear_chat_tooltip }}">
+                        <i class="fas fa-broom"></i>
+                    </button>
                 </div>
                 
                 <!-- GUI Configuration Options -->
@@ -1026,11 +1644,11 @@
                     </div>
                     <div class="config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85em;">
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
-                            <input type="checkbox" id="enableWebSearch" style="margin: 0;">
+                            <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
-                            <input type="checkbox" id="enableKnowledgeBase" style="margin: 0;">
+                            <input type="checkbox" id="enableKnowledgeBase" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_knowledge_base', '搜索知识库' if lang == 'zh' else 'Knowledge Base') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
@@ -1038,7 +1656,7 @@
                             <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
-                            <input type="checkbox" id="enableLongTermMemory" style="margin: 0;">
+                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
@@ -1049,7 +1667,19 @@
                             <input type="checkbox" id="enableJieba" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
                         </label>
+
                     </div>
+                </div>
+                
+                <!-- Routine file selection (moved from config panel) -->
+                <div style="margin-top: 10px; padding: 10px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
+                    <label for="routineSelect" style="color: #cccccc; white-space: nowrap; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-file-text"></i>
+                        {{ i18n.get('routine_file', '指导文件' if lang == 'zh' else 'Routine File') }}:
+                    </label>
+                    <select id="routineSelect" style="flex: 1; padding: 6px 10px; border: 1px solid #3e3e42; border-radius: 4px; background: #1e1e1e; color: #cccccc; font-size: 0.9em; min-width: 150px;">
+                        <option value="">{{ i18n.get('no_routine', '无' if lang == 'zh' else 'None') }}</option>
+                    </select>
                 </div>
                 
                 <div id="taskModeInfo" style="margin-top: 10px; font-size: 0.9em; color: #666; text-align: center;">
@@ -1159,22 +1789,33 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+    <script id="i18nData" type="application/json">{{ i18n | tojson }}</script>
     <script>
         // Internationalization configuration
-        const I18N = {{ i18n | tojson }};
+        const I18N = JSON.parse(document.getElementById('i18nData').textContent);
         const CURRENT_LANG = '{{ lang }}';
     </script>
     <script>
-        // Socket.IO connection configuration
-        const socket = io({
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 5,
-            timeout: 20000,
-            forceNew: true
-        });
+        // User connection management
+        let socket = null;
+        let currentUser = null;
+        let isConnected = false;
+        
+        // Socket.IO connection configuration (will be initialized when user connects)
+        function createSocket(apiKey) {
+            return io({
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                timeout: 20000,
+                forceNew: true,
+                auth: {
+                    api_key: apiKey || null
+                }
+            });
+        }
         
         // DOM elements
         const chatMessages = document.getElementById('chatMessages');
@@ -1184,9 +1825,17 @@
 
         const newTaskButton = document.getElementById('newTaskButton');
         const stopButton = document.getElementById('stopButton');
+        const clearChatButton = document.getElementById('clearChatButton');
         const statusIndicator = document.getElementById('statusIndicator');
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
+        
+        // User authentication elements
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const connectBtn = document.getElementById('connectBtn');
+        const userStatusIndicator = document.getElementById('userStatusIndicator');
+        const userStatusText = document.getElementById('userStatusText');
+        const userIdentity = document.getElementById('userIdentity');
 
         // State management
         let isTaskRunning = false;
@@ -1199,6 +1848,112 @@
         let refreshTimeout = null; // Debounce timer
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
+
+        // User connection management functions
+        function updateUserStatus(status, message, identity = '', isGuest = false) {
+            const statusClasses = {
+                'disconnected': '',
+                'connecting': 'connecting',
+                'connected': 'connected',
+                'error': 'error'
+            };
+            
+            let className = 'user-status-indicator ' + (statusClasses[status] || '');
+            if (status === 'connected' && isGuest) {
+                className += ' guest';
+                message = I18N.temporary_connection || '临时连接';
+            }
+            
+            userStatusIndicator.className = className;
+            userStatusText.textContent = message;
+            userIdentity.textContent = identity;
+            
+            // Update connect button
+            if (status === 'connected') {
+                connectBtn.className = 'connect-btn disconnect';
+                connectBtn.innerHTML = `<i class="fas fa-unlink"></i><span>${I18N.disconnect_btn}</span>`;
+                connectBtn.disabled = false;
+                isConnected = true;
+                
+                // Enable UI controls
+                enableUI(true);
+            } else if (status === 'connecting') {
+                connectBtn.disabled = true;
+                connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>${I18N.connecting}</span>`;
+                
+                // Disable UI controls
+                enableUI(false);
+            } else {
+                connectBtn.className = 'connect-btn connect';
+                connectBtn.innerHTML = `<i class="fas fa-plug"></i><span>${I18N.connect_btn}</span>`;
+                connectBtn.disabled = false;
+                isConnected = false;
+                
+                // Disable UI controls
+                enableUI(false);
+            }
+        }
+        
+        function enableUI(enabled) {
+            userInput.disabled = !enabled || isTaskRunning;
+            sendButton.disabled = !enabled || isTaskRunning;
+            planButton.disabled = !enabled || isTaskRunning;
+            newTaskButton.disabled = !enabled || isTaskRunning;
+            
+            // Enable/disable directory operations
+            const actionBtns = document.querySelectorAll('.directory-item .action-btn');
+            actionBtns.forEach(btn => {
+                btn.disabled = !enabled;
+            });
+        }
+        
+        function connectUser() {
+            const apiKey = apiKeyInput.value.trim();
+            
+            updateUserStatus('connecting', I18N.connecting);
+            
+            // Create socket connection
+            socket = createSocket(apiKey);
+            currentUser = apiKey || 'default';
+            
+            // Setup socket event listeners
+            setupSocketListeners();
+            
+            // Attempt to connect
+            socket.connect();
+        }
+        
+        function disconnectUser() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            currentUser = null;
+            updateUserStatus('disconnected', I18N.user_disconnected);
+            
+            // Clear saved session from localStorage
+            try {
+                localStorage.removeItem('agibot_api_key');
+                console.log('🗑️ Cleared saved session from localStorage');
+            } catch (error) {
+                console.warn('⚠️ Failed to clear session from localStorage:', error);
+            }
+            
+            // Clear chat messages
+            chatMessages.innerHTML = `
+                <div class="message system">
+                    <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                    ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                </div>
+            `;
+            
+            // Clear directory list
+            directoryList.innerHTML = '';
+            selectedDirectory = null;
+            taskMode = 'new';
+            updateTaskModeInfo();
+        }
 
         // File preview functionality
         const previewModal = document.getElementById('previewModal');
@@ -1223,114 +1978,184 @@
         // Auto-scroll status indicator
         const autoScrollIndicator = document.getElementById('autoScrollIndicator');
 
-        // Socket event listeners
-        socket.on('connect', function() {
-            addMessage(I18N.connected, 'system');
-            updateStatus('connected');
-            updateTaskModeInfo(); // Initialize task mode info display
-            // Ensure scroll to bottom after connection
-            setTimeout(() => {
-                scrollToBottom(false);
-            }, 100);
-            console.log('✅ Socket connected');
-        });
-
-        socket.on('disconnect', function(reason) {
-            addMessage(`${I18N.disconnected} (${reason})`, 'info');
-            updateStatus('disconnected');
-            console.log('❌ Socket disconnected:', reason);
-        });
-
-        socket.on('reconnect', function(attemptNumber) {
-            addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
-            updateStatus('connected');
-            console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
-        });
-
-        socket.on('reconnect_attempt', function(attemptNumber) {
-            console.log('🔄 Reconnection attempt', attemptNumber);
-        });
-
-        socket.on('reconnect_error', function(error) {
-            console.log('❌ Reconnection error:', error);
-        });
-
-        socket.on('reconnect_failed', function() {
-            addMessage(I18N.reconnect_failed, 'info');
-            console.log('❌ Reconnection failed');
-        });
-
-        socket.on('task_started', function(data) {
-            addMessage(data.message, 'info');
-            setTaskRunning(true);
-        });
-
-        socket.on('output', function(data) {
-            addMessage(data.message, data.type || 'info');
-        });
-
-        socket.on('task_completed', function(data) {
-            addMessage(data.message, data.success ? 'success' : 'error');
-            setTaskRunning(false);
+        // Setup socket event listeners
+        function setupSocketListeners() {
+            if (!socket) return;
             
-            // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
-            if (selectedDirectory) {
-                taskMode = 'selected';
-                // If the completed task directory is the selected directory, auto-expand it
-                if (data.output_dir && data.output_dir === selectedDirectory) {
-                    expandedDirectories.add(selectedDirectory);
+            socket.on('connect', function() {
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', I18N.user_connected, identity);
+                addMessage(I18N.connected, 'system');
+                updateStatus('connected');
+                updateTaskModeInfo(); // Initialize task mode info display
+                
+                // Save API key to localStorage for session restoration
+                try {
+                    if (currentUser && currentUser !== 'default') {
+                        localStorage.setItem('agibot_api_key', currentUser);
+                        console.log('💾 API key saved to localStorage for session restoration');
+                    } else {
+                        // For default user, save a special marker
+                        localStorage.setItem('agibot_api_key', '');
+                        console.log('💾 Default user session saved to localStorage');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Failed to save session to localStorage:', error);
                 }
-            } else {
-                taskMode = 'continue';
-                // If there's a working directory, auto-expand the latest directory
-                if (data.output_dir) {
-                    expandedDirectories.add(data.output_dir);
-                }
-            }
-            updateTaskModeInfo();
-            
-            // Refresh directory list with longer delay to ensure files are generated
-            setTimeout(() => {
+                
+                // Refresh directories for this user
                 refreshDirectories();
-            }, 2000);
-        });
+                
+                // 自动刷新已禁用，只使用手动刷新
+                // startAutoRefresh();
+                
+                // Ensure scroll to bottom after connection
+                setTimeout(() => {
+                    scrollToBottom(false);
+                }, 100);
+                console.log('✅ Socket connected for user:', currentUser);
+            });
+            
+            socket.on('status', function(data) {
+                const isGuest = data.is_guest || false;
+                const userName = data.user_name || 'unknown';
+                let identity = '';
+                
+                if (isGuest) {
+                    identity = I18N.guest_user || '访客用户';
+                } else {
+                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                }
+                
+                updateUserStatus('connected', I18N.user_connected, identity, isGuest);
+                console.log('✅ Socket status updated:', data);
+            });
 
-        socket.on('task_stopped', function(data) {
-            addMessage(data.message, data.type || 'error');
-            setTaskRunning(false);
-            // Keep current task mode
-            updateTaskModeInfo();
-            // Refresh directories after stopping task
-            setTimeout(refreshDirectories, 1000);
-        });
+            socket.on('disconnect', function(reason) {
+                updateUserStatus('disconnected', I18N.user_disconnected);
+                addMessage(`${I18N.disconnected} (${reason})`, 'info');
+                updateStatus('disconnected');
+                
+                // 自动刷新已禁用
+                // stopAutoRefresh();
+                
+                console.log('❌ Socket disconnected:', reason);
+            });
 
-        socket.on('error', function(data) {
-            addMessage(data.message, 'error');
-            setTaskRunning(false);
-        });
+            socket.on('reconnect', function(attemptNumber) {
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                updateUserStatus('connected', I18N.user_connected, identity);
+                addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
+                updateStatus('connected');
+                console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+            });
 
+            socket.on('reconnect_attempt', function(attemptNumber) {
+                updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber})`);
+                console.log('🔄 Reconnection attempt', attemptNumber);
+            });
 
+            socket.on('reconnect_error', function(error) {
+                updateUserStatus('error', I18N.user_connection_failed);
+                console.log('❌ Reconnection error:', error);
+            });
 
-        socket.on('directory_selected', function(data) {
-            selectedDirectory = data.dir_name;
-            if (selectedDirectory) {
-                taskMode = 'selected';
+            socket.on('reconnect_failed', function() {
+                updateUserStatus('error', I18N.user_connection_failed);
+                addMessage(I18N.reconnect_failed, 'info');
+                console.log('❌ Reconnection failed');
+            });
+            
+            socket.on('auth_failed', function(data) {
+                updateUserStatus('error', '认证失败');
+                addMessage('认证失败: ' + (data.message || '未知错误'), 'error');
+                console.log('❌ Authentication failed:', data);
+            });
+            
+            socket.on('connect_error', function(error) {
+                updateUserStatus('error', '连接错误');
+                addMessage('连接错误: ' + error.message, 'error');
+                console.log('❌ Connection error:', error);
+            });
+
+            socket.on('task_started', function(data) {
+                addMessage(data.message, 'info');
+                setTaskRunning(true);
+            });
+
+            socket.on('output', function(data) {
+                addMessage(data.message, data.type || 'info');
+            });
+
+            socket.on('task_completed', function(data) {
+                addMessage(data.message, data.success ? 'success' : 'error');
+                setTaskRunning(false);
+                
+                // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
+                if (selectedDirectory) {
+                    taskMode = 'selected';
+                    // If the completed task directory is the selected directory, auto-expand it
+                    if (data.output_dir && data.output_dir === selectedDirectory) {
+                        expandedDirectories.add(selectedDirectory);
+                    }
+                } else {
+                    taskMode = 'continue';
+                    // If there's a working directory, auto-expand the latest directory
+                    if (data.output_dir) {
+                        expandedDirectories.add(data.output_dir);
+                    }
+                }
                 updateTaskModeInfo();
-                refreshDirectories();
-            }
-        });
+                
+                // Refresh directory list with longer delay to ensure files are generated
+                setTimeout(() => {
+                    refreshDirectories();
+                }, 2000);
+            });
 
-        socket.on('directory_created', function(data) {
-            if (data.success) {
+            socket.on('task_stopped', function(data) {
+                addMessage(data.message, data.type || 'error');
+                setTaskRunning(false);
+                // Keep current task mode
+                updateTaskModeInfo();
+                // Refresh directories after stopping task
+                setTimeout(refreshDirectories, 1000);
+            });
+
+            socket.on('error', function(data) {
+                addMessage(data.message, 'error');
+                setTaskRunning(false);
+            });
+
+            socket.on('directory_selected', function(data) {
                 selectedDirectory = data.dir_name;
-                taskMode = 'selected';
-                addMessage(data.message, 'success');
-                updateTaskModeInfo();
-                refreshDirectories();
-            } else {
-                addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
-            }
-        });
+                if (selectedDirectory) {
+                    taskMode = 'selected';
+                    updateTaskModeInfo();
+                    refreshDirectories();
+                }
+            });
+
+            socket.on('directory_created', function(data) {
+                if (data.success) {
+                    selectedDirectory = data.dir_name;
+                    taskMode = 'selected';
+                    addMessage(data.message, 'success');
+                    updateTaskModeInfo();
+                    refreshDirectories();
+                } else {
+                    addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
+                }
+            });
+
+            socket.on('chat_cleared', function(data) {
+                if (data.success) {
+                    addMessage(data.message, 'success');
+                } else {
+                    addMessage(`${I18N.chat_cleared}: ${data.error}`, 'error');
+                }
+            });
+        }
 
         // Message handling
         let lastMessageType = null;
@@ -1381,6 +2206,12 @@
             // Special filtering: hide lines containing specific content
             if (message.trim() === '```' || message.trim() === '```xml') {
                 return; // Don't display these lines
+            }
+            
+            // Check if message contains warning and treat it as normal text
+            const messageLower = message.toLowerCase();
+            if (type === 'info' && (messageLower.includes('warning') || messageLower.includes('userwarning') || messageLower.includes('warnings.warn'))) {
+                type = 'normal'; // Use normal style for warning messages
             }
             
             const shouldScroll = shouldAutoScroll();
@@ -1487,9 +2318,9 @@
         }
 
         // Input handling
-        function sendMessage(planMode = false) {
+        async function sendMessage(planMode = false) {
             const message = userInput.value.trim();
-            if (!message || isTaskRunning) return;
+            if (!message || isTaskRunning || !socket || !isConnected) return;
 
             // In new mode, prompt user to create or select directory first
             if (taskMode === 'new') {
@@ -1497,54 +2328,196 @@
                 return;
             }
 
-            // Display execution mode information
-            let modeInfo = '';
-            if (planMode) {
-                modeInfo = I18N.plan_mode_suffix;
-                addMessage(`${message}${modeInfo}`, 'user');
-                addMessage(I18N.plan_mode_info, 'info');
-            } else {
-                addMessage(message, 'user');
-                addMessage(I18N.direct_mode_info, 'info');
-            }
+            // Get selected model
+            const selectedModel = document.getElementById('modelSelect').value;
             
-            // Get GUI configuration options
-            const guiConfig = {
-                enable_web_search: document.getElementById('enableWebSearch').checked,
-                enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
-                enable_multi_agent: document.getElementById('enableMultiAgent').checked,
-                enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
-                enable_mcp: document.getElementById('enableMCP').checked,
-                enable_jieba: document.getElementById('enableJieba').checked
-            };
-            
-            if (taskMode === 'selected' && selectedDirectory) {
-                socket.emit('execute_task', {
-                    requirement: message,
-                    type: 'selected',
-                    plan_mode: planMode,
-                    gui_config: guiConfig
+            // Validate configuration before execution
+            try {
+                const response = await fetch('/api/validate-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel
+                    })
                 });
-            } else {
-                socket.emit('execute_task', {
-                    requirement: message,
-                    type: 'continue',
-                    plan_mode: planMode,
-                    gui_config: guiConfig
-                });
-            }
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    addMessage(`${I18N.config_error_title}: ${result.error}`, 'error');
+                    return;
+                }
+                
+                // Configuration is valid, proceed with execution
+                
+                // Display execution mode information
+                let modeInfo = '';
+                if (planMode) {
+                    modeInfo = I18N.plan_mode_suffix;
+                    addMessage(`${message}${modeInfo}`, 'user');
+                    addMessage(I18N.plan_mode_info, 'info');
+                } else {
+                    addMessage(message, 'user');
+                    addMessage(I18N.direct_mode_info, 'info');
+                }
+                
+                // Get GUI configuration options
+                const guiConfig = {
+                    enable_web_search: document.getElementById('enableWebSearch').checked,
+                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
+                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
+                    enable_mcp: document.getElementById('enableMCP').checked,
+                    enable_jieba: document.getElementById('enableJieba').checked,
+                    routine_file: document.getElementById('routineSelect').value,
+                    // Add model configuration
+                    selected_model: selectedModel,
+                    model_api_key: result.config.api_key,
+                    model_api_base: result.config.api_base
+                };
+                
+                if (taskMode === 'selected' && selectedDirectory) {
+                    socket.emit('execute_task', {
+                        requirement: message,
+                        type: 'selected',
+                        plan_mode: planMode,
+                        gui_config: guiConfig
+                    });
+                } else {
+                    socket.emit('execute_task', {
+                        requirement: message,
+                        type: 'continue',
+                        plan_mode: planMode,
+                        gui_config: guiConfig
+                    });
+                }
 
-            userInput.value = '';
-            resizeTextarea();
+                userInput.value = '';
+                resizeTextarea();
+                
+            } catch (error) {
+                console.error('Configuration validation error:', error);
+                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+            }
         }
 
         function createNewDirectory() {
-            if (isTaskRunning) return;
+            if (isTaskRunning || !socket || !isConnected) return;
             
             socket.emit('create_new_directory');
         }
 
-        function executeSelectedTask() {
+        function clearChat() {
+            if (!socket || !isConnected) return;
+            
+            // Show confirmation dialog
+            if (confirm(I18N.confirm_clear_chat)) {
+                // Clear the chat messages immediately for better user experience
+                chatMessages.innerHTML = `
+                    <div class="message system">
+                        <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                        ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                    </div>
+                `;
+                
+                // Reset message tracking variables
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
+                // Reset scroll state
+                autoScrollEnabled = true;
+                updateAutoScrollIndicator();
+                
+                // Scroll to bottom
+                scrollToBottom(false);
+                
+                // Notify server
+                socket.emit('clear_chat');
+            }
+        }
+
+        /**
+         * 检查URL参数并自动登录
+         * 支持的URL参数：user, username, apikey, api_key
+         * 例如：http://localhost:5001/?user=testuser
+         *      http://localhost:5001/?apikey=abc123
+         */
+        function checkUrlAutoLogin() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                let apiKey = null;
+                
+                // 检查多种可能的参数名
+                const possibleKeys = ['apikey', 'api_key', 'user', 'username', 'key'];
+                for (const key of possibleKeys) {
+                    if (urlParams.has(key)) {
+                        apiKey = urlParams.get(key);
+                        console.log(`🔑 Found URL parameter '${key}': ${apiKey.substring(0, 8)}...`);
+                        break;
+                    }
+                }
+                
+                if (apiKey) {
+                    // 填入API Key输入框
+                    apiKeyInput.value = apiKey;
+                    
+                    // 延迟一点时间确保DOM完全加载
+                    setTimeout(() => {
+                        console.log('🚀 Auto-connecting with URL parameter...');
+                        connectUser();
+                        
+                        // 显示自动登录提示
+                        setTimeout(() => {
+                            addMessage(`🔗 ${I18N.auto_login_from_url || '已通过URL参数自动登录'}`, 'info');
+                        }, 1000);
+                    }, 500);
+                    
+                    return true; // 返回true表示找到了参数并尝试自动登录
+                }
+            } catch (error) {
+                console.error('❌ Error parsing URL parameters:', error);
+            }
+            
+            return false; // 返回false表示没有找到URL参数
+        }
+
+        /**
+         * 检查并恢复localStorage中保存的会话
+         * 当页面刷新时自动恢复上次的登录状态
+         */
+        function checkSessionRestore() {
+            try {
+                const savedApiKey = localStorage.getItem('agibot_api_key');
+                
+                if (savedApiKey !== null) { // null means no item, empty string is valid for default user
+                    console.log('🔄 Found saved session in localStorage');
+                    
+                    // 填入API Key输入框
+                    apiKeyInput.value = savedApiKey;
+                    
+                    // 延迟一点时间确保DOM完全加载
+                    setTimeout(() => {
+                        console.log('🚀 Auto-connecting with saved session...');
+                        connectUser();
+                        
+                        // 显示会话恢复提示
+                        setTimeout(() => {
+                            addMessage(`🔄 ${I18N.session_restored || '已恢复上次登录会话'}`, 'info');
+                        }, 1000);
+                    }, 500);
+                    
+                    return true; // 返回true表示找到了保存的会话并尝试恢复
+                }
+            } catch (error) {
+                console.error('❌ Error restoring session from localStorage:', error);
+            }
+            
+            return false; // 返回false表示没有找到保存的会话
+        }
+
+        async function executeSelectedTask() {
             const message = userInput.value.trim();
             if (!message || isTaskRunning) return;
 
@@ -1553,42 +2526,73 @@
                 return;
             }
 
-            addMessage(message, 'user');
+            // Get selected model
+            const selectedModel = document.getElementById('modelSelect').value;
             
-            // Get GUI configuration options
-            const guiConfig = {
-                enable_web_search: document.getElementById('enableWebSearch').checked,
-                enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
-                enable_multi_agent: document.getElementById('enableMultiAgent').checked,
-                enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
-                enable_mcp: document.getElementById('enableMCP').checked,
-                enable_jieba: document.getElementById('enableJieba').checked
-            };
-            
-            socket.emit('execute_task', {
-                requirement: message,
-                type: 'selected',
-                gui_config: guiConfig
-            });
+            // Validate configuration before execution
+            try {
+                const response = await fetch('/api/validate-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    addMessage(`${I18N.config_error_title}: ${result.error}`, 'error');
+                    return;
+                }
+                
+                // Configuration is valid, proceed with execution
+                addMessage(message, 'user');
+                
+                // Get GUI configuration options
+                const guiConfig = {
+                    enable_web_search: document.getElementById('enableWebSearch').checked,
+                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
+                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
+                    enable_mcp: document.getElementById('enableMCP').checked,
+                    enable_jieba: document.getElementById('enableJieba').checked,
+                    routine_file: document.getElementById('routineSelect').value,
+                    // Add model configuration
+                    selected_model: selectedModel,
+                    model_api_key: result.config.api_key,
+                    model_api_base: result.config.api_base
+                };
+                
+                socket.emit('execute_task', {
+                    requirement: message,
+                    type: 'selected',
+                    gui_config: guiConfig
+                });
 
-            userInput.value = '';
-            resizeTextarea();
+                userInput.value = '';
+                resizeTextarea();
+                
+            } catch (error) {
+                console.error('Configuration validation error:', error);
+                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+            }
         }
 
         function selectDirectory(dirName) {
-            // If the same directory is already selected, no need to repeat the operation
-            if (selectedDirectory === dirName) {
-                console.log(`📌 Directory ${dirName} already selected`);
-                return;
-            }
+            if (!socket || !isConnected) return;
             
             console.log(`🎯 Selecting directory: ${dirName}`);
+            
+            // 总是更新选择的目录，即使是同一个目录
             selectedDirectory = dirName;
             
             // Switch to selected directory mode
             taskMode = 'selected';
             
-            // Only select directory, don't automatically switch expand state
+            // 发送选择目录的请求
             socket.emit('select_directory', {
                 dir_name: dirName
             });
@@ -1606,6 +2610,14 @@
             updateTaskModeInfo();
             
             console.log(`✅ Directory selected: ${dirName}, mode: ${taskMode}`);
+        }
+
+        function selectAndToggleDirectory(dirName) {
+            // 先选择目录
+            selectDirectory(dirName);
+            
+            // 然后切换展开状态
+            toggleDirectory(dirName, null);
         }
 
         function updateTaskModeInfo() {
@@ -1635,6 +2647,23 @@
         }
 
         // Event listeners
+        connectBtn.addEventListener('click', function() {
+            if (isConnected) {
+                disconnectUser();
+            } else {
+                connectUser();
+            }
+        });
+
+        apiKeyInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!isConnected) {
+                    connectUser();
+                }
+            }
+        });
+
         sendButton.addEventListener('click', () => sendMessage(false));
 
         planButton.addEventListener('click', () => sendMessage(true));
@@ -1642,8 +2671,12 @@
         newTaskButton.addEventListener('click', createNewDirectory);
 
         stopButton.addEventListener('click', function() {
-            socket.emit('stop_task');
+            if (socket) {
+                socket.emit('stop_task');
+            }
         });
+
+        clearChatButton.addEventListener('click', clearChat);
 
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -1840,7 +2873,20 @@
             sidebarLoading.classList.add('show');
             directoryList.innerHTML = '';
             
-            fetch('/api/output-dirs')
+            // Include current user info in API call
+            const params = new URLSearchParams();
+            if (currentUser && currentUser !== 'default') {
+                params.set('api_key', currentUser);
+            }
+            
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch(`/api/output-dirs?${params}`, {
+                headers: headers
+            })
                 .then(response => response.json())
                 .then(data => {
                     sidebarLoading.classList.remove('show');
@@ -1897,11 +2943,17 @@
                     classes.push('current');
                     statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(当前执行)</span>';
                 }
-                if (dir.is_selected) {
+                
+                // 优先使用前端的selectedDirectory变量，这样可以确保新建目录后立即高亮正确
+                const isSelectedByFrontend = selectedDirectory === dir.name;
+                const isSelectedByBackend = dir.is_selected;
+                
+                if (isSelectedByFrontend || isSelectedByBackend) {
                     classes.push('selected');
                     statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(已选择)</span>';
                 }
-                if (dir.is_last && !dir.is_current && !dir.is_selected) {
+                
+                if (dir.is_last && !dir.is_current && !isSelectedByFrontend && !isSelectedByBackend) {
                     classes.push('last');
                     statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(上次使用)</span>';
                 }
@@ -1915,7 +2967,7 @@
                 return `
                     <div class="${classes.join(' ')}" data-dir="${dir.name}">
                         <div class="directory-header">
-                            <div class="directory-name" onclick="selectDirectory('${dir.name}')">
+                            <div class="directory-name" onclick="selectAndToggleDirectory('${dir.name}')">
                                 <i class="fas fa-folder"></i>
                                 ${dir.name}
                                 ${statusText}
@@ -1927,7 +2979,7 @@
                                 <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="上传文件到Workspace">
                                     <i class="fas fa-upload"></i>
                                 </button>
-                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除workspace_code_index）">
+                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除code_index）">
                                     <i class="fas fa-download"></i>
                                 </button>
                                 <button class="action-btn rename-btn" onclick="event.stopPropagation(); showRenameDialog('${dir.name}')" title="重命名目录">
@@ -1938,7 +2990,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="directory-info" onclick="selectDirectory('${dir.name}')">
+                        <div class="directory-info" onclick="selectAndToggleDirectory('${dir.name}')">
                             <div><i class="fas fa-clock"></i> ${dir.modified_time}</div>
                             <div><i class="fas fa-hdd"></i> ${dir.size}</div>
                         </div>
@@ -1961,9 +3013,9 @@
                 // 检查是否在特定目录下，如果是则添加灰色样式
                 const isInSpecialDir = file.path && (
                     file.path.includes('/web_search_result/') || 
-                    file.path.includes('/workspace_code_index/') ||
+                    file.path.includes('/code_index/') ||
                     file.path.includes('\\web_search_result\\') || 
-                    file.path.includes('\\workspace_code_index\\')
+                    file.path.includes('\\code_index\\')
                 );
                 const grayedClass = (file.type === 'file' && isInSpecialDir) ? ' grayed' : '';
                 
@@ -2039,7 +3091,15 @@
                 'txt': 'fas fa-file-alt',
                 'log': 'fas fa-file-alt',
                 'yaml': 'fas fa-code',
-                'yml': 'fas fa-code'
+                'yml': 'fas fa-code',
+                'png': 'fas fa-image',
+                'jpg': 'fas fa-image',
+                'jpeg': 'fas fa-image',
+                'gif': 'fas fa-image',
+                'svg': 'fas fa-image',
+                'bmp': 'fas fa-image',
+                'webp': 'fas fa-image',
+                'ico': 'fas fa-image'
             };
             return iconMap[ext] || 'fas fa-file';
         }
@@ -2051,11 +3111,12 @@
                     'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 
                     'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl', 
                     'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg', 
-                    'conf', 'toml', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'].includes(ext);
+                    'conf', 'toml', 'mmd', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
+                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico'].includes(ext);
         }
 
         function toggleDirectory(dirName, event) {
-            // 阻止事件冒泡
+            // 阻止事件冒泡（仅当有event时）
             if (event) {
                 event.stopPropagation();
                 event.preventDefault();
@@ -2066,12 +3127,14 @@
             
             // 获取DOM元素
             const tree = document.getElementById(`tree-${dirName}`);
+            const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
             const button = document.querySelector(`[data-dir="${dirName}"] .directory-actions button[title="展开/收起"]`);
             const icon = button ? button.querySelector('i') : null;
             
             console.log(`🔍 DOM elements:`, {
                 tree: tree,
                 treeId: `tree-${dirName}`,
+                directoryItem: directoryItem,
                 button: button,
                 icon: icon,
                 treeClasses: tree ? tree.className : 'null',
@@ -2095,6 +3158,9 @@
                 // 收起
                 tree.classList.remove('show');
                 expandedDirectories.delete(dirName);
+                if (directoryItem) {
+                    directoryItem.classList.remove('expanded');
+                }
                 if (icon) {
                     icon.className = 'fas fa-chevron-down';
                 }
@@ -2104,6 +3170,9 @@
                 // 展开
                 tree.classList.add('show');
                 expandedDirectories.add(dirName);
+                if (directoryItem) {
+                    directoryItem.classList.add('expanded');
+                }
                 if (icon) {
                     icon.className = 'fas fa-chevron-up';
                 }
@@ -2171,8 +3240,14 @@
         }
 
         function downloadDirectory(dirName) {
+            // Build URL with API key parameter - use currentUser like other API calls
+            let downloadUrl = `/api/download/${dirName}`;
+            if (currentUser && currentUser !== 'default') {
+                downloadUrl += `?api_key=${encodeURIComponent(currentUser)}`;
+            }
+            
             const link = document.createElement('a');
-            link.href = `/api/download/${dirName}`;
+            link.href = downloadUrl;
             link.download = `${dirName}.zip`;
             document.body.appendChild(link);
             link.click();
@@ -2219,8 +3294,14 @@
                 }
             }
             
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
             fetch(`/api/delete-directory/${dirName}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: headers
             })
             .then(response => response.json())
             .then(data => {
@@ -2242,7 +3323,7 @@
                     // 如果删除的是当前选择的目录，清理状态
                     if (selectedDirectory === dirName) {
                         selectedDirectory = null;
-                        taskMode = 'continue';
+                        taskMode = 'new';
                         updateTaskModeInfo();
                     }
                     
@@ -2299,7 +3380,14 @@
             
             console.log('🔍 Making API request to:', `/api/file/${filePath}`);
 
-            fetch(`/api/file/${filePath}`)
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+
+            fetch(`/api/file/${filePath}`, {
+                headers: headers
+            })
                 .then(response => {
                     console.log('🔍 API response status:', response.status, response.statusText);
                     if (!response.ok) {
@@ -2330,6 +3418,34 @@
 
         function displayFileContent(data, fileName) {
             const { content, type, language, size, file_path } = data;
+            // 如果API没有返回file_path，则使用全局变量currentFilePath作为备用
+            let actualFilePath = file_path || currentFilePath;
+            
+            // 重要修复：确保actualFilePath包含用户目录前缀（仅用于下载）
+            if (actualFilePath && currentUser && currentUser !== 'default') {
+                // 直接使用已知的用户目录（从后端计算得出）
+                const userDirName = KNOWN_USER_DIRECTORY;
+                
+                // 检查路径是否已经包含用户目录
+                if (!actualFilePath.startsWith(userDirName + '/') && !actualFilePath.startsWith('user_')) {
+                    actualFilePath = userDirName + '/' + actualFilePath;
+                }
+            }
+            
+            // 设置全局变量以便PDF下载使用
+            window.currentActualFilePath = actualFilePath;
+            // 同时保存原始路径用于预览
+            window.currentOriginalFilePath = file_path || currentFilePath;
+            
+            console.log('🔍 displayFileContent调试信息:');
+            console.log('  API返回的file_path:', file_path);
+            console.log('  当前的currentFilePath:', currentFilePath);
+            console.log('  当前用户:', currentUser);
+            console.log('  使用的用户目录:', currentUser && currentUser !== 'default' ? KNOWN_USER_DIRECTORY : 'N/A');
+            console.log('  最终的actualFilePath（用于下载）:', actualFilePath);
+            console.log('  原始文件路径（用于预览）:', window.currentOriginalFilePath);
+            console.log('  文件类型:', type);
+            console.log('  设置的全局变量window.currentActualFilePath:', window.currentActualFilePath);
             
             if (type === 'html') {
                 // 处理转义字符，然后转义引号
@@ -2343,27 +3459,211 @@
             } else if (type === 'markdown') {
                 // 处理转义字符
                 const processedContent = processFileContent(content);
-                const htmlContent = marked.parse(processedContent);
+                
+                // 配置marked.js以支持更好的渲染
+                const renderer = new marked.Renderer();
+                // 渲染前重置图片计数映射（用于精确替换第N次出现的链接）
+                window._mdHrefOccurrenceMap = {};
+                
+                // 自定义图像渲染，处理相对路径
+                renderer.image = function(href, title, text) {
+                    let src = href;
+                    
+                    // 使用原始文件路径进行图片路径计算（不包含用户目录前缀）
+                    const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath;
+                    
+                    // 只有在originalFilePath存在时才进行路径转换
+                    if (originalFilePath && href && !href.startsWith('http') && !href.startsWith('data:') && !href.startsWith('/api/')) {
+                        // 获取markdown文件的目录路径
+                        const currentDir = originalFilePath.substring(0, originalFilePath.lastIndexOf('/'));
+                        
+                        let imagePath;
+                        if (href.startsWith('./')) {
+                            imagePath = `${currentDir}/${href.substring(2)}`;
+                        } else if (href.startsWith('../')) {
+                            const pathParts = currentDir.split('/');
+                            let relativeParts = href.split('/');
+                            for (let part of relativeParts) {
+                                if (part === '..') {
+                                    pathParts.pop();
+                                } else if (part !== '.' && part !== '') {
+                                    pathParts.push(part);
+                                }
+                            }
+                            imagePath = pathParts.join('/');
+                        } else {
+                            // 普通相对路径，直接拼接
+                            imagePath = `${currentDir}/${href}`;
+                        }
+                        
+                        // Add API key parameter if available
+                        const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                        src = `/api/file/${imagePath}${apiKeyParam}`;
+                        console.log('Markdown image converted:', href, 'to:', src);
+                    }
+                    
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    // 计算当前href在markdown文本中的出现序号，用于后续仅替换对应一次
+                    let occIndex = 0;
+                    if (href) {
+                        occIndex = window._mdHrefOccurrenceMap[href] || 0;
+                        window._mdHrefOccurrenceMap[href] = occIndex + 1;
+                    }
+
+                    // 仅当原始markdown链接以 web_search_result/images 开头时，右侧添加“换一张”按钮
+                    if (href && href.startsWith('web_search_result/images')) {
+                        const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath || '';
+                        const currentDir = originalFilePath && originalFilePath.includes('/') ? originalFilePath.substring(0, originalFilePath.lastIndexOf('/')) : '';
+                        const containerStyle = 'display: flex; align-items: flex-start; gap: 8px;';
+                        const imgStyle = 'max-width: 100%; max-height: 1200px; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;';
+                        const btnStyle = 'background: #8e44ad; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap; height: fit-content;';
+                        const btnDangerStyle = 'background: #d32f2f; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap; height: fit-content;';
+                        return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
+                             + `<img src=\"${src}\" alt=\"${text || ''}\"${titleAttr} style=\"${imgStyle}\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\">`
+                             + `<div class=\"md-img-actions\" style=\"display:flex; flex-direction:column; gap:6px; margin: 10px 0;\">`
+                             +   `<button class=\"md-switch-btn\" style=\"${btnStyle}\" title=\"换一张\" onclick=\"switchWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\"><i class=\\\"fas fa-sync-alt\\\"></i> 换一张</button>`
+                             +   `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"去除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\">去除此图</button>`
+                             + `</div>`
+                             + `</div>`;
+                    }
+
+                    return `<img src="${src}" alt="${text || ''}"${titleAttr} style="max-width: 100%; max-height: 1200px; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;">`;
+                };
+                
+                // 自定义代码块渲染
+                renderer.code = function(code, language) {
+                    const validLanguage = language && typeof language === 'string' ? language : 'text';
+                    const escapedCode = escapeHtml(code);
+                    return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
+                };
+                
+                // 配置marked选项
+                marked.setOptions({
+                    renderer: renderer,
+                    highlight: function(code, lang) {
+                        if (typeof Prism !== 'undefined' && lang && Prism.languages[lang]) {
+                            try {
+                                return Prism.highlight(code, Prism.languages[lang], lang);
+                            } catch (e) {
+                                console.warn('Prism highlighting failed:', e);
+                                return escapeHtml(code);
+                            }
+                        }
+                        return escapeHtml(code);
+                    },
+                    breaks: true,
+                    gfm: true
+                });
+                
+                let htmlContent = marked.parse(processedContent);
+                
+                // 处理HTML中的img标签路径（处理HTML格式的图像引用）
+                const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath;
+                if (originalFilePath) {
+                    htmlContent = htmlContent.replace(/<img([^>]*)\ssrc=["']([^"']+)["']([^>]*)>/g, function(match, beforeSrc, src, afterSrc) {
+                        let newSrc = src;
+                        
+                        console.log('Processing image src:', src, 'in file:', originalFilePath);
+                        
+                        // 如果是相对路径，直接基于markdown文件路径进行拼接
+                        if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/api/')) {
+                            // 获取markdown文件的目录路径
+                            const currentDir = originalFilePath.substring(0, originalFilePath.lastIndexOf('/'));
+                            
+                            let imagePath;
+                            if (src.startsWith('./')) {
+                                imagePath = `${currentDir}/${src.substring(2)}`;
+                            } else if (src.startsWith('../')) {
+                                const pathParts = currentDir.split('/');
+                                let relativeParts = src.split('/');
+                                for (let part of relativeParts) {
+                                    if (part === '..') {
+                                        pathParts.pop();
+                                    } else if (part !== '.' && part !== '') {
+                                        pathParts.push(part);
+                                    }
+                                }
+                                imagePath = pathParts.join('/');
+                            } else {
+                                // 普通相对路径，直接拼接
+                                imagePath = `${currentDir}/${src}`;
+                            }
+                            
+                            // Add API key parameter if available
+                            const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                            newSrc = `/api/file/${imagePath}${apiKeyParam}`;
+                            console.log('Converted image path:', src, 'to:', newSrc);
+                        }
+                        
+                        return `<img${beforeSrc} src="${newSrc}"${afterSrc} style="max-width: 100%; max-height: 1200px; height: auto; object-fit: contain;">`;
+                    });
+                } else {
+                    console.warn('originalFilePath is not available, image paths will not be converted');
+                }
+                
+                const escapedContent = escapeHtml(processedContent);
+                
                 previewContent.innerHTML = `
-                    <div style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #9cdcfe;">
-                        文件大小: ${size} | 类型: Markdown
+                    <div style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #9cdcfe; display: flex; justify-content: space-between; align-items: center;">
+                        <span>文件大小: ${size} | 类型: Markdown</span>
+                        <div style="display: flex; gap: 5px; align-items: center;">
+                            <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;" title="重新从文件加载">
+                                <i class="fas fa-sync"></i> 重新加载
+                            </button>
+                            <button id="saveMarkdownBtn" onclick="saveCurrentMarkdown()" style="background: #ff9800; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;" title="保存当前Markdown文本">
+                                <i class="fas fa-save"></i> 保存
+                            </button>
+                            <button id="convertWordBtn" onclick="convertMarkdownToWord()" style="background: #2e7d32; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;" title="转换为Word文档">
+                                <i class="fas fa-file-word"></i> Word
+                            </button>
+                            <button id="convertPdfBtn" onclick="convertMarkdownToPdf()" style="background: #d32f2f; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;" title="转换为PDF文档">
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </button>
+                            <button id="markdownToggleBtn" onclick="toggleMarkdownMode()" style="background: #569cd6; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;">
+                                <i class="fas fa-eye"></i> 源码模式
+                            </button>
+                        </div>
                     </div>
-                    <div style="background: #1e1e1e; color: #cccccc; padding: 20px; border-radius: 5px; line-height: 1.6; max-height: calc(90vh - 160px); overflow-y: auto;">
+                    <div id="markdownPreview" class="tex2jax_process" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; line-height: 1.6; overflow: visible; border: 1px solid #404040;">
                         ${htmlContent}
                     </div>
+                    <div id="markdownSource" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: visible; display: none; border: 1px solid #404040;">
+                        <pre style="margin: 0; font-size: 16px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e;"><code style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${escapedContent}</code></pre>
+                    </div>
                 `;
+                
+                // 存储原始内容以便切换
+                window.currentMarkdownContent = {
+                    processed: processedContent,
+                    html: htmlContent,
+                    escaped: escapedContent
+                };
+                
+                // 应用用户保存的显示模式偏好
+                setTimeout(() => {
+                    applyMarkdownModePreference();
+                    
+                    // 触发Prism.js语法高亮
+                    if (typeof Prism !== 'undefined') {
+                        Prism.highlightAll();
+                    }
+                    
+                    // 触发数学公式渲染（智能fallback）
+                    renderMath(document.getElementById('markdownPreview'));
+                }, 100);
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
                         文件大小: ${size} | 类型: PDF
                     </div>
-                    <div id="pdfContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
+                    <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: visible; background: #f5f5f5;">
                         <div style="text-align: center; padding: 20px;">
                             <i class="fas fa-spinner fa-spin"></i> 正在加载PDF...
                         </div>
                     </div>
                 `;
-                loadPDF(file_path);
+                // PDF预览使用原始路径（不包含用户目录前缀）
+                loadPDF(file_path || currentFilePath);
             } else if (type === 'office') {
                 const { file_ext } = data;
                 previewContent.innerHTML = `
@@ -2374,24 +3674,19 @@
                         <div style="text-align: center; padding: 40px; color: #666;">
                             <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
                             <h3 style="margin-bottom: 20px;">Office文档预览</h3>
-                            <p style="margin-bottom: 20px;">选择以下方式预览Office文档：</p>
+                            <p style="margin-bottom: 20px;">Office文档需要下载到本地查看：</p>
                             <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                                <button onclick="previewOfficeCloud('${file_path}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                    <i class="fas fa-cloud-upload-alt"></i> 云存储预览
-                                </button>
-                                <a href="/api/download-file/${file_path}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                                <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
                                     <i class="fas fa-download"></i> 下载文件
                                 </a>
                             </div>
-                            <div style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; text-align: left; max-width: 600px;">
-                                <h4 style="color: #856404; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> 预览说明</h4>
-                                <ul style="color: #856404; margin: 0; padding-left: 20px;">
-                                    <li><strong>云存储预览</strong>: 先上传到云存储，再使用在线预览服务</li>
-                                    <li><strong>下载文件</strong>: 下载到本地使用Office软件打开</li>
+                            <div style="margin-top: 30px; padding: 20px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px; text-align: left; max-width: 600px;">
+                                <h4 style="color: #0c5460; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> 使用说明</h4>
+                                <ul style="color: #0c5460; margin: 0; padding-left: 20px;">
+                                    <li>点击"下载文件"按钮将文件保存到本地</li>
+                                    <li>使用Microsoft Office、WPS或其他兼容软件打开</li>
+                                    <li>支持.doc、.docx、.xls、.xlsx、.ppt、.pptx等格式</li>
                                 </ul>
-                                <div style="margin-top: 15px; padding: 10px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 3px;">
-                                    <small><i class="fas fa-lightbulb"></i> <strong>提示</strong>: 如果某个预览服务无法正常工作，请尝试其他选项。不同服务对文档格式的支持程度可能不同。</small>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -2486,20 +3781,33 @@
                         <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
                             文件大小: ${size} | 类型: ${language.toUpperCase()}
                         </div>
-                        <div style="background: #1e1e1e; color: #cccccc; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px);">${processedContent}</div>
+                        <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: 500;">${processedContent}</div>
                     `;
                 } else {
                     // 使用Prism.js进行语法高亮
                     // 先处理转义字符，再进行HTML转义
                     const processedContent = escapeHtml(processFileContent(content));
-                    previewContent.innerHTML = `
-                        <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
-                            文件大小: ${size} | 语言: ${language}
-                        </div>
-                        <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
-                            <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4;"><code class="language-${language}">${processedContent}</code></pre>
-                        </div>
-                    `;
+                    
+                    // 为mermaid文件提供特殊的样式处理
+                    if (language === 'mermaid') {
+                        previewContent.innerHTML = `
+                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                                文件大小: ${size} | 语言: ${language}
+                            </div>
+                            <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
+                                <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
+                            </div>
+                        `;
+                    } else {
+                        previewContent.innerHTML = `
+                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                                文件大小: ${size} | 语言: ${language}
+                            </div>
+                            <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
+                                <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
+                            </div>
+                        `;
+                    }
                     
                     // 触发Prism.js语法高亮
                     setTimeout(() => {
@@ -2508,7 +3816,56 @@
                         }
                     }, 100);
                 }
+            } else if (type === 'image') {
+                // Image file preview
+                const { data: imageData, image_info } = data;
+                const { width, height, format } = image_info;
+                
+                previewContent.innerHTML = `
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px; color: #666;">
+                        文件大小: ${size} | 类型: 图片 (${format}) | 尺寸: ${width} × ${height}
+                    </div>
+                    <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
+                        <img src="${imageData}" 
+                             alt="${fileName}" 
+                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                             onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
+                        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-download"></i> 下载图片
+                            </a>
+                            <button onclick="zoomImage()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-search-plus"></i> 放大查看
+                            </button>
+                        </div>
+                    </div>
+                `;
             }
+        }
+        
+        function zoomImage() {
+            const img = previewContent.querySelector('img');
+            if (!img) return;
+            
+            // Create fullscreen overlay
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(255,255,255,0.95); z-index: 10000; display: flex; 
+                align-items: center; justify-content: center; cursor: zoom-out;
+            `;
+            
+            const fullImg = document.createElement('img');
+            fullImg.src = img.src;
+            fullImg.style.cssText = `
+                max-width: 95%; max-height: 95%; object-fit: contain;
+                border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            `;
+            
+            overlay.appendChild(fullImg);
+            overlay.onclick = () => document.body.removeChild(overlay);
+            
+            document.body.appendChild(overlay);
         }
 
         function loadPDF(filePath) {
@@ -2521,20 +3878,43 @@
                 return;
             }
 
-            const pdfUrl = `/api/pdf/${filePath}`;
+            // 添加API密钥参数
+            const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+            const pdfUrl = `/api/pdf/${filePath}${apiKeyParam}`;
             
-            pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {
+            // PDF下载使用原始路径（后端会自动添加用户目录前缀）
+            const downloadFilePath = window.currentOriginalFilePath || filePath;
+            
+            console.log('🔍 PDF loadPDF调试信息:');
+            console.log('  传入的filePath:', filePath);
+            console.log('  用于下载的downloadFilePath:', downloadFilePath);
+            console.log('  全局currentOriginalFilePath:', window.currentOriginalFilePath);
+            console.log('  PDF URL:', pdfUrl);
+            console.log('  将用于下载的路径:', downloadFilePath);
+            
+            // 配置PDF.js加载选项
+            const loadingTask = pdfjsLib.getDocument({
+                url: pdfUrl,
+                disableWorker: false,
+                verbosity: 1,  // 启用详细日志以便调试
+                cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+                cMapPacked: true,
+                standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+            });
+            
+            loadingTask.promise.then(function(pdf) {
                 const container = document.getElementById('pdfContainer');
                 container.innerHTML = '';
                 
                 // 创建页面导航
                 const nav = document.createElement('div');
                 nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;';
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
+                
                 nav.innerHTML = `
-                    <button onclick="previousPage()" style="margin-right: 10px; padding: 5px 10px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">上一页</button>
-                    <span id="pageInfo">第 1 页，共 ${pdf.numPages} 页</span>
-                    <button onclick="nextPage()" style="margin-left: 10px; padding: 5px 10px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">下一页</button>
-                    <a href="/api/download-file/${filePath}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;">
+                    <span id="pageInfo">共 ${pdf.numPages} 页</span>
+                    <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;">
                         <i class="fas fa-download"></i> 下载PDF
                     </a>
                 `;
@@ -2546,223 +3926,421 @@
                 pagesContainer.style.cssText = 'padding: 20px; text-align: center;';
                 container.appendChild(pagesContainer);
                 
-                // 存储PDF对象和当前页码
+                // 存储PDF对象
                 window.currentPDF = pdf;
-                window.currentPage = 1;
                 
-                // 渲染第一页
-                renderPDFPage(1);
+                // 渲染所有页面
+                renderAllPDFPages();
                 
             }).catch(function(error) {
                 console.error('PDF加载失败:', error);
+                console.error('PDF URL:', pdfUrl);
+                console.error('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
+                // 如果是InvalidPDFException，尝试使用简化配置重新加载
+                if (error.name === 'InvalidPDFException') {
+                    console.log('尝试使用简化配置重新加载PDF...');
+                    const simpleLoadingTask = pdfjsLib.getDocument({
+                        url: pdfUrl,
+                        disableWorker: true,  // 禁用worker
+                        verbosity: 0
+                    });
+                    
+                    simpleLoadingTask.promise.then(function(pdf) {
+                        const container = document.getElementById('pdfContainer');
+                        container.innerHTML = '';
+                        
+                        // 创建页面导航
+                        const nav = document.createElement('div');
+                        nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;';
+                        const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                        const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
+                        
+                        nav.innerHTML = `
+                            <span id="pageInfo">共 ${pdf.numPages} 页 (简化模式)</span>
+                            <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;">
+                                <i class="fas fa-download"></i> 下载PDF
+                            </a>
+                        `;
+                        container.appendChild(nav);
+                        
+                        // 创建页面容器
+                        const pagesContainer = document.createElement('div');
+                        pagesContainer.id = 'pdfPages';
+                        pagesContainer.style.cssText = 'padding: 20px; text-align: center;';
+                        container.appendChild(pagesContainer);
+                        
+                        // 存储PDF对象
+                        window.currentPDF = pdf;
+                        
+                        // 渲染所有页面
+                        renderAllPDFPages();
+                    }).catch(function(simpleError) {
+                        console.error('简化配置也失败:', simpleError);
+                        showPDFError('PDF文件格式无效或已损坏', error);
+                    });
+                } else {
+                    let errorMessage = error.message;
+                    if (error.name === 'MissingPDFException') {
+                        errorMessage = 'PDF文件未找到';
+                    } else if (error.name === 'UnexpectedResponseException') {
+                        errorMessage = '服务器响应异常，请检查文件路径和权限';
+                    }
+                    showPDFError(errorMessage, error);
+                }
+            });
+            
+            function showPDFError(errorMessage, error) {
                 document.getElementById('pdfContainer').innerHTML = `
                     <div style="text-align: center; padding: 20px; color: red;">
-                        <i class="fas fa-exclamation-triangle"></i> PDF加载失败: ${error.message}
+                        <i class="fas fa-exclamation-triangle"></i> PDF加载失败: ${errorMessage}
+                        <br><small style="color: #666; margin-top: 10px; display: block;">
+                            技术详情: ${error.name || 'Unknown'} - ${error.message}
+                        </small>
+                        <br><button onclick="retryPDFLoad('${filePath}')" style="margin-top: 10px; padding: 5px 15px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                            重试加载
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // 仅用于 Markdown 中 web_search_result/images 的“换一张”逻辑
+        function _extractNextImagePathInFolder(originalHref, baseDir) {
+            try {
+                // originalHref 例如: web_search_result/images/xxx_YYYYMMDD_001.png
+                if (!originalHref || !originalHref.includes('/')) return null;
+                const lastSlash = originalHref.lastIndexOf('/');
+                const folder = originalHref.substring(0, lastSlash); // web_search_result/images
+                const filename = originalHref.substring(lastSlash + 1); // xxx_YYYYMMDD_001.png
+
+                // 提取前缀：去掉文件名最后9个字符（含扩展名前的分隔符计入9个计数约束由约定负责）
+                // 例如: name_part + '_' + 9位编号（如 _000000123 或 _202501001）
+                const dotIdx = filename.lastIndexOf('.');
+                if (dotIdx <= 0) return null;
+                const nameNoExt = filename.substring(0, dotIdx);
+                const ext = filename.substring(dotIdx); // .png/.jpg
+                if (nameNoExt.length <= 9) return null;
+                const prefix = nameNoExt.substring(0, nameNoExt.length - 9);
+                const tailNine = nameNoExt.substring(nameNoExt.length - 9); // 编号字段
+
+                // 调用后端列出目录
+                // 注意：后端 /api/list-directory 会在用户目录下解析路径
+                // 这里传入 baseDir + '/' + folder 作为 markdown 所在目录的相对路径
+                // 实际 originalHref 是相对 markdown 文件的相对路径，因此拼接 baseDir 后再规范化
+                let folderPath = folder;
+                // 如果 originalHref 非绝对且不以 /api/ 开头，则使用 markdown 所在目录为基准
+                if (baseDir && !folder.startsWith('/')) {
+                    folderPath = baseDir + '/' + folder;
+                }
+
+                // 移除可能重复的 //
+                folderPath = folderPath.replace(/\/+/, '/');
+
+                const headers = { 'Content-Type': 'application/json' };
+                const body = { path: folderPath };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+
+                return fetch('/api/list-directory', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                }).then(r => r.json()).then(data => {
+                    if (!data.success) throw new Error(data.error || 'list failed');
+                    // 过滤同前缀 + 同扩展名的文件
+                    const files = (data.files || []).filter(f => {
+                        if (!f || !f.name) return false;
+                        const fname = f.name;
+                        const dIdx = fname.lastIndexOf('.');
+                        if (dIdx <= 0) return false;
+                        const nNoExt = fname.substring(0, dIdx);
+                        if (nNoExt.length <= 9) return false;
+                        const pfx = nNoExt.substring(0, nNoExt.length - 9);
+                        const tn = nNoExt.substring(nNoExt.length - 9);
+                        return pfx === prefix && /^[-_0-9A-Za-z]{9}$/.test(tn);
+                    }).map(f => f.name);
+
+                    // 排序依据：文件名后9位的字典序
+                    files.sort((a, b) => {
+                        const aNoExt = a.substring(0, a.lastIndexOf('.'));
+                        const bNoExt = b.substring(0, b.lastIndexOf('.'));
+                        const aTail = aNoExt.substring(aNoExt.length - 9);
+                        const bTail = bNoExt.substring(bNoExt.length - 9);
+                        return aTail.localeCompare(bTail);
+                    });
+
+                    if (!files.length) return null;
+
+                    // 优先精确匹配当前文件名，否则按尾9位匹配；都匹配不到则从第一张开始
+                    let idx = files.findIndex(n => n === filename);
+                    if (idx < 0) {
+                        const idx2 = files.findIndex(n => {
+                            const nNoExt = n.substring(0, n.lastIndexOf('.'));
+                            return nNoExt.endsWith(tailNine);
+                        });
+                        idx = idx2; // 可能仍为 -1
+                    }
+
+                    const nextIndex = ((idx >= 0 ? idx + 1 : 0) % files.length);
+                    const nextName = files[nextIndex];
+                    return folder + '/' + nextName;
+                }).catch(e => {
+                    console.warn('list next image failed:', e);
+                    return null;
+                });
+            } catch (e) {
+                console.warn('parse next image failed:', e);
+                return Promise.resolve(null);
+            }
+        }
+
+        function switchWebSearchImage(btnEl) {
+            try {
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) return;
+                const mdText = window.currentMarkdownContent.processed;
+                const href = btnEl?.getAttribute('data-md-href');
+                const occStr = btnEl?.getAttribute('data-md-occurrence') || '0';
+                const occIndex = parseInt(occStr, 10) || 0;
+                const baseDir = btnEl?.getAttribute('data-md-basedir') || '';
+
+                if (!href || !href.startsWith('web_search_result/images')) return;
+
+                _extractNextImagePathInFolder(href, baseDir).then(nextHref => {
+                    if (!nextHref) return; // 无下一张
+
+                    // 在 Markdown 原文中仅替换第 occIndex 次出现的该 href
+                    let count = 0;
+                    const replaced = mdText.replace(new RegExp(escapeRegExp(href), 'g'), (m) => {
+                        const cur = count;
+                        count += 1;
+                        return (cur === occIndex) ? nextHref : m;
+                    });
+
+                    window.currentMarkdownContent.processed = replaced;
+                    // 重新渲染：复用 displayFileContent 的 markdown 流程
+                    // 这里通过构造 data 对象调用一次渲染路径
+                    const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
+                    displayFileContent(fake, '');
+                });
+            } catch (e) {
+                console.warn('switch image failed:', e);
+            }
+        }
+
+        function removeWebSearchImage(btnEl) {
+            try {
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) return;
+                const mdText = window.currentMarkdownContent.processed;
+                const href = btnEl?.getAttribute('data-md-href');
+                const occStr = btnEl?.getAttribute('data-md-occurrence') || '0';
+                const occIndex = parseInt(occStr, 10) || 0;
+                if (!href) return;
+
+                // 精确删除第 occIndex 次出现的该图片语法：
+                // 兼容两种写法：
+                // 1) Markdown: ![alt](href "title") 或 ![alt](href)
+                // 2) HTML: <img ... src="href" ...>
+
+                // 优先处理 Markdown 语法
+                let count = 0;
+                // 匹配 ![...](...) 中 href 的位置（简化处理：匹配括号内整体再决定是否替换）
+                const mdPattern = /!\[[^\]]*\]\(([^)]+)\)/g;
+                let replaced = mdText.replace(mdPattern, (full, inner) => {
+                    // inner 可能包含 href 与 title，如: href "title"
+                    // 我们提取第一个空白前的部分作为 url
+                    const url = inner.split(/\s+/)[0].trim();
+                    const cur = count;
+                    if (url === href) {
+                        count += 1;
+                        if (cur === occIndex) {
+                            return '';
+                        }
+                    }
+                    return full;
+                });
+
+                if (count === 0 || (count <= occIndex)) {
+                    // 可能是 HTML <img> 写法，执行第二轮替换
+                    let htmlCount = 0;
+                    const imgPattern = /<img([^>]*)\ssrc=["']([^"']+)["']([^>]*)>/g;
+                    replaced = replaced.replace(imgPattern, (full, beforeSrc, src, afterSrc) => {
+                        const cur = htmlCount;
+                        if (src === href) {
+                            htmlCount += 1;
+                            if (cur === occIndex) {
+                                return '';
+                            }
+                        }
+                        return full;
+                    });
+                }
+
+                window.currentMarkdownContent.processed = replaced;
+                const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
+                displayFileContent(fake, '');
+            } catch (e) {
+                console.warn('remove image failed:', e);
+            }
+        }
+
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        async function saveCurrentMarkdown() {
+            try {
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
+                    alert('未检测到可保存的Markdown内容');
+                    return;
+                }
+                if (!window.currentOriginalFilePath && !currentFilePath) {
+                    alert('无法确定当前Markdown文件路径');
+                    return;
+                }
+                const headers = { 'Content-Type': 'application/json' };
+                const body = {
+                    path: window.currentOriginalFilePath || currentFilePath,
+                    content: window.currentMarkdownContent.processed
+                };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+                const resp = await fetch('/api/save-markdown', { method: 'POST', headers, body: JSON.stringify(body) });
+                const data = await resp.json();
+                if (data && data.success) {
+                    addMessage('Markdown已保存', 'success');
+                } else {
+                    addMessage(`保存失败: ${data && data.error ? data.error : '未知错误'}`, 'error');
+                }
+            } catch (e) {
+                console.error('保存Markdown失败:', e);
+                addMessage('保存失败: 网络或服务器错误', 'error');
+            }
+        }
+
+        async function reloadCurrentMarkdown() {
+            try {
+                const path = window.currentOriginalFilePath || currentFilePath;
+                if (!path) {
+                    alert('无法确定当前Markdown文件路径');
+                    return;
+                }
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                const resp = await fetch(`/api/file/${encodeURIComponent(path)}${apiKeyParam}`);
+                const data = await resp.json();
+                if (!data || !data.success) {
+                    addMessage(`重新加载失败: ${data && data.error ? data.error : '未知错误'}`, 'error');
+                    return;
+                }
+                // 直接走现有渲染路径
+                displayFileContent(data, '');
+                addMessage('已从文件重新加载', 'success');
+            } catch (e) {
+                console.error('重新加载失败:', e);
+                addMessage('重新加载失败: 网络或服务器错误', 'error');
+            }
+        }
+
+        function renderAllPDFPages() {
+            if (!window.currentPDF) return;
+            
+            const pagesContainer = document.getElementById('pdfPages');
+            pagesContainer.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> 正在加载所有页面...</div>';
+            
+            const scale = 1.5;
+            const promises = [];
+            
+            // 为每一页创建渲染任务
+            for (let pageNum = 1; pageNum <= window.currentPDF.numPages; pageNum++) {
+                promises.push(
+                    window.currentPDF.getPage(pageNum).then(function(page) {
+                        const viewport = page.getViewport({ scale: scale });
+                        
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        canvas.style.cssText = 'max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px;';
+                        
+                        const renderContext = {
+                            canvasContext: context,
+                            viewport: viewport
+                        };
+                        
+                        // 处理page.render()可能返回Promise或直接渲染的情况
+                        const renderResult = page.render(renderContext);
+                        if (renderResult && typeof renderResult.then === 'function') {
+                            // 如果返回Promise，等待完成
+                            return renderResult.then(() => {
+                                return { canvas, pageNum };
+                            });
+                        } else {
+                            // 如果直接渲染，立即返回结果
+                            return Promise.resolve({ canvas, pageNum });
+                        }
+                    })
+                );
+            }
+            
+            // 等待所有页面渲染完成
+            Promise.all(promises).then(function(results) {
+                pagesContainer.innerHTML = '';
+                
+                // 按页码顺序添加所有页面
+                results.forEach(function(result) {
+                    const pageDiv = document.createElement('div');
+                    pageDiv.style.cssText = 'margin-bottom: 20px; text-align: center; background: #f5f5f5; padding: 10px;';
+                    
+                    pageDiv.appendChild(result.canvas);
+                    pagesContainer.appendChild(pageDiv);
+                });
+                
+                // 更新页面信息
+                document.getElementById('pageInfo').textContent = `共 ${window.currentPDF.numPages} 页`;
+            }).catch(function(error) {
+                console.error('PDF页面渲染失败:', error);
+                pagesContainer.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: red;">
+                        <i class="fas fa-exclamation-triangle"></i> PDF页面渲染失败: ${error.message}
                     </div>
                 `;
             });
         }
 
-        function renderPDFPage(pageNum) {
-            if (!window.currentPDF) return;
-            
-            window.currentPDF.getPage(pageNum).then(function(page) {
-                const scale = 1.5;
-                const viewport = page.getViewport({ scale: scale });
-                
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                canvas.style.cssText = 'max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px;';
-                
-                const renderContext = {
-                    canvasContext: context,
-                    viewport: viewport
-                };
-                
-                const pagesContainer = document.getElementById('pdfPages');
-                pagesContainer.innerHTML = '';
-                pagesContainer.appendChild(canvas);
-                
-                page.render(renderContext);
-                
-                // 更新页面信息
-                document.getElementById('pageInfo').textContent = I18N.page_info.replace('{0}', pageNum).replace('{1}', window.currentPDF.numPages);
-            });
-        }
-
-        function previousPage() {
-            if (window.currentPage > 1) {
-                window.currentPage--;
-                renderPDFPage(window.currentPage);
-            }
-        }
-
-        function nextPage() {
-            if (window.currentPage < window.currentPDF.numPages) {
-                window.currentPage++;
-                renderPDFPage(window.currentPage);
-            }
-        }
-
-        // Office文档预览函数
+        // Office文档预览函数 - 云存储预览功能已移除，仅支持下载
         function previewOfficeCloud(filePath) {
-            // 云存储预览 - 先上传到云存储，再使用在线预览服务
             const container = document.getElementById('officeContainer');
             
-            // 显示上传进度
+            // 使用原始路径用于下载（后端会自动添加用户目录前缀）
+            const downloadFilePath = window.currentOriginalFilePath || filePath;
+            
+            // 显示不支持在线预览的提示
             container.innerHTML = `
-                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                    <span>云存储预览</span>
-                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
+                <div style="background: #ffc107; color: #856404; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
+                    <span>Office文档预览</span>
+                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(0,0,0,0.1); color: #856404; border: none; border-radius: 3px; cursor: pointer;">返回</button>
                 </div>
                 <div style="text-align: center; padding: 40px; color: #666;">
                     <div style="margin-bottom: 20px;">
-                        <i class="fas fa-cloud-upload-alt fa-spin" style="font-size: 48px; color: #28a745;"></i>
+                        <i class="fas fa-info-circle" style="font-size: 48px; color: #ffc107;"></i>
                     </div>
-                    <h3 style="margin-bottom: 20px;">正在上传文件到云存储...</h3>
-                    <p style="margin-bottom: 20px; color: #666;">请稍候，文件上传完成后将自动开始预览</p>
-                    <div style="background: #e9ecef; border-radius: 10px; height: 20px; overflow: hidden; margin: 20px auto; max-width: 400px;">
-                        <div id="uploadProgress" style="background: #28a745; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    <h3 style="margin-bottom: 20px; color: #856404;">在线预览功能已禁用</h3>
+                    <p style="margin-bottom: 20px; color: #666;">为了支持离线部署，云存储预览功能已被移除。请下载文件到本地查看。</p>
+                    <div style="display: flex; justify-content: center; gap: 15px;">
+                        <a href="/api/download-file/${downloadFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; display: inline-block;">
+                            <i class="fas fa-download"></i> 下载文件
+                        </a>
                     </div>
-                    <div id="uploadStatus" style="font-size: 14px; color: #666;">准备上传...</div>
                 </div>
             `;
-            
-            // 模拟进度条
-            let progress = 0;
-            const progressBar = document.getElementById('uploadProgress');
-            const statusText = document.getElementById('uploadStatus');
-            
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 15;
-                if (progress > 90) progress = 90;
-                progressBar.style.width = progress + '%';
-                statusText.textContent = `上传进度: ${Math.round(progress)}%`;
-            }, 200);
-            
-            // 上传文件到云存储
-            fetch(`/api/upload-to-cloud/${filePath}`)
-                .then(response => response.json())
-                .then(data => {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
-                    statusText.textContent = '上传完成！';
-                    
-                    if (data.success) {
-                        // 上传成功，使用云URL进行预览
-                        setTimeout(() => {
-                            const cloudUrl = data.cloud_url;
-                            const serviceName = data.service;
-                            const expires = data.expires;
-                            
-                            // 选择合适的预览服务
-                            let previewUrl;
-                            if (serviceName === 'Local Test') {
-                                // 本地测试模式：显示提示信息而不是预览
-                                container.innerHTML = `
-                                    <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                                        <span>云存储预览 (${serviceName}) - ${expires}</span>
-                                        <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
-                                    </div>
-                                    <div style="text-align: center; padding: 40px; color: #666;">
-                                        <i class="fas fa-check-circle" style="font-size: 48px; margin-bottom: 20px; color: #28a745;"></i>
-                                        <h3 style="margin-bottom: 20px; color: #28a745;">云存储上传成功！</h3>
-                                        <p style="margin-bottom: 20px;">文件已成功"上传"到本地测试服务</p>
-                                        <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; margin: 20px auto; border-radius: 5px; max-width: 600px; text-align: left;">
-                                            <h4 style="margin-bottom: 15px;"><i class="fas fa-info-circle"></i> 测试模式说明</h4>
-                                            <ul style="margin: 0; padding-left: 20px;">
-                                                <li><strong>当前为本地测试模式</strong>：模拟云存储上传成功</li>
-                                                <li><strong>实际部署时</strong>：文件会上传到真实的云存储服务</li>
-                                                <li><strong>预览功能</strong>：云存储的文件可以通过Google Docs等服务预览</li>
-                                                <li><strong>网络要求</strong>：需要外网访问才能使用在线预览服务</li>
-                                            </ul>
-                                        </div>
-                                        <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; margin-top: 30px;">
-                                            <a href="${cloudUrl}" target="_blank" style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
-                                                <i class="fas fa-external-link-alt"></i> 在新窗口中打开文件
-                                            </a>
-                                            <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                                <i class="fas fa-arrow-left"></i> 返回重新选择
-                                            </button>
-                                        </div>
-                                    </div>
-                                `;
-                                return; // 直接返回，不继续执行iframe预览逻辑
-                            } else if (serviceName === 'File.io' || serviceName === '0x0.st' || serviceName === 'tmpfiles.org') {
-                                // 使用WPS在线预览云存储的文件
-                                previewUrl = `https://wwo.wps.cn/office/w?url=${encodeURIComponent(cloudUrl)}`;
-                            } else {
-                                previewUrl = cloudUrl;
-                            }
-                            
-                            container.innerHTML = `
-                                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                                    <span>WPS云预览 (${serviceName}) - 有效期: ${expires}</span>
-                                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
-                                </div>
-                                <iframe src="${previewUrl}" style="width: 100%; height: calc(100% - 50px); border: none;" frameborder="0" onload="handleCloudPreviewLoad(this)" onerror="handleCloudPreviewError(this, '${serviceName}')">
-                                    <div style="text-align: center; padding: 20px; color: red;">
-                                        <i class="fas fa-exclamation-triangle"></i> 
-                                        您的浏览器不支持iframe，无法预览Office文档
-                                    </div>
-                                </iframe>
-                                <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 10px; margin: 10px; border-radius: 5px; font-size: 12px;">
-                                    <i class="fas fa-info-circle"></i> 
-                                    <strong>云存储信息:</strong> 文件已上传到 ${serviceName}，使用WPS在线预览，链接有效期为 ${expires}。
-                                    <a href="${cloudUrl}" target="_blank" style="color: #155724; margin-left: 10px;">
-                                        <i class="fas fa-external-link-alt"></i> 直接访问云文件
-                                    </a>
-                                </div>
-                            `;
-                        }, 1000);
-                    } else {
-                        // 上传失败
-                        container.innerHTML = `
-                            <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                                <span>云存储预览</span>
-                                <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
-                            </div>
-                            <div style="text-align: center; padding: 40px; color: #666;">
-                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
-                                <h3 style="margin-bottom: 20px; color: #dc3545;">云存储上传失败</h3>
-                                <p style="margin-bottom: 20px;">错误信息: ${data.error}</p>
-                                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                                    <button onclick="previewOfficeCloud('${filePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                        <i class="fas fa-redo"></i> 重试上传
-                                    </button>
-                                    <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                        <i class="fas fa-arrow-left"></i> 返回重新选择
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                    }
-                })
-                .catch(error => {
-                    clearInterval(progressInterval);
-                    console.error('云存储上传失败:', error);
-                    container.innerHTML = `
-                        <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                            <span>云存储预览</span>
-                            <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
-                        </div>
-                        <div style="text-align: center; padding: 40px; color: #666;">
-                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
-                            <h3 style="margin-bottom: 20px; color: #dc3545;">网络错误</h3>
-                            <p style="margin-bottom: 20px;">无法连接到云存储服务，请检查网络连接</p>
-                            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                                <button onclick="previewOfficeCloud('${filePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                    <i class="fas fa-redo"></i> 重试上传
-                                </button>
-                                <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                    <i class="fas fa-arrow-left"></i> 返回重新选择
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
         }
 
 
@@ -2771,6 +4349,9 @@
         function resetOfficePreview() {
             const container = document.getElementById('officeContainer');
             if (container) {
+                // 使用原始路径用于下载（后端会自动添加用户目录前缀）
+                const downloadFilePath = window.currentOriginalFilePath || currentFilePath;
+                
                 // 重新显示选择界面
                 container.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #666;">
@@ -2778,10 +4359,10 @@
                         <h3 style="margin-bottom: 20px;">Office文档预览</h3>
                         <p style="margin-bottom: 20px;">选择以下方式预览Office文档：</p>
                         <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                            <button onclick="previewOfficeCloud('${currentFilePath}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                                <i class="fas fa-cloud-upload-alt"></i> 云存储预览
+                            <button onclick="previewOfficeCloud('${downloadFilePath}')" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;" disabled>
+                                <i class="fas fa-ban"></i> 在线预览已禁用
                             </button>
-                            <a href="/api/download-file/${currentFilePath}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
+                            <a href="/api/download-file/${downloadFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
                                 <i class="fas fa-download"></i> 下载文件
                             </a>
                         </div>
@@ -2790,39 +4371,13 @@
             }
         }
 
-        // 处理云预览加载成功
-        function handleCloudPreviewLoad(iframe) {
-            console.log('✅ Cloud preview loaded successfully');
-            // 可以在这里添加加载成功的处理逻辑
-        }
-
-        // 处理云预览加载错误
-        function handleCloudPreviewError(iframe, serviceName) {
-            console.error(`❌ Cloud preview (${serviceName}) failed to load`);
-            const container = iframe.parentElement;
-            container.innerHTML = `
-                <div style="background: #28a745; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                    <span>云存储预览</span>
-                    <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">返回</button>
-                </div>
-                <div style="text-align: center; padding: 40px; color: #666;">
-                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #dc3545;"></i>
-                    <h3 style="margin-bottom: 20px; color: #dc3545;">云预览失败</h3>
-                    <p style="margin-bottom: 20px;">文件已成功上传到 ${serviceName}，但预览服务无法加载</p>
-                    <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                        <button onclick="resetOfficePreview()" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; min-width: 200px;">
-                            <i class="fas fa-arrow-left"></i> 返回重新选择
-                        </button>
-                        <a href="/api/download-file/${currentFilePath}" download style="padding: 12px 24px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; font-size: 14px; min-width: 200px; text-align: center; display: inline-block;">
-                            <i class="fas fa-download"></i> 下载文件
-                        </a>
-                    </div>
-                </div>
-            `;
-        }
+        // 云预览相关函数已移除
 
         // 存储当前文件路径，用于返回时重新构建界面
         let currentFilePath = '';
+
+        // 用户目录名称（从后端已知）
+        const KNOWN_USER_DIRECTORY = 'user_77e6f2deceb7dbf1';
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -2884,14 +4439,23 @@
             renameConfirm.disabled = true;
             renameConfirm.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.renaming}`;
             
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const body = {
+                new_name: newName
+            };
+            
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+                body.api_key = currentUser;
+            }
+            
             fetch(`/api/rename-directory/${encodeURIComponent(currentRenamingDir)}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    new_name: newName
-                })
+                headers: headers,
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -2979,7 +4543,7 @@
         /**
          * 页面初始化函数
          * @description 页面加载完成后执行的初始化操作：
-         * - 刷新目录列表
+         * - 初始化用户界面状态
          * - 设置输入框焦点
          * - 更新任务模式信息
          * - 初始化分隔条拖拽功能
@@ -2987,19 +4551,40 @@
          * - 滚动到聊天窗口底部
          */
         document.addEventListener('DOMContentLoaded', function() {
-            refreshDirectories();
-            userInput.focus();
+            // 初始化用户状态
+            updateUserStatus('disconnected', I18N.user_disconnected);
+            enableUI(false);
+            
+            // 检查URL参数并自动登录（优先级最高）
+            const urlAutoLogin = checkUrlAutoLogin();
+            
+            // 如果没有URL参数，检查localStorage中的保存会话
+            if (!urlAutoLogin) {
+                const sessionRestored = checkSessionRestore();
+                
+                // 只有在没有自动登录和会话恢复时才设置输入框焦点
+                if (!sessionRestored && !isConnected) {
+                    setTimeout(() => {
+                        apiKeyInput.focus();
+                    }, 100);
+                }
+            }
+            
             updateTaskModeInfo();
             initResizer();
-            startAutoRefresh();
             
             // 设置GUI配置选项的默认值
-            document.getElementById('enableWebSearch').checked = false;
-            document.getElementById('enableKnowledgeBase').checked = false;
-            document.getElementById('enableMultiAgent').checked = false;
-            document.getElementById('enableLongTermMemory').checked = false;
-            document.getElementById('enableMCP').checked = false;
-            document.getElementById('enableJieba').checked = true; // 默认启用中文分词
+            document.getElementById('enableWebSearch').checked = true;       // 搜索网络默认选择
+            document.getElementById('enableKnowledgeBase').checked = true;   // 搜索知识库默认选择
+            
+            document.getElementById('enableMultiAgent').checked = false;     // 启动多智能体默认不选择
+            document.getElementById('enableLongTermMemory').checked = true;  // 启动长期记忆默认选择
+            document.getElementById('enableMCP').checked = false;            // 启动MCP默认不选择
+            document.getElementById('enableJieba').checked = true;           // 启用中文分词默认选择
+            
+            // 自动以Guest身份连接 (临时禁用用于调试)
+            console.log('🔍 Page loaded, auto-connect disabled for debugging');
+            // connectUser();
             
             // 初始化配置选项切换功能
             initConfigToggle();
@@ -3038,27 +4623,247 @@
             
             // 设置图标过渡效果
             toggleIcon.style.transition = 'transform 0.3s ease';
+            
+            // 加载routine文件列表
+            loadRoutineFiles();
         }
 
         /**
-         * 启动自动刷新功能
-         * @description 设置定时器自动刷新目录列表：
-         * - 任务运行时每30秒刷新一次（保证实时性）
-         * - 无论是否有任务运行，每5分钟刷新一次（保证数据同步）
+         * 加载routine文件列表
          */
-        function startAutoRefresh() {
-            // 每30秒自动刷新一次目录列表（仅在有任务运行时）
-            setInterval(() => {
-                if (isTaskRunning) {
-                    refreshDirectories();
-                }
-            }, 30000);
-            
-            // 每5分钟刷新一次（无论是否有任务运行）
-            setInterval(() => {
-                refreshDirectories();
-            }, 300000);
+        function loadRoutineFiles() {
+            fetch('/api/routine-files')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const routineSelect = document.getElementById('routineSelect');
+                        // 清除现有选项（除了"无"选项）
+                        routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
+                        
+                        // 添加routine文件选项
+                        data.files.forEach(file => {
+                            const option = document.createElement('option');
+                            option.value = file.filename;
+                            option.textContent = file.name;
+                            routineSelect.appendChild(option);
+                        });
+                    } else {
+                        console.error('Failed to load routine files:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading routine files:', error);
+                });
         }
+
+        /**
+         * 切换Markdown显示模式（预览模式 vs 源码模式）
+         */
+        function toggleMarkdownMode() {
+            const previewDiv = document.getElementById('markdownPreview');
+            const sourceDiv = document.getElementById('markdownSource');
+            const toggleBtn = document.getElementById('markdownToggleBtn');
+            
+            if (!previewDiv || !sourceDiv || !toggleBtn) {
+                console.error('Markdown toggle elements not found');
+                return;
+            }
+            
+            const isPreviewMode = previewDiv.style.display !== 'none';
+            
+            if (isPreviewMode) {
+                // 切换到源码模式
+                previewDiv.style.display = 'none';
+                sourceDiv.style.display = 'block';
+                toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
+                toggleBtn.title = '切换到预览模式';
+                // 保存用户偏好
+                localStorage.setItem('markdownDisplayMode', 'source');
+            } else {
+                // 切换到预览模式
+                previewDiv.style.display = 'block';
+                sourceDiv.style.display = 'none';
+                toggleBtn.innerHTML = '<i class="fas fa-eye"></i> 源码模式';
+                toggleBtn.title = '切换到源码模式';
+                // 保存用户偏好
+                localStorage.setItem('markdownDisplayMode', 'preview');
+                
+                // 重新触发渲染
+                setTimeout(() => {
+                    // 触发Prism.js语法高亮
+                    if (typeof Prism !== 'undefined') {
+                        Prism.highlightAll();
+                    }
+                    
+                    // 触发数学公式渲染（智能fallback）
+                    renderMath(previewDiv);
+                }, 50);
+            }
+        }
+
+        /**
+         * 转换Markdown文件为Word文档
+         */
+        function convertMarkdownToWord() {
+            if (!currentFilePath) {
+                alert('无法获取当前文件路径');
+                return;
+            }
+            
+            const wordBtn = document.getElementById('convertWordBtn');
+            if (wordBtn) {
+                wordBtn.disabled = true;
+                wordBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 转换中...';
+            }
+            
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch('/api/convert-markdown', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers
+                },
+                body: JSON.stringify({
+                    file_path: currentFilePath,
+                    format: 'word'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const wordConversion = data.conversions?.word;
+                    if (wordConversion && wordConversion.status === 'success') {
+                        alert(`✅ Word文档转换成功！\n文件: ${wordConversion.file}\n大小: ${wordConversion.size_kb}`);
+                    } else {
+                        alert(`❌ Word文档转换失败: ${wordConversion?.error || '未知错误'}`);
+                    }
+                } else {
+                    alert(`❌ 转换失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('转换错误:', error);
+                alert(`❌ 转换过程中发生错误: ${error.message}`);
+            })
+            .finally(() => {
+                if (wordBtn) {
+                    wordBtn.disabled = false;
+                    wordBtn.innerHTML = '<i class="fas fa-file-word"></i> Word';
+                }
+            });
+        }
+
+        /**
+         * 转换Markdown文件为PDF文档
+         */
+        function convertMarkdownToPdf() {
+            if (!currentFilePath) {
+                alert('无法获取当前文件路径');
+                return;
+            }
+            
+            const pdfBtn = document.getElementById('convertPdfBtn');
+            if (pdfBtn) {
+                pdfBtn.disabled = true;
+                pdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 转换中...';
+            }
+            
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch('/api/convert-markdown', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers
+                },
+                body: JSON.stringify({
+                    file_path: currentFilePath,
+                    format: 'pdf'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const pdfConversion = data.conversions?.pdf;
+                    if (pdfConversion && pdfConversion.status === 'success') {
+                        alert(`✅ PDF文档转换成功！\n文件: ${pdfConversion.file}\n大小: ${pdfConversion.size_kb}`);
+                    } else {
+                        alert(`❌ PDF文档转换失败: ${pdfConversion?.error || '未知错误'}`);
+                    }
+                } else {
+                    alert(`❌ 转换失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('转换错误:', error);
+                alert(`❌ 转换过程中发生错误: ${error.message}`);
+            })
+            .finally(() => {
+                if (pdfBtn) {
+                    pdfBtn.disabled = false;
+                    pdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> PDF';
+                }
+            });
+        }
+
+        /**
+         * 应用用户保存的Markdown显示模式偏好
+         */
+        function applyMarkdownModePreference() {
+            const savedMode = localStorage.getItem('markdownDisplayMode');
+            
+            // 默认为预览模式，如果用户之前选择了源码模式，则切换到源码模式
+            if (savedMode === 'source') {
+                const previewDiv = document.getElementById('markdownPreview');
+                const sourceDiv = document.getElementById('markdownSource');
+                const toggleBtn = document.getElementById('markdownToggleBtn');
+                
+                if (previewDiv && sourceDiv && toggleBtn) {
+                    previewDiv.style.display = 'none';
+                    sourceDiv.style.display = 'block';
+                    toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
+                    toggleBtn.title = '切换到预览模式';
+                }
+            }
+        }
+
+        /**
+         * 自动刷新功能已禁用
+         * @description 原有的自动刷新定时器功能已被移除，只保留手动刷新
+         * - 用户可以通过点击刷新按钮手动刷新目录列表
+         */
+        
+        // 自动刷新相关代码已禁用
+        /*
+        let autoRefreshInterval = null;
+        function startAutoRefresh() {
+            // 如果已经有定时器在运行，先清除它
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            // 每5秒自动刷新一次目录列表
+            autoRefreshInterval = setInterval(() => {
+                refreshDirectories();
+            }, 5000);
+            console.log('✅ Auto-refresh started: refreshing directories every 5 seconds');
+        }
+        
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                console.log('🛑 Auto-refresh stopped');
+            }
+        }
+        */
 
         // 分隔条拖拽功能
         function initResizer() {
@@ -3126,11 +4931,20 @@
             // 保存当前展开状态
             const currentExpanded = new Set(expandedDirectories);
             
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const body = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+                body.api_key = currentUser;
+            }
+            
             fetch('/api/refresh-dirs', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: headers,
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -3208,6 +5022,11 @@
             files.forEach(file => {
                 formData.append('files', file);
             });
+            
+            // Add API key to form data
+            if (currentUser && currentUser !== 'default') {
+                formData.append('api_key', currentUser);
+            }
 
             // 显示进度条
             uploadProgress.style.display = 'block';
@@ -3221,32 +5040,44 @@
                 if (e.lengthComputable) {
                     const percentComplete = (e.loaded / e.total) * 100;
                     progressFill.style.width = percentComplete + '%';
-                    progressText.textContent = I18N.upload_progress.replace('{0}', Math.round(percentComplete));
+                    if (percentComplete >= 100) {
+                        progressText.textContent = I18N.upload_completed;
+                    } else {
+                        progressText.textContent = I18N.upload_progress.replace('{0}', Math.round(percentComplete));
+                    }
                 }
             });
 
             xhr.addEventListener('load', function() {
-                uploadProgress.style.display = 'none';
-                
                 if (xhr.status === 200) {
                     const response = JSON.parse(xhr.responseText);
                     if (response.success) {
+                        // 显示上传完成信息
+                        progressText.textContent = I18N.upload_completed;
                         uploadResult.innerHTML = `
                             <div class="success">
                                 <i class="fas fa-check-circle"></i> ${response.message}
                                 <br><small>文件: ${response.files.join(', ')}</small>
                             </div>
                         `;
+                        
                         // 清空文件输入
                         fileInput.value = '';
-                        // 刷新目录列表
+                        
+                        // 2秒后自动关闭对话框并刷新目录
                         setTimeout(() => {
+                            uploadModal.style.display = 'none';
+                            uploadProgress.style.display = 'none';
+                            uploadResult.innerHTML = '';
+                            progressFill.style.width = '0%';
                             refreshDirectories();
-                        }, 1000);
+                        }, 2000);
                     } else {
+                        uploadProgress.style.display = 'none';
                         uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${response.error}</div>`;
                     }
                 } else {
+                    uploadProgress.style.display = 'none';
                     uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${I18N.upload_failed_http.replace('{0}', xhr.status)}</div>`;
                 }
             });
@@ -3424,15 +5255,28 @@
     </script>
     
     <!-- Prism.js for syntax highlighting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="{{ url_for('static', filename='js/prism-core.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/prism-autoloader.min.js') }}"></script>
     <script>
         // Configure Prism.js autoloader
-        Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+        Prism.plugins.autoloader.languages_path = '{{ url_for("static", filename="js/prism-components/") }}';
         
         // Configure PDF.js
         if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '{{ url_for("static", filename="js/pdf.worker.min.js") }}';
+            console.log('PDF.js configured with worker:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+        } else {
+            console.error('PDF.js library not loaded');
+        }
+        
+        // 重试PDF加载函数
+        function retryPDFLoad(filePath) {
+            document.getElementById('pdfContainer').innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <i class="fas fa-spinner fa-spin"></i> 正在重新加载PDF...
+                </div>
+            `;
+            setTimeout(() => loadPDF(filePath), 500);
         }
     </script>
 </body>

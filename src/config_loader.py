@@ -17,11 +17,23 @@ limitations under the License.
 """
 
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
+
+# Global cache configuration
+_config_cache: Dict[str, Dict[str, str]] = {}
+_config_file_mtime: Dict[str, float] = {}
+
+def clear_config_cache() -> None:
+    """
+    Clear configuration file cache
+    """
+    global _config_cache, _config_file_mtime
+    _config_cache.clear()
+    _config_file_mtime.clear()
 
 def load_config(config_file: str = "config/config.txt", verbose: bool = False) -> Dict[str, str]:
     """
-    Load configuration from config/config.txt file
+    Load configuration from config/config.txt file (with caching support)
     
     Args:
         config_file: Path to the configuration file
@@ -30,14 +42,32 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
     Returns:
         Dictionary containing configuration key-value pairs
     """
-    config = {}
+    global _config_cache, _config_file_mtime
     
+    # Check if file exists
     if not os.path.exists(config_file):
         if verbose:
             print(f"Warning: Configuration file {config_file} not found")
-        return config
+        return {}
     
     try:
+        # Get file modification time
+        current_mtime = os.path.getmtime(config_file)
+        
+        # Check if cache is valid
+        if (config_file in _config_cache and 
+            config_file in _config_file_mtime and 
+            _config_file_mtime[config_file] == current_mtime):
+            if verbose:
+                print(f"Using cached configuration for {config_file}")
+            return _config_cache[config_file].copy()
+        
+        # Need to re-parse file
+        if verbose:
+            print(f"Loading configuration from {config_file}")
+        
+        config = {}
+        
         with open(config_file, 'r', encoding='utf-8') as f:
             line_number = 0
             for line in f:
@@ -45,7 +75,7 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                 original_line = line.rstrip('\n\r')  # Keep original line for debugging
                 line = line.strip()
                 
-                # 跳过空行
+                # Skip empty lines
                 if not line:
                     continue
                 
@@ -55,18 +85,18 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                         print(f"Skipping commented line {line_number}: {original_line}")
                     continue
                 
-                # 处理包含等号的行
+                # Process lines containing equals sign
                 if '=' in line:
                     # 处理行内注释：在#之前分割
                     if '#' in line:
                         line = line.split('#')[0].strip()
                     
-                    # 分割键值对
+                    # Split key-value pairs
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
                     
-                    if key:  # 确保键不为空
+                    if key:  # Ensure key is not empty
                         config[key] = value
                         if verbose:
                             print(f"Loaded config: {key} = {value}")
@@ -76,15 +106,20 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
                 else:
                     if verbose:
                         print(f"Warning: Invalid config line {line_number} (no '=' found): {original_line}")
+        
+        # Update cache
+        _config_cache[config_file] = config.copy()
+        _config_file_mtime[config_file] = current_mtime
+        
+        return config
                     
     except Exception as e:
         print(f"Error reading configuration file {config_file}: {e}")
-    
-    return config
+        return {}
 
 def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get API key from configuration file
+    Get API key from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -92,12 +127,17 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         API key string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_API_KEY')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('api_key')
 
 def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get API base URL from configuration file
+    Get API base URL from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -105,6 +145,11 @@ def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         API base URL string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_API_BASE')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('api_base')
 
@@ -123,9 +168,41 @@ def get_config_value(key: str, default: Optional[str] = None, config_file: str =
     config = load_config(config_file)
     return config.get(key, default)
 
+def get_enable_round_sync(config_file: str = "config/config.txt") -> bool:
+    """
+    Get whether round synchronization barrier is enabled
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        True if enabled, False otherwise (default: False)
+    """
+    config = load_config(config_file)
+    value = config.get('enable_round_sync', 'false').strip().lower()
+    return value in ('1', 'true', 'yes', 'on')
+
+def get_sync_round(config_file: str = "config/config.txt") -> int:
+    """
+    Get sync round step (N), number of rounds allowed per sync window
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Integer N (default: 2)
+    """
+    config = load_config(config_file)
+    value = config.get('sync_round', '2').strip()
+    try:
+        n = int(value)
+        return max(1, n)
+    except Exception:
+        return 2
+
 def get_model(config_file: str = "config/config.txt") -> Optional[str]:
     """
-    Get model name from configuration file
+    Get model name from environment variable or configuration file
     
     Args:
         config_file: Path to the configuration file
@@ -133,6 +210,11 @@ def get_model(config_file: str = "config/config.txt") -> Optional[str]:
     Returns:
         Model name string or None if not found
     """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_MODEL')
+    if env_value:
+        return env_value
+    
     config = load_config(config_file)
     return config.get('model')
 
@@ -217,7 +299,7 @@ def get_language(config_file: str = "config/config.txt") -> str:
     lang = config.get('LANG', 'en').lower()
     
     # Support common language codes
-    if lang in ('zh', 'zh-cn', 'chinese', '中文'):
+    if lang in ('zh', 'zh-cn', 'chinese', 'Chinese'):
         return 'zh'
     elif lang in ('en', 'english', 'eng'):
         return 'en'
@@ -276,7 +358,7 @@ def get_truncation_length(config_file: str = "config/config.txt") -> int:
 #             print(f"Warning: Invalid history_truncation_length value '{history_truncation_str}' in config file, must be an integer, using default 1000")
 #             return 1000
 #     
-#     # 如果没有设置，则使用主截断长度的 1/10，但不少于1000
+#     # If not set
 #     main_truncation = get_truncation_length(config_file)
 #     return max(1000, main_truncation // 10)
 
@@ -564,6 +646,40 @@ def get_enable_jieba(config_file: str = "config/config.txt") -> bool:
         # Default to False if invalid value
         return False
 
+def get_emoji_disabled(config_file: str = "config/config.txt") -> bool:
+    """
+    Get emoji display configuration from configuration file or environment variable
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether emoji display is disabled (default: False, meaning emoji enabled)
+    """
+    # Check environment variable first (for GUI override)
+    env_value = os.environ.get('AGIBOT_EMOJI_DISABLED')
+    if env_value is not None:
+        env_value_lower = env_value.lower()
+        if env_value_lower in ('true', '1', 'yes', 'on'):
+            return True
+        elif env_value_lower in ('false', '0', 'no', 'off'):
+            return False
+    
+    # Fall back to config file
+    config = load_config(config_file)
+    emoji_disabled_str = config.get('emoji_disabled', 'False').lower()
+    
+    # Convert string to boolean
+    if emoji_disabled_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif emoji_disabled_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to False if invalid value (emoji enabled)
+        return False
+
+
+
 def get_tool_calling_format(config_file: str = "config/config.txt") -> bool:
     """
     Get tool calling format configuration from configuration file
@@ -586,3 +702,85 @@ def get_tool_calling_format(config_file: str = "config/config.txt") -> bool:
     else:
         # Default to True if invalid value
         return True
+
+def get_gui_config(config_file: str = "config/config.txt") -> Dict[str, Optional[str]]:
+    """
+    Get GUI API configuration from configuration file
+    
+    Reads the GUI API configuration section which should contain:
+    - api_key: API key for the model
+    - api_base: Base URL for the API
+    - model: Model name (can be overridden by GUI selection)
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Dictionary containing GUI configuration values
+    """
+    config = load_config(config_file)
+    
+    # Parse the config file to find GUI API configuration section
+    gui_config = {}
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            
+        in_gui_section = False
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # Check for GUI API configuration section
+            if line.startswith('# GUI API configuration'):
+                in_gui_section = True
+                continue
+            
+            # Check if we've reached another section
+            if line.startswith('#') and 'configuration' in line and in_gui_section:
+                # We've moved to another configuration section
+                break
+                
+            # If we're in the GUI section and find a config line
+            if in_gui_section and '=' in line and not line.startswith('#'):
+                # Handle inline comments
+                if '#' in line:
+                    line = line.split('#')[0].strip()
+                
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                if key in ['api_key', 'api_base', 'model', 'max_tokens']:
+                    gui_config[key] = value
+                    
+    except Exception as e:
+        print(f"Error reading GUI configuration from {config_file}: {e}")
+        
+    return gui_config
+
+def validate_gui_config(gui_config: Dict[str, Optional[str]]) -> Tuple[bool, str]:
+    """
+    Validate GUI configuration
+    
+    Args:
+        gui_config: Dictionary containing GUI configuration
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    api_key = gui_config.get('api_key')
+    api_base = gui_config.get('api_base')
+    
+    # Check if API key is set and not the default placeholder
+    if not api_key or api_key.strip() == 'your key':
+        return False, "Invalid API Key configuration. Please check the GUI API configuration section in config/config.txt."
+    
+    # Check if API base is set
+    if not api_base or api_base.strip() == '':
+        return False, "Invalid API Base configuration. Please check the GUI API configuration section in config/config.txt."
+    return True, ""

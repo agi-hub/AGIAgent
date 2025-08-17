@@ -13,9 +13,3 @@ PowerPoint Generation with python-pptx:
 
 Use xelatex to compile Latex, when creating Latex script, you must use \usepackage{xeCJK} package and compile using terminal command 'xelatex -interaction=nonstopmode file_name.tex'. Ensure the image is scaled and not overfit the boundary of the paper or slide.
 
-Generating more figures is preferred, using mermaid or graphviz library, and insert to your markdown report.
-
-To obtain the original figures of input materials, and add them to your report, you can check if mineru is installed, and use terminal command 'mineru -p source_file -o out_dir' to convert word / pdf / powerpoint file into markdown and images stored in out_dir, 
-then processing using markdown format. The figure caption is following the image link, and they form a pair. 
-If you use a link to an image, please adopt the corresponding figure caption, and vice versa.
-

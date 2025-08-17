@@ -30,7 +30,7 @@ import logging
 import time
 import threading
 from datetime import datetime
-from .print_system import print_system, print_current
+from .print_system import print_system, print_current, print_system, print_error
 
 # Configure logging BEFORE importing jieba to suppress debug output
 logging.basicConfig(level=logging.WARNING)
@@ -195,7 +195,7 @@ class IncrementalUpdateThread:
             return
         
         self.running = True
-        self.thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.thread = threading.Thread(target=self._update_loop, name="CodeRepoUpdater", daemon=True)
         self.thread.start()
         #print_current(f"🚀 Incremental update thread started, update interval: {self.update_interval} seconds")
     
@@ -359,7 +359,7 @@ class CodeRepositoryParser:
         
         # TF-IDF database
         self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=15000,  # Increased for better code representation
+            max_features=8000,  # Reduced from 15000 to 8000 for better performance
             stop_words=None,  # Don't use stop words for code
             ngram_range=(1, 2),  # Reduced to avoid over-complexity
             tokenizer=self._tokenize_code,
@@ -395,7 +395,7 @@ class CodeRepositoryParser:
             update_interval=self.update_interval
         )
         self.background_update_thread.start()
-        print_current(f"🚀 Started background code index update thread (interval: {self.update_interval}s)")
+        print_system(f"🚀 Started background code index update thread (interval: {self.update_interval}s)")
     
     def stop_background_update(self):
         """Stop background incremental update thread"""
@@ -951,7 +951,7 @@ class CodeRepositoryParser:
         
         logger.info(f"Found {len(code_files)} code files")
         if len(code_files) == 0:
-            logger.warning(f"No code files found in directory: {self.root_path}")
+            logger.debug(f"No code files found in directory: {self.root_path}")
             #logger.warning(f"Supported extensions: {', '.join(sorted(self.supported_extensions))}")
             return
         
@@ -1480,12 +1480,12 @@ class CodeRepositoryParser:
             # Try to load existing database
             if os.path.exists(f"{db_path}/code_segments.pkl"):
                 try:
-                    print_current(f"📚 Loading existing code index database from: {db_path}")
+                    print_system(f"📚 Loading existing code index database from: {db_path}")
                     self.load_database(db_path)
                     
                     # Always perform initial check to ensure index is up-to-date
                     if not skip_initial_update:
-                        print_current("🔍 Performing initial repository check to ensure index is current...")
+                        print_debug("🔍 Performing initial repository check to ensure index is current...")
                         # Check for repository changes (perform initial check synchronously)
                         changes = self.check_repository_changes()
                         if any(changes.values()):
@@ -1496,36 +1496,44 @@ class CodeRepositoryParser:
                             total_changes = sum(update_result.values())
                             print_current(f"📊 Updated code index: {total_changes} changes processed")
                         else:
-                            print_current("✅ Code index is already up-to-date")
+                            print_debug("✅ Code index is already up-to-date")
                     
                     # Verify that we have segments available for search
                     if len(self.code_segments) == 0:
-                        print_current("⚠️ No code segments found in database, rebuilding index...")
-                        initialization_success = self._rebuild_code_index(db_path)
+                        # Check if this is an empty directory (no code files)
+                        code_files = self._get_all_code_files()
+                        if len(code_files) == 0:
+                            # Empty directory - no need to rebuild, just mark as successful
+                            initialization_success = True
+                            print_system("📁 Code index initialized for empty workspace")
+                        else:
+                            # Has code files but no segments - need to rebuild
+                            print_current("⚠️ No code segments found in database, rebuilding index...")
+                            initialization_success = self._rebuild_code_index(db_path)
                     else:
                         initialization_success = True
                         print_current(f"📚 Code index loaded successfully: {len(self.code_segments)} code segments available")
                     
                 except Exception as e:
-                    print_current(f"⚠️ Failed to load code index database: {e}, will recreate")
+                    print_system(f"⚠️ Failed to load code index database: {e}, will recreate")
                     initialization_success = self._rebuild_code_index(db_path)
             else:
                 # Create new database - always perform initial indexing
-                print_current(f"🏗️ Creating new code index database at: {db_path}")
+                print_system(f"🏗️ Creating new code index database at: {db_path}")
                 initialization_success = self._rebuild_code_index(db_path)
                 if initialization_success:
-                    print_current(f"✅ New code index created successfully: {len(self.code_segments)} code segments indexed")
+                    print_system(f"✅ New code index created successfully: {len(self.code_segments)} code segments indexed")
             
             # If initialization successful, start background update thread
             if initialization_success:
                 self.start_background_update()
-                print_current(f"✅ Code repository parser initialization completed, background update enabled")
-                print_current(f"🔍 Code search functionality is now available")
+                print_system(f"✅ Code repository parser initialization completed, background update enabled")
+                print_system(f"🔍 Code search functionality is now available")
             
             return initialization_success
                 
         except Exception as e:
-            print_current(f"❌ Failed to initialize code repository parser: {e}")
+            print_error(f"❌ Failed to initialize code repository parser: {e}")
             return False
 
     def _rebuild_code_index(self, db_path: Optional[str] = None) -> bool:
@@ -1542,23 +1550,23 @@ class CodeRepositoryParser:
             if db_path is None:
                 db_path = self._get_code_index_path()
             
-            print_current(f"🔧 Building code index for workspace: {os.path.basename(str(self.root_path))}")
-            print_current(f"📁 Scanning directory: {self.root_path}")
+            print_system(f"🔧 Building code index for workspace: {os.path.basename(str(self.root_path))}")
+            print_system(f"📁 Scanning directory: {self.root_path}")
             
             # Parse repository
             self.parse_repository(force_rebuild=True)
             
             # Check if we have segments
-            if len(self.code_segments) == 0:
-                print_current("ℹ️ No code files found in directory - this is normal for empty or new projects")
+            #if len(self.code_segments) == 0:
+                #print_system("ℹ️ No code files found in directory - this is normal for empty or new projects")
                 #print_current(f"📋 Supported extensions: {', '.join(sorted(self.supported_extensions))}")
                 #print_current("✅ Code index initialized for empty workspace")
-            else:
-                print_current(f"📊 Indexed {len(self.code_segments)} code segments from {len(self.file_timestamps)} files")
+            #else:
+                #print_current(f"📊 Indexed {len(self.code_segments)} code segments from {len(self.file_timestamps)} files")
             
             # Save database (even if empty)
             self.save_database(db_path)
-            print_current(f"💾 Code index saved to: {db_path}")
+            #print_current(f"💾 Code index saved to: {db_path}")
             return True
             
         except Exception as e:
@@ -1631,7 +1639,6 @@ def test_code_repository_parser():
             print_current(f"     Score: {result.score:.4f}")
             print_current(f"     Type: {result.search_type}")
             print_current(f"     Preview: {result.segment.content[:100]}...")
-            print()
         
         # Keyword search
         print_current("Keyword search results:")
@@ -1642,7 +1649,6 @@ def test_code_repository_parser():
             print_current(f"     Score: {result.score:.4f}")
             print_current(f"     Type: {result.search_type}")
             print_current(f"     Preview: {result.segment.content[:100]}...")
-            print()
         
         # Hybrid search
         print_current("Hybrid search results:")
@@ -1653,7 +1659,6 @@ def test_code_repository_parser():
             print_current(f"     Score: {result.score:.4f}")
             print_current(f"     Type: {result.search_type}")
             print_current(f"     Preview: {result.segment.content[:100]}...")
-            print()
     
     # Test save and load
     print_current("\n3. Testing database save and load...")

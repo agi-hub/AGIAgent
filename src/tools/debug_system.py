@@ -27,7 +27,8 @@ class DebugSystem:
     
     def __init__(self, enable_stack_trace: bool = True, 
                  enable_memory_monitor: bool = True,
-                 enable_execution_tracker: bool = True):
+                 enable_execution_tracker: bool = True,
+                 show_activation_message: bool = False):
         """
         Initialize debug system
         
@@ -35,10 +36,12 @@ class DebugSystem:
             enable_stack_trace: Whether to enable stack tracing
             enable_memory_monitor: Whether to enable memory monitoring
             enable_execution_tracker: Whether to enable execution tracking
+            show_activation_message: Whether to show debug system activation message
         """
         self.enable_stack_trace = enable_stack_trace
         self.enable_memory_monitor = enable_memory_monitor
         self.enable_execution_tracker = enable_execution_tracker
+        self.show_activation_message = show_activation_message
         
         # Execution tracker
         self.execution_stack = []
@@ -64,7 +67,8 @@ class DebugSystem:
             # Save original handlers
             self.original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
             self.original_sigterm_handler = signal.signal(signal.SIGTERM, self._signal_handler)
-            print_current("🔧 Debug system activated - Press Ctrl+C to show debug information")
+            if self.show_activation_message:
+                print_current("🔧 Debug system activated - Press Ctrl+C to show debug information")
     
     def _signal_handler(self, signum, frame):
         """Signal handler - Display thread stacks then exit"""
@@ -332,7 +336,7 @@ class DebugSystem:
         self.memory_monitor_thread = threading.Thread(
             target=self._memory_monitor_loop,
             args=(interval,),
-            name="MemoryMonitor",
+            name="DebugMonitor",
             daemon=True
         )
         self.memory_monitor_thread.start()
@@ -460,13 +464,15 @@ def get_debug_system() -> DebugSystem:
 
 def install_debug_system(enable_stack_trace: bool = True,
                         enable_memory_monitor: bool = True,
-                        enable_execution_tracker: bool = True):
+                        enable_execution_tracker: bool = True,
+                        show_activation_message: bool = False):
     """Install debug system"""
     global _debug_system
     _debug_system = DebugSystem(
         enable_stack_trace=enable_stack_trace,
         enable_memory_monitor=enable_memory_monitor,
-        enable_execution_tracker=enable_execution_tracker
+        enable_execution_tracker=enable_execution_tracker,
+        show_activation_message=show_activation_message
     )
     _debug_system.install_signal_handlers()
     if enable_memory_monitor:

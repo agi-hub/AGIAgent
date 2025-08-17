@@ -28,7 +28,7 @@ import os
 import sys
 
 # Application name macro definition
-APP_NAME = "AGI Bot"
+APP_NAME = "AGIBot"
 
 from src.tools.print_system import print_current
 from src.tools.debug_system import install_debug_system
@@ -218,7 +218,7 @@ def global_cleanup():
 
 def signal_handler(signum, frame):
     """Handle interrupt signals"""
-    print_current(f"\n⚠️ 收到信号 {signum}，正在清理...")
+    print_current(f"\n⚠️ Signal received {signum}，正在清理...")
     global_cleanup()
     sys.exit(1)
 
@@ -299,20 +299,7 @@ def main():
     """
     Main function - handle command line parameters
     """
-    # Install debug system first (re-enabled for debugging freeze issues)
-    debug_system = install_debug_system(
-        enable_stack_trace=True,
-        enable_memory_monitor=True, 
-        enable_execution_tracker=True
-    )
-    
-    # Register cleanup handlers
-    atexit.register(global_cleanup)
-    # Note: signal handlers are now managed by debug system
-    
-    # Print ASCII banner at startup
-    print_ascii_banner()
-    
+    # Parse arguments first to get output directory
     parser = argparse.ArgumentParser(
         description=f"{APP_NAME} Automated Task Processing System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -327,6 +314,14 @@ Usage Examples:
   # Multi-task mode - automatically decompose task into multiple subtasks for execution
   python agibot.py --todo "Develop a complete Python Web application"
   python agibot.py --todo --requirement "Develop a complete Python Web application"
+  
+  # Multi-task mode with routine file - use routine guidelines for task planning
+  python agibot.py --todo --routine "my_routine.txt" "Develop a web application"
+  python agibot.py --todo -u "routines/development.md" --requirement "Build an API server"
+  
+  # Single task mode with routine file - append routine content to user requirement
+  python agibot.py --routine "my_routine.txt" "Create a Python script"
+  python agibot.py -u "routines/coding_style.md" --requirement "Refactor existing code"
   
   # Continue from last output directory
   python agibot.py --continue "Continue working on the previous task"
@@ -452,6 +447,13 @@ Usage Examples:
         help="Link to external code directory. Creates a symbolic link in workspace directory pointing to the specified path, allowing AGI Bot to manipulate external code projects."
     )
     
+    parser.add_argument(
+        "--routine", "-u",
+        type=str,
+        default=None,
+        help="Routine file path to include routine guidelines. In --todo mode: integrates into task planning. In single-task mode: appends to user requirement."
+    )
+    
     args = parser.parse_args()
     
     # Handle requirement argument priority: positional argument takes precedence over --requirement/-r
@@ -462,14 +464,13 @@ Usage Examples:
     user_specified_out_dir = '--dir' in sys.argv or '-d' in sys.argv
     if args.continue_mode and user_specified_out_dir:
         # User specified both --continue/-c and --dir
-        print_current("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
-        print_current("    The --continue/-c parameter takes priority and --dir will be ignored.")
-        print_current("    If you want to use a specific output directory, don't use --continue/-c.")
-        print()
+        print("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
+        print("    The --continue/-c parameter takes priority and --dir will be ignored.")
+        print("    If you want to use a specific output directory, don't use --continue/-c.")
     
     # Check if no parameters provided, if so use default parameters
     if len(sys.argv) == 1:  # Only script name, no other parameters
-        print_current("🔧 No parameters provided, using default configuration...")
+        print("🔧 No parameters provided, using default configuration...")
         # Set default parameters
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
@@ -480,10 +481,33 @@ Usage Examples:
         args.api_key = None
         args.model = None  # Let it load from config/config.txt
         args.api_base = None
-        print_current(f"📁 Output directory: {args.dir}")
-        print_current(f"🔄 Execution rounds: {args.loops}")
-        print_current(f"🤖 Model: Will load from config/config.txt")
-        print()
+        print(f"📁 Output directory: {args.dir}")
+        print(f"🔄 Execution rounds: {args.loops}")
+        print(f"🤖 Model: Will load from config/config.txt")
+
+    # Set up output directory for logging BEFORE importing any modules that might produce logs
+    # This ensures all subsequent logs go to the correct directory
+    from src.tools.print_system import set_output_directory
+    set_output_directory(args.dir)
+    
+    # Install debug system after setting output directory
+    from src.config_loader import load_config
+    config = load_config()
+    enable_debug_system = config.get('enable_debug_system', 'False').lower() == 'true'
+    if enable_debug_system:
+        install_debug_system(
+            enable_stack_trace=True,
+            enable_memory_monitor=True, 
+            enable_execution_tracker=True
+        )
+    
+    # Register cleanup handlers
+    atexit.register(global_cleanup)
+    # Note: signal handlers are now managed by debug system
+    
+    # Print ASCII banner at startup
+    print_ascii_banner()
+
     
     # Get API key
     api_key = args.api_key
@@ -506,7 +530,8 @@ Usage Examples:
             single_task_mode=single_task_mode,
             interactive_mode=args.interactive,
             continue_mode=args.continue_mode,
-            link_dir=args.link_dir
+            link_dir=args.link_dir,
+            routine_file=args.routine
         )
         
         success = main_app.run(
