@@ -36,7 +36,18 @@ class SummaryGenerator:
         """
         self.executor = executor
         self.detailed_summary = detailed_summary
-    
+        
+        # Get language configuration from executor
+        if hasattr(executor, 'language'):
+            self.language = executor.language
+        else:
+            # Fallback to default language
+            try:
+                from config_loader import get_language
+                self.language = get_language()
+            except ImportError:
+                self.language = 'en'  # Default to English
+        
     def generate_smart_summary(self, completed_tasks: List[Dict[str, Any]]) -> str:
         """
         Use large model to generate intelligent summary of prerequisite tasks
@@ -83,7 +94,16 @@ class SummaryGenerator:
         Returns:
             Summary prompt text
         """
-        summary_prompt = """Please generate a detailed and comprehensive summary for the following completed tasks, focusing on retaining the following information:
+        # Determine language instruction based on configuration
+        if self.language == 'zh':
+            print('language is Chinese')
+            language_instruction = "**重要语言要求：请使用中文生成总结，保持专业性和准确性**"
+        else:
+            language_instruction = "**Important Language Requirement: Please generate the summary in English, maintaining professionalism and accuracy**"
+        
+        summary_prompt = f"""{language_instruction}
+
+Please generate a detailed and comprehensive summary for the following completed tasks, focusing on retaining the following information:
 
 **Information types that must be retained:**
 1. Core objectives and implementation plans of tasks
@@ -130,13 +150,26 @@ Problems Encountered:
 
 """
         
-        summary_prompt += f"""
+        # Add language-specific ending
+        if self.language == 'zh':
+            summary_prompt += f"""
+请基于上述信息生成{get_summary_max_length()//2}-{get_summary_max_length()}字的详细总结，确保：
+1. 保留对后续任务有价值的所有信息
+2. 突出技术选择、工作流程和解决方案
+3. 包含重要的上下文信息和经验总结
+4. 组织清晰，便于后续任务的理解和参考
+5. 避免冗余，同时保持信息完整性
+6. **重要：请使用中文生成总结**
+"""
+        else:
+            summary_prompt += f"""
 Please generate a detailed summary of {get_summary_max_length()//2}-{get_summary_max_length()} words based on the above information, ensuring:
 1. Retain all information valuable for reference in subsequent tasks
 2. Highlight technical choices, workflows, and solutions
 3. Include important context information and experience summaries
 4. Organize clearly for easy understanding and reference in subsequent tasks
 5. Avoid redundancy while maintaining information completeness
+6. **Important: Please generate the summary in English**
 """
         
         return summary_prompt
@@ -378,7 +411,48 @@ Please generate a detailed summary of {get_summary_max_length()//2}-{get_summary
         # Get max summary length from executor configuration
         max_summary_length = self.executor.summary_max_length
         
-        summary_prompt = f"""Please create a comprehensive summary of the following EARLIER conversation history to preserve important context for future interactions. This summary will be combined with recent detailed conversation rounds, so focus on earlier context that provides background and foundation.
+        # Determine language instruction based on configuration
+        if self.language == 'zh':
+            language_instruction = "**重要语言要求：请使用中文生成总结，保持专业性和准确性**"
+        else:
+            language_instruction = "**Important Language Requirement: Please generate the summary in English, maintaining professionalism and accuracy**"
+        
+        # Build language-specific prompt
+        if self.language == 'zh':
+            summary_prompt = f"""请为以下早期对话历史创建全面总结，以保留对未来交互的重要上下文。此总结将与最近的详细对话轮次结合，因此请重点关注提供背景和基础的早期上下文。
+
+{language_instruction}
+
+**关键 - 必须完全保留：**
+1. 用户的原始请求和主要目标
+2. 关键技术决策及其推理
+3. 错误消息及其已验证的解决方案
+4. 重要文件路径、函数名称和配置值
+5. 项目结构和架构决策
+6. 已建立的成功方法和方法论
+
+**重要 - 详细保留：**
+7. 成功使用的工具和命令
+8. 重要发现和见解
+9. 已识别的技术约束和要求
+10. 已建立的工作流程模式
+
+**中等 - 简洁总结：**
+11. 中间调试步骤（仅保留关键学习内容）
+12. 工具执行详情（仅保留成功结果）
+13. 探索性对话（仅保留结论）
+
+**注意：** 最近的对话轮次将单独完整保留，因此请重点关注此总结中提供早期交互基本背景的上下文。
+
+**总结目标长度：** {max_summary_length//2} 到 {max_summary_length} 字符
+
+**需要总结的早期对话历史：**
+
+"""
+        else:
+            summary_prompt = f"""Please create a comprehensive summary of the following EARLIER conversation history to preserve important context for future interactions. This summary will be combined with recent detailed conversation rounds, so focus on earlier context that provides background and foundation.
+
+{language_instruction}
 
 **CRITICAL - Must preserve completely:**
 1. User's original request and main objectives
@@ -410,16 +484,32 @@ Please generate a detailed summary of {get_summary_max_length()//2}-{get_summary
         # Add conversation records, excluding the latest tool result
         for i, record in enumerate(conversation_history):
             if record.get("role") == "user":
-                summary_prompt += f"**User Request {i+1}:**\n{record.get('content', '')}\n\n"
+                if self.language == 'zh':
+                    summary_prompt += f"**用户请求 {i+1}：**\n{record.get('content', '')}\n\n"
+                else:
+                    summary_prompt += f"**User Request {i+1}:**\n{record.get('content', '')}\n\n"
             elif record.get("role") == "assistant":
                 content = record.get('content', '')
                 # Skip if this is the latest tool result that shouldn't be summarized
                 if latest_tool_result and content == latest_tool_result:
                     continue
-                summary_prompt += f"**Assistant Response {i+1}:**\n{content}\n\n"
+                if self.language == 'zh':
+                    summary_prompt += f"**助手回复 {i+1}：**\n{record.get('content', '')}\n\n"
+                else:
+                    summary_prompt += f"**Assistant Response {i+1}:**\n{record.get('content', '')}\n\n"
         
-        summary_prompt += f"""
+        # Add language-specific ending
+        if self.language == 'zh':
+            summary_prompt += f"""
+请生成大约{max_summary_length}字符的全面总结，捕捉上述对话历史中的所有重要信息。重点关注对继续工作有价值的上下文信息。
+
+**重要：请使用中文生成总结**
+"""
+        else:
+            summary_prompt += f"""
 Please generate a comprehensive summary of approximately {max_summary_length} characters that captures all essential information from the conversation history above. Focus on preserving context that would be valuable for continuing the work.
+
+**Important: Please generate the summary in English**
 """
         
         return summary_prompt
@@ -435,7 +525,15 @@ Please generate a comprehensive summary of approximately {max_summary_length} ch
         Returns:
             Basic summary text
         """
-        summary_parts = ["Conversation Summary:"]
+        # Use language-appropriate headers
+        if self.language == 'zh':
+            summary_parts = ["对话总结："]
+            user_header = f"\n用户请求 ({len([r for r in conversation_history if r.get('role') == 'user'])}):"
+            assistant_header = f"\n助手操作 ({len([r for r in conversation_history if r.get('role') == 'assistant'])}):"
+        else:
+            summary_parts = ["Conversation Summary:"]
+            user_header = f"\nUser Requests ({len([r for r in conversation_history if r.get('role') == 'user'])}):"
+            assistant_header = f"\nAssistant Actions ({len([r for r in conversation_history if r.get('role') == 'assistant'])}):"
         
         user_requests = []
         assistant_actions = []
@@ -456,12 +554,12 @@ Please generate a comprehensive summary of approximately {max_summary_length} ch
                 assistant_actions.append(content)
         
         if user_requests:
-            summary_parts.append(f"\nUser Requests ({len(user_requests)}):")
+            summary_parts.append(user_header)
             for i, req in enumerate(user_requests, 1):
                 summary_parts.append(f"{i}. {req}")
         
         if assistant_actions:
-            summary_parts.append(f"\nAssistant Actions ({len(assistant_actions)}):")
+            summary_parts.append(assistant_header)
             for i, action in enumerate(assistant_actions, 1):
                 summary_parts.append(f"{i}. {action}")
         
