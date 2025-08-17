@@ -110,7 +110,7 @@ Tool_calling_format=True
 # Debug system configuration
 # Enable debug system for enhanced debugging capabilities
 # When set to True, enables stack trace, memory monitoring, and execution tracking
-enable_debug_system=True
+enable_debug_system=False
 
 # Recommended values: 5000-20000, adjust based on model context window size
 # Affects:

@@ -1038,7 +1038,17 @@ Please create a detailed, structured analysis that preserves important informati
                                         self._verbose_print(f"🔄 Skipping {engine['name']} due to anti-bot protection")
                                         raise Exception(f"Anti-bot protection detected: {indicator}")
                             
-                            result_elements = page.query_selector_all(engine['result_selector'])
+                            # Get search results with error handling
+                            try:
+                                result_elements = page.query_selector_all(engine['result_selector'])
+                            except Exception as selector_error:
+                                print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
+                                # Fallback to basic result selector
+                                try:
+                                    result_elements = page.query_selector_all('a[href], h3, .result, .g, .rc')
+                                except Exception as fallback_error:
+                                    print_debug(f"❌ Fallback selector also failed: {fallback_error}")
+                                    result_elements = []
                             
                             if result_elements:
                                 print_debug(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
@@ -1052,20 +1062,37 @@ Please create a detailed, structured analysis that preserves important informati
                                         # Extract title and URL based on engine type
                                         if engine['name'].startswith('Google'):
                                             # For Google results, handle different element types
+                                            tag_name = 'unknown'
                                             try:
                                                 tag_name = elem.evaluate('element => element.tagName.toLowerCase()')
-                                            except:
-                                                tag_name = 'unknown'
+                                            except Exception as evaluate_error:
+                                                print_debug(f"⚠️ Element evaluate error: {evaluate_error}")
+                                                # Fallback: try to determine tag type from element properties
+                                                try:
+                                                    if hasattr(elem, 'tag_name'):
+                                                        tag_name = elem.tag_name.lower()
+                                                except:
+                                                    pass
                                             
                                             if tag_name == 'h3':
                                                 title = elem.text_content().strip()
-                                                # Find parent link element
-                                                parent_link = elem.query_selector('xpath=ancestor::a[1]')
+                                                # Find parent link element with error handling
+                                                parent_link = None
+                                                try:
+                                                    parent_link = elem.query_selector('xpath=ancestor::a[1]')
+                                                except Exception as parent_error:
+                                                    print_debug(f"⚠️ Parent link selector error: {parent_error}")
+                                                
                                                 if parent_link:
                                                     url = parent_link.get_attribute('href') or ""
                                                 else:
-                                                    # Try to find sibling or nearby link
-                                                    nearby_link = elem.query_selector('xpath=../a | xpath=../../a | xpath=../../../a')
+                                                    # Try to find sibling or nearby link with error handling
+                                                    nearby_link = None
+                                                    try:
+                                                        nearby_link = elem.query_selector('xpath=../a | xpath=../../a | xpath=../../../a')
+                                                    except Exception as nearby_error:
+                                                        print_debug(f"⚠️ Nearby link selector error: {nearby_error}")
+                                                    
                                                     url = nearby_link.get_attribute('href') if nearby_link else ""
                                             else:
                                                 # For link elements
@@ -1430,28 +1457,44 @@ Please create a detailed, structured analysis that preserves important informati
         try:
             container = None
             if engine['container_selector']:
-                container = elem.query_selector(f'xpath=ancestor::*[contains(@class, "{engine["container_selector"].replace(".", "")}")]')
+                try:
+                    container = elem.query_selector(f'xpath=ancestor::*[contains(@class, "{engine["container_selector"].replace(".", "")}")]')
+                except Exception as xpath_error:
+                    print_debug(f"⚠️ XPath selector error: {xpath_error}")
             
             if not container:
-                container = elem.query_selector('xpath=ancestor::div[2]')
+                try:
+                    container = elem.query_selector('xpath=ancestor::div[2]')
+                except Exception as ancestor_error:
+                    print_debug(f"⚠️ Ancestor selector error: {ancestor_error}")
             
             if container:
                 for selector in engine['snippet_selectors']:
-                    snippet_elem = container.query_selector(selector)
-                    if snippet_elem:
-                        text = snippet_elem.text_content().strip()
-                        if text and len(text) > 20 and not text.startswith('http') and '...' not in text[:10]:
-                            snippet = text
-                            break
-                
-                if not snippet:
-                    all_text_elems = container.query_selector_all('span, div, p')
-                    for text_elem in all_text_elems:
-                        text = text_elem.text_content().strip()
-                        if text and len(text) > 30 and len(text) < 200:
-                            if any(char in text for char in '，。？！、；：') or ' ' in text:
+                    try:
+                        snippet_elem = container.query_selector(selector)
+                        if snippet_elem:
+                            text = snippet_elem.text_content().strip()
+                            if text and len(text) > 20 and not text.startswith('http') and '...' not in text[:10]:
                                 snippet = text
                                 break
+                    except Exception as snippet_error:
+                        print_debug(f"⚠️ Snippet selector error: {snippet_error}")
+                        continue
+                
+                if not snippet:
+                    try:
+                        all_text_elems = container.query_selector_all('span, div, p')
+                        for text_elem in all_text_elems:
+                            try:
+                                text = text_elem.text_content().strip()
+                                if text and len(text) > 30 and len(text) < 200:
+                                    if any(char in text for char in '，。？！、；：') or ' ' in text:
+                                        snippet = text
+                                        break
+                            except Exception as text_error:
+                                continue
+                    except Exception as text_elements_error:
+                        print_debug(f"⚠️ Text elements selector error: {text_elements_error}")
         
         except Exception as e:
             print_current(f"Error extracting snippet: {e}")
@@ -2039,39 +2082,54 @@ Please create a detailed, structured analysis that preserves important informati
             ]
             
             for selector in content_selectors:
-                elements = page.query_selector_all(selector)
-                if elements:
-                    for elem in elements:
-                        try:
-                            text = elem.text_content().strip()
-                            if text and len(text) > 100:
-                                # Check for verification page early
-                                if "当前环境异常，完成验证后即可继续访问。" in text:
-                                    return "当前环境异常，完成验证后即可继续访问。"
-                                
-                                # Check for DocIn embedded document page
-                                if "豆丁网" in text or "docin.com" in text:
-                                    return "正文为嵌入式文档，不可阅读"
-                                
-                                # Check for Baidu Scholar search page
-                                if ("百度学术搜索" in text or "百度学术" in text or 
-                                    "相关论文" in text or "获取方式" in text or
-                                    "按相关性按相关性按被引量按时间降序" in text):
-                                    return "结果无可用数据"
-                                
-                                if self._is_quality_content(text):
-                                    content = text
-                                    # print_current(f"✅ Successfully extracted content with selector '{selector}'")
-                                    break
-                        except:
-                            continue
-                    if content:
-                        break
+                try:
+                    elements = page.query_selector_all(selector)
+                    if elements:
+                        for elem in elements:
+                            try:
+                                text = elem.text_content().strip()
+                                if text and len(text) > 100:
+                                    # Check for verification page early
+                                    if "当前环境异常，完成验证后即可继续访问。" in text:
+                                        return "当前环境异常，完成验证后即可继续访问。"
+                                    
+                                    # Check for DocIn embedded document page
+                                    if "豆丁网" in text or "docin.com" in text:
+                                        return "正文为嵌入式文档，不可阅读"
+                                    
+                                    # Check for Baidu Scholar search page
+                                    if ("百度学术搜索" in text or "百度学术" in text or 
+                                        "相关论文" in text or "获取方式" in text or
+                                        "按相关性按相关性按被引量按时间降序" in text):
+                                        return "结果无可用数据"
+                                    
+                                    if self._is_quality_content(text):
+                                        content = text
+                                        # print_current(f"✅ Successfully extracted content with selector '{selector}'")
+                                        break
+                            except Exception as elem_error:
+                                continue
+                        if content:
+                            break
+                except Exception as selector_error:
+                    print_debug(f"⚠️ Content selector error for '{selector}': {selector_error}")
+                    continue
             
             if not content:
                 try:
                     # print_current("⚠️ Selector method found no content, trying to extract full body text")
-                    body_text = page.query_selector('body').text_content() if page.query_selector('body') else ""
+                    body_elem = None
+                    try:
+                        body_elem = page.query_selector('body')
+                    except Exception as body_selector_error:
+                        print_debug(f"⚠️ Body selector error: {body_selector_error}")
+                    
+                    body_text = ""
+                    if body_elem:
+                        try:
+                            body_text = body_elem.text_content()
+                        except Exception as body_text_error:
+                            print_debug(f"⚠️ Body text extraction error: {body_text_error}")
                     
                     # Check for verification page in body text
                     if body_text and "当前环境异常，完成验证后即可继续访问。" in body_text:
@@ -2092,8 +2150,8 @@ Please create a detailed, structured analysis that preserves important informati
                         if cleaned_body and len(cleaned_body) > 200:
                             content = cleaned_body
                             # print_current("✅ Successfully extracted using body content")
-                except:
-                    pass
+                except Exception as body_extraction_error:
+                    print_debug(f"⚠️ Body extraction error: {body_extraction_error}")
             
             if content:
                 # Check for verification page again before post-processing
@@ -2819,7 +2877,7 @@ Please create a detailed, structured analysis that preserves important informati
                         {
                             'name': 'Google Images',
                             'url': f'https://www.google.com/search?q={encoded_query}&tbm=isch&safe=off',
-                            'image_selector': 'img[data-iurl], img[data-ou], img[data-src], img[src]',
+                            'image_selector': 'img[data-iurl], img[data-ou], img[data-src], img[src], img',
                             'container_selector': '.rg_bx, .isv-r, .ivg-i'
                         },
                         {
@@ -2831,7 +2889,7 @@ Please create a detailed, structured analysis that preserves important informati
                         {
                             'name': 'Bing Images', 
                             'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
-                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img',
+                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img, img',
                             'container_selector': '.imgpt, .iusc'
                         }
                     ]
@@ -2847,7 +2905,7 @@ Please create a detailed, structured analysis that preserves important informati
                         {
                             'name': 'Bing Images', 
                             'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
-                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img',
+                            'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img, img',
                             'container_selector': '.imgpt, .iusc'
                         }
                     ]
@@ -2865,13 +2923,33 @@ Please create a detailed, structured analysis that preserves important informati
                     try:
                         print_debug(f"🔍 Attempting to use {engine['name']} for image search...")
                         
-                        # Visit search page  
-                        page.goto(engine['url'], timeout=8000, wait_until='domcontentloaded')
-                        page.wait_for_timeout(2000)  # Wait for images to load
+                        # Visit search page with improved waiting strategy
+                        try:
+                            page.goto(engine['url'], timeout=8000, wait_until='domcontentloaded')
+                            # Wait for page to stabilize
+                            page.wait_for_timeout(2000)
+                            # Try to wait for images to load
+                            try:
+                                page.wait_for_selector('img', timeout=3000)
+                            except:
+                                pass  # Continue even if no images found
+                        except Exception as page_error:
+                            print_debug(f"⚠️ Page loading error for {engine['name']}: {page_error}")
+                            continue
                         
-                        # Find image elements
-                        image_elements = page.query_selector_all(engine['image_selector'])
-                        print_debug(f"🔍 {engine['name']} found {len(image_elements)} image elements")
+                        # Find image elements with error handling
+                        try:
+                            image_elements = page.query_selector_all(engine['image_selector'])
+                            print_debug(f"🔍 {engine['name']} found {len(image_elements)} image elements")
+                        except Exception as selector_error:
+                            print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
+                            # Fallback to basic img selector
+                            try:
+                                image_elements = page.query_selector_all('img')
+                                print_debug(f"🔍 {engine['name']} fallback found {len(image_elements)} image elements")
+                            except Exception as fallback_error:
+                                print_debug(f"❌ Fallback selector also failed: {fallback_error}")
+                                image_elements = []
                         
                         # Filter valid images
                         valid_images = []
@@ -2881,6 +2959,10 @@ Please create a detailed, structured analysis that preserves important informati
                         # Process all images without skipping any at the beginning
                         for i, img in enumerate(image_elements[:25]):  # Increase check count to 25
                             try:
+                                # Validate image element
+                                if not img or not hasattr(img, 'get_attribute'):
+                                    skipped_reasons['invalid_element'] = skipped_reasons.get('invalid_element', 0) + 1
+                                    continue
                                 
                                 processed_count += 1
                                 

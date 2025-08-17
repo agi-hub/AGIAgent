@@ -480,26 +480,30 @@ class MultiRoundTaskExecutor:
                                  if "prompt" in record and ("result" in record or "error" in record)]
                 
                 # Check if we need to summarize history to keep it manageable
-                total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
-                                         for record in history_for_llm)
+                # First, determine which records would be summarized (excluding last 2 rounds)
+                records_to_summarize = history_for_llm[:-2] if len(history_for_llm) > 2 else []
+                recent_records = history_for_llm[-2:] if len(history_for_llm) > 2 else []
                 
-                # If history is too long, try to summarize it before passing to execute_subtask
+                # Calculate the length of content that would actually be summarized
+                records_to_summarize_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
+                                           for record in records_to_summarize)
+                recent_records_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
+                                         for record in recent_records)
+                total_history_length = records_to_summarize_length + recent_records_length
+                
+                # Only summarize if the content to be summarized is actually substantial
                 if hasattr(self.executor, 'summary_history') and self.executor.summary_history and \
                    hasattr(self.executor, 'summary_trigger_length') and \
-                   total_history_length > self.executor.summary_trigger_length and \
-                   len(history_for_llm) > 1:  # Only summarize if we have multiple records
+                   records_to_summarize_length > self.executor.summary_trigger_length and \
+                   len(records_to_summarize) > 0:  # Only summarize if we have records to summarize
                     
-                    print_current(f"📊 History length ({total_history_length} chars) exceeds trigger, attempting to summarize...")
+                    print_current(f"📊 Content to summarize ({records_to_summarize_length} chars) exceeds trigger ({self.executor.summary_trigger_length} chars), attempting to summarize...")
                     
                     # Check if we can use executor's summarization capability
                     if hasattr(self.executor, 'conversation_summarizer') and self.executor.conversation_summarizer:
                         try:
-                            # Keep only the summary and recent records (last 2 rounds)
-                            recent_records = history_for_llm[-2:] if len(history_for_llm) > 2 else []
-                            
                             # Convert to conversation format, excluding recent records to avoid overlap
                             conversation_records = []
-                            records_to_summarize = history_for_llm[:-2] if len(history_for_llm) > 2 else []
                             
                             # Check if we have enough records to summarize
                             if not records_to_summarize:
@@ -559,9 +563,21 @@ class MultiRoundTaskExecutor:
                                 new_total_length = summary_record_length + recent_records_length
                                 
                                 if history_summary:
-                                    print_current(f"✅ History summarized and replaced: {total_history_length} → {new_total_length} chars (summary: {summary_length} chars)")
+                                    print_current(f"✅ Summary completed:")
+                                    print_current(f"   - Summary part: {records_to_summarize_length} → {summary_length} chars ({(1 - summary_length/records_to_summarize_length)*100:.1f}% reduction)")
+                                    print_current(f"   - Recent records (last 2 rounds): {len(recent_records)} records, {recent_records_length} chars")
+                                    print_current(f"   - Total: {total_history_length} → {new_total_length} chars ({(1 - new_total_length/total_history_length)*100:.1f}% reduction)")
+                                    
+                                    # Print the actual summary content to terminal
+                                    print_current("📋 Generated Summary Content:")
+                                    print_current("=" * 80)
+                                    print_current(history_summary)
+                                    print_current("=" * 80)
                                 else:
-                                    print_current(f"⚠️ History summary generated empty content, using recent records only: {total_history_length} → {recent_records_length} chars")
+                                    print_current(f"⚠️ Summary failed, using recent records only:")
+                                    print_current(f"   - Summary part: {records_to_summarize_length} chars (failed to compress)")
+                                    print_current(f"   - Recent records (last 2 rounds): {len(recent_records)} records, {recent_records_length} chars")
+                                    print_current(f"   - Total: {total_history_length} → {recent_records_length} chars ({(1 - recent_records_length/total_history_length)*100:.1f}% reduction)")
                             
                         except Exception as e:
                             print_current(f"⚠️ History summarization failed: {e}")

@@ -1435,6 +1435,80 @@ class FileSystemTools:
             'skipped_files': skipped_files
         }
 
+    def _check_pdf_engine_availability(self):
+        """Check which PDF engines are available and return the best one"""
+        engines = [
+            ('xelatex', '--pdf-engine=xelatex'),
+            ('lualatex', '--pdf-engine=lualatex'),
+            ('pdflatex', '--pdf-engine=pdflatex'),
+            ('wkhtmltopdf', '--pdf-engine=wkhtmltopdf'),
+            ('weasyprint', '--pdf-engine=weasyprint')
+        ]
+        
+        available_engines = []
+        
+        for engine_name, engine_option in engines:
+            try:
+                if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
+                    # Check if LaTeX engine is available
+                    result = subprocess.run([engine_name, '--version'], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        available_engines.append((engine_name, engine_option))
+                elif engine_name == 'wkhtmltopdf':
+                    # Check if wkhtmltopdf is available
+                    result = subprocess.run(['wkhtmltopdf', '--version'], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        available_engines.append((engine_name, engine_option))
+                elif engine_name == 'weasyprint':
+                    # Check if weasyprint is available
+                    result = subprocess.run(['weasyprint', '--version'], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        available_engines.append((engine_name, engine_option))
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+                continue
+        
+        if not available_engines:
+            print("❌ No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint")
+            return None, None
+        
+        # Return the best available engine (prioritize xelatex > lualatex > pdflatex > others)
+        priority_order = ['xelatex', 'lualatex', 'pdflatex', 'wkhtmltopdf', 'weasyprint']
+        
+        for preferred in priority_order:
+            for engine_name, engine_option in available_engines:
+                if engine_name == preferred:
+                    return engine_name, engine_option
+        
+        # Fallback to first available
+        selected_engine = available_engines[0]
+        return selected_engine[0], selected_engine[1]
+
+    def _get_engine_specific_options(self, engine_name):
+        """Get engine-specific options based on the selected PDF engine"""
+        if engine_name in ['xelatex', 'lualatex']:
+            # XeLaTeX and LuaLaTeX support CJK fonts
+            return [
+                '-V', 'CJKmainfont=Noto Serif CJK SC',
+                '-V', 'CJKsansfont=Noto Sans CJK SC',
+                '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
+                '-V', 'mainfont=DejaVu Serif',
+                '-V', 'sansfont=DejaVu Sans',
+                '-V', 'monofont=DejaVu Sans Mono',
+            ]
+        elif engine_name == 'pdflatex':
+            # pdfLaTeX doesn't support CJK fonts natively, use basic fonts
+            return [
+                '-V', 'mainfont=DejaVu Serif',
+                '-V', 'sansfont=DejaVu Sans',
+                '-V', 'monofont=DejaVu Sans Mono',
+            ]
+        else:
+            # wkhtmltopdf and weasyprint don't use LaTeX, return minimal options
+            return []
+
     def _convert_markdown_to_formats(self, file_path: str, target_file: str) -> Dict[str, Any]:
         """
         Convert Markdown files to Word and PDF formats
@@ -1540,19 +1614,33 @@ class FileSystemTools:
                         error_msg = result.stderr if result.stderr else result.stdout
                         print_current(f"   Error message: {error_msg}")
                         
-                        # Use pandoc directly for conversion
+                        # Use pandoc directly for conversion with fallback engine
                         try:
+                            # Check available PDF engines
+                            engine_name, engine_option = self._check_pdf_engine_availability()
+                            if not engine_name:
+                                conversion_results['conversions']['pdf'] = {
+                                    'status': 'failed',
+                                    'error': 'No PDF engines available'
+                                }
+                                print_current(f"❌ PDF document conversion failed: No PDF engines available")
+                                return conversion_results
+                            
+                            # Get engine-specific options
+                            engine_options = self._get_engine_specific_options(engine_name)
+                            
                             direct_cmd = [
                                 'pandoc',
                                 md_path.name,
                                 '-o', pdf_file.name,
-                                '--pdf-engine=xelatex',
-                                '-V', 'CJKmainfont=Noto Serif CJK SC',
-                                '-V', 'CJKsansfont=Noto Sans CJK SC',
-                                '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
-                                '-V', 'mainfont=DejaVu Serif',
-                                '-V', 'sansfont=DejaVu Sans',
-                                '-V', 'monofont=DejaVu Sans Mono',
+                                engine_option,  # Use the selected engine
+                            ]
+                            
+                            # Add engine-specific options
+                            direct_cmd.extend(engine_options)
+                            
+                            # Add common options
+                            direct_cmd.extend([
                                 '-V', 'fontsize=12pt',
                                 '-V', 'geometry:margin=2.5cm',
                                 '-V', 'geometry:a4paper',
@@ -1563,7 +1651,15 @@ class FileSystemTools:
                                 '-V', 'urlcolor=blue',
                                 '--toc',
                                 '--wrap=preserve'
-                            ]
+                            ])
+                            
+                            # Add LaTeX-specific options only for LaTeX engines
+                            if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
+                                direct_cmd.extend([
+                                    '-V', 'graphics=true',
+                                ])
+                            
+                            print_current(f"Using fallback PDF engine: {engine_name}")
                             
                             direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
                             
@@ -1592,17 +1688,32 @@ class FileSystemTools:
                 else:
                     # If trans_md_to_pdf.py doesn't exist
                     print_current(f"⚠️ trans_md_to_pdf.py script doesn't exist")
+                    
+                    # Check available PDF engines
+                    engine_name, engine_option = self._check_pdf_engine_availability()
+                    if not engine_name:
+                        conversion_results['conversions']['pdf'] = {
+                            'status': 'failed',
+                            'error': 'No PDF engines available'
+                        }
+                        print_current(f"❌ PDF document conversion failed: No PDF engines available")
+                        return conversion_results
+                    
+                    # Get engine-specific options
+                    engine_options = self._get_engine_specific_options(engine_name)
+                    
                     cmd = [
                         'pandoc',
                         md_path.name,  # Use filename instead of full path
                         '-o', pdf_file.name,  # Use filename instead of full path
-                        '--pdf-engine=xelatex',
-                        '-V', 'CJKmainfont=Noto Serif CJK SC',
-                        '-V', 'CJKsansfont=Noto Sans CJK SC',
-                        '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
-                        '-V', 'mainfont=DejaVu Serif',
-                        '-V', 'sansfont=DejaVu Sans',
-                        '-V', 'monofont=DejaVu Sans Mono',
+                        engine_option,  # Use the selected engine
+                    ]
+                    
+                    # Add engine-specific options
+                    cmd.extend(engine_options)
+                    
+                    # Add common options
+                    cmd.extend([
                         '-V', 'fontsize=12pt',
                         '-V', 'geometry:margin=2.5cm',
                         '-V', 'geometry:a4paper',
@@ -1613,7 +1724,15 @@ class FileSystemTools:
                         '-V', 'urlcolor=blue',
                         '--toc',
                         '--wrap=preserve'
-                    ]
+                    ])
+                    
+                    # Add LaTeX-specific options only for LaTeX engines
+                    if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
+                        cmd.extend([
+                            '-V', 'graphics=true',
+                        ])
+                    
+                    print_current(f"Using fallback PDF engine: {engine_name}")
                     
                     # Execute command in markdown file directory
                     result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
