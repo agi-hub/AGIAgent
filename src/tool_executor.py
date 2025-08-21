@@ -27,6 +27,11 @@ import mimetypes
 import threading
 import logging
 import time
+import warnings
+
+# Suppress asyncio warnings that occur during FastMCP cleanup
+warnings.filterwarnings("ignore", message=".*Event loop is closed.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*coroutine.*was never awaited.*")
 
 from typing import Dict, Any, List, Optional, Union, Tuple
 from openai import OpenAI
@@ -1012,7 +1017,8 @@ class ToolExecutor:
             # For chat-based tools, generate tool descriptions from JSON instead of loading files
             if self.use_chat_based_tools:
                 # Generate tools prompt from JSON definitions
-                tool_definitions = self._load_tool_definitions_from_file()
+                # Force reload to ensure FastMCP tools are included if they were initialized after first load
+                tool_definitions = self._load_tool_definitions_from_file(force_reload=True)
                 json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
                 
                 # Load only rules and plugin prompts (excluding deprecated tool files)
@@ -4271,6 +4277,12 @@ class ToolExecutor:
                                 continue
                         
                         print_current(f"✅ FastMCP tool definitions loaded successfully")
+                else:
+                    # If FastMCP is not initialized yet, invalidate cache to force reload later
+                    if not force_reload:
+                        print_current("⚠️ FastMCP not initialized yet, will retry on next tool definition load")
+                        self._tool_definitions_cache = None
+                        self._tool_definitions_cache_timestamp = None
                     
             except Exception as e:
                 print_current(f"⚠️ Failed to load FastMCP tool definitions: {e}")

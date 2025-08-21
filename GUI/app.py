@@ -1593,7 +1593,7 @@ def get_file_content(file_path):
                      '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.java', '.go', '.rs', '.php', '.rb', 
                      '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.xml', '.sql', '.r', 
                      '.scala', '.kt', '.swift', '.dart', '.lua', '.perl', '.pl', '.vim', '.dockerfile', 
-                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml', '.mmd']:
+                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml', '.mmd', '.out']:
             with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
@@ -1644,7 +1644,8 @@ def get_file_content(file_path):
                 '.toml': 'toml',
                 '.txt': 'text',
                 '.log': 'text',
-                '.mmd': 'mermaid'
+                '.mmd': 'mermaid',
+                '.out': 'text'
             }
             
             language = language_map.get(ext, ext[1:])  # Default to remove dot
@@ -1995,24 +1996,21 @@ def convert_markdown():
         if ext not in ['.md', '.markdown']:
             return jsonify({'success': False, 'error': 'Only supports Markdown file conversion'})
         
-        # Create an AGI bot instance to access FileSystemTools
-        from src.main import AGIBotMain
-        agi_bot = AGIBotMain(
-            out_dir=user_base_dir,
-            single_task_mode=True
+        # Create Tools instance directly to access FileSystemTools
+        from src.tools import Tools
+        tools = Tools(
+            workspace_root=user_base_dir,
+            out_dir=user_base_dir
         )
-        
-        # Set the workspace root for the tools
-        agi_bot.tools.workspace_root = user_base_dir
         
         # Call the conversion method from FileSystemTools
         print(f"🔍 Conversion debug information:")
         print(f"  file_path: {file_path}")
         print(f"  full_path: {full_path}")
         print(f"  user_base_dir: {user_base_dir}")
-        print(f"  workspace_root: {agi_bot.tools.workspace_root}")
+        print(f"  workspace_root: {tools.workspace_root}")
         
-        conversion_result = agi_bot.tools._convert_markdown_to_formats(full_path, file_path)
+        conversion_result = tools._convert_markdown_to_formats(full_path, file_path)
         
         print(f"  Conversion result: {conversion_result}")
         

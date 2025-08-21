@@ -1093,10 +1093,10 @@
 
         /* Special handling for preview modal */
         #previewModal .modal-content {
-            width: 90%;
-            max-width: 1200px;
-            height: 90%;
-            max-height: 800px;
+            width: 98%;
+            max-width: none;
+            height: 95%;
+            max-height: none;
         }
 
         #previewModal .modal-body {
@@ -1106,7 +1106,7 @@
         /* iframe style optimization */
         #previewContent iframe {
             width: 100%;
-            height: calc(90vh - 120px);
+            height: calc(95vh - 120px);
             border: none;
             border-radius: 4px;
         }
@@ -3582,19 +3582,20 @@
                         window._mdHrefOccurrenceMap[href] = occIndex + 1;
                     }
 
-                    // 仅当原始markdown链接以 web_search_result/images 开头时，右侧添加“换一张”按钮
+                    // 仅当原始markdown链接以 web_search_result/images 开头时，右侧添加图片导航按钮
                     if (href && href.startsWith('web_search_result/images')) {
                         const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath || '';
                         const currentDir = originalFilePath && originalFilePath.includes('/') ? originalFilePath.substring(0, originalFilePath.lastIndexOf('/')) : '';
-                        const containerStyle = 'display: flex; align-items: flex-start; gap: 8px;';
+                        const containerStyle = 'display: flex; align-items: flex-start; gap: 8px; position: relative;';
                         const imgStyle = 'max-width: 100%; max-height: 1200px; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;';
-                        const btnStyle = 'background: #8e44ad; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap; height: fit-content;';
-                        const btnDangerStyle = 'background: #d32f2f; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap; height: fit-content;';
+                        const btnStyle = 'background: #007acc; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
+                        const btnDangerStyle = 'background: #d32f2f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
                              + `<img src=\"${src}\" alt=\"${text || ''}\"${titleAttr} style=\"${imgStyle}\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\">`
-                             + `<div class=\"md-img-actions\" style=\"display:flex; flex-direction:column; gap:6px; margin: 10px 0;\">`
-                             +   `<button class=\"md-switch-btn\" style=\"${btnStyle}\" title=\"换一张\" onclick=\"switchWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\"><i class=\\\"fas fa-sync-alt\\\"></i> 换一张</button>`
-                             +   `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"去除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\">去除此图</button>`
+                             + `<div class=\"md-img-actions\" style=\"display: flex; flex-direction: column; gap: 8px; margin: 10px 0; position: absolute; right: 10px; top: 10px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 6px;\">`
+                             +   `<button class=\"md-prev-btn\" style=\"${btnStyle}\" title=\"上一张\" onclick=\"prevWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-left\\\"></i> 上一张</button>`
+                             +   `<button class=\"md-next-btn\" style=\"${btnStyle}\" title=\"下一张\" onclick=\"nextWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-right\\\"></i> 下一张</button>`
+                             +   `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`
                              + `</div>`
                              + `</div>`;
                     }
@@ -4081,7 +4082,94 @@
             }
         }
 
-        // 仅用于 Markdown 中 web_search_result/images 的“换一张”逻辑
+        // 仅用于 Markdown 中 web_search_result/images 的图片导航逻辑
+        function _extractPrevImagePathInFolder(originalHref, baseDir) {
+            try {
+                // originalHref 例如: web_search_result/images/xxx_YYYYMMDD_001.png
+                if (!originalHref || !originalHref.includes('/')) return null;
+                const lastSlash = originalHref.lastIndexOf('/');
+                const folder = originalHref.substring(0, lastSlash); // web_search_result/images
+                const filename = originalHref.substring(lastSlash + 1); // xxx_YYYYMMDD_001.png
+
+                // 提取前缀：去掉文件名最后9个字符（含扩展名前的分隔符计入9个计数约束由约定负责）
+                // 例如: name_part + '_' + 9位编号（如 _000000123 或 _202501001）
+                const dotIdx = filename.lastIndexOf('.');
+                if (dotIdx <= 0) return null;
+                const nameNoExt = filename.substring(0, dotIdx);
+                const ext = filename.substring(dotIdx); // .png/.jpg
+                if (nameNoExt.length <= 9) return null;
+                const prefix = nameNoExt.substring(0, nameNoExt.length - 9);
+                const tailNine = nameNoExt.substring(nameNoExt.length - 9); // 编号字段
+
+                // 调用后端列出目录
+                let folderPath = folder;
+                if (baseDir && !folder.startsWith('/')) {
+                    folderPath = baseDir + '/' + folder;
+                }
+
+                // 移除可能重复的 //
+                folderPath = folderPath.replace(/\/+/, '/');
+
+                const headers = { 'Content-Type': 'application/json' };
+                const body = { path: folderPath };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+
+                return fetch('/api/list-directory', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                }).then(r => r.json()).then(data => {
+                    if (!data.success) throw new Error(data.error || 'list failed');
+                    // 过滤同前缀 + 同扩展名的文件
+                    const files = (data.files || []).filter(f => {
+                        if (!f || !f.name) return false;
+                        const fname = f.name;
+                        const dIdx = fname.lastIndexOf('.');
+                        if (dIdx <= 0) return false;
+                        const nNoExt = fname.substring(0, dIdx);
+                        if (nNoExt.length <= 9) return false;
+                        const pfx = nNoExt.substring(0, nNoExt.length - 9);
+                        const tn = nNoExt.substring(nNoExt.length - 9);
+                        return pfx === prefix && /^[-_0-9A-Za-z]{9}$/.test(tn);
+                    }).map(f => f.name);
+
+                    // 排序依据：文件名后9位的字典序
+                    files.sort((a, b) => {
+                        const aNoExt = a.substring(0, a.lastIndexOf('.'));
+                        const bNoExt = b.substring(0, b.lastIndexOf('.'));
+                        const aTail = aNoExt.substring(aNoExt.length - 9);
+                        const bTail = bNoExt.substring(bNoExt.length - 9);
+                        return aTail.localeCompare(bTail);
+                    });
+
+                    if (!files.length) return null;
+
+                    // 优先精确匹配当前文件名，否则按尾9位匹配；都匹配不到则从最后一张开始
+                    let idx = files.findIndex(n => n === filename);
+                    if (idx < 0) {
+                        const idx2 = files.findIndex(n => {
+                            const nNoExt = n.substring(0, n.lastIndexOf('.'));
+                            return nNoExt.endsWith(tailNine);
+                        });
+                        idx = idx2; // 可能仍为 -1
+                    }
+
+                    const prevIndex = idx <= 0 ? files.length - 1 : idx - 1;
+                    const prevName = files[prevIndex];
+                    return folder + '/' + prevName;
+                }).catch(e => {
+                    console.warn('list prev image failed:', e);
+                    return null;
+                });
+            } catch (e) {
+                console.warn('parse prev image failed:', e);
+                return Promise.resolve(null);
+            }
+        }
+
         function _extractNextImagePathInFolder(originalHref, baseDir) {
             try {
                 // originalHref 例如: web_search_result/images/xxx_YYYYMMDD_001.png
@@ -4173,7 +4261,7 @@
             }
         }
 
-        function switchWebSearchImage(btnEl) {
+        function nextWebSearchImage(btnEl) {
             try {
                 if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) return;
                 const mdText = window.currentMarkdownContent.processed;
@@ -4202,7 +4290,40 @@
                     displayFileContent(fake, '');
                 });
             } catch (e) {
-                console.warn('switch image failed:', e);
+                console.warn('next image failed:', e);
+            }
+        }
+
+        function prevWebSearchImage(btnEl) {
+            try {
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) return;
+                const mdText = window.currentMarkdownContent.processed;
+                const href = btnEl?.getAttribute('data-md-href');
+                const occStr = btnEl?.getAttribute('data-md-occurrence') || '0';
+                const occIndex = parseInt(occStr, 10) || 0;
+                const baseDir = btnEl?.getAttribute('data-md-basedir') || '';
+
+                if (!href || !href.startsWith('web_search_result/images')) return;
+
+                _extractPrevImagePathInFolder(href, baseDir).then(prevHref => {
+                    if (!prevHref) return; // 无上一张
+
+                    // 在 Markdown 原文中仅替换第 occIndex 次出现的该 href
+                    let count = 0;
+                    const replaced = mdText.replace(new RegExp(escapeRegExp(href), 'g'), (m) => {
+                        const cur = count;
+                        count += 1;
+                        return (cur === occIndex) ? prevHref : m;
+                    });
+
+                    window.currentMarkdownContent.processed = replaced;
+                    // 重新渲染：复用 displayFileContent 的 markdown 流程
+                    // 这里通过构造 data 对象调用一次渲染路径
+                    const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
+                    displayFileContent(fake, '');
+                });
+            } catch (e) {
+                console.warn('prev image failed:', e);
             }
         }
 

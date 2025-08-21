@@ -26,6 +26,33 @@ All source code has been moved to the src/ directory.
 # Add src directory to Python path
 import os
 import sys
+import warnings
+
+# Suppress asyncio warnings that occur during FastMCP cleanup - must be early
+warnings.filterwarnings("ignore", message=".*Event loop is closed.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*coroutine.*was never awaited.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*was never awaited.*")
+
+# Also suppress at the asyncio level
+import asyncio
+import logging
+import atexit
+logging.getLogger('asyncio').setLevel(logging.CRITICAL)
+
+# Set environment variable to suppress asyncio debug output
+os.environ['PYTHONWARNINGS'] = 'ignore::RuntimeWarning:asyncio'
+os.environ['PYTHONASYNCIODEBUG'] = '0'
+
+# Install custom exception hook to suppress asyncio cleanup warnings
+def custom_excepthook(exc_type, exc_value, exc_traceback):
+    """Custom exception hook that filters out asyncio cleanup warnings"""
+    if exc_type == RuntimeError and "Event loop is closed" in str(exc_value):
+        # Suppress this specific warning
+        return
+    # For all other exceptions, use the default handler
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+sys.excepthook = custom_excepthook
 
 # Application name macro definition
 APP_NAME = "AGIBot"
@@ -460,13 +487,30 @@ Usage Examples:
     if args.requirement_positional:
         args.requirement = args.requirement_positional
     
-    # Check for conflicting parameters: --continue and --dir
-    user_specified_out_dir = '--dir' in sys.argv or '-d' in sys.argv
-    if args.continue_mode and user_specified_out_dir:
-        # User specified both --continue/-c and --dir
-        print("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
-        print("    The --continue/-c parameter takes priority and --dir will be ignored.")
-        print("    If you want to use a specific output directory, don't use --continue/-c.")
+    # Handle continue mode BEFORE setting up output directory
+    if args.continue_mode:
+        user_specified_out_dir = '--dir' in sys.argv or '-d' in sys.argv
+        if user_specified_out_dir:
+            # User specified both --continue/-c and --dir
+            print("⚠️  Warning: Both --continue/-c and --dir parameters were specified.")
+            print("    The --continue/-c parameter takes priority and --dir will be ignored.")
+            print("    If you want to use a specific output directory, don't use --continue/-c.")
+        
+        # Load last output directory
+        last_dir = load_last_output_dir()
+        
+        # If an explicit out_dir is provided and the directory exists, prioritize using the provided directory
+        # This is mainly to support directory selection in GUI mode
+        # Check if absolute or relative path exists
+        out_dir_abs = os.path.abspath(args.dir)
+        if args.dir != "output" and (os.path.exists(args.dir) or os.path.exists(out_dir_abs)):
+            print(f"🔄 Continue mode: Using specified directory: {args.dir}")
+        elif last_dir:
+            args.dir = last_dir
+            print(f"🔄 Continue mode: Using last output directory: {args.dir}")
+        else:
+            print("⚠️ Continue mode requested but no valid last output directory found")
+            print("    Creating new output directory instead")
     
     # Check if no parameters provided, if so use default parameters
     if len(sys.argv) == 1:  # Only script name, no other parameters

@@ -104,7 +104,9 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     # Check available PDF engines
     engine_name, engine_option = check_pdf_engine_availability()
     if not engine_name:
-        return False, "No PDF engines available"
+        # Try fallback to Word document generation
+        print("⚠️ No PDF engines available, attempting to generate Word document as fallback...")
+        return generate_fallback_word_document(input_file, output_file)
     
     # Create temporary LaTeX header file to fix image position (only for LaTeX engines)
     latex_header = None
@@ -194,6 +196,56 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
                 os.remove(header_file)
             except Exception as e:
                 pass
+
+
+def generate_fallback_word_document(input_file, output_file):
+    """
+    Generate a Word document as fallback when PDF engines are not available
+    
+    Args:
+        input_file: Input markdown file path
+        output_file: Originally intended PDF output file path
+        
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    try:
+        # Convert PDF extension to Word extension
+        from pathlib import Path
+        output_path = Path(output_file)
+        word_output = output_path.with_name(f"{output_path.stem}_pdf_fallback.docx")
+        
+        print(f"📄 Generating fallback Word document: {word_output}")
+        
+        # Use pandoc to convert to Word
+        cmd = [
+            'pandoc',
+            input_file,
+            '-o', str(word_output),
+            '--from', 'markdown',
+            '--to', 'docx',
+            '--toc',  # Include table of contents
+            '--highlight-style=tango',  # Code highlighting
+        ]
+        
+        # Execute pandoc command
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0 and word_output.exists():
+            file_size = word_output.stat().st_size
+            success_msg = f"✅ Fallback Word document generated: {word_output} ({file_size / 1024:.1f} KB)"
+            print(success_msg)
+            print("💡 Tip: Install xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint for PDF generation")
+            return True, success_msg
+        else:
+            error_msg = f"Failed to generate fallback Word document: {result.stderr}"
+            print(f"❌ {error_msg}")
+            return False, error_msg
+            
+    except Exception as e:
+        error_msg = f"Exception during fallback Word generation: {str(e)}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
 
 
 def main():
