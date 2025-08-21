@@ -1,6 +1,10 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "tmux-mcp-tools": {
+      "command": "uvx",
+      "args": ["tmux-mcp-tools"]
+    }
+  }
 }
-
 
 

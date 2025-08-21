@@ -56,7 +56,7 @@ class MCPServerManager:
         self.config_path = config_path
         self.servers: Dict[str, MCPServerProcess] = {}
         self.shutdown_event = asyncio.Event()
-        self._task_group: Optional[asyncio.TaskGroup] = None
+        # Task management for server processes
         self._management_tasks: Set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
         
@@ -86,14 +86,17 @@ class MCPServerManager:
             await self._load_configuration()
             
             # Start all configured servers
-            async with asyncio.TaskGroup() as tg:
-                self._task_group = tg
-                
-                for server_name, server in self.servers.items():
-                    if server.state == ServerState.STOPPED:
-                        task = tg.create_task(self._start_server(server_name))
-                        self._management_tasks.add(task)
-                        task.add_done_callback(self._management_tasks.discard)
+            start_tasks = []
+            for server_name, server in self.servers.items():
+                if server.state == ServerState.STOPPED:
+                    task = asyncio.create_task(self._start_server(server_name))
+                    start_tasks.append(task)
+                    self._management_tasks.add(task)
+                    task.add_done_callback(self._management_tasks.discard)
+            
+            # Wait for all servers to start
+            if start_tasks:
+                await asyncio.gather(*start_tasks, return_exceptions=True)
             
             print_current(f"✅ MCP Server Manager started with {len(self.servers)} servers")
             
@@ -113,18 +116,18 @@ class MCPServerManager:
             if not task.done():
                 task.cancel()
                 
-        # Wait for tasks to complete
+        # Wait for tasks to complete with timeout
         if self._management_tasks:
-            await asyncio.gather(*self._management_tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._management_tasks, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                print_debug("⚠️ Some management tasks timed out during shutdown")
             
-        # Stop all servers
-        async with self._lock:
-            stop_tasks = []
-            for server_name in list(self.servers.keys()):
-                stop_tasks.append(self._stop_server(server_name))
-                
-            if stop_tasks:
-                await asyncio.gather(*stop_tasks, return_exceptions=True)
+        # Stop all servers with improved cleanup
+        await self._shutdown_all_servers()
         
         # Restore signal handlers
         self._restore_signal_handlers()
@@ -140,15 +143,89 @@ class MCPServerManager:
                 print_debug(f"⚠️ Error in shutdown callback: {e}")
         
         print_current("✅ MCP Server Manager shut down")
+    
+    async def _shutdown_all_servers(self):
+        """Shutdown all servers with improved cleanup"""
+        async with self._lock:
+            servers_to_stop = list(self.servers.items())
+        
+        # First, try graceful termination for all servers
+        termination_tasks = []
+        for server_name, server in servers_to_stop:
+            if server.process and server.state == ServerState.RUNNING:
+                termination_tasks.append(self._graceful_server_shutdown(server_name, server))
+        
+        if termination_tasks:
+            await asyncio.gather(*termination_tasks, return_exceptions=True)
+        
+        # Force cleanup any remaining processes
+        await self._force_cleanup_remaining_processes()
+    
+    async def _graceful_server_shutdown(self, server_name: str, server):
+        """Gracefully shutdown a single server"""
+        try:
+            if not server.process:
+                return
+                
+            print_current(f"🛑 Gracefully shutting down MCP server: {server_name}")
+            
+            # Update state
+            async with self._lock:
+                server.state = ServerState.STOPPING
+            
+            # Try graceful termination
+            try:
+                server.process.terminate()
+                await asyncio.wait_for(server.process.wait(), timeout=3.0)
+                print_current(f"✅ MCP server {server_name} shutdown gracefully")
+            except asyncio.TimeoutError:
+                # Force kill if graceful termination failed
+                print_debug(f"⚠️ Force killing MCP server: {server_name}")
+                server.process.kill()
+                try:
+                    await asyncio.wait_for(server.process.wait(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    print_debug(f"⚠️ Server {server_name} process cleanup timed out")
+                    
+        except Exception as e:
+            print_debug(f"⚠️ Error during graceful shutdown of {server_name}: {e}")
+        finally:
+            # Clean up references
+            async with self._lock:
+                server.process = None
+                server.state = ServerState.STOPPED
+    
+    async def _force_cleanup_remaining_processes(self):
+        """Force cleanup any remaining subprocess references"""
+        try:
+            async with self._lock:
+                for server_name, server in self.servers.items():
+                    if server.process:
+                        try:
+                            # Force kill any remaining processes
+                            if server.process.returncode is None:
+                                server.process.kill()
+                                # Don't wait for these, just clean up references
+                            server.process = None
+                            server.state = ServerState.STOPPED
+                        except Exception as e:
+                            print_debug(f"⚠️ Error force cleaning {server_name}: {e}")
+        except Exception as e:
+            print_debug(f"⚠️ Error in force cleanup: {e}")
         
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
         try:
-            # Store original handlers
-            self._original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
-            self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._signal_handler)
-            print_debug("📡 Signal handlers installed")
-        except ValueError:
+            # Only set up signal handlers in main thread and if not already shutting down
+            import threading
+            if threading.current_thread() is threading.main_thread() and not self.shutdown_event.is_set():
+                # Store original handlers
+                self._original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
+                self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._signal_handler)
+
+            else:
+                print_debug("⚠️ Skipping signal handler setup (not in main thread or already shutting down)")
+        except (ValueError, AttributeError):
             # Not running in main thread, signal handling not available
             print_debug("⚠️ Signal handling not available (not in main thread)")
     
@@ -165,13 +242,25 @@ class MCPServerManager:
             
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
+        if self.shutdown_event.is_set():
+            # Already shutting down, ignore additional signals
+            return
+            
         print_current(f"📡 Received signal {signum}, initiating shutdown...")
         
+        # Set shutdown event to prevent multiple shutdowns
+        self.shutdown_event.set()
+        
         # Schedule shutdown in the event loop
-        loop = asyncio.get_running_loop()
-        if loop.is_running():
-            loop.create_task(self.shutdown())
-        else:
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running() and not loop.is_closed():
+                loop.create_task(self.shutdown())
+            else:
+                # Create new event loop if needed
+                asyncio.run(self.shutdown())
+        except RuntimeError:
+            # No event loop, create one
             asyncio.run(self.shutdown())
     
     async def _load_configuration(self):
@@ -379,6 +468,83 @@ class MCPServerManager:
             await asyncio.sleep(0.1)
             
         return False
+    
+    async def call_server_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on a persistent server"""
+        try:
+            async with self._lock:
+                server = self.servers.get(server_name)
+                if not server or server.state != ServerState.RUNNING or not server.process:
+                    return {
+                        "status": "failed",
+                        "error": f"Server {server_name} is not running"
+                    }
+                
+                process = server.process
+            
+            # Prepare JSON-RPC request
+            import time
+            request = {
+                "jsonrpc": "2.0",
+                "id": int(time.time() * 1000000),  # Unique ID
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }
+            
+            # Send request to server
+            request_json = json.dumps(request) + "\n"
+            process.stdin.write(request_json)
+            await process.stdin.drain()
+            
+            # Read response with timeout
+            try:
+                response_line = await asyncio.wait_for(
+                    process.stdout.readline(), 
+                    timeout=30.0
+                )
+                
+                if not response_line:
+                    return {
+                        "status": "failed",
+                        "error": "Server closed connection"
+                    }
+                
+                response = json.loads(response_line.decode().strip())
+                
+                # Check for JSON-RPC error
+                if "error" in response:
+                    return {
+                        "status": "failed",
+                        "error": response["error"].get("message", "Unknown error"),
+                        "error_code": response["error"].get("code"),
+                        "error_data": response["error"].get("data")
+                    }
+                
+                # Success
+                return {
+                    "status": "success",
+                    "result": response.get("result", {})
+                }
+                
+            except asyncio.TimeoutError:
+                return {
+                    "status": "failed",
+                    "error": "Tool call timeout"
+                }
+            except json.JSONDecodeError as e:
+                return {
+                    "status": "failed",
+                    "error": f"Invalid JSON response: {e}"
+                }
+                
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": f"Tool call failed: {e}"
+            }
 
 
 # Global server manager instance

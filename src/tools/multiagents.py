@@ -206,7 +206,10 @@ class MultiAgentTools:
         # Save generated agent IDs for reference normalization
         self.generated_agent_ids = []
         
-
+        # Initialize tool discovery cache
+        self._discovered_tools = {}
+        self._tool_discovery_timestamp = None
+        
 
         # Use global synchronization manager
         try:
@@ -1082,6 +1085,7 @@ class MultiAgentTools:
         """
         try:
             from .message_system import MessageType, get_message_router
+            from src.tools.agent_context import get_current_agent_id
             
             # Get message router
             router = get_message_router(self.workspace_root, cleanup_on_init=False)
@@ -1097,8 +1101,16 @@ class MultiAgentTools:
             else:
                 message_content = {"text": str(content)}
             
-            # Broadcast message
-            sent_count = router.broadcast_message("manager", message_content)
+            # 🔧 Get current agent ID instead of hardcoding "manager"
+            current_agent_id = get_current_agent_id()
+            if current_agent_id:
+                sender_id = current_agent_id
+            else:
+                # Fallback to manager if no current agent context
+                sender_id = "manager"
+            
+            # Broadcast message with correct sender_id
+            sent_count = router.broadcast_message(sender_id, message_content)
             
             # 🔧 Trigger routing processing immediately after broadcasting message
             if sent_count > 0:

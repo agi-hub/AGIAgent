@@ -229,26 +229,10 @@ class AGIBotMain:
             link_dir: Link to external code directory (optional)
             routine_file: Routine file path to include in task planning (optional)
         """
-        # Handle continue mode - load last output directory and requirement if requested
+        # Handle last requirement loading for continue mode
         self.last_requirement = None
         if continue_mode:
-            last_dir = load_last_output_dir()
             last_req = load_last_requirement()
-            
-            # If an explicit out_dir is provided and the directory exists, prioritize using the provided directory
-            # This is mainly to support directory selection in GUI mode
-            # Check if absolute or relative path exists
-            out_dir_abs = os.path.abspath(out_dir)
-            if out_dir != "output" and (os.path.exists(out_dir) or os.path.exists(out_dir_abs)):
-                print_system(f"🔄 Continue mode: Using specified directory: {out_dir}")
-            elif last_dir:
-                out_dir = last_dir
-                print_system(f"🔄 Continue mode: Using last output directory: {out_dir}")
-            else:
-                print_system("⚠️ Continue mode requested but no valid last output directory found")
-                print_system("    Creating new output directory instead")
-            
-            # Store last requirement for potential reuse
             if last_req:
                 self.last_requirement = last_req
                 print_system(f"🔄 Continue mode: Last requirement loaded: {last_req[:100]}{'...' if len(last_req) > 100 else ''}")
