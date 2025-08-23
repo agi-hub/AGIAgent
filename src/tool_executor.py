@@ -4195,7 +4195,7 @@ class ToolExecutor:
                 current_time = time.time()
                 if (self._tool_definitions_cache_timestamp is not None and 
                     current_time - self._tool_definitions_cache_timestamp < 60):
-                    #print_current("🔄 Using cached tool definitions (avoiding repeated FastMCP loading)")
+                    # Using cached tool definitions (avoiding repeated FastMCP loading)
                     return self._tool_definitions_cache
             
             # Load basic tool definitions
@@ -4255,7 +4255,11 @@ class ToolExecutor:
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     fastmcp_tools = fastmcp_wrapper.get_available_tools()
                     if fastmcp_tools:
-                        print_current(f"🔧 Loading {len(fastmcp_tools)} FastMCP tool definitions")
+                        # Only print loading info on first load or force reload
+                        should_print = force_reload or not hasattr(self, '_fastmcp_loaded_before')
+                        
+                        if should_print:
+                            print_current(f"🔧 Loading {len(fastmcp_tools)} FastMCP tool definitions")
                         
                         for tool_name in fastmcp_tools:
                             try:
@@ -4271,12 +4275,17 @@ class ToolExecutor:
                                             "required": tool_def.get("input_schema", {}).get("required", [])
                                         }
                                     }
-                                    print_current(f"✅ Added FastMCP tool: {tool_name}")
+                                    if should_print:
+                                        print_current(f"✅ Added FastMCP tool: {tool_name}")
                             except Exception as e:
                                 print_current(f"⚠️ Failed to load FastMCP tool definition for {tool_name}: {e}")
                                 continue
                         
-                        print_current(f"✅ FastMCP tool definitions loaded successfully")
+                        if should_print:
+                            print_current(f"✅ FastMCP tool definitions loaded successfully")
+                        
+                        # Mark that we've loaded FastMCP tools before
+                        self._fastmcp_loaded_before = True
                 else:
                     # If FastMCP is not initialized yet, invalidate cache to force reload later
                     if not force_reload:
