@@ -2748,9 +2748,9 @@ Please create a detailed, structured analysis that preserves important informati
         """
         # Define MD5 hashes of images to filter out
         FILTERED_IMAGE_HASHES = [
-            "f7581bb6ed68eec740feb1e9931f22d6",  # AI智能体发展趋势图表_20250804_182940_01.png
-            "923e31f20669ef6cc6b86c48cdcad1f0",  # AI智能体发展趋势图表_20250804_182940_02.png
-            "901093ca6d9ffbb484f2e92abbf83fba"   # 类脑大模型_示意图_20250805_184251_01.png
+            "f7581bb6ed68eec740feb1e9931f22d6",  
+            "923e31f20669ef6cc6b86c48cdcad1f0",  
+            "901093ca6d9ffbb484f2e92abbf83fba"  
         ]
         # Ignore extra parameters
         if kwargs:
@@ -2876,19 +2876,23 @@ Please create a detailed, structured analysis that preserves important informati
                     search_engines = [
                         {
                             'name': 'Google Images',
-                            'url': f'https://www.google.com/search?q={encoded_query}&tbm=isch&safe=off',
+                            'url': f'https://images.google.com/search?q={encoded_query}&tbm=isch&safe=off&tbs=isz:l&imgsz=large',
                             'image_selector': 'img[data-iurl], img[data-ou], img[data-src], img[src], img',
-                            'container_selector': '.rg_bx, .isv-r, .ivg-i'
+                            'container_selector': '.rg_bx, .isv-r, .ivg-i',
+                            'supports_original': True,  # 支持获取原图
+                            'click_selector': '.rg_bx, .isv-r, .ivg-i',  # 点击选择器
+                            'original_image_selector': 'img[data-ou], img[data-iurl], img[src]',  # 原图选择器
+                            'back_button_selector': 'button[aria-label="Close"], .close-button, .back-button'  # 返回按钮
                         },
                         {
                             'name': 'Baidu Images',
-                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&word={encoded_query}',
+                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&z=3&word={encoded_query}',
                             'image_selector': 'img',
                             'container_selector': '.imgitem, .card-wrap'
                         },
                         {
                             'name': 'Bing Images', 
-                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
+                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2&qft=+filterui:imagesize-wallpaper+filterui:aspect-wide',
                             'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img, img',
                             'container_selector': '.imgpt, .iusc'
                         }
@@ -2898,13 +2902,13 @@ Please create a detailed, structured analysis that preserves important informati
                     search_engines = [
                         {
                             'name': 'Baidu Images',
-                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&word={encoded_query}',
+                            'url': f'https://image.baidu.com/search/index?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&z=3&word={encoded_query}',
                             'image_selector': 'img',
                             'container_selector': '.imgitem, .card-wrap'
                         },
                         {
                             'name': 'Bing Images', 
-                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2',
+                            'url': f'https://www.bing.com/images/search?q={encoded_query}&form=HDRSC2&qft=+filterui:imagesize-wallpaper+filterui:aspect-wide',
                             'image_selector': 'img.mimg, img[data-src], img[src], .iusc img, .richImgLnk img, img',
                             'container_selector': '.imgpt, .iusc'
                         }
@@ -2925,149 +2929,41 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         # Visit search page with improved waiting strategy
                         try:
-                            page.goto(engine['url'], timeout=8000, wait_until='domcontentloaded')
+                            page.goto(engine['url'], timeout=6000, wait_until='domcontentloaded')
                             # Wait for page to stabilize
-                            page.wait_for_timeout(2000)
+                            page.wait_for_timeout(1000)
                             # Try to wait for images to load
                             try:
-                                page.wait_for_selector('img', timeout=3000)
+                                page.wait_for_selector('img', timeout=2000)
                             except:
                                 pass  # Continue even if no images found
                         except Exception as page_error:
                             print_debug(f"⚠️ Page loading error for {engine['name']}: {page_error}")
                             continue
                         
-                        # Find image elements with error handling
-                        try:
-                            image_elements = page.query_selector_all(engine['image_selector'])
-                            print_debug(f"🔍 {engine['name']} found {len(image_elements)} image elements")
-                        except Exception as selector_error:
-                            print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
-                            # Fallback to basic img selector
-                            try:
-                                image_elements = page.query_selector_all('img')
-                                print_debug(f"🔍 {engine['name']} fallback found {len(image_elements)} image elements")
-                            except Exception as fallback_error:
-                                print_debug(f"❌ Fallback selector also failed: {fallback_error}")
-                                image_elements = []
+                        # 根据搜索引擎类型使用不同的图片提取方法
+                        if engine['name'] == 'Google Images':
+                            # Google Images：使用改进的JSON元数据解析方法
+                            valid_images = self._extract_google_images_metadata(page)
+                            processed_count = len(valid_images)
+                            skipped_reasons = {}
+                            print_debug(f"🔍 Google Images extracted {len(valid_images)} images from JSON metadata")
+                        else:
+                            # 其他搜索引擎：使用原有的元素查找方法
+                            valid_images, processed_count, skipped_reasons = self._extract_other_engines_images(page, engine)
                         
-                        # Filter valid images
-                        valid_images = []
-                        processed_count = 0
-                        skipped_reasons = {}
+                        # 输出统计信息
+                        self._print_extraction_stats(engine, valid_images, processed_count, skipped_reasons)
                         
-                        # Process all images without skipping any at the beginning
-                        for i, img in enumerate(image_elements[:25]):  # Increase check count to 25
-                            try:
-                                # Validate image element
-                                if not img or not hasattr(img, 'get_attribute'):
-                                    skipped_reasons['invalid_element'] = skipped_reasons.get('invalid_element', 0) + 1
-                                    continue
-                                
-                                processed_count += 1
-                                
-                                # Optimize URL retrieval strategy based on search engine
-                                if engine['name'] == 'Baidu Images':
-                                    src = img.get_attribute('data-imgurl') or img.get_attribute('src')
-                                elif engine['name'] == 'Google Images':
-                                    # Google Images special attribute priority
-                                    src = (img.get_attribute('data-iurl') or 
-                                           img.get_attribute('data-ou') or
-                                           img.get_attribute('data-src') or 
-                                           img.get_attribute('src'))
-                                else:
-                                    src = img.get_attribute('data-src') or img.get_attribute('src')
-                                
-                                if not src:
-                                    skipped_reasons['no_src'] = skipped_reasons.get('no_src', 0) + 1
-                                    continue
-                                    
-                                # Relax HTTP link check, support more URL formats
-                                if not (src.startswith('http') or src.startswith('//') or src.startswith('data:image')):
-                                    skipped_reasons['not_http'] = skipped_reasons.get('not_http', 0) + 1
-                                    continue
-                                
-                                # Handle protocol-relative URLs starting with //
-                                if src.startswith('//'):
-                                    src = 'https:' + src
-                                    
-                                if src.endswith('.svg'):
-                                    skipped_reasons['svg_format'] = skipped_reasons.get('svg_format', 0) + 1
-                                    continue
-                                
-                                # Get image dimension info if available
-                                width = img.get_attribute('width') or 'unknown'
-                                height = img.get_attribute('height') or 'unknown' 
-                                alt = img.get_attribute('alt') or ''
-                                
-                                # Relax filtering conditions - reduce keyword filtering
-                                src_lower = src.lower()
-                                alt_lower = alt.lower()
-                                
-                                # Only filter obvious logos and icons (keep some search engine keyword filtering)
-                                skip_keywords = [
-                                    'logo', 'favicon', 'watermark', 'advertisement', 'banner', 'button',
-                                    'sprite', 'avatar_default', 'placeholder', 'icon'
-                                ]
-                                
-                                if any(keyword in src_lower or keyword in alt_lower for keyword in skip_keywords):
-                                    skipped_reasons['keyword_filter'] = skipped_reasons.get('keyword_filter', 0) + 1
-                                    continue
-                                
-                                # Further relax size requirements
-                                if width != 'unknown' and height != 'unknown':
-                                    try:
-                                        w, h = int(width), int(height)
-                                        # Google Images search relaxed size limits
-                                        min_size = 50 if engine['name'] == 'Google Images' else 80
-                                        if w < min_size or h < min_size:
-                                            skipped_reasons['size_too_small'] = skipped_reasons.get('size_too_small', 0) + 1
-                                            continue
-                                        # Further relax aspect ratio limits  
-                                        ratio = max(w, h) / min(w, h)
-                                        max_ratio = 8 if engine['name'] == 'Google Images' else 6
-                                        if ratio > max_ratio:
-                                            skipped_reasons['aspect_ratio'] = skipped_reasons.get('aspect_ratio', 0) + 1
-                                            continue
-                                    except:
-                                        pass
-                                
-                                # For Baidu search, further validate image source
-                                if engine['name'] == 'Baidu Images':
-                                    # Skip Baidu's own image resources
-                                    if 'baidu.com' in src_lower and ('static' in src_lower or 'logo' in src_lower):
-                                        skipped_reasons['baidu_static'] = skipped_reasons.get('baidu_static', 0) + 1
-                                        continue
-                                
-                                valid_images.append({
-                                    'src': src,
-                                    'width': width,
-                                    'height': height,
-                                    'alt': alt
-                                })
-                            except Exception as e:
-                                skipped_reasons['exception'] = skipped_reasons.get('exception', 0) + 1
-                                continue
-                        
-                        # Output detailed filtering statistics to debug log
-                        total_checked = len(image_elements[:25])
-                        print_debug(f"📊 {engine['name']} checked {total_checked} image elements total, processed {processed_count}")
-                        if skipped_reasons:
-                            skip_descriptions = {
-                                'no_src': 'No image URL',
-                                'not_http': 'Non-HTTP URL',
-                                'svg_format': 'SVG format',
-                                'keyword_filter': 'Keyword filtered',
-                                'size_too_small': 'Size too small',
-                                'aspect_ratio': 'Abnormal aspect ratio',
-                                'baidu_static': 'Baidu static resources',
-                                'md5_filtered': 'Filtered by MD5 hash (excluded images)',
-                                'exception': 'Processing exception'
-                            }
-                            for reason, count in skipped_reasons.items():
-                                desc = skip_descriptions.get(reason, reason)
-                                print_debug(f"   - {desc}: {count} items")
                         print_debug(f"✅ {engine['name']} found {len(valid_images)} valid images")
+                        
+                        # 显示有效图片的详细信息
+                        if valid_images:
+                            print_debug(f"📋 Valid images details:")
+                            for i, img_info in enumerate(valid_images[:5]):  # 只显示前5个
+                                print_debug(f"   Image {i+1}: {img_info['src'][:60]}...")
+                                if img_info.get('original_src') and img_info['original_src'] != img_info['src']:
+                                    print_debug(f"     Original: {img_info['original_src'][:60]}...")
                         
                         if valid_images:
                             # Save multiple valid images (max 20)
@@ -3077,8 +2973,20 @@ Please create a detailed, structured analysis that preserves important informati
                             print_current(f"📥 Downloading {max_images} images...")
                             
                             for i, selected_image in enumerate(valid_images[:max_images]):
-                                image_url = selected_image['src']
-                                print_debug(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
+                                # 优先使用原图URL，如果没有则使用缩略图URL
+                                image_url = selected_image.get('original_src', selected_image['src'])
+                                thumbnail_url = selected_image['src']
+                                
+                                # 如果原图URL和缩略图URL不同，优先下载原图
+                                if image_url != thumbnail_url:
+                                    print_debug(f"📥 Downloading original image {i+1}/{max_images}: {image_url[:80]}...")
+                                    print_debug(f"   Thumbnail URL: {thumbnail_url[:80]}...")
+                                else:
+                                    print_debug(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
+                                
+                                import time
+                                image_start_time = time.time()
+                                max_image_time = 3.0  # 增加图片处理时间到3秒 
                                 
                                 # Download and save image
                                 try:
@@ -3096,18 +3004,60 @@ Please create a detailed, structured analysis that preserves important informati
                                             print_debug(f"⚠️ Failed to parse base64 image: {e}")
                                             continue
                                     else:
-                                        # Use page context to download regular HTTP images
-                                        response = page.request.get(image_url, timeout=15000)
-                                        if response.status == 200:
-                                            image_data = response.body()
-                                            print_debug(f"✅ Successfully downloaded HTTP image, size: {len(image_data)} bytes")
-                                        else:
-                                            print_debug(f"⚠️ Image {i+1} download failed, status code: {response.status}")
+                                        
+                                        import requests
+                                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                                        
+                                        start_time = time.time()
+                                        max_wait_time = 2.0  # 增加超时时间到2秒
+                                        
+                                        def download_with_requests(url):
+                                            headers = {
+                                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                                                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                                                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                                                'Referer': 'https://images.google.com/' if 'google' in url else 'https://image.baidu.com/'
+                                            }
+                                            response = requests.get(url, headers=headers, timeout=1.5, stream=True)  # 增加请求超时到1.5秒
+                                            if response.status_code == 200:
+                                                # 限制下载大小，避免下载超大文件
+                                                content = b''
+                                                max_size = 10 * 1024 * 1024
+                                                for chunk in response.iter_content(chunk_size=8192):
+                                                    content += chunk
+                                                    if len(content) > max_size:
+                                                        raise Exception(f"Image too large: {len(content)} bytes")
+                                                return response.status_code, content
+                                            else:
+                                                return response.status_code, None
+                                        
+                                        try:
+                                            
+                                            with ThreadPoolExecutor(max_workers=1) as executor:
+                                                future = executor.submit(download_with_requests, image_url)
+                                                try:
+                                                    status_code, image_data = future.result(timeout=max_wait_time)
+                                                    
+                                                    if status_code == 200 and image_data:
+                                                        print_debug(f"✅ Successfully downloaded HTTP image, size: {len(image_data)} bytes")
+                                                    else:
+                                                        continue
+                                                except FutureTimeoutError:
+                                                    future.cancel()  # 取消任务
+                                                    continue
+                                        except Exception as download_error:
+                                            print_debug(f"❌ Download error for image {i+1}: {download_error}")
                                             continue
                                     
                                     # Validate if it's a valid image and get format (unified processing for all image data)
                                     if image_data:
                                         try:
+                                            # 验证阶段也检查时间
+                                            validation_start = time.time()
+                                            remaining_time = max_image_time - (validation_start - image_start_time)
+                                            if remaining_time < 0.2:  # 如果剩余时间不足0.2秒，跳过验证
+                                                continue
+                                                
                                             # Check if this image should be filtered out by computing its MD5 hash
                                             import hashlib
                                             image_md5 = hashlib.md5(image_data).hexdigest()
@@ -3147,6 +3097,8 @@ Please create a detailed, structured analysis that preserves important informati
                                                 # Add to saved images list
                                                 saved_images.append({
                                                     'original_image_url': image_url,
+                                                    'thumbnail_url': thumbnail_url,  # 添加缩略图URL
+                                                    'is_original_image': image_url != thumbnail_url,  # 标记是否为原图
                                                     'local_image_path': filepath,
                                                     'relative_image_path': relative_path,
                                                     'image_format': img.format.lower() if img.format else 'unknown',
@@ -3167,6 +3119,11 @@ Please create a detailed, structured analysis that preserves important informati
                                         
                                 except Exception as e:
                                     print_debug(f"⚠️ Error downloading image {i+1}: {e}")
+                                    continue
+                                
+                                # 检查整体图片处理时间
+                                total_elapsed = time.time() - image_start_time
+                                if total_elapsed > max_image_time:
                                     continue
                             
                             # If images were successfully saved, update results
@@ -3192,12 +3149,12 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 if not image_found:
                     result_data.update({
-                        'error': '未找到有效图片',
-                        'suggestion': '请尝试使用更具体的搜索关键词，或检查网络连接'
+                        'error': 'No valid images found',
+                        'suggestion': 'Please try using more specific search keywords, or check your network connection'
                     })
-                    print_current(f"❌ 图片搜索失败: {query}")
+                    print_current(f"❌ Image search failed: {query}")
                 else:
-                    print_debug(f"🎉 图片搜索成功完成: {query}")
+                    print_debug(f"🎉 Image search completed successfully: {query}")
                 
                 return result_data
                 
@@ -3233,3 +3190,392 @@ Please create a detailed, structured analysis that preserves important informati
                     browser.close()
                 except:
                     pass
+    
+    def _get_google_image_detail_original(self, page, detail_url: str, engine: dict) -> str:
+        """
+        从Google Images详情页获取原图URL
+        
+        Args:
+            page: Playwright页面对象
+            detail_url: 详情页URL
+            engine: 搜索引擎配置
+            
+        Returns:
+            原图URL，如果获取失败则返回空字符串
+        """
+        try:
+            # 保存当前页面状态
+            original_url = page.url
+            
+            # 访问详情页
+            page.goto(detail_url, timeout=5000, wait_until='domcontentloaded')
+            page.wait_for_timeout(1000)
+            
+            # 尝试多种选择器来获取原图
+            original_selectors = [
+                'img[data-ou]',  # Google Images原图属性
+                'img[data-iurl]',  # Google Images大图属性
+                'img[src*="gstatic.com"]',  # Google静态资源
+                'img[src*="googleusercontent.com"]',  # Google用户内容
+                'img[data-src]',  # 延迟加载的图片
+                'img[src]'  # 普通图片
+            ]
+            
+            original_src = ""
+            for selector in original_selectors:
+                try:
+                    img_element = page.query_selector(selector)
+                    if img_element:
+                        src = img_element.get_attribute('src') or img_element.get_attribute('data-src')
+                        if src and (src.startswith('http') or src.startswith('//')):
+                            # 处理协议相对URL
+                            if src.startswith('//'):
+                                src = 'https:' + src
+                            
+                            # 验证是否为高质量图片URL
+                            if any(domain in src.lower() for domain in ['gstatic.com', 'googleusercontent.com', 'google.com']):
+                                original_src = src
+                                print_debug(f"✅ Found original image from detail page: {src[:80]}...")
+                                break
+                except Exception as e:
+                    print_debug(f"⚠️ Selector {selector} failed: {e}")
+                    continue
+            
+            # 返回原页面
+            page.goto(original_url, timeout=5000, wait_until='domcontentloaded')
+            
+            return original_src
+            
+        except Exception as e:
+            print_debug(f"⚠️ Failed to get original from detail page: {e}")
+            # 尝试返回原页面
+            try:
+                page.goto(original_url, timeout=5000, wait_until='domcontentloaded')
+            except:
+                pass
+            return ""
+    
+    def _extract_google_images_metadata(self, page) -> list:
+        """
+        从Google Images页面提取JSON元数据，基于参考代码实现
+        
+        Args:
+            page: Playwright页面对象
+            
+        Returns:
+            图片信息列表
+        """
+        valid_images = []
+        
+        try:
+            # 获取页面HTML内容
+            html_content = page.content()
+            
+            # 查找所有包含图片元数据的JSON对象
+            import re
+            import json
+            
+            print_debug("🔍 Searching for Google Images JSON metadata...")
+            
+            # 查找 'class="rg_meta notranslate"' 标签内的JSON数据
+            # 这是参考代码中使用的方法
+            pattern = r'class="rg_meta[^"]*"[^>]*>(\{[^}]*\})'
+            matches = re.findall(pattern, html_content)
+            
+            if not matches:
+                # 尝试更宽泛的匹配模式
+                pattern = r'"rg_meta[^"]*"[^>]*>(\{[^<]*\})'
+                matches = re.findall(pattern, html_content)
+            
+            if not matches:
+                # 尝试另一种模式：查找JavaScript中的图片数据
+                pattern = r'\["(https?://[^"]*\.(?:jpg|jpeg|png|gif|webp|bmp))"[^\]]*\]'
+                url_matches = re.findall(pattern, html_content, re.IGNORECASE)
+                
+                if url_matches:
+                    print_debug(f"📸 Found {len(url_matches)} image URLs in JavaScript")
+                    for i, url in enumerate(url_matches[:20]):  # 限制最多20张
+                        valid_images.append({
+                            'src': url,
+                            'original_src': url,
+                            'width': 'unknown',
+                            'height': 'unknown',
+                            'alt': f'Google Images result {i+1}',
+                            'source': 'javascript_pattern'
+                        })
+                return valid_images
+            
+            print_debug(f"📸 Found {len(matches)} JSON metadata objects")
+            
+            for i, match in enumerate(matches[:20]):  # 限制处理最多20个对象
+                try:
+                    # 清理和解码JSON字符串
+                    json_str = match.strip()
+                    
+                    # 移除转义字符
+                    json_str = json_str.replace('\\u003d', '=')
+                    json_str = json_str.replace('\\u0026', '&')
+                    json_str = json_str.replace('\\"', '"')
+                    json_str = json_str.replace('\\/', '/')
+                    
+                    # 尝试解析JSON
+                    try:
+                        metadata = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        # 如果直接解析失败，尝试使用bytes解码（参考代码的方法）
+                        try:
+                            decoded = bytes(json_str, "utf-8").decode("unicode_escape")
+                            metadata = json.loads(decoded)
+                        except:
+                            print_debug(f"⚠️ Failed to parse JSON for image {i+1}")
+                            continue
+                    
+                    # 提取图片信息（参考原代码的字段映射）
+                    image_info = self._format_google_image_object(metadata, i+1)
+                    
+                    if image_info and image_info.get('original_src'):
+                        valid_images.append(image_info)
+                        print_debug(f"✅ Extracted image {i+1}: {image_info['original_src'][:80]}...")
+                    
+                except Exception as e:
+                    print_debug(f"⚠️ Error processing JSON object {i+1}: {e}")
+                    continue
+            
+            print_debug(f"🎯 Successfully extracted {len(valid_images)} images from Google Images metadata")
+            
+        except Exception as e:
+            print_debug(f"❌ Error extracting Google Images metadata: {e}")
+            
+        return valid_images
+    
+    def _format_google_image_object(self, metadata: dict, index: int) -> dict:
+        """
+        格式化Google Images的JSON元数据对象
+        基于参考代码的format_object方法
+        
+        Args:
+            metadata: 原始JSON元数据
+            index: 图片索引
+            
+        Returns:
+            格式化后的图片信息字典
+        """
+        try:
+            # 参考代码中的字段映射：
+            # 'ity' -> image_format (图片格式)
+            # 'oh' -> image_height (原图高度)
+            # 'ow' -> image_width (原图宽度) 
+            # 'ou' -> image_link (原图URL) ⭐ 这是最重要的字段
+            # 'pt' -> image_description (图片描述)
+            # 'rh' -> image_host (图片托管站点)
+            # 'ru' -> image_source (源页面URL)
+            # 'tu' -> image_thumbnail_url (缩略图URL)
+            
+            # 获取原图URL（最重要）
+            original_url = metadata.get('ou', '')
+            thumbnail_url = metadata.get('tu', '')
+            
+            if not original_url:
+                # 如果没有原图URL，尝试其他字段
+                original_url = metadata.get('murl', '') or metadata.get('url', '')
+            
+            if not original_url:
+                return None
+            
+            # 处理协议相对URL
+            if original_url.startswith('//'):
+                original_url = 'https:' + original_url
+            if thumbnail_url.startswith('//'):
+                thumbnail_url = 'https:' + thumbnail_url
+            
+            # 构建图片信息
+            image_info = {
+                'src': thumbnail_url or original_url,  # 缩略图URL，如果没有则用原图URL
+                'original_src': original_url,  # 原图URL ⭐ 关键字段
+                'width': metadata.get('ow', 'unknown'),  # 原图宽度
+                'height': metadata.get('oh', 'unknown'),  # 原图高度
+                'alt': metadata.get('pt', '') or metadata.get('s', '') or f'Google Images result {index}',
+                'image_format': metadata.get('ity', ''),
+                'image_host': metadata.get('rh', ''),
+                'image_source': metadata.get('ru', ''),
+                'source': 'google_json_metadata'
+            }
+            
+            # 验证URL有效性
+            if not (original_url.startswith('http') or original_url.startswith('//')):
+                return None
+                
+            # 过滤掉明显的非图片URL
+            if any(keyword in original_url.lower() for keyword in ['logo', 'favicon', 'icon', 'sprite']):
+                return None
+            
+            print_debug(f"📋 Formatted image {index}: {image_info['width']}x{image_info['height']} - {original_url[:60]}...")
+            
+            return image_info
+            
+        except Exception as e:
+            print_debug(f"⚠️ Error formatting image object {index}: {e}")
+            return None
+    
+    def _extract_other_engines_images(self, page, engine: dict) -> tuple:
+        """
+        从其他搜索引擎（非Google Images）提取图片信息
+        
+        Args:
+            page: Playwright页面对象
+            engine: 搜索引擎配置
+            
+        Returns:
+            (valid_images, processed_count, skipped_reasons) 的元组
+        """
+        valid_images = []
+        processed_count = 0
+        skipped_reasons = {}
+        
+        try:
+            # Find image elements with error handling
+            try:
+                image_elements = page.query_selector_all(engine['image_selector'])
+                print_debug(f"🔍 {engine['name']} found {len(image_elements)} image elements")
+            except Exception as selector_error:
+                print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
+                # Fallback to basic img selector
+                try:
+                    image_elements = page.query_selector_all('img')
+                    print_debug(f"🔍 {engine['name']} fallback found {len(image_elements)} image elements")
+                except Exception as fallback_error:
+                    print_debug(f"❌ Fallback selector also failed: {fallback_error}")
+                    return valid_images, processed_count, skipped_reasons
+            
+            # Process all images
+            for i, img in enumerate(image_elements[:25]):  # Check up to 25 images
+                try:
+                    # Validate image element
+                    if not img or not hasattr(img, 'get_attribute'):
+                        skipped_reasons['invalid_element'] = skipped_reasons.get('invalid_element', 0) + 1
+                        continue
+                    
+                    processed_count += 1
+                    
+                    # Get image URL based on search engine
+                    if engine['name'] == 'Baidu Images':
+                        src = img.get_attribute('data-imgurl') or img.get_attribute('src')
+                    else:
+                        src = img.get_attribute('data-src') or img.get_attribute('src')
+                    
+                    if not src:
+                        skipped_reasons['no_src'] = skipped_reasons.get('no_src', 0) + 1
+                        continue
+                        
+                    # Validate URL format
+                    if not (src.startswith('http') or src.startswith('//') or src.startswith('data:image')):
+                        skipped_reasons['not_http'] = skipped_reasons.get('not_http', 0) + 1
+                        continue
+                    
+                    # Handle protocol-relative URLs
+                    if src.startswith('//'):
+                        src = 'https:' + src
+                        
+                    if src.endswith('.svg'):
+                        skipped_reasons['svg_format'] = skipped_reasons.get('svg_format', 0) + 1
+                        continue
+                    
+                    # Get image metadata
+                    width = img.get_attribute('width') or 'unknown'
+                    height = img.get_attribute('height') or 'unknown' 
+                    alt = img.get_attribute('alt') or ''
+                    
+                    # Filter by keywords
+                    src_lower = src.lower()
+                    alt_lower = alt.lower()
+                    
+                    skip_keywords = [
+                        'logo', 'favicon', 'watermark', 'advertisement', 'banner', 'button',
+                        'sprite', 'avatar_default', 'placeholder', 'icon'
+                    ]
+                    
+                    if any(keyword in src_lower or keyword in alt_lower for keyword in skip_keywords):
+                        skipped_reasons['keyword_filter'] = skipped_reasons.get('keyword_filter', 0) + 1
+                        continue
+                    
+                    # Size filtering for non-Google engines
+                    if width != 'unknown' and height != 'unknown':
+                        try:
+                            w, h = int(width), int(height)
+                            min_size = 150
+                            if w < min_size or h < min_size:
+                                skipped_reasons['size_too_small'] = skipped_reasons.get('size_too_small', 0) + 1
+                                continue
+                            # Aspect ratio limits
+                            ratio = max(w, h) / min(w, h)
+                            if ratio > 6:
+                                skipped_reasons['aspect_ratio'] = skipped_reasons.get('aspect_ratio', 0) + 1
+                                continue
+                        except:
+                            pass
+                    
+                    # Baidu-specific filtering
+                    if engine['name'] == 'Baidu Images':
+                        if 'baidu.com' in src_lower and ('static' in src_lower or 'logo' in src_lower):
+                            skipped_reasons['baidu_static'] = skipped_reasons.get('baidu_static', 0) + 1
+                            continue
+                    
+                    # Add valid image
+                    valid_images.append({
+                        'src': src,
+                        'original_src': src,  # For non-Google engines, original = src
+                        'width': width,
+                        'height': height,
+                        'alt': alt
+                    })
+                    
+                except Exception as e:
+                    skipped_reasons['exception'] = skipped_reasons.get('exception', 0) + 1
+                    continue
+        
+        except Exception as e:
+            print_debug(f"❌ Error extracting images from {engine['name']}: {e}")
+            
+        return valid_images, processed_count, skipped_reasons
+    
+    def _print_extraction_stats(self, engine: dict, valid_images: list, processed_count: int, skipped_reasons: dict):
+        """
+        打印图片提取统计信息
+        
+        Args:
+            engine: 搜索引擎配置
+            valid_images: 有效图片列表
+            processed_count: 处理的图片数量
+            skipped_reasons: 跳过的原因统计
+        """
+        try:
+            if engine['name'] == 'Google Images':
+                print_debug(f"📊 Google Images: extracted {len(valid_images)} images from JSON metadata")
+            else:
+                print_debug(f"📊 {engine['name']}: checked {processed_count} elements, found {len(valid_images)} valid images")
+            
+            if skipped_reasons:
+                skip_descriptions = {
+                    'invalid_element': 'Invalid elements',
+                    'no_src': 'No image URL',
+                    'not_http': 'Non-HTTP URL',
+                    'svg_format': 'SVG format',
+                    'keyword_filter': 'Keyword filtered',
+                    'size_too_small': 'Size too small',
+                    'aspect_ratio': 'Abnormal aspect ratio',
+                    'baidu_static': 'Baidu static resources',
+                    'exception': 'Processing exception'
+                }
+                for reason, count in skipped_reasons.items():
+                    desc = skip_descriptions.get(reason, reason)
+                    print_debug(f"   - {desc}: {count} items")
+                    
+            # Show valid images details
+            if valid_images:
+                print_debug(f"📋 Valid images sample (first 3):")
+                for i, img_info in enumerate(valid_images[:3]):
+                    print_debug(f"   Image {i+1}: {img_info['src'][:60]}...")
+                    if img_info.get('original_src') and img_info['original_src'] != img_info['src']:
+                        print_debug(f"     Original: {img_info['original_src'][:60]}...")
+        except Exception as e:
+            print_debug(f"⚠️ Error printing extraction stats: {e}")

@@ -44,6 +44,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config_loader import get_language, get_gui_default_data_directory
 from auth_manager import AuthenticationManager
 
+# Import Mermaid processor
+try:
+    from src.tools.mermaid_processor import mermaid_processor
+    MERMAID_PROCESSOR_AVAILABLE = True
+except ImportError:
+    print("⚠️ Mermaid processor not available")
+    MERMAID_PROCESSOR_AVAILABLE = False
+
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
 current_dir_name = os.path.basename(current_dir)
@@ -426,6 +434,20 @@ I18N_TEXTS = {
         'model_gpt_4': 'gpt-4.1 (高效率)',
         'config_error_title': '配置错误',
         'config_error_invalid_key': 'API Key配置无效，请检查config/config.txt文件中的GUI API configuration部分',
+        
+        # Custom model config dialog
+        'custom_config_title': '自定义模型配置',
+        'custom_api_key_label': 'API Key:',
+        'custom_api_base_label': 'API Base URL:',
+        'custom_model_label': '模型名称:',
+        'custom_max_tokens_label': 'Max Output Tokens:',
+        'custom_api_key_placeholder': '请输入API Key',
+        'custom_api_base_placeholder': '请输入API Base URL（如：https://api.example.com/v1）',
+        'custom_model_placeholder': '请输入模型名称（如：gpt-4）',
+        'custom_max_tokens_placeholder': '请输入最大输出token数量（默认：8192）',
+        'custom_config_save': '保存配置',
+        'custom_config_cancel': '取消',
+        'custom_config_required': '所有字段都是必填的',
     },
     'en': {
         # Page title and basic info
@@ -612,6 +634,20 @@ I18N_TEXTS = {
         'model_gpt_4': 'gpt-4.1 (High Efficiency)',
         'config_error_title': 'Configuration Error',
         'config_error_invalid_key': 'Invalid API Key configuration, please check GUI API configuration in config/config.txt',
+        
+        # Custom model config dialog
+        'custom_config_title': 'Custom Model Configuration',
+        'custom_api_key_label': 'API Key:',
+        'custom_api_base_label': 'API Base URL:',
+        'custom_model_label': 'Model Name:',
+        'custom_max_tokens_label': 'Max Output Tokens:',
+        'custom_api_key_placeholder': 'Enter API Key',
+        'custom_api_base_placeholder': 'Enter API Base URL (e.g., https://api.example.com/v1)',
+        'custom_model_placeholder': 'Enter model name (e.g., gpt-4)',
+        'custom_max_tokens_placeholder': 'Enter max output tokens (default: 8192)',
+        'custom_config_save': 'Save Configuration',
+        'custom_config_cancel': 'Cancel',
+        'custom_config_required': 'All fields are required',
     }
 }
 
@@ -2034,6 +2070,115 @@ def convert_markdown():
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
 
+@app.route('/api/convert-mermaid-to-images', methods=['POST'])
+def convert_mermaid_to_images():
+    """Convert Mermaid chart to SVG and PNG images"""
+    try:
+        data = request.get_json()
+        file_path = data.get('file_path')
+        mermaid_content = data.get('mermaid_content')
+        
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        if not file_path:
+            return jsonify({'success': False, 'error': 'File path cannot be empty'})
+        
+        if not mermaid_content:
+            return jsonify({'success': False, 'error': 'Mermaid content cannot be empty'})
+        
+        if not MERMAID_PROCESSOR_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Mermaid processor not available'})
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Use the passed path directly
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            return jsonify({'success': False, 'error': f'File does not exist: {file_path}'})
+        
+        # Check if it's a mermaid file
+        _, ext = os.path.splitext(full_path.lower())
+        if ext not in ['.mmd']:
+            return jsonify({'success': False, 'error': 'Only supports .mmd file conversion'})
+        
+        # Generate base filename from original file (without extension)
+        base_name = os.path.splitext(os.path.basename(full_path))[0]
+        file_dir = os.path.dirname(full_path)
+        
+        # Create images directory if it doesn't exist
+        images_dir = os.path.join(file_dir, 'images')
+        os.makedirs(images_dir, exist_ok=True)
+        
+        # Generate output paths
+        svg_path = os.path.join(images_dir, f"{base_name}.svg")
+        png_path = os.path.join(images_dir, f"{base_name}.png")
+        
+        print(f"🎨 Converting Mermaid chart to images:")
+        print(f"  File: {full_path}")
+        print(f"  SVG output: {svg_path}")
+        print(f"  PNG output: {png_path}")
+        
+        # Use mermaid processor to generate images
+        from pathlib import Path
+        svg_success, png_success = mermaid_processor._generate_mermaid_image(
+            mermaid_content, 
+            Path(svg_path), 
+            Path(png_path)
+        )
+        
+        if svg_success or png_success:
+            result = {
+                'success': True,
+                'message': 'Mermaid图表转换完成'
+            }
+            
+            if svg_success:
+                rel_svg_path = os.path.relpath(svg_path, user_base_dir)
+                result['svg_path'] = rel_svg_path
+                result['svg_full_path'] = svg_path
+            
+            if png_success:
+                rel_png_path = os.path.relpath(png_path, user_base_dir)
+                result['png_path'] = rel_png_path
+                result['png_full_path'] = png_path
+                
+            if svg_success and png_success:
+                result['message'] += '（SVG和PNG格式）'
+            elif svg_success:
+                result['message'] += '（仅SVG格式）'
+            elif png_success:
+                result['message'] += '（仅PNG格式）'
+            
+            print(f"✅ Mermaid conversion successful: SVG={svg_success}, PNG={png_success}")
+            return jsonify(result)
+        else:
+            print(f"❌ Mermaid conversion failed")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to generate images from Mermaid chart'
+            })
+    
+    except Exception as e:
+        print(f"❌ Mermaid conversion error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
+
 @app.route('/api/metrics')
 def get_performance_metrics():
     """Get current performance metrics"""
@@ -2739,43 +2884,55 @@ def validate_config():
         from src.config_loader import get_gui_config, validate_gui_config
         
         data = request.get_json()
-        selected_model = data.get('model', 'claude-sonnet-4')
+        model_config = data.get('config')  # 新的结构：完整的配置对象
         
-        # Read GUI configuration from config.txt
-        gui_config = get_gui_config()
-        
-        # Validate the configuration
-        is_valid, error_message = validate_gui_config(gui_config)
-        
-        if not is_valid:
+        if not model_config:
             return jsonify({
                 'success': False,
-                'error': error_message
+                'error': '模型配置信息缺失'
             })
         
-        # Get model-specific configuration
-        api_key = gui_config.get('api_key')
-        api_base = gui_config.get('api_base')
+        # 从配置对象中提取信息
+        api_key = model_config.get('api_key')
+        api_base = model_config.get('api_base')
+        model_name = model_config.get('model')
+        max_tokens = model_config.get('max_tokens', 8192)
         
-        # For different models, we might need different api_base URLs
-        if selected_model == 'claude-sonnet-4-0':
-            # For Claude models, ensure we use Anthropic endpoint
-            if api_base:
-                # Remove trailing slash first
-                api_base = api_base.rstrip('/')
-                if api_base.endswith('/v1'):
-                    # Change the suffix from v1 to anthropic for Claude models
-                    api_base = api_base[:-3] + '/anthropic'
-                elif not api_base.endswith('/anthropic'):
-                    # If it doesn't end with /anthropic, append it
-                    api_base = api_base + '/anthropic'
+        # 验证必需字段
+        if not api_key or not api_base or not model_name:
+            return jsonify({
+                'success': False,
+                'error': '配置信息不完整：缺少 API Key、API Base 或模型名称'
+            })
         
+        # 验证max_tokens是有效的数字
+        try:
+            max_tokens = int(max_tokens) if max_tokens else 8192
+            if max_tokens <= 0:
+                max_tokens = 8192
+        except (ValueError, TypeError):
+            max_tokens = 8192
+        
+        # 对于内置的GLM-4.5配置，进行额外的配置文件验证
+        if model_config.get('value') == 'glm-4.5':
+            # 读取GUI配置并验证
+            gui_config = get_gui_config()
+            is_valid, error_message = validate_gui_config(gui_config)
+            
+            if not is_valid:
+                return jsonify({
+                    'success': False,
+                    'error': error_message
+                })
+        
+        # 返回验证后的配置
         return jsonify({
             'success': True,
             'config': {
                 'api_key': api_key,
                 'api_base': api_base,
-                'model': selected_model
+                'model': model_name,
+                'max_tokens': max_tokens
             }
         })
         
@@ -2815,6 +2972,50 @@ def save_markdown():
         return jsonify({'success': True, 'path': rel_path})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/gui-configs', methods=['GET'])
+def get_gui_configs():
+    """Get available GUI model configurations"""
+    try:
+        from src.config_loader import get_gui_config
+        
+        # 读取GUI配置
+        gui_config = get_gui_config()
+        
+        # 返回固定的两个选项：GLM-4.5 和自定义
+        configs = [
+            {
+                'value': 'glm-4.5',
+                'label': 'GLM-4.5',
+                'api_key': gui_config.get('api_key', ''),
+                'api_base': gui_config.get('api_base', ''),
+                'model': gui_config.get('model', ''),
+                'max_tokens': gui_config.get('max_tokens', 8192),
+                'display_name': 'GLM-4.5'
+            },
+            {
+                'value': 'custom',
+                'label': '自定义',
+                'api_key': '',
+                'api_base': '',
+                'model': '',
+                'max_tokens': 8192,
+                'display_name': '自定义'
+            }
+        ]
+        
+        return jsonify({
+            'success': True,
+            'configs': configs
+        })
+        
+    except Exception as e:
+        print(f"Error getting GUI configurations: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 
 if __name__ == '__main__':

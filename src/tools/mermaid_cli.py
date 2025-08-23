@@ -696,7 +696,17 @@ class MermaidProcessor:
 <body>
     <div class="mermaid">{mermaid_code}</div>
     <script>
-        mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+        mermaid.initialize({{ 
+            startOnLoad: true, 
+            theme: 'default',
+            flowchart: {{
+                useMaxWidth: false,
+                nodeSpacing: 30,
+                rankSpacing: 40,
+                diagramPadding: 20
+            }},
+            maxWidth: 700
+        }});
     </script>
 </body>
 </html>"""

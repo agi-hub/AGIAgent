@@ -282,14 +282,12 @@ class FileSystemTools:
             
             return {
                 'status': 'success',
-                'path': relative_workspace_path,
-                'directories': sorted(directories),
-                'files': sorted(files)
+                'sub directories': "No sub-directories" if not directories else str(sorted(directories)),
+                'files': str(sorted(files))
             }
         except Exception as e:
             return {
                 'status': 'failed',
-                'path': relative_workspace_path,
                 'error': str(e)
             }
 
@@ -1599,7 +1597,7 @@ class FileSystemTools:
                     # Execute command in markdown file directory
                     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
                     
-                    if result.returncode == 0 and pdf_file.exists():
+                    if pdf_file.exists():  # Check file existence only, ignore warnings in returncode
                         file_size = pdf_file.stat().st_size
                         conversion_results['conversions']['pdf'] = {
                             'status': 'success',
@@ -1607,7 +1605,15 @@ class FileSystemTools:
                             'size': file_size,
                             'size_kb': f"{file_size / 1024:.1f} KB"
                         }
-                        print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                        
+                        # Check if there were warnings during conversion
+                        if result.returncode != 0:
+                            print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                            print_current(f"⚠️  Note: Conversion completed with warnings (non-critical)")
+                            if result.stderr:
+                                print_current(f"   Warning details: {result.stderr[:200]}...")  # Show first 200 chars
+                        else:
+                            print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
                     else:
                         # If trans_md_to_pdf.py fails
                         print_current(f"⚠️ trans_md_to_pdf.py conversion failed...")

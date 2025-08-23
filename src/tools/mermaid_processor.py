@@ -736,10 +736,40 @@ class MermaidProcessor:
             theme: 'default',
             fontFamily: 'Microsoft YaHei, SimHei, SimSun, Arial, sans-serif',
             flowchart: {{
-                useMaxWidth: true,
-                htmlLabels: true
+                useMaxWidth: false,
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 15,
+                nodeSpacing: 30,
+                rankSpacing: 40,
+                diagramPadding: 20
             }},
-            securityLevel: 'loose'
+            gantt: {{
+                useMaxWidth: false,
+                leftPadding: 75,
+                rightPadding: 50
+            }},
+            sequence: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35
+            }},
+            journey: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30
+            }},
+            timeline: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30
+            }},
+            securityLevel: 'loose',
+            maxWidth: 700
         }});
     </script>
 </body>
@@ -899,6 +929,8 @@ class MermaidProcessor:
         .mermaid {{
             background: white;
             text-align: center;
+            max-width: 700px;
+            margin: 0 auto;
         }}
         .mermaid svg {{
             max-width: 100%;
@@ -915,10 +947,40 @@ class MermaidProcessor:
             theme: 'default',
             fontFamily: 'Microsoft YaHei, SimHei, SimSun, Arial, sans-serif',
             flowchart: {{
-                useMaxWidth: true,
-                htmlLabels: true
+                useMaxWidth: false,
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 15,
+                nodeSpacing: 30,
+                rankSpacing: 40,
+                diagramPadding: 20
             }},
-            securityLevel: 'loose'
+            gantt: {{
+                useMaxWidth: false,
+                leftPadding: 75,
+                rightPadding: 50
+            }},
+            sequence: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35
+            }},
+            journey: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30
+            }},
+            timeline: {{
+                useMaxWidth: false,
+                diagramMarginX: 30,
+                diagramMarginY: 30
+            }},
+            securityLevel: 'loose',
+            maxWidth: 700
         }});
     </script>
 </body>
@@ -950,7 +1012,7 @@ class MermaidProcessor:
                         ]
                     )
                     page = browser.new_page()
-                    page.set_viewport_size({"width": 1200, "height": 800})
+                    page.set_viewport_size({"width": 800, "height": 600})
                     
                     print(f"🔧 Loading HTML file...")
                     # Load HTML file with optimized settings

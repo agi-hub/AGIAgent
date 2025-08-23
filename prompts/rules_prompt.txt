@@ -60,12 +60,12 @@ For Report Generation Tasks:
    - Place diagrams immediately after introducing complex concepts
    - Use proper Mermaid syntax, and do add a diagram caption in the comment format after the diagram, for example: 
    ```mermaid
-   graph TD
+   graph LR
        A["Neural Networks"] --> B["Spiking Neural Networks"]
    ```
    <!-- the_example_diagram_caption -->
 
- Use older version mermaid gramma to describe, rich mermaid chart types are encouraged (such as Pie, Timeline, Kanban.). 
+Rich mermaid chart types are encouraged (such as Flowchart, Class, Sequence, Entity Relationship, State, Mindmap, Architecture, Block, C4, Gantt, Git, Kanban, Packet, Pie, Quadrant, Radar, Requirement, Sankey). Don't use TD type, and using LR instead. 
    You can also search for relevant images to supplement the report.
 9. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion. 
 </reports>

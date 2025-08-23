@@ -4,22 +4,33 @@ LANG=zh
 
 # GUI API configuration 
 api_key=your key
-api_base=https://api.openai-proxy.org/v1
-
+api_base=https://open.bigmodel.cn/api/paas/v4/
+model=glm-4.5
+max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
-# api_base=https://api.openai-proxy.org/v1
+# api_base=https://pmpjfbhq.cn-nb1.rainapp.top/v1
 # model=gpt-4.1
 # max_tokens=8192
 
-
 # Anthropic models
-api_key=your key
-api_base=https://api.tu-zi.com/v1
-model=claude-sonnet-4-0
-max_tokens=32768
+# api_key=your key
+# api_base=https://anyrouter.top/v1
+# model=claude-sonnet-3-7
+# max_tokens=32768
 
+# GUI API configuration 
+# api_key=your key
+# api_base=https://api.tu-zi.com/v1
+# model=claude-sonnet-4-0
+# max_tokens=32768
+
+# Openrouter
+# api_key=your key
+# api_base=https://openrouter.ai/api/v1
+# model=claude-sonnet-4-0
+# max_tokens=32768
 
 # Zhipu API configuration 
 # api_key=your key
@@ -48,9 +59,9 @@ max_tokens=32768
 # max_tokens=8192
 
 # DeepSeek API configuration
-# api_key=your key
-# api_base=https://api.deepseek.com/v1
-# model=deepseek-chat
+#api_key=your key
+#api_base=https://api.deepseek.com/v1
+#model=deepseek-chat
 
 # Volcengine Doubao API configuration
 # api_key=your key
@@ -231,7 +242,7 @@ sync_round=2
 # When disabled, only basic English tokenization is used (recommended for better performance)
 # Default: False (disabled)
 # Set to True to enable jieba Chinese segmentation
-enable_jieba=True
+enable_jieba=False
 
 # Emoji Display Configuration
 # Controls whether to display emoji symbols in print outputs
