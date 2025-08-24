@@ -9,6 +9,8 @@ jieba>=0.35.0
 playwright>=1.20.0 
 tqdm>=4.30.0  
 pandoc>=2.0.0
+pillow
+pandocfilters
 
 # GUI dependencies
 flask>=2.0.0

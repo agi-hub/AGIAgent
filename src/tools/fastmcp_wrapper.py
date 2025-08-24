@@ -224,14 +224,21 @@ class FastMcpWrapper:
             from fastmcp import Client
             from fastmcp.mcp_config import MCPConfig
             
-            # Create MCP configuration
+            # Create MCP configuration with environment variables
+            server_config_for_fastmcp = {
+                "command": command,
+                "args": args,
+                "transport": "stdio"
+            }
+            
+            # Add environment variables if they exist
+            env_vars = server_config.get("env", {})
+            if env_vars:
+                server_config_for_fastmcp["env"] = env_vars
+            
             mcp_config = MCPConfig(
                 mcpServers={
-                    server_name: {
-                        "command": command,
-                        "args": args,
-                        "transport": "stdio"
-                    }
+                    server_name: server_config_for_fastmcp
                 }
             )
             
@@ -334,14 +341,21 @@ class FastMcpWrapper:
             from fastmcp import Client
             from fastmcp.mcp_config import MCPConfig
             
-            # Create MCP configuration
+            # Create MCP configuration with environment variables
+            server_config_for_fastmcp = {
+                "command": command,
+                "args": args,
+                "transport": "stdio"
+            }
+            
+            # Add environment variables if they exist
+            env_vars = server_config.get("env", {})
+            if env_vars:
+                server_config_for_fastmcp["env"] = env_vars
+            
             mcp_config = MCPConfig(
                 mcpServers={
-                    server_name: {
-                        "command": command,
-                        "args": args,
-                        "transport": "stdio"
-                    }
+                    server_name: server_config_for_fastmcp
                 }
             )
             

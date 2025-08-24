@@ -1620,6 +1620,15 @@ class FileSystemTools:
                         error_msg = result.stderr if result.stderr else result.stdout
                         print_current(f"   Error message: {error_msg}")
                         
+                        # Analyze error for common issues
+                        if error_msg:
+                            if "Cannot load file" in error_msg or "Invalid" in error_msg:
+                                print_current("🔍 Detected image format compatibility issues")
+                                print_current("💡 Suggestion: Consider converting WebP/TIFF images to PNG/JPEG")
+                            elif "Cannot determine size" in error_msg or "BoundingBox" in error_msg:
+                                print_current("🔍 Detected image size/boundary issues")  
+                                print_current("💡 Suggestion: Image preprocessing may help resolve this")
+                        
                         # Use pandoc directly for conversion with fallback engine
                         try:
                             # Check available PDF engines

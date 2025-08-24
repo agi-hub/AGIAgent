@@ -1,5 +1,11 @@
 {
-
-}
-
-
+    "mcpServers": {
+      "jina-mcp-tools": {
+        "command": "npx",
+        "args": ["jina-mcp-tools"],
+        "env": {
+          "JINA_API_KEY": "jina_3c03fce959144337baff27a5109a250a6dePLFEwxGkb3Gjs8Rw2_hCes4KR"
+        }
+      }
+    }
+  }
