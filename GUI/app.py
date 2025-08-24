@@ -448,6 +448,22 @@ I18N_TEXTS = {
         'custom_config_save': '保存配置',
         'custom_config_cancel': '取消',
         'custom_config_required': '所有字段都是必填的',
+        
+        # Additional UI elements
+        'new_messages': '条新消息',
+        'auto_scrolling': '自动滚动',
+        'uploading': '上传中...',
+        
+        # Mermaid conversion
+        'mermaid_conversion_completed': 'Mermaid图表转换完成',
+        'mermaid_svg_png_format': '（SVG和PNG格式）',
+        'mermaid_svg_only': '（仅SVG格式）',
+        'mermaid_png_only': '（仅PNG格式）',
+        
+        # Configuration validation
+        'config_missing': '模型配置信息缺失',
+        'config_incomplete': '配置信息不完整：缺少 API Key、API Base 或模型名称',
+        'custom_label': '自定义',
     },
     'en': {
         # Page title and basic info
@@ -648,6 +664,22 @@ I18N_TEXTS = {
         'custom_config_save': 'Save Configuration',
         'custom_config_cancel': 'Cancel',
         'custom_config_required': 'All fields are required',
+        
+        # Additional UI elements
+        'new_messages': 'new messages',
+        'auto_scrolling': 'Auto Scroll',
+        'uploading': 'Uploading...',
+        
+        # Mermaid conversion
+        'mermaid_conversion_completed': 'Mermaid chart conversion completed',
+        'mermaid_svg_png_format': ' (SVG and PNG formats)',
+        'mermaid_svg_only': ' (SVG format only)',
+        'mermaid_png_only': ' (PNG format only)',
+        
+        # Configuration validation
+        'config_missing': 'Model configuration information missing',
+        'config_incomplete': 'Incomplete configuration: missing API Key, API Base, or model name',
+        'custom_label': 'Custom',
     }
 }
 
@@ -1583,7 +1615,7 @@ def get_file_content(file_path):
         
         # Check file size to avoid reading oversized files
         file_size = os.path.getsize(full_path)
-        if file_size > 5 * 1024 * 1024:  # 5MB
+        if file_size > 50 * 1024 * 1024:  # 50MB
             return jsonify({'success': False, 'error': 'File too large to display'})
         
         # Get file extension
@@ -2051,17 +2083,61 @@ def convert_markdown():
         print(f"  Conversion result: {conversion_result}")
         
         if conversion_result.get('status') == 'success':
-            return jsonify({
+            # Check for partial success (some conversions failed)
+            conversions = conversion_result.get('conversions', {})
+            failed_conversions = [k for k, v in conversions.items() if v.get('status') == 'failed']
+            
+            response_data = {
                 'success': True,
                 'message': 'Conversion completed',
-                'conversions': conversion_result.get('conversions', {}),
+                'conversions': conversions,
                 'converted_files': []
-            })
+            }
+            
+            # Add warnings for failed conversions
+            if failed_conversions:
+                warnings = []
+                for conv_type in failed_conversions:
+                    conv_error = conversions[conv_type].get('error', 'Unknown error')
+                    if 'Cannot load file' in conv_error or 'Invalid' in conv_error:
+                        warnings.append(f'{conv_type.upper()} conversion failed due to image format issues. Consider converting WebP/TIFF images to PNG/JPEG.')
+                    elif 'Cannot determine size' in conv_error or 'BoundingBox' in conv_error:
+                        warnings.append(f'{conv_type.upper()} conversion failed due to image size/boundary issues.')
+                    elif 'PDF engines' in conv_error:
+                        warnings.append(f'{conv_type.upper()} conversion failed: No PDF engines available. Install xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint.')
+                    else:
+                        warnings.append(f'{conv_type.upper()} conversion failed: {conv_error}')
+                
+                response_data['warnings'] = warnings
+                response_data['partial_success'] = True
+            
+            return jsonify(response_data)
         else:
+            error_msg = conversion_result.get('error', 'Conversion failed')
+            user_friendly_error = error_msg
+            suggestions = []
+            
+            # Provide user-friendly error messages and suggestions
+            if 'Cannot load file' in error_msg or 'Invalid' in error_msg:
+                user_friendly_error = 'Image format compatibility issues detected'
+                suggestions.append('Convert WebP, TIFF, or other incompatible images to PNG or JPEG format')
+                suggestions.append('Remove or replace problematic images')
+            elif 'Cannot determine size' in error_msg or 'BoundingBox' in error_msg:
+                user_friendly_error = 'Image size or boundary issues detected'
+                suggestions.append('Ensure images have valid dimensions and formats')
+                suggestions.append('Try resaving images in a standard format like PNG')
+            elif 'PDF engines' in error_msg:
+                user_friendly_error = 'PDF conversion engines not available'
+                suggestions.append('Install LaTeX (xelatex, lualatex, pdflatex) for high-quality PDF output')
+                suggestions.append('Install wkhtmltopdf or weasyprint as alternatives')
+                suggestions.append('Word document conversion may still work as a fallback')
+            
             return jsonify({
                 'success': False,
-                'error': conversion_result.get('error', 'Conversion failed'),
-                'message': conversion_result.get('message', 'Unknown error')
+                'error': user_friendly_error,
+                'original_error': error_msg,
+                'suggestions': suggestions,
+                'message': conversion_result.get('message', 'Conversion failed')
             })
     
     except Exception as e:
@@ -2142,9 +2218,10 @@ def convert_mermaid_to_images():
         )
         
         if svg_success or png_success:
+            i18n = get_i18n_texts()
             result = {
                 'success': True,
-                'message': 'Mermaid图表转换完成'
+                'message': i18n['mermaid_conversion_completed']
             }
             
             if svg_success:
@@ -2158,11 +2235,11 @@ def convert_mermaid_to_images():
                 result['png_full_path'] = png_path
                 
             if svg_success and png_success:
-                result['message'] += '（SVG和PNG格式）'
+                result['message'] += i18n['mermaid_svg_png_format']
             elif svg_success:
-                result['message'] += '（仅SVG格式）'
+                result['message'] += i18n['mermaid_svg_only']
             elif png_success:
-                result['message'] += '（仅PNG格式）'
+                result['message'] += i18n['mermaid_png_only']
             
             print(f"✅ Mermaid conversion successful: SVG={svg_success}, PNG={png_success}")
             return jsonify(result)
@@ -2887,9 +2964,10 @@ def validate_config():
         model_config = data.get('config')  # 新的结构：完整的配置对象
         
         if not model_config:
+            i18n = get_i18n_texts()
             return jsonify({
                 'success': False,
-                'error': '模型配置信息缺失'
+                'error': i18n['config_missing']
             })
         
         # 从配置对象中提取信息
@@ -2900,9 +2978,11 @@ def validate_config():
         
         # 验证必需字段
         if not api_key or not api_base or not model_name:
+            if 'i18n' not in locals():
+                i18n = get_i18n_texts()
             return jsonify({
                 'success': False,
-                'error': '配置信息不完整：缺少 API Key、API Base 或模型名称'
+                'error': i18n['config_incomplete']
             })
         
         # 验证max_tokens是有效的数字
@@ -2984,6 +3064,7 @@ def get_gui_configs():
         gui_config = get_gui_config()
         
         # 返回固定的两个选项：GLM-4.5 和自定义
+        i18n = get_i18n_texts()
         configs = [
             {
                 'value': 'glm-4.5',
@@ -2996,12 +3077,12 @@ def get_gui_configs():
             },
             {
                 'value': 'custom',
-                'label': '自定义',
+                'label': i18n['custom_label'],
                 'api_key': '',
                 'api_base': '',
                 'model': '',
                 'max_tokens': 8192,
-                'display_name': '自定义'
+                'display_name': i18n['custom_label']
             }
         ]
         
@@ -3019,5 +3100,5 @@ def get_gui_configs():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5002))
+    port = int(os.environ.get('PORT', 5003))
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 

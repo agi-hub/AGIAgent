@@ -1093,7 +1093,7 @@
 
         /* Special handling for preview modal */
         #previewModal .modal-content {
-            width: 98%;
+            width: 50%;
             max-width: none;
             height: 95%;
             max-height: none;
@@ -1626,13 +1626,13 @@
                 <!-- New message indicator -->
                 <div class="new-message-indicator" id="newMessageIndicator">
                     <i class="fas fa-bell"></i>
-                    <span id="newMessageCount">1</span> 条新消息
+                    <span id="newMessageCount">1</span> {{ i18n.get('new_messages', '条新消息' if lang == 'zh' else 'new messages') }}
                 </div>
                 
                 <!-- Auto-scroll status indicator -->
                 <div class="auto-scroll-indicator" id="autoScrollIndicator">
                     <i class="fas fa-arrow-down"></i>
-                    <span>自动滚动</span>
+                    <span>{{ i18n.get('auto_scrolling', '自动滚动' if lang == 'zh' else 'Auto Scroll') }}</span>
                 </div>
             </div>
 
@@ -1716,6 +1716,21 @@
                     <!-- Task mode information will be displayed here -->
                 </div>
             </div>
+            
+            <!-- GitHub Link -->
+            <div class="github-link-container" style="position: absolute; bottom: 20px; left: 20px; z-index: 100;">
+                <a href="https://github.com/agi-hub/AGIBot" target="_blank" rel="noopener noreferrer" 
+                   style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; 
+                          background: #333; color: #fff; text-decoration: none; border-radius: 6px; 
+                          font-size: 0.9em; border: 1px solid #555; transition: all 0.3s ease;
+                          box-shadow: 0 2px 4px rgba(0,0,0,0.3);"
+                   onmouseover="this.style.background='#444'; this.style.borderColor='#777'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.4)'"
+                   onmouseout="this.style.background='#333'; this.style.borderColor='#555'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.3)'"
+                   title="访问AGIBot项目主页">
+                    <i class="fab fa-github" style="font-size: 1.1em;"></i>
+                    <span>{{ 'GitHub' if lang == 'en' else 'GitHub' }}</span>
+                </a>
+            </div>
         </div>
 
         <div class="resizer" id="resizer"></div>
@@ -1778,7 +1793,7 @@
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill"></div>
                     </div>
-                    <div class="progress-text" id="progressText">上传中...</div>
+                    <div class="progress-text" id="progressText">{{ i18n.get('uploading', '上传中...' if lang == 'zh' else 'Uploading...') }}</div>
                 </div>
                 <div class="upload-result" id="uploadResult"></div>
             </div>
@@ -1920,14 +1935,17 @@
         // State management
         let isTaskRunning = false;
         let selectedDirectory = null;
-        let taskMode = 'new'; // 'new', 'continue', 'selected'
-        let expandedDirectories = new Set(); // Save expanded directory state
+        let taskMode = 'continue'; // 'new', 'continue', 'selected'
+        let expandedDirectories = new Set();
         let collapsedSubDirectories = new Set(); // Save collapsed subdirectory state
         let isUserScrolling = false; // Whether user is manually scrolling
         let autoScrollEnabled = true; // Whether auto-scroll is enabled
         let refreshTimeout = null; // Debounce timer
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
+        let isGuest = false; // 添加guest状态跟踪
+        let newMessageCount = 0; // New message counter
+        let lastMessageTime = 0;
 
         // User connection management functions
         function updateUserStatus(status, message, identity = '', isGuest = false) {
@@ -2053,7 +2071,6 @@
         const uploadResult = document.getElementById('uploadResult');
         
         let currentUploadDir = null;
-        let newMessageCount = 0; // New message counter
         
         // Auto-scroll status indicator
         const autoScrollIndicator = document.getElementById('autoScrollIndicator');
@@ -2086,8 +2103,8 @@
                 // Refresh directories for this user
                 refreshDirectories();
                 
-                // 自动刷新已禁用，只使用手动刷新
-                // startAutoRefresh();
+                // 启动自动刷新
+                startAutoRefresh();
                 
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
@@ -2097,7 +2114,7 @@
             });
             
             socket.on('status', function(data) {
-                const isGuest = data.is_guest || false;
+                isGuest = data.is_guest || false; // 保存到全局变量
                 const userName = data.user_name || 'unknown';
                 let identity = '';
                 
@@ -2116,8 +2133,8 @@
                 addMessage(`${I18N.disconnected} (${reason})`, 'info');
                 updateStatus('disconnected');
                 
-                // 自动刷新已禁用
-                // stopAutoRefresh();
+                // 停止自动刷新
+                stopAutoRefresh();
                 
                 console.log('❌ Socket disconnected:', reason);
             });
@@ -2402,6 +2419,12 @@
             const message = userInput.value.trim();
             if (!message || isTaskRunning || !socket || !isConnected) return;
 
+            // 检查guest用户权限
+            if (isGuest) {
+                addMessage('guest用户为演示账户，无法执行新任务。', 'error');
+                return;
+            }
+
             // In new mode, prompt user to create or select directory first
             if (taskMode === 'new') {
                 addMessage(I18N.create_or_select_directory, 'error');
@@ -2490,6 +2513,12 @@
 
         function createNewDirectory() {
             if (isTaskRunning || !socket || !isConnected) return;
+            
+            // 检查guest用户权限
+            if (isGuest) {
+                addMessage('guest用户为演示账户，无法创建新目录。', 'error');
+                return;
+            }
             
             socket.emit('create_new_directory');
         }
@@ -2771,7 +2800,8 @@
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage(false); // Default to direct execution mode
+                // 移除自动执行，用户需要点击按钮来执行任务
+                // sendMessage(false); // Default to direct execution mode
             }
         });
 
@@ -3365,6 +3395,12 @@
         }
 
         function deleteDirectory(dirName) {
+            // 检查guest用户权限
+            if (isGuest) {
+                alert('guest用户为演示账户，无法删除目录。');
+                return;
+            }
+            
             console.log(`🗑️ Deleting directory: ${dirName}`);
             
             // 显示删除中状态
@@ -4385,6 +4421,15 @@
                     // 这里通过构造 data 对象调用一次渲染路径
                     const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
                     displayFileContent(fake, '');
+                    
+                    // 图片切换成功后自动保存文件
+                    autoSaveMarkdown().then(saved => {
+                        if (saved) {
+                            console.log('图片切换后已自动保存markdown文件');
+                        }
+                    }).catch(e => {
+                        console.warn('自动保存时出错:', e);
+                    });
                 });
             } catch (e) {
                 console.warn('next image failed:', e);
@@ -4418,6 +4463,15 @@
                     // 这里通过构造 data 对象调用一次渲染路径
                     const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
                     displayFileContent(fake, '');
+                    
+                    // 图片切换成功后自动保存文件
+                    autoSaveMarkdown().then(saved => {
+                        if (saved) {
+                            console.log('图片切换后已自动保存markdown文件');
+                        }
+                    }).catch(e => {
+                        console.warn('自动保存时出错:', e);
+                    });
                 });
             } catch (e) {
                 console.warn('prev image failed:', e);
@@ -4475,6 +4529,15 @@
                 window.currentMarkdownContent.processed = replaced;
                 const fake = { content: replaced, type: 'markdown', size: 'N/A', file_path: window.currentOriginalFilePath || currentFilePath };
                 displayFileContent(fake, '');
+                
+                // 图片删除成功后自动保存文件
+                autoSaveMarkdown().then(saved => {
+                    if (saved) {
+                        console.log('图片删除后已自动保存markdown文件');
+                    }
+                }).catch(e => {
+                    console.warn('自动保存时出错:', e);
+                });
             } catch (e) {
                 console.warn('remove image failed:', e);
             }
@@ -4486,6 +4549,12 @@
 
         async function saveCurrentMarkdown() {
             try {
+                // 检查guest用户权限
+                if (isGuest) {
+                    alert('guest用户为演示账户，无法保存。');
+                    return;
+                }
+                
                 if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
                     alert('未检测到可保存的Markdown内容');
                     return;
@@ -4513,6 +4582,51 @@
             } catch (e) {
                 console.error('保存Markdown失败:', e);
                 addMessage('保存失败: 网络或服务器错误', 'error');
+            }
+        }
+
+        // 自动保存Markdown内容（静默保存，用于图片切换后）
+        async function autoSaveMarkdown() {
+            try {
+                // 检查guest用户权限 - guest用户跳过保存
+                if (isGuest) {
+                    console.log('Guest用户跳过自动保存');
+                    return false;
+                }
+                
+                // 检查是否有可保存的内容
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
+                    console.log('无Markdown内容可自动保存');
+                    return false;
+                }
+                if (!window.currentOriginalFilePath && !currentFilePath) {
+                    console.log('无法确定Markdown文件路径，跳过自动保存');
+                    return false;
+                }
+
+                const headers = { 'Content-Type': 'application/json' };
+                const body = {
+                    path: window.currentOriginalFilePath || currentFilePath,
+                    content: window.currentMarkdownContent.processed
+                };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+                
+                const resp = await fetch('/api/save-markdown', { method: 'POST', headers, body: JSON.stringify(body) });
+                const data = await resp.json();
+                
+                if (data && data.success) {
+                    console.log('Markdown已自动保存');
+                    return true;
+                } else {
+                    console.warn('自动保存失败:', data && data.error ? data.error : '未知错误');
+                    return false;
+                }
+            } catch (e) {
+                console.error('自动保存Markdown失败:', e);
+                return false;
             }
         }
 
@@ -4738,6 +4852,12 @@
         }
         
         function convertMermaidToImages() {
+            // 检查guest用户权限
+            if (isGuest) {
+                alert('guest用户为演示账户，无法转换图表。');
+                return;
+            }
+            
             if (!window.currentMermaidContent) {
                 alert('没有找到Mermaid内容');
                 return;
@@ -4857,6 +4977,12 @@
 
         function performRename() {
             if (!currentRenamingDir) return;
+            
+            // 检查guest用户权限
+            if (isGuest) {
+                alert('guest用户为演示账户，无法重命名目录。');
+                return;
+            }
             
             const newName = newDirName.value.trim();
             if (!newName) {
@@ -5137,6 +5263,12 @@
          * 转换Markdown文件为Word文档
          */
         function convertMarkdownToWord() {
+            // 检查guest用户权限
+            if (isGuest) {
+                alert('guest用户为演示账户，无法转换文档。');
+                return;
+            }
+            
             if (!currentFilePath) {
                 alert('无法获取当前文件路径');
                 return;
@@ -5193,6 +5325,12 @@
          * 转换Markdown文件为PDF文档
          */
         function convertMarkdownToPdf() {
+            // 检查guest用户权限
+            if (isGuest) {
+                alert('guest用户为演示账户，无法转换文档。');
+                return;
+            }
+            
             if (!currentFilePath) {
                 alert('无法获取当前文件路径');
                 return;
@@ -5267,13 +5405,12 @@
         }
 
         /**
-         * 自动刷新功能已禁用
-         * @description 原有的自动刷新定时器功能已被移除，只保留手动刷新
-         * - 用户可以通过点击刷新按钮手动刷新目录列表
+         * 自动刷新功能
+         * @description 定时自动刷新工作目录列表，提升用户体验
+         * - 每30秒自动刷新一次目录列表
+         * - 连接时自动启动，断开连接时自动停止
          */
         
-        // 自动刷新相关代码已禁用
-        /*
         let autoRefreshInterval = null;
         function startAutoRefresh() {
             // 如果已经有定时器在运行，先清除它
@@ -5281,21 +5418,20 @@
                 clearInterval(autoRefreshInterval);
             }
             
-            // 每5秒自动刷新一次目录列表
+            // 每30秒自动刷新一次目录列表
             autoRefreshInterval = setInterval(() => {
                 refreshDirectories();
-            }, 5000);
-            console.log('✅ Auto-refresh started: refreshing directories every 5 seconds');
+            }, 30000);
+            console.log('✅ Auto-refresh started: refreshing directories every 30 seconds');
         }
         
         function stopAutoRefresh() {
             if (autoRefreshInterval) {
                 clearInterval(autoRefreshInterval);
                 autoRefreshInterval = null;
-                console.log('🛑 Auto-refresh stopped');
+                console.log('⏹️ Auto-refresh stopped');
             }
         }
-        */
 
         // 分隔条拖拽功能
         function initResizer() {
@@ -5445,6 +5581,12 @@
 
         // 上传文件函数
         function uploadFiles(files) {
+            // 检查guest用户权限
+            if (isGuest) {
+                uploadResult.innerHTML = `<div class="error">guest用户为演示账户，无法上传文件。</div>`;
+                return;
+            }
+            
             if (!currentUploadDir) {
                 uploadResult.innerHTML = `<div class="error">${I18N.select_directory_error}</div>`;
                 return;

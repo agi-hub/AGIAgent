@@ -25,6 +25,9 @@ FILTER_PATH="$SCRIPT_DIR/svg_chinese_filter.py"
 # 设置模板路径
 TEMPLATE_PATH="$SCRIPT_DIR/template.latex"
 
+# 设置emoji删除脚本路径
+EMOJI_REMOVER_PATH="$SCRIPT_DIR/remove_emoji.py"
+
 # 检查过滤器是否存在
 if [ ! -f "$FILTER_PATH" ]; then
     echo "警告: SVG中文过滤器 '$FILTER_PATH' 不存在，使用默认转换"
@@ -41,6 +44,29 @@ if [ ! -f "$TEMPLATE_PATH" ]; then
 else
     TEMPLATE_OPTION="--template=$TEMPLATE_PATH"
     echo "使用自定义模板: $TEMPLATE_PATH"
+fi
+
+# 创建无emoji的临时markdown文件
+TEMP_MD_FILE=""
+ACTUAL_INPUT_FILE="$INPUT_FILE"
+
+if [ -f "$EMOJI_REMOVER_PATH" ]; then
+    echo "📝 检查并删除markdown中的emoji..."
+    TEMP_RESULT=$(python3 "$EMOJI_REMOVER_PATH" "$INPUT_FILE" 2>/dev/null)
+    
+    if [ $? -eq 0 ]; then
+        if [ "$TEMP_RESULT" = "UNCHANGED" ]; then
+            echo "📝 markdown中未发现emoji，使用原文件"
+        else
+            TEMP_MD_FILE="$TEMP_RESULT"
+            ACTUAL_INPUT_FILE="$TEMP_MD_FILE"
+            echo "📝 已创建无emoji的临时markdown: $TEMP_MD_FILE"
+        fi
+    else
+        echo "⚠️ 警告: emoji删除脚本执行失败，使用原文件"
+    fi
+else
+    echo "⚠️ 警告: emoji删除脚本 '$EMOJI_REMOVER_PATH' 不存在，使用原文件"
 fi
 
 # 检测可用的PDF引擎
@@ -101,7 +127,7 @@ generate_fallback_word_document() {
     echo "📄 生成fallback Word文档: $word_output"
     
     # 使用pandoc转换为Word文档
-    local word_cmd="pandoc \"$INPUT_FILE\" -o \"$word_output\" --from markdown --to docx --toc --highlight-style=tango"
+    local word_cmd="pandoc \"$ACTUAL_INPUT_FILE\" -o \"$word_output\" --from markdown --to docx --toc --highlight-style=tango"
     
     echo "执行命令: $word_cmd"
     
@@ -136,7 +162,7 @@ echo "正在转换: $INPUT_FILE -> $OUTPUT_FILE"
 echo "使用PDF引擎: $SELECTED_ENGINE"
 
 # 构建pandoc命令
-PANDOC_CMD="pandoc \"$INPUT_FILE\" -o \"$OUTPUT_FILE\" $SELECTED_OPTION"
+PANDOC_CMD="pandoc \"$ACTUAL_INPUT_FILE\" -o \"$OUTPUT_FILE\" $SELECTED_OPTION"
 
 # 添加引擎特定选项
 if [ -n "$ENGINE_OPTIONS" ]; then
@@ -167,7 +193,20 @@ echo "执行命令: $PANDOC_CMD"
 eval $PANDOC_CMD
 
 # 检查转换结果
-if [ $? -eq 0 ] && [ -f "$OUTPUT_FILE" ]; then
+conversion_result=$?
+
+# 清理临时文件
+cleanup_temp_files() {
+    if [ -n "$TEMP_MD_FILE" ] && [ -f "$TEMP_MD_FILE" ]; then
+        rm -f "$TEMP_MD_FILE"
+        echo "🗑️ 已清理临时文件: $TEMP_MD_FILE"
+    fi
+}
+
+# 注册清理函数，确保脚本退出时清理临时文件
+trap cleanup_temp_files EXIT
+
+if [ $conversion_result -eq 0 ] && [ -f "$OUTPUT_FILE" ]; then
     echo "✓ 转换成功: $OUTPUT_FILE"
     ls -lh "$OUTPUT_FILE"
 else

@@ -104,7 +104,8 @@ When using get_sensor_data tool for physical world information:
 5. **Error Handling**: If sensor acquisition fails, check the 'error' field for specific failure reasons
 </sensor_data_usage>
 
-<image_search>
+<search>
+Do not use web search since it consumes large context length. Only search when you have limited information on this topic. 
 Image Search Tool Usage:
 When using the search_img tool for image search:
 1. **Query Optimization**: Use specific, descriptive search terms for better results (e.g., "red rose flower", "blue sky landscape", "modern office building")
@@ -116,13 +117,7 @@ When using the search_img tool for image search:
 7. **Usage Guidelines**: Use this tool when users request images. The tool provides multiple related images giving users more choices
 8. **Performance**: Image search may take several seconds due to network requests and image processing
 9. **File Management**: Generated image files can be referenced by their relative paths for further processing
-</image_search>
 
-<knowledge_base_ingestion>
-Knowledge Base Document Ingestion:
-When ingesting documents from a folder into the knowledge base, follow these three steps in sequence:
-1. Use `parse_doc_to_md` tool with the folder path to convert documents to markdown
-2. Use `upload_workspace_md_files` tool with the folder path as `workspace_dir` parameter
-3. Use `kb_import_md_files` tool to complete the ingestion
-</knowledge_base_ingestion>
+</search>
+
 

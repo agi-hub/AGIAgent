@@ -5,7 +5,97 @@ import os
 import sys
 import subprocess
 import argparse
+import tempfile
+import re
 from pathlib import Path
+
+
+def remove_emoji_from_text(text):
+    """
+    从文本中删除emoji字符
+    保留普通的中文、英文、数字和标点符号
+    """
+    if not text:
+        return text
+    
+    # 使用正则表达式删除emoji
+    # 匹配各种emoji Unicode范围
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # 表情符号
+        "\U0001F300-\U0001F5FF"  # 杂项符号和象形文字
+        "\U0001F680-\U0001F6FF"  # 交通和地图符号
+        "\U0001F700-\U0001F77F"  # 炼金术符号
+        "\U0001F780-\U0001F7FF"  # 几何形状扩展
+        "\U0001F800-\U0001F8FF"  # 补充箭头-C
+        "\U0001F900-\U0001F9FF"  # 补充符号和象形文字
+        "\U0001FA00-\U0001FA6F"  # 棋牌符号
+        "\U0001FA70-\U0001FAFF"  # 符号和象形文字扩展-A
+        "\U00002600-\U000026FF"  # 杂项符号
+        "\U00002700-\U000027BF"  # 装饰符号
+        "\U0001F1E6-\U0001F1FF"  # 地区指示符号（国旗）
+        "\U00002B50-\U00002B55"  # 星星等
+        "\U0000FE00-\U0000FE0F"  # 变体选择器
+        "]+", 
+        flags=re.UNICODE
+    )
+    
+    # 删除emoji
+    text_without_emoji = emoji_pattern.sub('', text)
+    
+    # 清理多余的空格，但保留换行符
+    # 将多个连续的空格合并为一个，但保留换行符
+    text_without_emoji = re.sub(r'[ \t]+', ' ', text_without_emoji)  # 只合并空格和tab
+    text_without_emoji = re.sub(r' *\n *', '\n', text_without_emoji)  # 清理换行符前后的空格
+    text_without_emoji = re.sub(r'\n{3,}', '\n\n', text_without_emoji)  # 限制连续换行符数量
+    
+    return text_without_emoji.strip()
+
+
+def create_emoji_free_markdown(input_file):
+    """
+    创建一个删除了emoji的临时markdown文件
+    
+    Args:
+        input_file: 输入的markdown文件路径
+    
+    Returns:
+        str: 临时文件路径，如果失败返回None
+    """
+    try:
+        # 读取原始markdown文件
+        with open(input_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 删除emoji
+        cleaned_content = remove_emoji_from_text(content)
+        
+        # 如果内容没有变化，就不需要创建临时文件
+        if cleaned_content == content:
+            print("📝 No emoji found in markdown, using original file")
+            return None
+        
+        # 创建临时文件
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.md', prefix='emoji_free_')
+        
+        try:
+            # 写入清理后的内容
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as temp_file:
+                temp_file.write(cleaned_content)
+            
+            print(f"📝 Created emoji-free temporary markdown: {temp_path}")
+            return temp_path
+            
+        except Exception as e:
+            # 如果写入失败，关闭并删除临时文件
+            os.close(temp_fd)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise e
+            
+    except Exception as e:
+        print(f"❌ Error creating emoji-free markdown: {e}")
+        return None
 
 
 def check_file_exists(file_path, description):
@@ -108,6 +198,43 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
         print("⚠️ No PDF engines available, attempting to generate Word document as fallback...")
         return generate_fallback_word_document(input_file, output_file)
     
+    # Preprocess images and create emoji-free markdown
+    temp_files = []
+    actual_input_file = input_file
+    
+    try:
+        # Step 1: Preprocess images for PDF compatibility
+        import sys
+        from pathlib import Path
+        
+        # Add the project root to path for absolute imports
+        script_dir = Path(__file__).parent.parent.parent
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        
+        from src.utils.image_preprocessor import create_preprocessed_markdown
+        
+        print("🖼️ Preprocessing images for PDF compatibility...")
+        preprocessed_file, image_temp_files = create_preprocessed_markdown(Path(input_file))
+        
+        if preprocessed_file and preprocessed_file != Path(input_file):
+            actual_input_file = str(preprocessed_file)
+            temp_files.extend(image_temp_files)
+            print(f"✅ Image preprocessing completed: {len(image_temp_files)} files processed")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Image preprocessing failed: {e}")
+        print("📝 Continuing with original file...")
+    
+    # Step 2: Create emoji-free version if needed
+    try:
+        temp_md_file = create_emoji_free_markdown(actual_input_file)
+        if temp_md_file:
+            actual_input_file = temp_md_file
+            temp_files.append(temp_md_file)
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
+    
     # Create temporary LaTeX header file to fix image position (only for LaTeX engines)
     latex_header = None
     header_file = None
@@ -127,7 +254,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     # Build pandoc command
     cmd = [
         'pandoc',
-        input_file,
+        actual_input_file,  # Use the emoji-free file if available
         '-o', output_file,
         engine_option,  # Use the selected engine
     ]
@@ -185,8 +312,36 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
                     print(f"Warning information: {result.stderr}")
             return True, result.stdout
         else:
-            # No PDF file generated
-            return False, result.stderr if result.stderr else result.stdout
+            # No PDF file generated - try fallback strategies
+            print(f"❌ Primary conversion failed: {result.stderr}")
+            print(f"🔄 Attempting fallback conversion strategies...")
+            
+            try:
+                import sys
+                from pathlib import Path
+                
+                # Add the project root to path for absolute imports
+                script_dir = Path(__file__).parent.parent.parent
+                if str(script_dir) not in sys.path:
+                    sys.path.insert(0, str(script_dir))
+                    
+                from src.utils.fallback_converter import apply_fallback_strategies
+                
+                fallback_success, fallback_msg, fallback_info = apply_fallback_strategies(
+                    actual_input_file, output_file
+                )
+                
+                if fallback_success:
+                    print(f"✅ Fallback conversion successful: {fallback_msg}")
+                    return True, fallback_msg
+                else:
+                    print(f"❌ All fallback strategies failed: {fallback_msg}")
+                    return False, f"Primary conversion failed: {result.stderr}. Fallback strategies also failed: {fallback_msg}"
+                    
+            except Exception as fallback_error:
+                print(f"❌ Fallback conversion error: {fallback_error}")
+                return False, f"Primary conversion failed: {result.stderr}. Fallback error: {str(fallback_error)}"
+                
     except Exception as e:
         return False, str(e)
     finally:
@@ -196,6 +351,30 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
                 os.remove(header_file)
             except Exception as e:
                 pass
+        
+        # Clean up all temporary files
+        try:
+            import sys
+            from pathlib import Path
+            
+            # Add the project root to path for absolute imports
+            script_dir = Path(__file__).parent.parent.parent
+            if str(script_dir) not in sys.path:
+                sys.path.insert(0, str(script_dir))
+                
+            from src.utils.image_preprocessor import cleanup_temp_files
+            cleanup_temp_files(temp_files)
+            if temp_files:
+                print(f"🗑️ Cleaned up {len(temp_files)} temporary files")
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to clean up temporary files: {e}")
+            # Fallback manual cleanup
+            for temp_file in temp_files:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
 
 
 def generate_fallback_word_document(input_file, output_file):
@@ -209,7 +388,43 @@ def generate_fallback_word_document(input_file, output_file):
     Returns:
         Tuple of (success: bool, message: str)
     """
+    temp_files = []
+    actual_input_file = input_file
+    
     try:
+        # Step 1: Preprocess images if possible
+        try:
+            import sys
+            from pathlib import Path
+            
+            # Add the project root to path for absolute imports
+            script_dir = Path(__file__).parent.parent.parent
+            if str(script_dir) not in sys.path:
+                sys.path.insert(0, str(script_dir))
+                
+            from src.utils.image_preprocessor import create_preprocessed_markdown
+            
+            print("🖼️ Preprocessing images for Word document...")
+            preprocessed_file, image_temp_files = create_preprocessed_markdown(Path(input_file))
+            
+            if preprocessed_file and preprocessed_file != Path(input_file):
+                actual_input_file = str(preprocessed_file)
+                temp_files.extend(image_temp_files)
+                print(f"✅ Image preprocessing for Word completed: {len(image_temp_files)} files processed")
+                
+        except Exception as e:
+            print(f"⚠️ Warning: Image preprocessing failed: {e}")
+            print("📝 Continuing with original file...")
+        
+        # Step 2: Create emoji-free version if needed
+        try:
+            temp_md_file = create_emoji_free_markdown(actual_input_file)
+            if temp_md_file:
+                actual_input_file = temp_md_file
+                temp_files.append(temp_md_file)
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
+        
         # Convert PDF extension to Word extension
         from pathlib import Path
         output_path = Path(output_file)
@@ -220,7 +435,7 @@ def generate_fallback_word_document(input_file, output_file):
         # Use pandoc to convert to Word
         cmd = [
             'pandoc',
-            input_file,
+            actual_input_file,  # Use emoji-free file if available
             '-o', str(word_output),
             '--from', 'markdown',
             '--to', 'docx',
@@ -246,6 +461,30 @@ def generate_fallback_word_document(input_file, output_file):
         error_msg = f"Exception during fallback Word generation: {str(e)}"
         print(f"❌ {error_msg}")
         return False, error_msg
+    finally:
+        # Clean up all temporary files
+        try:
+            import sys
+            from pathlib import Path
+            
+            # Add the project root to path for absolute imports
+            script_dir = Path(__file__).parent.parent.parent
+            if str(script_dir) not in sys.path:
+                sys.path.insert(0, str(script_dir))
+                
+            from src.utils.image_preprocessor import cleanup_temp_files
+            cleanup_temp_files(temp_files)
+            if temp_files:
+                print(f"🗑️ Cleaned up {len(temp_files)} temporary files")
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to clean up temporary files: {e}")
+            # Fallback manual cleanup
+            for temp_file in temp_files:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
 
 
 def main():

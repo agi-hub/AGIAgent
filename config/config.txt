@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-# LANG=en
-LANG=zh
+LANG=en
+# LANG=zh
 
 # GUI API configuration 
 api_key=your key
@@ -242,7 +242,7 @@ sync_round=2
 # When disabled, only basic English tokenization is used (recommended for better performance)
 # Default: False (disabled)
 # Set to True to enable jieba Chinese segmentation
-enable_jieba=False
+enable_jieba=True
 
 # Emoji Display Configuration
 # Controls whether to display emoji symbols in print outputs
