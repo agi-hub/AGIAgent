@@ -79,6 +79,7 @@ class ConcurrencyManager:
         self.max_concurrent_tasks = max_concurrent_tasks
         self.max_connections = max_connections
         self.task_timeout = task_timeout  # 任务超时时间（Seconds）
+        self.session_persist_timeout = 3600  # 会话持久化超时时间（1小时）
         
         # Concurrency control
         self.task_semaphore = Semaphore(max_concurrent_tasks)
@@ -86,6 +87,9 @@ class ConcurrencyManager:
         self.task_queue = queue.Queue()  # Task queuing
         self.connection_count = 0
         self.lock = Lock()
+        
+        # 断连会话管理
+        self.disconnected_sessions = {}  # session_id -> disconnect_info
         
         # Performance monitoring
         self.metrics = {
@@ -209,6 +213,13 @@ class ConcurrencyManager:
                     print(f"⏰ Task timeout detected for user {session_id}")
                     self._handle_task_timeout(session_id)
                 
+                # 清理过期的断连会话
+                expired_sessions = self.cleanup_expired_sessions()
+                if expired_sessions and hasattr(self, '_session_cleanup_callback'):
+                    for session_id in expired_sessions:
+                        print(f"🗑️ Cleaning up expired disconnected session: {session_id}")
+                        self._session_cleanup_callback(session_id)
+                
                 time.sleep(60)  # Check timeout every minute
             except Exception as e:
                 print(f"⚠️ Timeout monitoring error: {e}")
@@ -226,12 +237,52 @@ class ConcurrencyManager:
         """Set timeout handling callback"""
         self._timeout_callback = callback
     
+    def set_session_cleanup_callback(self, callback):
+        """设置会话清理回调"""
+        self._session_cleanup_callback = callback
+    
     def get_task_runtime(self, session_id):
         """Get task running time"""
         with self.lock:
             if session_id in self.active_tasks:
                 return time.time() - self.active_tasks[session_id]['start_time']
             return 0
+    
+    def mark_session_disconnected(self, session_id):
+        """标记会话为断连状态"""
+        with self.lock:
+            self.disconnected_sessions[session_id] = {
+                'disconnect_time': time.time(),
+                'persist_until': time.time() + self.session_persist_timeout
+            }
+            print(f"🔄 Session {session_id} marked as disconnected, will persist for {self.session_persist_timeout} seconds")
+    
+    def is_session_disconnected(self, session_id):
+        """检查会话是否处于断连状态"""
+        with self.lock:
+            return session_id in self.disconnected_sessions
+    
+    def reconnect_session(self, session_id):
+        """重新连接会话"""
+        with self.lock:
+            if session_id in self.disconnected_sessions:
+                del self.disconnected_sessions[session_id]
+                print(f"🔗 Session {session_id} reconnected successfully")
+                return True
+            return False
+    
+    def cleanup_expired_sessions(self):
+        """清理过期的断连会话"""
+        current_time = time.time()
+        expired_sessions = []
+        
+        with self.lock:
+            for session_id, info in list(self.disconnected_sessions.items()):
+                if current_time > info['persist_until']:
+                    expired_sessions.append(session_id)
+                    del self.disconnected_sessions[session_id]
+        
+        return expired_sessions
     
     def stop(self):
         """Stop monitoring"""
@@ -246,7 +297,7 @@ print(f"📁 Static exists: {os.path.exists(static_dir)}")
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
-                   ping_timeout=60, ping_interval=25)
+                   ping_timeout=3600, ping_interval=60)  # 1小时超时，1分钟心跳
 
 I18N_TEXTS = {
     'zh': {
@@ -256,6 +307,7 @@ I18N_TEXTS = {
         'app_subtitle': '',
         'chat_title': '执行日志',
         'connected': f'已连接到 {APP_NAME}',
+        'reconnected': f'已重新连接到 {APP_NAME}',
         'reconnect_failed': '重连失败，请刷新页面',
         
         # Button text
@@ -472,6 +524,7 @@ I18N_TEXTS = {
         'app_subtitle': '',
         'chat_title': 'Execution Log',
         'connected': f'Connected to {APP_NAME}',
+        'reconnected': f'Reconnected to {APP_NAME}',
         'reconnect_failed': 'Reconnection failed, please refresh the page',
         
         # Button text
@@ -1065,6 +1118,9 @@ class AGIBotGUI:
         
         # Set timeout handling callback
         self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
+        
+        # Set session cleanup callback
+        self.concurrency_manager.set_session_cleanup_callback(self._cleanup_disconnected_session)
     
     def get_user_session(self, session_id, api_key=None):
         """Get or create user session with authentication"""
@@ -1190,6 +1246,30 @@ class AGIBotGUI:
                 # Release task resources already handled in concurrency_manager.finish_task
         except Exception as e:
             print(f"⚠️ Error handling user task timeout: {e}")
+    
+    def _cleanup_disconnected_session(self, session_id):
+        """清理过期的断连会话"""
+        try:
+            if session_id in self.user_sessions:
+                user_session = self.user_sessions[session_id]
+                
+                # 终止任何正在运行的进程
+                if user_session.current_process and user_session.current_process.is_alive():
+                    print(f"🛑 Terminating process for expired disconnected session {session_id}")
+                    user_session.current_process.terminate()
+                    user_session.current_process.join(timeout=5)
+                    # 完成任务
+                    self.concurrency_manager.finish_task(session_id, success=False)
+                
+                # 销毁认证会话
+                self.auth_manager.destroy_session(session_id)
+                
+                # 移除用户会话
+                del self.user_sessions[session_id]
+                
+                print(f"🗑️ Expired disconnected session cleaned up: {session_id}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning up disconnected session {session_id}: {e}")
     
     def get_output_directories(self, user_session):
         """Get all directories containing workspace subdirectory for specific user"""
@@ -2302,6 +2382,9 @@ def handle_connect(auth):
     if auth and 'api_key' in auth:
         api_key = auth['api_key']
     
+    # 检查是否是重连的会话
+    is_reconnection = gui_instance.concurrency_manager.is_session_disconnected(session_id)
+    
     # Create or get user session with authentication
     user_session = gui_instance.get_user_session(session_id, api_key)
     
@@ -2310,6 +2393,11 @@ def handle_connect(auth):
         emit('auth_failed', {'message': 'Authentication failed. Please check your API key.'}, room=session_id)
         print(f"🚫 Connection rejected for {session_id}: Authentication failed")
         return False
+    
+    # 如果是重连，恢复会话状态
+    if is_reconnection:
+        gui_instance.concurrency_manager.reconnect_session(session_id)
+        print(f"🔗 Session {session_id} reconnected, restoring state")
     
     # Add connection to concurrency manager
     if not gui_instance.concurrency_manager.add_connection():
@@ -2338,10 +2426,11 @@ def handle_connect(auth):
     
     # Send status with guest indicator and performance info
     connection_data = {
-        'message': i18n['connected'],
+        'message': i18n['reconnected'] if is_reconnection else i18n['connected'],
         'is_guest': is_guest,
         'user_name': user_name,
         'user_info': user_session.user_info,
+        'is_reconnection': is_reconnection,
         'server_metrics': {
             'active_connections': metrics['active_connections'],
             'active_tasks': metrics['active_tasks'],
@@ -2362,26 +2451,20 @@ def handle_disconnect():
     if session_id in gui_instance.user_sessions:
         user_session = gui_instance.user_sessions[session_id]
         
-        # Clean up any running processes and release task slot
-        if user_session.current_process and user_session.current_process.is_alive():
-            print(f"🛑 Terminating process for disconnected user {session_id}")
-            user_session.current_process.terminate()
-            user_session.current_process.join(timeout=5)  # Wait up to 5 seconds
-            # Complete task
-            gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        # 标记会话为断连状态，而不是立即清理
+        gui_instance.concurrency_manager.mark_session_disconnected(session_id)
         
-        # Leave room
+        # Leave room but keep session data
         leave_room(session_id)
         
-        # Destroy authentication session
-        gui_instance.auth_manager.destroy_session(session_id)
-        
-        # Remove user session
-        del gui_instance.user_sessions[session_id]
+        # 如果有正在运行的进程，保持运行但标记为断连状态
+        if user_session.current_process and user_session.current_process.is_alive():
+            print(f"🔄 User {session_id} disconnected with running process, keeping session alive for 1 hour")
+        else:
+            print(f"🔄 User {session_id} disconnected, session will persist for 1 hour")
         
         # Get updated metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
-        print(f"🔌 User disconnected and cleaned up: {session_id}")
         print(f"📊 Updated metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
     else:
         print(f"🔌 User disconnected (no session found): {session_id}")
@@ -2448,7 +2531,7 @@ def handle_execute_task(data):
             print(f"🎯 Using selected directory: {target_dir_name} (from {'frontend' if selected_directory else 'backend state'})")
         else:
             # 🔧 Fix: if user selected selected mode but didn't specify directory
-            emit('error', {'message': 'Please first select or create a working directory'}, room=session_id)
+            emit('error', {'message': i18n['select_directory_first']}, room=session_id)
             return
         # Check if selected directory is newly created (not in last_output_dir)
         # If it's a new directory, should use continue_mode=False
@@ -2466,7 +2549,7 @@ def handle_execute_task(data):
         
         # 🔧 Fix: if user didn't select directory and there's no last used directory
         if not out_dir and not user_session.selected_output_dir:
-            emit('error', {'message': 'Please first select or create a working directory'}, room=session_id)
+            emit('error', {'message': i18n['select_directory_first']}, room=session_id)
             return
     
     # Check if new tasks can be started
