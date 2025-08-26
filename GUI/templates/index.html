@@ -439,7 +439,7 @@
         }
 
         .header h1 {
-            font-size: 1.2em;
+            font-size: 3.5em;
             font-weight: 700;
             margin-bottom: 0;
             color: #569cd6;
@@ -621,6 +621,13 @@
         .input-wrapper {
             flex: 1;
             position: relative;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            flex-direction: row;
+            align-items: center;
         }
 
         #userInput {
@@ -863,11 +870,13 @@
 
         .file-tree {
             display: none;
-            margin-top: 10px;
-            padding: 10px;
+            margin-top: 8px; /* 从10px减少到8px */
+            padding: 6px; /* 从10px减少到6px */
             border-top: 1px solid #3e3e42;
             background: #1e1e1e;
             border-radius: 4px;
+            max-height: 400px; /* 增加高度以显示至少10个文件 */
+            overflow-y: auto; /* 添加滚动条 */
         }
 
         .file-tree.show {
@@ -902,13 +911,13 @@
         }
 
         .file-item {
-            padding: 5px 0;
+            padding: 2px 0; /* 从5px减少到2px */
             margin-left: 20px;
             font-size: 0.9em;
             color: #ffffff;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px; /* 从8px减少到6px */
             cursor: pointer;
             transition: all 0.3s ease;
         }
@@ -1008,23 +1017,589 @@
             background: #007acc;
         }
 
-        /* Responsive design */
+        /* Responsive design for mobile devices */
         @media (max-width: 768px) {
+            body {
+                overflow: auto;
+                height: auto; /* 允许页面自然伸展 */
+            }
+            
+            /* 移动端header标题优化 */
+            .header h1 {
+                font-size: 1.8em !important;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            
+            .header h1 img {
+                height: 1.6em !important;
+                flex-shrink: 0;
+            }
+            
+            /* Header optimization */
+            .user-auth-area {
+                padding: 5px 8px;
+                flex-direction: column;
+                gap: 5px;
+                min-height: auto;
+                overflow-x: hidden;
+            }
+            
+            .user-auth-left {
+                width: 100%;
+                min-width: unset;
+                justify-content: center;
+                margin-bottom: 5px;
+            }
+            
+            .logo-group {
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            
+            .logo-group img {
+                height: 2.8em !important;
+                margin-right: 8px !important;
+            }
+            
+            .logo-group span {
+                font-size: 2em !important;
+                white-space: nowrap;
+            }
+            
+            .user-auth-right {
+                width: 100%;
+                flex-direction: column;
+                align-items: center;
+                gap: 6px;
+                overflow-x: hidden;
+            }
+            
+            .api-key-group {
+                flex-direction: column;
+                align-items: center;
+                gap: 3px;
+                width: 100%;
+                max-width: none;
+                overflow: hidden;
+            }
+            
+            .api-key-group label {
+                font-size: 0.8em;
+                text-align: center;
+                white-space: nowrap;
+            }
+            
+            .api-key-input {
+                width: calc(100vw - 20px);
+                max-width: calc(100vw - 20px);
+                font-size: 16px; /* Prevent zoom on iOS */
+                padding: 6px 8px;
+                box-sizing: border-box;
+            }
+            
+            .connect-btn {
+                width: calc(100vw - 20px);
+                max-width: calc(100vw - 20px);
+                padding: 8px 12px;
+                font-size: 0.9em;
+                justify-content: center;
+                box-sizing: border-box;
+            }
+            
+            .user-info {
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 8px;
+                font-size: 0.8em;
+            }
+            
+            .user-status {
+                justify-content: center;
+            }
+            
+            /* Container layout */
             .container {
                 flex-direction: column;
-                height: 100vh;
+                height: auto; /* 改为自动高度，避免固定限制 */
+                min-height: calc(100vh - 220px); /* 设置最小高度 */
+                overflow-y: visible; /* 允许内容自然溢出 */
             }
             
             .sidebar {
                 width: 100%;
-                height: 40vh;
+                height: auto; /* 改为自动高度 */
+                min-height: 300px; /* 增加最小高度确保有足够空间 */
+                max-height: 60vh; /* 设置最大高度，支持更长的下拉 */
                 border-radius: 0;
-                border-right: none;
+                border-left: none;
                 border-bottom: 1px solid #3e3e42;
+                order: 2;
+                overflow-y: auto; /* 内容超出时可滚动 */
             }
             
             .main-content {
-                height: 60vh;
+                height: auto; /* 改为自动高度 */
+                min-height: 400px; /* 设置最小高度 */
+                padding: 10px;
+                min-width: unset;
+                order: 1;
+                flex: 1; /* 占用剩余空间 */
+            }
+            
+            /* Hide resizer on mobile */
+            #resizer {
+                display: none;
+            }
+            
+            /* Chat container optimization */
+            .chat-container {
+                margin-bottom: 10px;
+                flex: 1;
+                min-height: 300px; /* 设置最小高度确保有足够的显示空间 */
+            }
+            
+            .chat-header {
+                padding: 8px 12px;
+                flex-shrink: 0;
+            }
+            
+            .chat-header h3 {
+                font-size: 0.85em;
+            }
+            
+            .chat-messages {
+                padding: 10px;
+                flex: 1;
+                min-height: 200px; /* 消息区域最小高度 */
+                max-height: 400px; /* 固定最大高度避免过度拉伸 */
+            }
+            
+            .message {
+                margin-bottom: 10px;
+                padding: 8px 12px;
+                font-size: 0.85em;
+            }
+            
+            /* Input optimization */
+            .input-container {
+                padding: 10px;
+                flex-shrink: 0;
+            }
+            
+            .input-group {
+                flex-direction: column; /* 垂直布局，按钮放到下一行 */
+                gap: 8px;
+                align-items: stretch;
+            }
+            
+            .button-row {
+                flex-direction: row !important; /* 确保按钮行始终横排 */
+                flex-wrap: wrap; /* 允许换行以适应小屏幕 */
+            }
+            
+            .input-wrapper {
+                width: 100%;
+                min-width: 0;
+            }
+            
+            #userInput {
+                font-size: 16px; /* Prevent zoom on iOS */
+                min-height: 60px;
+                max-height: 120px;
+                padding: 10px 12px;
+                width: 100%;
+                min-width: 280px; /* 设置最小宽度 */
+                box-sizing: border-box;
+            }
+            
+            /* 按钮行容器 */
+            .button-row {
+                display: flex;
+                gap: 8px;
+                width: 100%;
+            }
+            
+            .send-button {
+                flex: 1; /* 按钮平分宽度 */
+                height: 45px;
+                font-size: 0.9em;
+                min-width: 60px;
+            }
+            
+            /* Sidebar optimization */
+            .sidebar-header {
+                padding: 8px 12px;
+                flex-shrink: 0;
+            }
+            
+            .directory-list {
+                flex: 1;
+                min-height: 200px; /* 增加目录列表最小高度 */
+                max-height: calc(60vh - 80px); /* 匹配新的sidebar最大高度 */
+                overflow-y: auto;
+                padding: 8px;
+            }
+            
+            .directory-item {
+                margin-bottom: 8px;
+                padding: 10px;
+            }
+            
+            .directory-name {
+                font-size: 0.8em;
+            }
+            
+            .directory-info {
+                font-size: 0.75em;
+                margin-bottom: 8px;
+            }
+            
+            .directory-actions {
+                gap: 6px;
+            }
+            
+            .action-btn {
+                padding: 4px 6px;
+                font-size: 0.8em;
+            }
+            
+            .file-tree {
+                max-height: 300px; /* 手机端也增加高度 */
+                overflow-y: auto;
+            }
+            
+            .file-item {
+                padding: 1px 0; /* 进一步减少手机端间距 */
+                font-size: 0.8em;
+            }
+            
+            /* GitHub button mobile optimization */
+            .github-link-container {
+                bottom: 10px !important;
+                right: 10px !important;
+            }
+            
+            .github-link-container a {
+                font-size: 0.8em !important;
+                padding: 6px 8px !important;
+            }
+        }
+        
+        /* Smaller mobile devices */
+        @media (max-width: 480px) {
+            .user-auth-area {
+                padding: 4px 6px;
+            }
+            
+            /* 小屏幕设备logo-group优化 */
+            .logo-group img {
+                height: 2.2em !important;
+                margin-right: 6px !important;
+            }
+            
+            .logo-group span {
+                font-size: 1.6em !important;
+            }
+            
+            /* 小屏幕设备header标题优化 */
+            .header h1 {
+                font-size: 1.4em !important;
+                gap: 6px;
+            }
+            
+            .header h1 img {
+                height: 1.3em !important;
+            }
+            
+            .main-content {
+                padding: 8px;
+                height: auto; /* 改为自动高度 */
+                min-height: 350px; /* 增加小屏设备主内容区最小高度 */
+            }
+            
+            .sidebar {
+                height: auto; /* 改为自动高度 */
+                min-height: 250px; /* 增加小屏设备侧边栏最小高度 */
+                max-height: 50vh; /* 小屏设备最大高度 */
+            }
+            
+            .chat-container {
+                min-height: 220px; /* 小屏设备聊天容器最小高度 */
+            }
+            
+            .chat-messages {
+                padding: 8px;
+                min-height: 150px; /* 小屏设备消息区域最小高度 */
+                max-height: 300px; /* 固定最大高度 */
+            }
+            
+            .message {
+                padding: 6px 10px;
+                font-size: 0.8em;
+                margin-bottom: 8px;
+            }
+            
+            .input-container {
+                padding: 8px;
+            }
+            
+            #userInput {
+                min-height: 50px;
+                padding: 8px 10px;
+                font-size: 16px;
+                min-width: 250px; /* 小屏设备输入框最小宽度 */
+            }
+            
+            .button-row {
+                flex-wrap: wrap; /* 小屏下允许按钮换行 */
+            }
+            
+            .send-button {
+                height: 40px;
+                font-size: 0.8em;
+                min-width: 45px;
+            }
+            
+            .directory-list {
+                min-height: 150px; /* 增加小屏设备目录列表最小高度 */
+                max-height: calc(50vh - 60px); /* 匹配小屏sidebar最大高度 */
+                padding: 6px;
+            }
+            
+            .directory-item {
+                padding: 8px;
+                margin-bottom: 6px;
+            }
+            
+            .directory-name {
+                font-size: 0.75em;
+            }
+            
+            .directory-info {
+                font-size: 0.7em;
+            }
+            
+            .sidebar-header {
+                padding: 6px 10px;
+            }
+            
+            .sidebar-header .action-btn {
+                padding: 3px 5px;
+                font-size: 0.75em;
+            }
+            
+            .file-tree {
+                max-height: 250px; /* 小屏设备也增加高度 */
+                overflow-y: auto;
+            }
+            
+            .file-item {
+                padding: 1px 0; /* 小屏设备也减少间距 */
+                font-size: 0.75em;
+            }
+            
+            /* GitHub button small mobile optimization */
+            .github-link-container {
+                bottom: 8px !important;
+                right: 8px !important;
+            }
+            
+            .github-link-container a {
+                font-size: 0.75em !important;
+                padding: 4px 6px !important;
+            }
+            
+            .github-link-container a span {
+                display: none; /* 小屏幕只显示图标 */
+            }
+            
+            /* Modal optimization for mobile */
+            .modal-content {
+                width: 95%;
+                height: 95vh;
+                margin: 2.5vh auto;
+                border-radius: 6px;
+            }
+            
+            .modal-header {
+                padding: 10px 15px;
+            }
+            
+            .modal-header h3 {
+                font-size: 1em;
+            }
+            
+            .close {
+                font-size: 24px;
+            }
+            
+            .modal-body {
+                padding: 15px;
+            }
+            
+            /* Preview content iframe optimization */
+            #previewContent iframe {
+                height: calc(95vh - 100px);
+            }
+            
+            /* Upload area optimization */
+            .upload-area {
+                padding: 20px 15px;
+            }
+            
+            .upload-icon {
+                font-size: 36px;
+                margin-bottom: 15px;
+            }
+            
+            .upload-text p {
+                font-size: 14px;
+                margin: 8px 0;
+            }
+            
+            .upload-hint {
+                font-size: 16px !important;
+            }
+            
+            .upload-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+                margin-top: 15px;
+            }
+        }
+
+        /* Touch-friendly improvements for mobile */
+        @media (max-width: 768px) {
+            /* Increase touch targets */
+            .action-btn {
+                min-width: 44px;
+                min-height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .file-item {
+                min-height: 36px; /* 减少最小高度但保持可点击 */
+                padding: 4px 0; /* 减少padding但保持触摸友好 */
+            }
+            
+            .directory-item {
+                cursor: pointer;
+                -webkit-tap-highlight-color: rgba(0, 122, 204, 0.2);
+            }
+            
+            /* Smooth scrolling */
+            .chat-messages {
+                -webkit-overflow-scrolling: touch;
+                scroll-behavior: smooth;
+            }
+            
+            .directory-list {
+                -webkit-overflow-scrolling: touch;
+                scroll-behavior: smooth;
+            }
+            
+            /* Prevent text selection on interactive elements */
+            .action-btn,
+            .connect-btn,
+            .send-button,
+            .directory-item {
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+            
+            /* Improve button press feedback */
+            .send-button:active,
+            .connect-btn:active,
+            .action-btn:active {
+                transform: scale(0.95);
+                transition: transform 0.1s;
+            }
+            
+            /* Scroll to bottom button mobile optimization */
+            .scroll-to-bottom-hint {
+                bottom: 80px;
+                right: 15px;
+                width: 45px;
+                height: 45px;
+                z-index: 100;
+            }
+            
+            /* New message indicator mobile optimization */
+            .new-message-indicator {
+                bottom: 135px;
+                right: 15px;
+                padding: 8px 12px;
+                font-size: 0.85em;
+            }
+        }
+
+        /* Tablet optimization (768px to 1024px) */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .sidebar {
+                width: 350px;
+            }
+            
+            .main-content {
+                padding: 18px;
+            }
+            
+            .chat-messages {
+                padding: 18px;
+            }
+            
+            .input-container {
+                padding: 18px;
+            }
+            
+            #userInput {
+                font-size: 16px;
+            }
+            
+            .user-auth-area {
+                padding: 10px 18px;
+            }
+            
+            .api-key-input {
+                font-size: 16px;
+            }
+        }
+
+        /* Landscape phone optimization */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .container {
+                flex-direction: row;
+                height: calc(100vh - 80px);
+            }
+            
+            .sidebar {
+                width: 40%;
+                height: 100%;
+                border-left: 1px solid #3e3e42;
+                border-bottom: none;
+                order: 2;
+            }
+            
+            .main-content {
+                width: 60%;
+                height: 100%;
+                order: 1;
+            }
+            
+            #resizer {
+                display: block;
             }
         }
 
@@ -1097,6 +1672,118 @@
             max-width: none;
             height: 95%;
             max-height: none;
+        }
+        
+        /* Mobile preview modal optimization */
+        @media (max-width: 768px) {
+            #previewModal .modal-content {
+                width: 95% !important;
+                min-width: 350px;
+                max-width: 95% !important;
+                height: 95vh !important;
+            }
+            
+            /* 中等屏幕优化预览模态框中的按钮布局 */
+            #previewModal .preview-button-group {
+                justify-content: center !important;
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+            }
+            
+            #previewModal .preview-button-group a,
+            #previewModal .preview-button-group button {
+                flex: 1 1 calc(50% - 4px) !important;
+                min-width: 120px !important;
+                max-width: 200px !important;
+                font-size: 16px !important;
+                padding: 10px 8px !important;
+            }
+            
+            /* 中等屏幕优化Markdown工具栏按钮布局 */
+            #previewModal .markdown-toolbar-header {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+            
+            #previewModal .markdown-toolbar-buttons {
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+                justify-content: center !important;
+            }
+            
+            #previewModal .markdown-toolbar-buttons button {
+                min-width: 70px !important;
+                max-width: calc(33.33% - 4px) !important;
+                padding: 6px 8px !important;
+                font-size: 14px !important;
+                height: 32px !important;
+                flex: 1 1 calc(33.33% - 4px) !important;
+            }
+        }
+        
+        /* Small mobile preview modal optimization */
+        @media (max-width: 480px) {
+            #previewModal .modal-content {
+                width: 98% !important;
+                min-width: 320px;
+                max-width: 98% !important;
+                height: 95vh !important;
+            }
+            
+            #previewModal .modal-body {
+                padding: 5px !important;
+            }
+            
+            #previewContent iframe {
+                height: calc(95vh - 80px) !important;
+            }
+            
+            /* 优化预览模态框中的按钮布局 - 强制两行显示 */
+            #previewModal .preview-button-group {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 8px !important;
+            }
+            
+            #previewModal .preview-button-group a,
+            #previewModal .preview-button-group button {
+                width: 100% !important;
+                min-width: unset !important;
+                text-align: center !important;
+                font-size: 16px !important;
+                padding: 10px 12px !important;
+            }
+            
+            /* 优化Markdown工具栏按钮布局 */
+            #previewModal .markdown-toolbar-header {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+            
+            #previewModal .markdown-toolbar-buttons {
+                flex-wrap: wrap !important;
+                gap: 4px !important;
+                justify-content: center !important;
+            }
+            
+            #previewModal .markdown-toolbar-buttons button {
+                min-width: unset !important;
+                padding: 6px 8px !important;
+                font-size: 14px !important;
+                height: 32px !important;
+                flex: 1 1 calc(50% - 2px) !important;
+                max-width: calc(50% - 2px) !important;
+            }
+        }
+        
+        /* Tablet preview modal optimization */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            #previewModal .modal-content {
+                width: 80%;
+                min-width: 600px;
+            }
         }
 
         #previewModal .modal-body {
@@ -1297,37 +1984,7 @@
             }
         }
 
-        /* Auto-scroll status indicator */
-        .auto-scroll-indicator {
-            position: absolute;
-            bottom: 130px;
-            right: 20px;
-            background: #4CAF50;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 17px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
-            transition: all 0.3s ease;
-            z-index: 98;
-            opacity: 0.8;
-        }
 
-        .auto-scroll-indicator.disabled {
-            background: #9e9e9e;
-            box-shadow: 0 2px 8px rgba(158, 158, 158, 0.3);
-        }
-
-        .auto-scroll-indicator i {
-            animation: bounce 1.5s infinite;
-        }
-
-        .auto-scroll-indicator.disabled i {
-            animation: none;
-        }
 
         @keyframes bounce {
             0%, 20%, 50%, 80%, 100% {
@@ -1551,8 +2208,8 @@
     <div class="user-auth-area">
         <div class="user-auth-left">
             <div class="logo-group">
-                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
-                <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
+                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 3.5em; margin-right: 10px;" alt="Logo">
+                <span style="font-size: 2.5em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
             </div>
         </div>
         <div class="user-auth-right">
@@ -1599,7 +2256,7 @@
     <div class="container">
         <div class="main-content">
             <div class="header" style="display: none;">
-                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 3.2em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -1629,11 +2286,7 @@
                     <span id="newMessageCount">1</span> {{ i18n.get('new_messages', '条新消息' if lang == 'zh' else 'new messages') }}
                 </div>
                 
-                <!-- Auto-scroll status indicator -->
-                <div class="auto-scroll-indicator" id="autoScrollIndicator">
-                    <i class="fas fa-arrow-down"></i>
-                    <span>{{ i18n.get('auto_scrolling', '自动滚动' if lang == 'zh' else 'Auto Scroll') }}</span>
-                </div>
+
             </div>
 
             <div class="input-container">
@@ -1645,25 +2298,26 @@
                             rows="1"
                         ></textarea>
                     </div>
-                    <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                    <button class="send-button" id="planButton" style="background-color: #ff9800;" title="{{ i18n.plan_tooltip }}">
-                        <i class="fas fa-list-ul"></i>
-                    </button>
-
-                    <button class="send-button" id="newTaskButton" style="background-color: #4caf50;" title="{{ i18n.new_tooltip }}">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button class="send-button" id="configToggleBtn" style="background-color: #3e3e42;" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
-                        <i class="fas fa-cog" id="configToggleIcon"></i>
-                    </button>
-                    <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
-                        <i class="fas fa-stop"></i>
-                    </button>
-                    <button class="send-button" id="clearChatButton" style="background-color: #6c757d;" title="{{ i18n.clear_chat_tooltip }}">
-                        <i class="fas fa-broom"></i>
-                    </button>
+                    <div class="button-row">
+                        <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                        <button class="send-button" id="planButton" style="background-color: #ff9800;" title="{{ i18n.plan_tooltip }}">
+                            <i class="fas fa-list-ul"></i>
+                        </button>
+                        <button class="send-button" id="newTaskButton" style="background-color: #4caf50;" title="{{ i18n.new_tooltip }}">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="send-button" id="configToggleBtn" style="background-color: #3e3e42;" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
+                            <i class="fas fa-cog" id="configToggleIcon"></i>
+                        </button>
+                        <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button class="send-button" id="clearChatButton" style="background-color: #6c757d;" title="{{ i18n.clear_chat_tooltip }}">
+                            <i class="fas fa-broom"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- GUI Configuration Options -->
@@ -1717,8 +2371,8 @@
                 </div>
             </div>
             
-            <!-- GitHub Link -->
-            <div class="github-link-container" style="position: absolute; bottom: 20px; left: 20px; z-index: 100;">
+            <!-- GitHub Link - moved to bottom right corner -->
+            <div class="github-link-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
                 <a href="https://github.com/agi-hub/AGIBot" target="_blank" rel="noopener noreferrer" 
                    style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; 
                           background: #333; color: #fff; text-decoration: none; border-radius: 6px; 
@@ -1935,7 +2589,7 @@
         // State management
         let isTaskRunning = false;
         let selectedDirectory = null;
-        let taskMode = 'continue'; // 'new', 'continue', 'selected'
+        let taskMode = 'new'; // 'new', 'continue', 'selected' - 默认为新建模式
         let expandedDirectories = new Set();
         let collapsedSubDirectories = new Set(); // Save collapsed subdirectory state
         let isUserScrolling = false; // Whether user is manually scrolling
@@ -1946,6 +2600,7 @@
         let isGuest = false; // 添加guest状态跟踪
         let newMessageCount = 0; // New message counter
         let lastMessageTime = 0;
+        let pendingUserInput = ''; // 保存等待执行的用户输入
 
         // User connection management functions
         function updateUserStatus(status, message, identity = '', isGuest = false) {
@@ -2072,15 +2727,15 @@
         
         let currentUploadDir = null;
         
-        // Auto-scroll status indicator
-        const autoScrollIndicator = document.getElementById('autoScrollIndicator');
+        // Auto-scroll status indicator (removed)
+        // const autoScrollIndicator = document.getElementById('autoScrollIndicator');
 
         // Setup socket event listeners
         function setupSocketListeners() {
             if (!socket) return;
             
             socket.on('connect', function() {
-                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
                 updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(I18N.connected, 'system');
                 updateStatus('connected');
@@ -2121,7 +2776,7 @@
                 if (isGuest) {
                     identity = I18N.guest_user || '访客用户';
                 } else {
-                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
                 }
                 
                 updateUserStatus('connected', I18N.user_connected, identity, isGuest);
@@ -2140,7 +2795,7 @@
             });
 
             socket.on('reconnect', function(attemptNumber) {
-                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser.substring(0, 8)}...`;
+                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
                 updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
                 updateStatus('connected');
@@ -2178,6 +2833,10 @@
             socket.on('task_started', function(data) {
                 addMessage(data.message, 'info');
                 setTaskRunning(true);
+                // 任务真正开始时才清空输入框和待执行内容
+                userInput.value = '';
+                pendingUserInput = '';
+                resizeTextarea();
             });
 
             socket.on('output', function(data) {
@@ -2187,6 +2846,8 @@
             socket.on('task_completed', function(data) {
                 addMessage(data.message, data.success ? 'success' : 'error');
                 setTaskRunning(false);
+                // 任务完成时清理待执行内容
+                pendingUserInput = '';
                 
                 // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
                 if (selectedDirectory) {
@@ -2213,6 +2874,12 @@
             socket.on('task_stopped', function(data) {
                 addMessage(data.message, data.type || 'error');
                 setTaskRunning(false);
+                // 任务停止时，如果有待执行的用户输入，恢复到输入框
+                if (pendingUserInput) {
+                    userInput.value = pendingUserInput;
+                    pendingUserInput = '';
+                    resizeTextarea();
+                }
                 // Keep current task mode
                 updateTaskModeInfo();
                 // Refresh directories after stopping task
@@ -2222,6 +2889,12 @@
             socket.on('error', function(data) {
                 addMessage(data.message, 'error');
                 setTaskRunning(false);
+                // 如果有待执行的用户输入，恢复到输入框
+                if (pendingUserInput) {
+                    userInput.value = pendingUserInput;
+                    pendingUserInput = '';
+                    resizeTextarea();
+                }
             });
 
             socket.on('directory_selected', function(data) {
@@ -2419,6 +3092,9 @@
             const message = userInput.value.trim();
             if (!message || isTaskRunning || !socket || !isConnected) return;
 
+            // 保存当前输入内容，以防出错时需要恢复
+            pendingUserInput = message;
+
             // 检查guest用户权限
             if (isGuest) {
                 addMessage('guest用户为演示账户，无法执行新任务。', 'error');
@@ -2501,9 +3177,6 @@
                         gui_config: guiConfig
                     });
                 }
-
-                userInput.value = '';
-                resizeTextarea();
                 
             } catch (error) {
                 console.error('Configuration validation error:', error);
@@ -2635,6 +3308,9 @@
             const message = userInput.value.trim();
             if (!message || isTaskRunning) return;
 
+            // 保存当前输入内容，以防出错时需要恢复
+            pendingUserInput = message;
+
             if (!selectedDirectory) {
                 addMessage(I18N.select_directory_first, 'error');
                 return;
@@ -2690,9 +3366,6 @@
                     type: 'selected',
                     gui_config: guiConfig
                 });
-
-                userInput.value = '';
-                resizeTextarea();
                 
             } catch (error) {
                 console.error('Configuration validation error:', error);
@@ -2932,21 +3605,14 @@
         }
 
         /**
-         * 更新自动滚动状态指示器
+         * 更新自动滚动状态指示器 (已移除UI指示器)
          * 根据当前自动滚动状态更新UI指示器的显示和样式
          * @description 当自动滚动启用时显示向下箭头，禁用时显示暂停图标
          */
         function updateAutoScrollIndicator() {
-            if (autoScrollIndicator) {
-                if (autoScrollEnabled) {
-                    autoScrollIndicator.classList.remove('disabled');
-                    autoScrollIndicator.innerHTML = `<i class="fas fa-arrow-down"></i><span>${I18N.auto_scroll}</span>`;
-                } else {
-                    autoScrollIndicator.classList.add('disabled');
-                    autoScrollIndicator.innerHTML = `<i class="fas fa-pause"></i><span>${I18N.paused}</span>`;
-                }
-                console.log(`🔄 Auto-scroll status updated: ${autoScrollEnabled ? 'ENABLED' : 'DISABLED'}`);
-            }
+            // Auto-scroll indicator UI has been removed
+            // Only keep console logging for debugging
+            console.log(`🔄 Auto-scroll status updated: ${autoScrollEnabled ? 'ENABLED' : 'DISABLED'}`);
         }
 
         /**
@@ -3594,7 +4260,7 @@
                          alt="${fileName}" 
                          style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
                          onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
-                    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <div class="preview-button-group" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                         <a href="/api/download-file/${filePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 18px;">
                             <i class="fas fa-download"></i> 下载图片
                         </a>
@@ -3795,9 +4461,9 @@
                 const escapedContent = escapeHtml(processedContent);
                 
                 previewContent.innerHTML = `
-                    <div style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #9cdcfe; display: flex; justify-content: space-between; align-items: center;">
+                    <div class="markdown-toolbar-header" style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #9cdcfe; display: flex; justify-content: space-between; align-items: center;">
                         <span>文件大小: ${size} | 类型: Markdown</span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
+                        <div class="markdown-toolbar-buttons" style="display: flex; gap: 8px; align-items: center;">
                             <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="重新从文件加载">
                                 <i class="fas fa-sync" style="margin-right: 5px;"></i> 重新加载
                             </button>
@@ -4036,7 +4702,7 @@
                              alt="${fileName}" 
                              style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
                              onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
-                        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <div class="preview-button-group" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                             <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 18px; display: flex; align-items: center; gap: 5px;">
                                 <i class="fas fa-download"></i> 下载图片
                             </a>
@@ -4738,7 +5404,7 @@
                     </div>
                     <h3 style="margin-bottom: 20px; color: #856404;">在线预览功能已禁用</h3>
                     <p style="margin-bottom: 20px; color: #666;">为了支持离线部署，云存储预览功能已被移除。请下载文件到本地查看。</p>
-                    <div style="display: flex; justify-content: center; gap: 15px;">
+                    <div class="preview-button-group" style="display: flex; justify-content: center; gap: 15px;">
                         <a href="/api/download-file/${downloadFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 21px; display: inline-block;">
                             <i class="fas fa-download"></i> 下载文件
                         </a>
@@ -5301,7 +5967,21 @@
                 if (data.success) {
                     const wordConversion = data.conversions?.word;
                     if (wordConversion && wordConversion.status === 'success') {
-                        alert(`✅ Word文档转换成功！\n文件: ${wordConversion.file}\n大小: ${wordConversion.size_kb}`);
+                        // 转换成功，自动下载文件
+                        const fileName = wordConversion.file;
+                        const downloadUrl = `/api/download-file/${fileName}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}`;
+                        
+                        // 创建隐藏的下载链接并触发下载
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = downloadUrl;
+                        downloadLink.download = fileName.split('/').pop(); // 获取文件名
+                        downloadLink.style.display = 'none';
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                        
+                        // 显示成功消息
+                        addMessage(`✅ Word文档转换成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${wordConversion.size_kb}KB`, 'success');
                     } else {
                         alert(`❌ Word文档转换失败: ${wordConversion?.error || '未知错误'}`);
                     }
@@ -5363,7 +6043,21 @@
                 if (data.success) {
                     const pdfConversion = data.conversions?.pdf;
                     if (pdfConversion && pdfConversion.status === 'success') {
-                        alert(`✅ PDF文档转换成功！\n文件: ${pdfConversion.file}\n大小: ${pdfConversion.size_kb}`);
+                        // 转换成功，自动下载文件
+                        const fileName = pdfConversion.file;
+                        const downloadUrl = `/api/download-file/${fileName}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}`;
+                        
+                        // 创建隐藏的下载链接并触发下载
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = downloadUrl;
+                        downloadLink.download = fileName.split('/').pop(); // 获取文件名
+                        downloadLink.style.display = 'none';
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                        
+                        // 显示成功消息
+                        addMessage(`✅ PDF文档转换成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${pdfConversion.size_kb}KB`, 'success');
                     } else {
                         alert(`❌ PDF文档转换失败: ${pdfConversion?.error || '未知错误'}`);
                     }
