@@ -3,10 +3,10 @@
 LANG=zh
 
 # GUI API configuration 
-api_key=your key
-api_base=https://open.bigmodel.cn/api/paas/v4/
-model=glm-4.5
-max_tokens=16384
+# api_key=your key
+# api_base=https://open.bigmodel.cn/api/paas/v4/
+# model=glm-4.5
+# max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
@@ -15,10 +15,10 @@ max_tokens=16384
 # max_tokens=8192
 
 # Anthropic models
-# api_key=your key
-# api_base=https://anyrouter.top/v1
-# model=claude-sonnet-3-7
-# max_tokens=32768
+api_key=your key
+api_base=https://api.openai-proxy.org/v1
+model=claude-sonnet-4-0
+max_tokens=32768
 
 # GUI API configuration 
 # api_key=your key
