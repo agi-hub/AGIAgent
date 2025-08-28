@@ -61,19 +61,6 @@
       "required": ["command", "is_background"]
     }
   },
-  "list_dir": {
-    "description": "List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like semantic search or file reading.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "relative_workspace_path": {
-          "type": "string",
-          "description": "Path to list contents of, relative to the workspace root."
-        }
-      },
-      "required": ["relative_workspace_path"]
-    }
-  },
   "grep_search": {
     "description": "Fast text-based regex search that finds exact pattern matches within files. **PERFORMANCE GUIDELINES**: For complex searches, use multiple simple queries instead of one complex query with many '|' operators. Limit queries to 3-5 terms maximum. Use exclude_pattern to skip common directories like 'output_*/*|__pycache__/*|*.egg-info/*|cache/*' for better performance.",
     "parameters": {

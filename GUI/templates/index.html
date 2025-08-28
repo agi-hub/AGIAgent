@@ -439,7 +439,7 @@
         }
 
         .header h1 {
-            font-size: 3.5em;
+            font-size: 1.2em;
             font-weight: 700;
             margin-bottom: 0;
             color: #569cd6;
@@ -1024,23 +1024,6 @@
                 height: auto; /* 允许页面自然伸展 */
             }
             
-            /* 移动端header标题优化 */
-            .header h1 {
-                font-size: 1.8em !important;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-            }
-            
-            .header h1 img {
-                height: 1.6em !important;
-                flex-shrink: 0;
-            }
-            
             /* Header optimization */
             .user-auth-area {
                 padding: 5px 8px;
@@ -1058,20 +1041,17 @@
             }
             
             .logo-group {
-                flex-direction: row;
+                flex-direction: column;
                 align-items: center;
-                justify-content: center;
-                gap: 8px;
+                gap: 2px;
             }
             
             .logo-group img {
-                height: 2.8em !important;
-                margin-right: 8px !important;
+                height: 1.8em !important;
             }
             
             .logo-group span {
-                font-size: 2em !important;
-                white-space: nowrap;
+                font-size: 1em !important;
             }
             
             .user-auth-right {
@@ -1298,26 +1278,6 @@
         @media (max-width: 480px) {
             .user-auth-area {
                 padding: 4px 6px;
-            }
-            
-            /* 小屏幕设备logo-group优化 */
-            .logo-group img {
-                height: 2.2em !important;
-                margin-right: 6px !important;
-            }
-            
-            .logo-group span {
-                font-size: 1.6em !important;
-            }
-            
-            /* 小屏幕设备header标题优化 */
-            .header h1 {
-                font-size: 1.4em !important;
-                gap: 6px;
-            }
-            
-            .header h1 img {
-                height: 1.3em !important;
             }
             
             .main-content {
@@ -2208,8 +2168,8 @@
     <div class="user-auth-area">
         <div class="user-auth-left">
             <div class="logo-group">
-                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 3.5em; margin-right: 10px;" alt="Logo">
-                <span style="font-size: 2.5em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
+                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
+                <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
             </div>
         </div>
         <div class="user-auth-right">
@@ -2256,7 +2216,7 @@
     <div class="container">
         <div class="main-content">
             <div class="header" style="display: none;">
-                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 3.2em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -2556,9 +2516,9 @@
         function createSocket(apiKey) {
             return io({
                 reconnection: true,
-                reconnectionDelay: 1000,
-                reconnectionAttempts: 5,
-                timeout: 20000,
+                reconnectionDelay: 2000,      // 增加重连间隔到2秒
+                reconnectionAttempts: 20,     // 增加重连尝试次数到20次
+                timeout: 60000,               // 增加连接超时到60秒
                 forceNew: true,
                 auth: {
                     api_key: apiKey || null
@@ -2791,6 +2751,11 @@
                 // 停止自动刷新
                 stopAutoRefresh();
                 
+                // 如果是运行任务时断开，给出特殊提示
+                if (isTaskRunning) {
+                    addMessage('⚠️ 连接中断，但任务仍在后台继续执行。重连后可查看最新进度。', 'warning');
+                }
+                
                 console.log('❌ Socket disconnected:', reason);
             });
 
@@ -2804,6 +2769,9 @@
 
             socket.on('reconnect_attempt', function(attemptNumber) {
                 updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber})`);
+                if (attemptNumber <= 3) {
+                    addMessage(`正在尝试重连... (第${attemptNumber}次尝试)`, 'info');
+                }
                 console.log('🔄 Reconnection attempt', attemptNumber);
             });
 
@@ -2822,6 +2790,15 @@
                 updateUserStatus('error', '认证失败');
                 addMessage('认证失败: ' + (data.message || '未知错误'), 'error');
                 console.log('❌ Authentication failed:', data);
+            });
+            
+            socket.on('reconnection_restored', function(data) {
+                addMessage('✅ ' + data.message, 'system');
+                if (data.has_running_task) {
+                    setTaskRunning(true);
+                    addMessage('🔄 检测到正在运行的任务，将继续显示执行进度', 'info');
+                }
+                console.log('🔗 Session restored:', data);
             });
             
             socket.on('connect_error', function(error) {
@@ -2931,6 +2908,14 @@
         let lastMessageType = null;
         let lastMessageDiv = null;
         
+        // 批量消息处理相关变量
+        let messageBatchQueue = [];
+        let batchProcessingTimer = null;
+        let isBatchProcessing = false;
+        const BATCH_DELAY = 50; // 批量处理延迟时间(毫秒)
+        const MAX_BATCH_SIZE = 20; // 最大批处理消息数量
+        let batchScrollPending = false;
+        
         /**
          * 检查是否应该执行自动滚动到底部
          * @returns {boolean} 是否应该自动滚动
@@ -2972,6 +2957,107 @@
             return div.innerHTML;
         }
         
+        /**
+         * 批量处理消息队列
+         * @description 将队列中的所有消息一次性添加到DOM，然后执行一次滚动
+         */
+        function processBatchMessages() {
+            if (messageBatchQueue.length === 0) {
+                return;
+            }
+            
+            isBatchProcessing = true;
+            const shouldScroll = shouldAutoScroll();
+            
+            // 创建文档片段以优化DOM操作性能
+            const fragment = document.createDocumentFragment();
+            
+            // 处理队列中的所有消息
+            for (const messageData of messageBatchQueue) {
+                const { message, type } = messageData;
+                
+                // 检查是否可以与上一条消息合并
+                if (['info', 'error', 'success'].includes(type) && 
+                    lastMessageType === type && 
+                    lastMessageDiv && 
+                    lastMessageDiv.parentNode === chatMessages) {
+                    
+                    // 合并到现有消息
+                    const textSpan = lastMessageDiv.querySelector('.message-text');
+                    if (textSpan) {
+                        textSpan.innerHTML += '<br>' + escapeHtml(message);
+                    } else {
+                        lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                    }
+                } else {
+                    // 创建新的消息元素
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${type}`;
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'message-text';
+                    textSpan.textContent = message;
+                    
+                    messageDiv.appendChild(textSpan);
+                    fragment.appendChild(messageDiv);
+                    
+                    // 更新lastMessage引用
+                    if (['info', 'error', 'success'].includes(type)) {
+                        lastMessageType = type;
+                        lastMessageDiv = messageDiv;
+                    } else {
+                        lastMessageType = null;
+                        lastMessageDiv = null;
+                    }
+                }
+            }
+            
+            // 一次性添加所有新消息到DOM
+            if (fragment.children.length > 0) {
+                chatMessages.appendChild(fragment);
+            }
+            
+            // 清空队列
+            messageBatchQueue = [];
+            isBatchProcessing = false;
+            
+            // 批量处理完成后执行一次滚动
+            if (shouldScroll && batchScrollPending) {
+                // 使用requestAnimationFrame确保DOM更新完成后再滚动
+                requestAnimationFrame(() => {
+                    throttledAutoScroll(true);
+                    batchScrollPending = false;
+                });
+            } else if (!shouldScroll && batchScrollPending) {
+                // 如果不能自动滚动，显示新消息指示器
+                showNewMessageIndicator();
+                batchScrollPending = false;
+            }
+        }
+        
+        /**
+         * 调度批量消息处理
+         * @description 设置定时器来延迟处理消息，如果队列满了则立即处理
+         */
+        function scheduleBatchProcessing() {
+            // 如果队列已满，立即处理
+            if (messageBatchQueue.length >= MAX_BATCH_SIZE) {
+                clearTimeout(batchProcessingTimer);
+                processBatchMessages();
+                return;
+            }
+            
+            // 否则设置延迟处理
+            if (batchProcessingTimer) {
+                clearTimeout(batchProcessingTimer);
+            }
+            
+            batchProcessingTimer = setTimeout(() => {
+                processBatchMessages();
+                batchProcessingTimer = null;
+            }, BATCH_DELAY);
+        }
+        
         function addMessage(message, type = 'info') {
             // Special filtering: hide lines containing specific content
             if (message.trim() === '```' || message.trim() === '```xml') {
@@ -2984,6 +3070,31 @@
                 type = 'normal'; // Use normal style for warning messages
             }
             
+            // 对于用户消息或重要消息，立即处理不进入批处理队列
+            if (type === 'user' || type === 'system' || isBatchProcessing) {
+                addMessageImmediate(message, type);
+                return;
+            }
+            
+            // 将消息添加到批处理队列
+            messageBatchQueue.push({ message, type });
+            
+            // 标记需要滚动（如果满足条件）
+            if (shouldAutoScroll()) {
+                batchScrollPending = true;
+            }
+            
+            // 调度批量处理
+            scheduleBatchProcessing();
+        }
+        
+        /**
+         * 立即添加消息（不使用批处理）
+         * @param {string} message 消息内容
+         * @param {string} type 消息类型
+         * @description 用于处理用户消息、系统消息或批处理过程中的消息
+         */
+        function addMessageImmediate(message, type = 'info') {
             const shouldScroll = shouldAutoScroll();
             
             if (['info', 'error', 'success'].includes(type) && lastMessageType === type && lastMessageDiv) {
@@ -3201,6 +3312,13 @@
             
             // Show confirmation dialog
             if (confirm(I18N.confirm_clear_chat)) {
+                // 清理批处理队列和定时器
+                clearTimeout(batchProcessingTimer);
+                batchProcessingTimer = null;
+                messageBatchQueue = [];
+                isBatchProcessing = false;
+                batchScrollPending = false;
+                
                 // Clear the chat messages immediately for better user experience
                 chatMessages.innerHTML = `
                     <div class="message system">
@@ -3646,6 +3764,47 @@
         document.getElementById('newMessageIndicator').addEventListener('click', () => {
             scrollToBottom(true);
         });
+        
+        /**
+         * 页面离开时清理批处理资源
+         * @description 确保在页面卸载前处理完所有排队的消息并清理定时器
+         */
+        window.addEventListener('beforeunload', function() {
+            // 强制处理剩余的批处理消息
+            if (messageBatchQueue.length > 0) {
+                processBatchMessages();
+            }
+            
+            // 清理定时器
+            clearTimeout(batchProcessingTimer);
+        });
+        
+        /**
+         * 测试批量消息处理性能
+         * @description 开发调试用函数，模拟高频消息场景
+         */
+        window.testBatchMessagePerformance = function(messageCount = 100, interval = 10) {
+            console.log(`🧪 开始测试批量消息性能：${messageCount}条消息，间隔${interval}ms`);
+            const startTime = performance.now();
+            
+            let count = 0;
+            const testInterval = setInterval(() => {
+                addMessage(`测试消息 ${count + 1}/${messageCount} - ${new Date().toLocaleTimeString()}`, 'info');
+                count++;
+                
+                if (count >= messageCount) {
+                    clearInterval(testInterval);
+                    
+                    // 等待批处理完成后测量结果
+                    setTimeout(() => {
+                        const endTime = performance.now();
+                        const duration = endTime - startTime;
+                        console.log(`✅ 测试完成！总用时：${duration.toFixed(2)}ms，平均每条消息：${(duration / messageCount).toFixed(2)}ms`);
+                        console.log(`📊 批处理队列当前状态：${messageBatchQueue.length}条消息等待处理`);
+                    }, BATCH_DELAY + 100);
+                }
+            }, interval);
+        };
 
         /**
          * 目录管理 - 刷新目录列表

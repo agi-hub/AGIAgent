@@ -2451,7 +2451,11 @@ class ToolExecutor:
             tool_func = self.tool_map[tool_name]
             try:
                 # Filter out None values and empty strings for optional parameters
-                filtered_params = {k: v for k, v in params.items() if v is not None and v != ""}
+                # Special handling: for edit_file, preserve empty string for code_edit parameter
+                if tool_name == "edit_file":
+                    filtered_params = {k: v for k, v in params.items() if v is not None and not (v == "" and k != "code_edit")}
+                else:
+                    filtered_params = {k: v for k, v in params.items() if v is not None and v != ""}
                 
                 # Special handling for read_file to map end_line_one_indexed to end_line_one_indexed_inclusive
                 if tool_name == "read_file" and "end_line_one_indexed" in filtered_params:

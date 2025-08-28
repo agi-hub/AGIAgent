@@ -2398,6 +2398,12 @@ def handle_connect(auth):
     if is_reconnection:
         gui_instance.concurrency_manager.reconnect_session(session_id)
         print(f"🔗 Session {session_id} reconnected, restoring state")
+        
+        # 发送重连恢复消息
+        emit('reconnection_restored', {
+            'message': '会话已恢复，如有正在运行的任务将继续显示进度',
+            'has_running_task': user_session.current_process and user_session.current_process.is_alive() if session_id in gui_instance.user_sessions else False
+        }, room=session_id)
     
     # Add connection to concurrency manager
     if not gui_instance.concurrency_manager.add_connection():
