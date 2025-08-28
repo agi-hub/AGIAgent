@@ -750,7 +750,8 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
     It communicates back to the main process via the queue.
     """
     try:
-        output_queue.put({'event': 'task_started', 'data': {'message': 'Task execution started...'}})
+        # Combine task start information into a single message
+        init_lines = ["Task execution started..."]
         
         if not out_dir:
             # Get GUI default data directory from config for new directories
@@ -765,9 +766,13 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             out_dir = os.path.join(base_dir, f"output_{timestamp}")
         
         if continue_mode:
-            output_queue.put({'event': 'output', 'data': {'message': f"Continuing with existing directory: {out_dir}", 'type': 'info'}})
+            init_lines.append(f"Continuing with existing directory: {out_dir}")
         else:
-            output_queue.put({'event': 'output', 'data': {'message': f"Creating output directory: {out_dir}", 'type': 'info'}})
+            init_lines.append(f"Creating output directory: {out_dir}")
+        
+        # Send combined initialization message
+        init_message = "\n".join(init_lines)
+        output_queue.put({'event': 'task_started', 'data': {'message': init_message}})
         
         # Process GUI configuration options
         if gui_config is None:
@@ -795,17 +800,22 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         model_api_key = gui_config.get('model_api_key')
         model_api_base = gui_config.get('model_api_base')
         
-        # Log GUI configuration
-        output_queue.put({'event': 'output', 'data': {'message': f"GUI Configuration:", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Model: {selected_model}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Web Search: {enable_web_search}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Knowledge Base: {enable_knowledge_base}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Multi-Agent: {enable_multi_agent}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Long-term Memory: {enable_long_term_memory}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - MCP: {enable_mcp}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"  - Chinese Segmentation: {enable_jieba}", 'type': 'info'}})
+        # Log GUI configuration as a single merged message
+        gui_config_lines = [
+            "GUI Configuration:",
+            f"  - Model: {selected_model}",
+            f"  - Web Search: {enable_web_search}",
+            f"  - Knowledge Base: {enable_knowledge_base}",
+            f"  - Multi-Agent: {enable_multi_agent}",
+            f"  - Long-term Memory: {enable_long_term_memory}",
+            f"  - MCP: {enable_mcp}",
+            f"  - Chinese Segmentation: {enable_jieba}"
+        ]
         if routine_file:
-            output_queue.put({'event': 'output', 'data': {'message': f"  - Routine File: {os.path.basename(routine_file)}", 'type': 'info'}})
+            gui_config_lines.append(f"  - Routine File: {os.path.basename(routine_file)}")
+        
+        gui_config_message = "\n".join(gui_config_lines)
+        output_queue.put({'event': 'output', 'data': {'message': gui_config_message, 'type': 'info'}})
         
         # Create a temporary configuration that overrides config.txt for GUI mode
         # We'll use environment variables to pass these settings to the AGIBot system
@@ -849,18 +859,24 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'false'
         
         # Set parameters based on mode
+        mode_lines = []
         if plan_mode:
-            output_queue.put({'event': 'output', 'data': {'message': f"Plan mode enabled: Using task decomposition (--todo)", 'type': 'info'}})
+            mode_lines.append("Plan mode enabled: Using task decomposition (--todo)")
             single_task_mode = False  # Plan mode uses task decomposition
         else:
-            output_queue.put({'event': 'output', 'data': {'message': f"Normal mode: Direct execution (single task)", 'type': 'info'}})
+            mode_lines.append("Normal mode: Direct execution (single task)")
             single_task_mode = True   # Default mode executes directly
         
         # Determine MCP config file based on GUI setting
         mcp_config_file = None
         if enable_mcp:
             mcp_config_file = "config/mcp_servers.json"  # Use default MCP config when enabled
-            output_queue.put({'event': 'output', 'data': {'message': f"MCP enabled with config: {mcp_config_file}", 'type': 'info'}})
+            mode_lines.append(f"MCP enabled with config: {mcp_config_file}")
+        
+        # Send combined mode information if any
+        if mode_lines:
+            mode_message = "\n".join(mode_lines)
+            output_queue.put({'event': 'output', 'data': {'message': mode_message, 'type': 'info'}})
         
         agibot = AGIBotMain(
             out_dir=out_dir,
@@ -950,15 +966,24 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         
         final_requirement = ' '.join(requirement_parts)
         
-        output_queue.put({'event': 'output', 'data': {'message': f"Initialized {APP_NAME} with output directory: {out_dir}", 'type': 'info'}})
-        output_queue.put({'event': 'output', 'data': {'message': f"Starting task execution...", 'type': 'info'}})
+        # Send user requirement as separate message
         output_queue.put({'event': 'output', 'data': {'message': f"User requirement: {user_requirement}", 'type': 'user'}})
+        
+        # Combine system status information into a single message
+        status_lines = [
+            f"Initialized {APP_NAME} with output directory: {out_dir}",
+            "Starting task execution..."
+        ]
+        
         if detailed_requirement and detailed_requirement != user_requirement:
-            output_queue.put({'event': 'output', 'data': {'message': f"With conversation context included", 'type': 'info'}})
+            status_lines.append("With conversation context included")
         if search_hints:
-            output_queue.put({'event': 'output', 'data': {'message': f"Search configuration: {' '.join(search_hints)}", 'type': 'info'}})
+            status_lines.append(f"Search configuration: {' '.join(search_hints)}")
         if workspace_info:
-            output_queue.put({'event': 'output', 'data': {'message': f"Workspace information included in prompt", 'type': 'info'}})
+            status_lines.append("Workspace information included in prompt")
+        
+        status_message = "\n".join(status_lines)
+        output_queue.put({'event': 'output', 'data': {'message': status_message, 'type': 'info'}})
         
         class QueueSocketHandler:
             def __init__(self, q, socket_type='info'):
@@ -1001,6 +1026,49 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
                 
                 return line
             
+            def should_filter_message(self, line):
+                """Filter out redundant system messages that are already displayed in GUI"""
+                # Don't filter error messages, warnings, or important notifications
+                line_lower = line.lower()
+                if any(keyword in line_lower for keyword in ['error', 'warning', 'failed', 'exception', 'traceback']):
+                    return False
+                
+                # List of message patterns to filter out (only redundant status messages)
+                filter_patterns = [
+                    "Normal mode: Direct execution (single task)",
+                    "Plan mode enabled: Using task decomposition",
+                    "MCP enabled with config:",
+                    "Initialized AGI Bot with output directory:",
+                    "Starting task execution...",
+                    "Search configuration:",
+                    "Workspace information included in prompt",
+                    "Received user requirement:",
+                    "Currently selected directory:",
+                    "workspace subdirectory path:",
+                    "workspace subdirectory content:",
+                    "Note: workspace subdirectory does not exist",
+                    "With conversation context included",
+                    "(Empty directory)",
+                    "(Cannot read directory content:",
+                    "MD files:",
+                    "Other files:"
+                ]
+                
+                # Check if line matches any filter pattern
+                for pattern in filter_patterns:
+                    if pattern in line:
+                        return True
+                
+                # Filter file list items that start with "  - " but only if they look like file paths
+                if line.strip().startswith("- ") and ("(" in line and ")" in line):
+                    return True
+                
+                # Also filter empty lines and lines with only whitespace/special chars
+                if not line.strip() or line.strip() in ['', '---', '===', '***']:
+                    return True
+                    
+                return False
+            
             def write(self, message):
                 self.buffer += message
                 if '\n' in self.buffer:
@@ -1009,6 +1077,10 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
                         if line.strip():
                             # Filter code_edit content for GUI display
                             filtered_line = self.filter_code_edit_content(line.strip())
+                            
+                            # Filter out redundant system messages that are already displayed in GUI
+                            if self.should_filter_message(filtered_line):
+                                continue
                             
                             # Check if it's warning or progress info, if so display as normal info instead of error
                             line_lower = filtered_line.lower()
@@ -1029,6 +1101,11 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             
             def final_flush(self):
                 if self.buffer.strip():
+                    # Filter out redundant system messages
+                    if self.should_filter_message(self.buffer.strip()):
+                        self.buffer = ""
+                        return
+                    
                     # Check if it's warning or progress info, if so display as normal info instead of error
                     buffer_lower = self.buffer.lower()
                     if ('warning' in buffer_lower or 
