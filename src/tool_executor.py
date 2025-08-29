@@ -1118,7 +1118,7 @@ class ToolExecutor:
         for i, record in enumerate(task_history, 1):
             if record.get("role") == "system":
                 continue
-            elif "prompt" in record and "result" in record:
+            elif "result" in record:
                 # Add clear separator line for each round with improved labeling
                 if record.get("is_summary", False):
                     message_parts.append(f"### Summary of Earlier Rounds:")
@@ -1133,11 +1133,18 @@ class ToolExecutor:
                         message_parts.append(f"### Recent Round (T-{position_from_end}):")
                 message_parts.append("")
                 
-                # Format user request with consistent line breaks
-                user_request = record['prompt'].strip()
-                message_parts.append(f"**User Request:**")
-                message_parts.append(user_request)
-                message_parts.append("")
+                # 🔧 优化：只在第一轮显示用户请求，后续轮次只显示轮次信息
+                if "prompt" in record:
+                    # 第一轮：显示完整的用户请求
+                    user_request = record['prompt'].strip()
+                    message_parts.append(f"**User Request:**")
+                    message_parts.append(user_request)
+                    message_parts.append("")
+                else:
+                    # 后续轮次：显示轮次信息
+                    task_round = record.get('task_round', 'N/A')
+                    message_parts.append(f"**Round {task_round} Execution:**")
+                    message_parts.append("")
                 
                 # Format assistant response with consistent line breaks and standardized tool result formatting
                 assistant_response = record['result'].strip()
@@ -2219,7 +2226,7 @@ class ToolExecutor:
         # Handle FastMCP tools
         if tool_source == 'fastmcp':
             current_thread = threading.current_thread().name
-            print_current(f"🚀 [Thread: {current_thread}] Calling FastMCP tool: {tool_name}")
+            print_debug(f"🚀 [Thread: {current_thread}] Calling FastMCP tool: {tool_name}")
             
             try:
 
@@ -2234,7 +2241,7 @@ class ToolExecutor:
                     else:
                         result = self.tool_map[tool_name](**params)
                     
-                    print_current(f"✅ [Thread: {current_thread}] FastMCP tool call successful: {tool_name}")
+                    print_debug(f"✅ [Thread: {current_thread}] FastMCP tool call successful: {tool_name}")
                     return result
                 else:
                     error_msg = f"FastMCP tool {tool_name} not found in tool map"
@@ -2259,14 +2266,14 @@ class ToolExecutor:
                 from tools.cli_mcp_wrapper import get_cli_mcp_status, is_cli_mcp_initialized, initialize_cli_mcp_wrapper
                 
                 global_status = get_cli_mcp_status(self.MCP_config_file)
-                print_current(f"🔍 [Thread: {current_thread}] Global cli-mcp status: {global_status}")
+                print_debug(f"🔍 [Thread: {current_thread}] Global cli-mcp status: {global_status}")
                 
                 # If globally initialized but not locally, sync the status
                 if global_status.get("initialized", False) and not self.cli_mcp_initialized:
-                    print_current(f"🔄 [Thread: {current_thread}] Global cli-mcp is initialized, syncing local status...")
+                    print_debug(f"🔄 [Thread: {current_thread}] Global cli-mcp is initialized, syncing local status...")
                     self.cli_mcp_initialized = True
                     self._add_mcp_tools_to_map()
-                    print_current(f"✅ [Thread: {current_thread}] Local cli-mcp status synced successfully")
+                    print_debug(f"✅ [Thread: {current_thread}] Local cli-mcp status synced successfully")
                 
                 # If still not initialized, attempt initialization with enhanced retry
                 if not self.cli_mcp_initialized:
@@ -2276,7 +2283,7 @@ class ToolExecutor:
                     while retry_count < max_retries and not self.cli_mcp_initialized:
                         try:
                             retry_count += 1
-                            print_current(f"🔄 [Thread: {current_thread}] cli-mcp initialization attempt {retry_count}/{max_retries}")
+                            print_debug(f"🔄 [Thread: {current_thread}] cli-mcp initialization attempt {retry_count}/{max_retries}")
                             
                             import asyncio
                             
@@ -2295,7 +2302,7 @@ class ToolExecutor:
                                     self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
                             except RuntimeError as re:
                                 # No event loop or other runtime issues
-                                print_current(f"⚠️ [Thread: {current_thread}] Runtime error during async init: {re}")
+                                print_debug(f"⚠️ [Thread: {current_thread}] Runtime error during async init: {re}")
                                 # Try creating new event loop
                                 try:
                                     new_loop = asyncio.new_event_loop()
@@ -2303,7 +2310,7 @@ class ToolExecutor:
                                     self.cli_mcp_initialized = new_loop.run_until_complete(initialize_cli_mcp_wrapper(self.MCP_config_file))
                                     new_loop.close()
                                 except Exception as loop_e:
-                                    print_current(f"❌ [Thread: {current_thread}] Failed to create new event loop: {loop_e}")
+                                    print_debug(f"❌ [Thread: {current_thread}] Failed to create new event loop: {loop_e}")
                                     self.cli_mcp_initialized = False
                             
                             # Verify initialization and add tools to mapping
@@ -2313,35 +2320,35 @@ class ToolExecutor:
                                 
                                 # Double-check the tool mapping
                                 if tool_name in self.tool_map:
-                                    print_current(f"✅ [Thread: {current_thread}] Tool {tool_name} found in tool mapping")
+                                    print_debug(f"✅ [Thread: {current_thread}] Tool {tool_name} found in tool mapping")
                                 else:
-                                    print_current(f"⚠️ [Thread: {current_thread}] Tool {tool_name} NOT found in tool mapping after initialization")
+                                    print_debug(f"⚠️ [Thread: {current_thread}] Tool {tool_name} NOT found in tool mapping after initialization")
                                 break
                             else:
-                                print_current(f"⚠️ [Thread: {current_thread}] cli-mcp initialization attempt {retry_count} failed")
+                                print_debug(f"⚠️ [Thread: {current_thread}] cli-mcp initialization attempt {retry_count} failed")
                                 if retry_count < max_retries:
                                     import time
                                     time.sleep(3)  # Wait 3 seconds before retry
                                     
                         except Exception as e:
-                            print_current(f"⚠️ [Thread: {current_thread}] cli-mcp client initialization attempt {retry_count} failed: {e}")
+                            print_debug(f"⚠️ [Thread: {current_thread}] cli-mcp client initialization attempt {retry_count} failed: {e}")
                             if retry_count < max_retries:
                                 import time
                                 time.sleep(3)  # Wait 3 seconds before retry
                             else:
                                 error_msg = f"cli-mcp client initialization failed after {max_retries} attempts in thread {current_thread}: {e}"
-                                print_current(f"❌ {error_msg}")
+                                print_debug(f"❌ {error_msg}")
                                 return {"error": error_msg}
                     
                     # Final check
                     if not self.cli_mcp_initialized:
                         error_msg = f"cli-mcp client failed to initialize after all attempts in thread {current_thread}"
-                        print_current(f"❌ {error_msg}")
+                        print_debug(f"❌ {error_msg}")
                         return {"error": error_msg}
             
             # Call cli-mcp tool with enhanced error handling
             try:
-                print_current(f"🔧 [Thread: {current_thread}] Calling cli-mcp tool: {tool_name}")
+                print_debug(f"🔧 [Thread: {current_thread}] Calling cli-mcp tool: {tool_name}")
                 
                 import asyncio
                 
@@ -2372,14 +2379,14 @@ class ToolExecutor:
                 
             except Exception as e:
                 error_msg = f"cli-mcp tool call failed in thread {current_thread}: {e}"
-                print_current(f"❌ {error_msg}")
+                print_debug(f"❌ {error_msg}")
                 return {"error": error_msg}
         
         # Handle direct MCP tools (SSE)
         elif tool_source == 'direct_mcp':
             # Ensure direct MCP client is initialized
             if not self.direct_mcp_initialized:
-                print_current(f"🔄 Attempting to initialize direct MCP client for tool {tool_name}...")
+                print_debug(f"🔄 Attempting to initialize direct MCP client for tool {tool_name}...")
                 import asyncio
                 
                 retry_count = 0
@@ -2388,7 +2395,7 @@ class ToolExecutor:
                 while retry_count < max_retries and not self.direct_mcp_initialized:
                     try:
                         retry_count += 1
-                        print_current(f"🔄 Direct MCP initialization attempt {retry_count}/{max_retries}")
+                        print_debug(f"🔄 Direct MCP initialization attempt {retry_count}/{max_retries}")
                         
                         loop = asyncio.get_running_loop()
                         if loop.is_running():
@@ -2404,16 +2411,16 @@ class ToolExecutor:
                         # Add MCP tools to tool_map after successful initialization
                         if self.direct_mcp_initialized:
                             self._add_mcp_tools_to_map()
-                            print_current(f"✅ Direct MCP client initialized with config: {self.MCP_config_file}")
+                            print_debug(f"✅ Direct MCP client initialized with config: {self.MCP_config_file}")
                             break
                         else:
-                            print_current(f"⚠️ Direct MCP initialization attempt {retry_count} failed")
+                            print_debug(f"⚠️ Direct MCP initialization attempt {retry_count} failed")
                             if retry_count < max_retries:
                                 import time
                                 time.sleep(2)  # Wait 2 seconds before retry
                                 
                     except Exception as e:
-                        print_current(f"⚠️ Direct MCP client initialization attempt {retry_count} failed: {e}")
+                        print_debug(f"⚠️ Direct MCP client initialization attempt {retry_count} failed: {e}")
                         if retry_count < max_retries:
                             import time
                             time.sleep(2)  # Wait 2 seconds before retry
@@ -2444,7 +2451,7 @@ class ToolExecutor:
                 return result
                 
             except Exception as e:
-                print_current(f"❌ SSE MCP tool call failed: {e}")
+                print_debug(f"❌ SSE MCP tool call failed: {e}")
                 return {"error": f"SSE MCP tool call failed: {e}"}
         # Handle regular tools
         if tool_name in self.tool_map:
@@ -4263,7 +4270,7 @@ class ToolExecutor:
                         should_print = force_reload or not hasattr(self, '_fastmcp_loaded_before')
                         
                         if should_print:
-                            print_current(f"🔧 Loading {len(fastmcp_tools)} FastMCP tool definitions")
+                            print_debug(f"🔧 Loading {len(fastmcp_tools)} FastMCP tool definitions")
                         
                         for tool_name in fastmcp_tools:
                             try:
@@ -4280,25 +4287,25 @@ class ToolExecutor:
                                         }
                                     }
                                     if should_print:
-                                        print_current(f"✅ Added FastMCP tool: {tool_name}")
+                                        print_debug(f"✅ Added FastMCP tool: {tool_name}")
                             except Exception as e:
-                                print_current(f"⚠️ Failed to load FastMCP tool definition for {tool_name}: {e}")
+                                print_debug(f"⚠️ Failed to load FastMCP tool definition for {tool_name}: {e}")
                                 continue
                         
                         if should_print:
-                            print_current(f"✅ FastMCP tool definitions loaded successfully")
+                            print_debug(f"✅ FastMCP tool definitions loaded successfully")
                         
                         # Mark that we've loaded FastMCP tools before
                         self._fastmcp_loaded_before = True
                 else:
                     # If FastMCP is not initialized yet, invalidate cache to force reload later
                     if not force_reload:
-                        print_current("⚠️ FastMCP not initialized yet, will retry on next tool definition load")
+                        print_debug("⚠️ FastMCP not initialized yet, will retry on next tool definition load")
                         self._tool_definitions_cache = None
                         self._tool_definitions_cache_timestamp = None
                     
             except Exception as e:
-                print_current(f"⚠️ Failed to load FastMCP tool definitions: {e}")
+                print_debug(f"⚠️ Failed to load FastMCP tool definitions: {e}")
             
             # 🔧 NEW: Load cli-mcp tool definitions dynamically
             try:
@@ -4307,7 +4314,7 @@ class ToolExecutor:
                                    if source == 'cli_mcp']
                     
                     if cli_mcp_tools and self.cli_mcp_initialized and self.cli_mcp_client:
-                        print_current(f"🔧 Loading {len(cli_mcp_tools)} cli-mcp tool definitions")
+                        print_debug(f"🔧 Loading {len(cli_mcp_tools)} cli-mcp tool definitions")
                         
                         for tool_name in cli_mcp_tools:
                             try:
@@ -4323,15 +4330,15 @@ class ToolExecutor:
                                             "required": tool_def.get("input_schema", {}).get("required", [])
                                         }
                                     }
-                                    print_current(f"✅ Added cli-mcp tool definition: {tool_name}")
+                                    print_debug(f"✅ Added cli-mcp tool definition: {tool_name}")
                             except Exception as e:
-                                print_current(f"⚠️ Failed to load cli-mcp tool definition for {tool_name}: {e}")
+                                print_debug(f"⚠️ Failed to load cli-mcp tool definition for {tool_name}: {e}")
                                 continue
                         
-                        print_current(f"✅ cli-mcp tool definitions loaded successfully")
+                        print_debug(f"✅ cli-mcp tool definitions loaded successfully")
                     
             except Exception as e:
-                print_current(f"⚠️ Failed to load cli-mcp tool definitions: {e}")
+                print_debug(f"⚠️ Failed to load cli-mcp tool definitions: {e}")
             
             # Cache the loaded tool definitions
             self._tool_definitions_cache = tool_definitions
@@ -4574,8 +4581,8 @@ class ToolExecutor:
             # Use task_history directly since image optimization is now handled after vision API analysis
             processed_history = task_history
             
-            # Calculate total history length (consistent with upstream calculation)
-            total_history_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) for record in processed_history)
+            # 🔧 优化：计算历史记录长度时，只计算result字段，因为prompt字段只在第一轮存在
+            total_history_length = sum(len(str(record.get("result", ""))) for record in processed_history)
             
             # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
             if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
@@ -4895,18 +4902,18 @@ class ToolExecutor:
                         # Format the result content appropriately - NO TRUNCATION
                         if isinstance(tool_result_content, str):
                             # For string results, show directly without truncation
-                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
+                            print_debug(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
                         elif isinstance(tool_result_content, dict):
                             # For dict results, format as text without truncation
                             formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=params)
-                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
+                            print_debug(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
                         else:
-                            print_current(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
+                            print_debug(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
                     elif result.get('status') == 'error':
                         error_msg = result.get('error', 'Unknown error')
-                        print_current(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
+                        print_debug(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
                     else:
-                        print_current(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
+                        print_debug(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
                 
                 # For file operations, only show if there's an error
                 elif 'status' in result and result.get('status') in ['error', 'failed']:

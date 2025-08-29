@@ -498,7 +498,7 @@ class MCPClient:
                 self.fastmcp_wrapper and 
                 self.fastmcp_wrapper.supports_server(server.name)):
                 
-                print_current(f"🚀 Using FastMCP for server {server.name}, tool {tool_name}")
+                print_debug(f"🚀 Using FastMCP for server {server.name}, tool {tool_name}")
                 
                 try:
                     result = await self.fastmcp_wrapper.call_server_tool(server.name, tool_name, parameters)
@@ -530,13 +530,13 @@ class MCPClient:
                             }
                     else:
                         # FastMCP failed, fall back to traditional method
-                        print_current(f"⚠️ FastMCP failed for {server.name}: {result.get('error', 'Unknown error')}, falling back to subprocess")
+                        print_debug(f"⚠️ FastMCP failed for {server.name}: {result.get('error', 'Unknown error')}, falling back to subprocess")
                         
                 except Exception as e:
-                    print_current(f"⚠️ FastMCP call exception for {server.name}: {str(e)}, falling back to subprocess")
+                    print_debug(f"⚠️ FastMCP call exception for {server.name}: {str(e)}, falling back to subprocess")
             
             # Traditional subprocess method (fallback or when FastMCP not available)
-            print_current(f"💻 Using subprocess for server {server.name}, tool {tool_name}")
+            print_debug(f"💻 Using subprocess for server {server.name}, tool {tool_name}")
             
             # Check if command exists
             if not server.command:
@@ -562,8 +562,8 @@ class MCPClient:
             
             # Debug logging
             print_debug(f"🔧 STDIO MCP call: {tool_name}")
-            print_current(f"💻 Command: {' '.join(cmd)}")
-            print_current(f"📤 Request: {json.dumps(request, indent=2)}")
+            print_debug(f"💻 Command: {' '.join(cmd)}")
+            print_debug(f"📤 Request: {json.dumps(request, indent=2)}")
             
             # Start process
             process = subprocess.Popen(
@@ -580,11 +580,11 @@ class MCPClient:
             stdout, stderr = process.communicate(input=request_json, timeout=server.timeout)
             
             # Debug logging for response
-            print_current(f"📥 STDOUT length: {len(stdout)} chars")
-            print_current(f"🚨 STDERR length: {len(stderr)} chars")
+            print_debug(f"📥 STDOUT length: {len(stdout)} chars")
+            print_debug(f"🚨 STDERR length: {len(stderr)} chars")
             
             if stderr.strip():
-                print_current(f"🚨 STDERR content: {stderr.strip()}")
+                print_debug(f"🚨 STDERR content: {stderr.strip()}")
             
             if process.returncode != 0:
                 error_msg = f"MCP tool execution failed (exit code: {process.returncode})"
@@ -596,10 +596,10 @@ class MCPClient:
             
             # Debug logging for stdout content
             if len(stdout) > 500:
-                print_current(f"📥 STDOUT (first 200 chars): {stdout[:200]}...")
-                print_current(f"📥 STDOUT (last 200 chars): ...{stdout[-200:]}")
+                print_debug(f"📥 STDOUT (first 200 chars): {stdout[:200]}...")
+                print_debug(f"📥 STDOUT (last 200 chars): ...{stdout[-200:]}")
             else:
-                print_current(f"📥 STDOUT content: {stdout}")
+                print_debug(f"📥 STDOUT content: {stdout}")
             
             # Parse response
             try:
@@ -611,10 +611,10 @@ class MCPClient:
                     print_debug(f"✅ Successfully parsed MCP response with result")
                     return response["result"]
                 elif "error" in response:
-                    print_error(f"❌ MCP server returned error: {response['error']}")
+                    print_debug(f"❌ MCP server returned error: {response['error']}")
                     return {"status": "failed", "error": response["error"]}
                 else:
-                    print_current(f"⚠️ Unknown response format: {list(response.keys())}")
+                    print_debug(f"⚠️ Unknown response format: {list(response.keys())}")
                     return {"status": "failed", "error": f"Unknown response format, keys: {list(response.keys())}"}
             except json.JSONDecodeError as e:
                 error_msg = f"Cannot parse JSON response. Error: {str(e)}"
@@ -628,16 +628,16 @@ class MCPClient:
                 if stderr.strip():
                     error_msg += f"\nSTDERR: {stderr.strip()}"
                 
-                print_current(f"🚨 JSON parsing failed: {error_msg}")
+                print_debug(f"🚨 JSON parsing failed: {error_msg}")
                 return {"status": "failed", "error": error_msg}
             
         except subprocess.TimeoutExpired:
             error_msg = f"MCP tool call timeout (>{server.timeout}s)"
-            print_current(f"⏰ {error_msg}")
+            print_debug(f"⏰ {error_msg}")
             return {"status": "failed", "error": error_msg}
         except Exception as e:
             error_msg = f"MCP tool call exception: {str(e)}"
-            print_current(f"💥 {error_msg}")
+            print_debug(f"💥 {error_msg}")
             return {"status": "failed", "error": error_msg}
     
     async def _call_http_tool(self, server: MCPServer, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:

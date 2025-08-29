@@ -162,6 +162,7 @@ class MultiRoundTaskExecutor:
     def _list_running_participants(self, exclude_agent_id: Optional[str] = None) -> list:
         """Return list of agent_ids that are started (current_loop>=1) and not finished"""
         participants = []
+        finished_participants = []
         try:
             from tools.message_system import get_message_router
             import json, os
@@ -180,17 +181,32 @@ class MultiRoundTaskExecutor:
                         data = json.load(f)
                 except Exception:
                     continue
-                if self._is_agent_finished(data):
-                    continue
+
+                # Check if agent has started
                 try:
                     if int(data.get('current_loop', 0)) < 1:
                         continue
                 except Exception:
                     continue
-                participants.append(aid)
+
+                if self._is_agent_finished(data):
+                    finished_participants.append(aid)
+                else:
+                    participants.append(aid)
+
+            # For synchronization purposes, include finished agents that might still need to sync
+            # This prevents deadlock when one agent finishes before others in a sync window
+            current_agent_id = get_current_agent_id()
+            if current_agent_id and current_agent_id in finished_participants:
+                # Current agent is finished, include other finished agents for sync counting
+                all_participants = participants + finished_participants
+                return all_participants
+            else:
+                # Current agent is still running, only count running participants
+                return participants
+
         except Exception:
             return participants
-        return participants
 
     def _set_agent_wait_for_sync(self, agent_id: str, waiting: bool) -> None:
         """Mark agent status file with wait_for_sync flag"""
@@ -218,7 +234,7 @@ class MultiRoundTaskExecutor:
         """Block current thread until a global sync signal epoch increases; each agent consumes once per window.
         If no participants remain, return immediately to avoid deadlock."""
         try:
-            import time, os
+            import time, os, json
             # Determine base directory to place sync files: use workspace root or current dir
             base_dir = None
             if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
@@ -238,16 +254,47 @@ class MultiRoundTaskExecutor:
                     return 0
             current_agent_id = get_current_agent_id()
             last_seen = self._agent_last_sync_epoch.get(current_agent_id or 'manager', 0)
+
+            # Check if current agent is finished
+            current_agent_finished = False
+            if current_agent_id:
+                path = self._get_status_file_path(current_agent_id)
+                if path and os.path.exists(path):
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        current_agent_finished = self._is_agent_finished(data)
+                    except Exception:
+                        pass
+
             # wait until epoch increases
+            wait_start_time = time.time()
+            max_wait_time = 300  # 5 minutes max wait to prevent infinite waiting
+
             while True:
-                # If no other participants remain, stop waiting
-                others = self._list_running_participants(exclude_agent_id=current_agent_id)
-                if not others:
+                # Check for timeout
+                if time.time() - wait_start_time > max_wait_time:
+                    if self.debug_mode:
+                        print_debug(f"⚠️ Sync signal wait timeout for agent {current_agent_id}")
                     break
-                epoch = read_epoch()
-                if epoch > last_seen:
-                    self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
-                    break
+
+                # For finished agents, wait for signal but don't require other participants
+                if current_agent_finished:
+                    epoch = read_epoch()
+                    if epoch > last_seen:
+                        self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
+                        break
+                else:
+                    # For running agents, check if other participants exist
+                    others = self._list_running_participants(exclude_agent_id=current_agent_id)
+                    if not others:
+                        # No other running participants, can proceed
+                        break
+                    epoch = read_epoch()
+                    if epoch > last_seen:
+                        self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
+                        break
+
                 time.sleep(0.3)
         except Exception as e:
             if self.debug_mode:
@@ -392,14 +439,30 @@ class MultiRoundTaskExecutor:
             # Changed to: When There is at Least One Started and Unfinished Non-manager Agent
             is_manager = (current_agent_id == 'manager' or not current_agent_id)
             multi_agent_active = False
+            current_agent_finished = False
+
+            # Check if current agent is finished
+            if current_agent_id:
+                path = self._get_status_file_path(current_agent_id)
+                if path and os.path.exists(path):
+                    try:
+                        import json
+                        with open(path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        current_agent_finished = self._is_agent_finished(data)
+                    except Exception:
+                        pass
+
             try:
                 participants = self._list_running_participants()
                 multi_agent_active = bool(participants)
             except Exception:
                 multi_agent_active = False
+
             barrier_applicable = (
                 bool(enable_round_sync)
                 and bool(sync_step)
+                and not current_agent_finished  # Don't apply barrier to finished agents
                 and (
                     (not is_manager)  # Regular Spawned Agent Always Follows
                     or (is_manager and multi_agent_active)  # Manager Also Follows When Other Agents Exist
@@ -476,8 +539,9 @@ class MultiRoundTaskExecutor:
             try:
                 
                 # Prepare history for LLM - include error records so model can learn from mistakes
+                # 🔧 优化：只包含有结果的记录，避免重复的提示词
                 history_for_llm = [record for record in task_history 
-                                 if "prompt" in record and ("result" in record or "error" in record)]
+                                 if "result" in record or "error" in record]
                 
                 # Check if we need to summarize history to keep it manageable
                 # First, determine which records would be summarized (excluding last 2 rounds)
@@ -485,9 +549,9 @@ class MultiRoundTaskExecutor:
                 recent_records = history_for_llm[-2:] if len(history_for_llm) > 2 else []
                 
                 # Calculate the length of content that would actually be summarized
-                records_to_summarize_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
+                records_to_summarize_length = sum(len(str(record.get("result", ""))) 
                                            for record in records_to_summarize)
-                recent_records_length = sum(len(str(record.get("prompt", ""))) + len(str(record.get("result", ""))) 
+                recent_records_length = sum(len(str(record.get("result", ""))) 
                                          for record in recent_records)
                 total_history_length = records_to_summarize_length + recent_records_length
                 
@@ -514,9 +578,11 @@ class MultiRoundTaskExecutor:
                             else:
                                 # Convert records to conversation format
                                 for record in records_to_summarize:
+                                    # 🔧 优化：使用简化的用户消息，避免重复提示词
+                                    user_content = f"Round {record.get('task_round', 'N/A')} execution"
                                     conversation_records.append({
                                         "role": "user",
-                                        "content": record["prompt"]
+                                        "content": user_content
                                     })
                                     conversation_records.append({
                                         "role": "assistant", 
@@ -540,7 +606,7 @@ class MultiRoundTaskExecutor:
                                 
                                 # Replace history with summary record
                                 summary_record = {
-                                    "prompt": "Summary of Earlier Conversation History",
+                                    "task_round": "summary",
                                     "result": f"## Earlier Conversation Summary\n\n{history_summary}",
                                     "task_completed": False,
                                     "timestamp": datetime.now().isoformat(),
@@ -553,13 +619,13 @@ class MultiRoundTaskExecutor:
                                 # Update the main task_history to prevent future growth
                                 # Keep non-LLM records (system messages, etc.) and replace LLM history
                                 non_llm_records = [record for record in task_history 
-                                                 if not ("prompt" in record and "result" in record) or record.get("error")]
+                                                 if not ("result" in record) or record.get("error")]
                                 task_history = non_llm_records + history_for_llm
                                 
                                 # Calculate actual new length after replacement
                                 summary_length = len(history_summary) if history_summary else 0
                                 summary_record_length = len(summary_record["result"])
-                                recent_records_length = sum(len(str(r.get("prompt", ""))) + len(str(r.get("result", ""))) for r in recent_records)
+                                recent_records_length = sum(len(str(r.get("result", ""))) for r in recent_records)
                                 new_total_length = summary_record_length + recent_records_length
                                 
                                 if history_summary:
@@ -606,7 +672,7 @@ class MultiRoundTaskExecutor:
                     # Update main task_history with optimized version
                     # Keep non-LLM records (system messages) and replace LLM history
                     non_llm_records = [record for record in task_history 
-                                     if not ("prompt" in record and ("result" in record or "error" in record))]
+                                     if not ("result" in record) or record.get("error")]
                     task_history.clear()
                     task_history.extend(non_llm_records + optimized_history)
                     print_debug(f"✅ Main task history updated with optimized records")
@@ -617,7 +683,6 @@ class MultiRoundTaskExecutor:
                     # Record the interruption
                     round_record = {
                         "task_round": task_round, 
-                        "prompt": current_prompt,
                         "result": result,
                         "task_completed": False,
                         "user_interrupted": True,
@@ -627,20 +692,22 @@ class MultiRoundTaskExecutor:
                     print_current(f"🛑 Task execution stopped by user at task round {task_round}")
                     break
                 
-                # 🔧 New: Check if terminate signal is received
-                if "AGENT_TERMINATED:" in result:
+                # 🔧 Check if terminate signal is received (through proper message system)
+                # Note: Terminate signals should come from _check_terminate_messages() in tool_executor
+                # not from searching LLM response content directly
+                if result and isinstance(result, str) and result.startswith("AGENT_TERMINATED:"):
+                    # Only process if it's a proper terminate signal format from message system
                     # Record the termination
                     round_record = {
-                        "task_round": task_round, 
-                        "prompt": current_prompt,
+                        "task_round": task_round,
                         "result": result,
-                        "task_completed": True,  # 🔧 Mark as completed to avoid showing as failed
+                        "task_completed": True,  # Mark as completed to avoid showing as failed
                         "agent_terminated": True,
                         "timestamp": datetime.now().isoformat()
                     }
                     task_history.append(round_record)
                     print_current(f"🛑 Task execution terminated at task round {task_round}")
-                    task_completed = True  # 🔧 Set task completion flag to ensure loop exit
+                    task_completed = True  # Set task completion flag to ensure loop exit
                     break
                 # Check task completion
                 task_completed = self.task_checker.check_task_completion(result)
@@ -648,14 +715,24 @@ class MultiRoundTaskExecutor:
                 # Record debug information
                 self._record_debug_info(task_id, task_name, task_round, current_prompt, result, task_completed, len(task_history))
                 
-                # Record round results - but be careful not to make history too long again
-                round_record = {
-                    "task_round": task_round, 
-                    "prompt": current_prompt,
-                    "result": result,
-                    "task_completed": task_completed,
-                    "timestamp": datetime.now().isoformat()
-                }
+                # 🔧 优化：只在第一轮记录完整提示词，后续轮次只记录轮次信息和结果
+                if task_round == 1:
+                    # 第一轮：记录完整的提示词和结果
+                    round_record = {
+                        "task_round": task_round, 
+                        "prompt": current_prompt,  # 只在第一轮记录完整提示词
+                        "result": result,
+                        "task_completed": task_completed,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    # 后续轮次：只记录轮次信息和结果，不重复提示词
+                    round_record = {
+                        "task_round": task_round, 
+                        "result": result,
+                        "task_completed": task_completed,
+                        "timestamp": datetime.now().isoformat()
+                    }
                 task_history.append(round_record)
                 
 
@@ -740,7 +817,6 @@ class MultiRoundTaskExecutor:
                 
                 error_record = {
                     "task_round": task_round,  # Changed from "round" to "task_round"
-                    "prompt": current_prompt,
                     "result": f"❌ Execution Error: {error_msg}",  # Put error in result field so LLM can see it
                     "error": error_msg,  # Keep error field for debugging
                     "task_completed": False,
