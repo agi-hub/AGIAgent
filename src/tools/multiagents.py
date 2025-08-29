@@ -100,6 +100,19 @@ class GlobalRoundSyncManager:
                 base_dir = os.getcwd()
             signal_file = os.path.join(base_dir, '.agibot_round_sync.signal')
             sync_epoch = 0
+            # Initialize signal file if it doesn't exist
+            try:
+                if not os.path.exists(signal_file):
+                    os.makedirs(os.path.dirname(signal_file), exist_ok=True)
+                    with open(signal_file, 'w', encoding='utf-8') as f:
+                        f.write('0')
+                        f.flush()
+                        os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                    if self._debug_mode:
+                        print_debug(f"🌐 Initialized sync signal file: {signal_file}")
+            except Exception as e:
+                if self._debug_mode:
+                    print_debug(f"⚠️ Failed to initialize sync signal file: {e}")
             # manager loop
             while self._active:
                 try:
@@ -113,9 +126,10 @@ class GlobalRoundSyncManager:
                         agents = []
                     if not agents:
                         continue
-                    # check each agent status file; ignore finished agents (based on status only)
+                    # check each agent status file; handle finished agents properly for sync
                     considered_agents = []
                     waiting_flags = []
+                    finished_agents = []
                     for agent_id in agents:
                         status_file = None
                         if self._workspace_root:
@@ -138,18 +152,24 @@ class GlobalRoundSyncManager:
                             'completed', 'terminated', 'failed', 'success', 'max_rounds_reached'
                         )
 
-                        if finished:
-                            # ignore finished agents for barrier counting
-                            continue
-
                         # Ignore not-started agents to avoid deadlock (they'll join next window)
                         try:
                             if int(data.get('current_loop', 0)) < 1:
                                 continue
                         except Exception:
                             continue
-                        considered_agents.append(agent_id)
-                        waiting_flags.append(bool(data.get('wait_for_sync', False)))
+
+                        if finished:
+                            # Track finished agents separately - they still need to participate in sync
+                            finished_agents.append(agent_id)
+                            # For finished agents, consider them as waiting if they have wait_for_sync flag
+                            # or if they're finished (they shouldn't block the sync)
+                            waiting_flags.append(True)  # Finished agents are considered "waiting"
+                            considered_agents.append(agent_id)
+                        else:
+                            # Running agent
+                            considered_agents.append(agent_id)
+                            waiting_flags.append(bool(data.get('wait_for_sync', False)))
 
                     # If no running-and-started agents remain, no barrier is needed; stop sync loop gracefully
                     if not considered_agents:
@@ -160,12 +180,19 @@ class GlobalRoundSyncManager:
                         # release signal by increasing epoch
                         try:
                             sync_epoch += 1
+                            # Ensure signal file directory exists
+                            os.makedirs(os.path.dirname(signal_file), exist_ok=True)
                             with open(signal_file, 'w', encoding='utf-8') as f:
                                 f.write(str(sync_epoch))
+                                f.flush()
+                                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                            if self._debug_mode:
+                                print_debug(f"🌐 Released sync signal epoch {sync_epoch} for agents: {considered_agents}")
                             # allow agents to proceed and clear their wait flags
                             time.sleep(0.1)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            if self._debug_mode:
+                                print_debug(f"⚠️ Failed to write sync signal: {e}")
                 except Exception:
                     time.sleep(0.5)
         except Exception as e:
@@ -1202,7 +1229,9 @@ class MultiAgentTools:
                 existing_agent_ids = {agent["agent_id"] for agent in active_agents_info}
                 for agent_id in all_registered_agents:
                     if agent_id not in existing_agent_ids and agent_id != "manager":
-                        # 🔧 Check agent status - terminated, completed, max_rounds_reached, failed, or registered
+                        # 🔧 Check agent status - only add truly active agents to the active list
+                        should_add_to_active = False
+
                         if agent_id in self.terminated_agents:
                             status = "terminated"
                             status_icon = "🔴"
@@ -1220,7 +1249,7 @@ class MultiAgentTools:
                                 self.completed_agents.add(agent_id)  # Update cache
                             elif status == "max_rounds_reached":
                                 status_icon = "🟠"
-                                # Treat max_rounds_reached as a completion status
+                                status = "completed"  # Treat as completed
                                 self.completed_agents.add(agent_id)  # Update cache
                             elif status == "failed":
                                 status_icon = "🔴"
@@ -1228,22 +1257,27 @@ class MultiAgentTools:
                             elif status == "running":
                                 status = "running"
                                 status_icon = "🟢"
+                                should_add_to_active = True  # Only running agents are truly active
                             elif status == "unknown":
-                                # Agent has registered mailbox but status unknown
+                                # Agent has registered mailbox but status unknown - assume idle/active
                                 status = "idle"
                                 status_icon = "🟡"
+                                should_add_to_active = True  # Unknown status agents might still be active
                             else:
                                 # Other unknown status
                                 status = "unknown"
                                 status_icon = "⚫"
-                        
-                        active_agents_info.append({
-                            "agent_id": agent_id,
-                            "status": status,
-                            "status_icon": status_icon,
-                            "task_description": f"Agent {agent_id}",
-                            "start_time": "2025-01-01T00:00:00"
-                        })
+                                should_add_to_active = True  # Include unknown status agents
+
+                        # Only add to active_agents_info if the agent is truly active
+                        if should_add_to_active:
+                            active_agents_info.append({
+                                "agent_id": agent_id,
+                                "status": status,
+                                "status_icon": status_icon,
+                                "task_description": f"Agent {agent_id}",
+                                "start_time": "2025-01-01T00:00:00"
+                            })
                         
             except Exception as e:
                 print_current(f"⚠️ Error checking message system agents: {e}")
@@ -1265,7 +1299,7 @@ class MultiAgentTools:
             print_current("📊 ===========================================")
             
             if active_agents_info:
-                print_current("🤖 Active AGIBot List:")
+                print_current("🤖 Running AGIBot List:")
                 for i, agent in enumerate(active_agents_info, 1):
                     # 🔧 Use more detailed status icons and status descriptions
                     status_icon = agent.get("status_icon", "🔵")

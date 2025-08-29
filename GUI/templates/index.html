@@ -369,6 +369,36 @@
             background: #dc3545;
         }
 
+        .reconnect-progress {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 10px;
+            font-size: 0.85em;
+            color: #ffc107;
+        }
+
+        .progress-bar {
+            width: 100px;
+            height: 6px;
+            background: #3e3e42;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ffc107, #ff9800);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .reconnect-progress #reconnectCount {
+            font-weight: 500;
+            min-width: 40px;
+        }
+
         .container {
             display: flex;
             height: calc(100vh - 50px);  /* Subtract auth area height */
@@ -1628,7 +1658,7 @@
 
         /* Special handling for preview modal */
         #previewModal .modal-content {
-            width: 50%;
+            width: 65%;
             max-width: none;
             height: 95%;
             max-height: none;
@@ -1962,12 +1992,12 @@
         #markdownPreview {
             background: #ffffff !important;
             color: #000000 !important;
-            font-size: 24px !important;
+            font-size: 18px !important;
             line-height: 1.6 !important;
         }
         
         #markdownPreview img {
-            width: 100% !important;
+            width: 85% !important;
             height: auto !important;
             max-width: none !important;
             max-height: none !important;
@@ -2207,6 +2237,12 @@
                 <div class="user-status">
                     <div class="user-status-indicator" id="userStatusIndicator"></div>
                     <span id="userStatusText">{{ i18n.user_disconnected }}</span>
+                </div>
+                <div id="reconnectProgress" class="reconnect-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="reconnectProgressFill"></div>
+                    </div>
+                    <span id="reconnectCount">0/20</span>
                 </div>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
@@ -2516,10 +2552,22 @@
         function createSocket(apiKey) {
             return io({
                 reconnection: true,
-                reconnectionDelay: 2000,      // 增加重连间隔到2秒
-                reconnectionAttempts: 20,     // 增加重连尝试次数到20次
-                timeout: 60000,               // 增加连接超时到60秒
+                reconnectionDelay: 1000,        // 1秒重连间隔
+                reconnectionDelayMax: 5000,     // 最大重连间隔5秒
+                maxReconnectionAttempts: 50,    // 增加重连尝试次数到50次
+                timeout: 60000,                 // 连接超时60秒
+                randomizationFactor: 0.5,       // 重连间隔随机化因子
                 forceNew: true,
+                // 🔧 修复传输配置：优先使用WebSocket，fallback到polling
+                transports: ['websocket', 'polling'],
+                upgrade: true,                  // 允许传输升级
+                rememberUpgrade: true,          // 记住升级状态
+                // 🔧 添加WebSocket特定配置
+                transportOptions: {
+                    websocket: {
+                        maxHttpBufferSize: 1e8      // 增加缓冲区大小
+                    }
+                },
                 auth: {
                     api_key: apiKey || null
                 }
@@ -2545,6 +2593,11 @@
         const userStatusIndicator = document.getElementById('userStatusIndicator');
         const userStatusText = document.getElementById('userStatusText');
         const userIdentity = document.getElementById('userIdentity');
+        
+        // Reconnection progress elements
+        const reconnectProgress = document.getElementById('reconnectProgress');
+        const reconnectProgressFill = document.getElementById('reconnectProgressFill');
+        const reconnectCount = document.getElementById('reconnectCount');
 
         // State management
         let isTaskRunning = false;
@@ -2618,6 +2671,23 @@
             actionBtns.forEach(btn => {
                 btn.disabled = !enabled;
             });
+        }
+        
+        // Reconnection progress control functions
+        function showReconnectProgress() {
+            reconnectProgress.style.display = 'flex';
+            reconnectProgressFill.style.width = '0%';
+            reconnectCount.textContent = '0/20';
+        }
+        
+        function updateReconnectProgress(attemptNumber) {
+            const progress = (attemptNumber / 20) * 100;
+            reconnectProgressFill.style.width = progress + '%';
+            reconnectCount.textContent = `${attemptNumber}/20`;
+        }
+        
+        function hideReconnectProgress() {
+            reconnectProgress.style.display = 'none';
         }
         
         function connectUser() {
@@ -2700,6 +2770,9 @@
                 addMessage(I18N.connected, 'system');
                 updateStatus('connected');
                 updateTaskModeInfo(); // Initialize task mode info display
+
+                // 隐藏重连进度条（防止在初始连接时显示0/20）
+                hideReconnectProgress();
                 
                 // Save API key to localStorage for session restoration
                 try {
@@ -2744,9 +2817,12 @@
             });
 
             socket.on('disconnect', function(reason) {
-                updateUserStatus('disconnected', I18N.user_disconnected);
-                addMessage(`${I18N.disconnected} (${reason})`, 'info');
+                updateUserStatus('connecting', '连接中断，正在尝试重连...');
+                addMessage(`🔌 ${I18N.disconnected} (${reason}) - 系统将自动尝试重连最多20次`, 'warning');
                 updateStatus('disconnected');
+                
+                // 显示重连进度条
+                showReconnectProgress();
                 
                 // 停止自动刷新
                 stopAutoRefresh();
@@ -2756,23 +2832,30 @@
                     addMessage('⚠️ 连接中断，但任务仍在后台继续执行。重连后可查看最新进度。', 'warning');
                 }
                 
-                console.log('❌ Socket disconnected:', reason);
+                console.log('❌ Socket disconnected:', reason, '- will attempt reconnection up to 20 times');
             });
 
             socket.on('reconnect', function(attemptNumber) {
                 const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
                 updateUserStatus('connected', I18N.user_connected, identity);
-                addMessage(`${I18N.reconnected} (${I18N.attempt} ${attemptNumber})`, 'system');
+                addMessage(`✅ ${I18N.reconnected} (经过${attemptNumber}次重连尝试)`, 'system');
                 updateStatus('connected');
-                console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+                
+                // 隐藏重连进度条
+                hideReconnectProgress();
+                
+                console.log('🔄 Socket reconnected after', attemptNumber, '/20 attempts');
             });
 
             socket.on('reconnect_attempt', function(attemptNumber) {
-                updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber})`);
-                if (attemptNumber <= 3) {
-                    addMessage(`正在尝试重连... (第${attemptNumber}次尝试)`, 'info');
+                updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber}/20)`);
+                // 更新重连进度条
+                updateReconnectProgress(attemptNumber);
+                // 显示所有重连尝试，但限制消息数量避免刷屏
+                if (attemptNumber <= 5 || attemptNumber % 5 === 0 || attemptNumber >= 15) {
+                    addMessage(`🔄 正在尝试重连... (第${attemptNumber}/20次尝试)`, 'info');
                 }
-                console.log('🔄 Reconnection attempt', attemptNumber);
+                console.log('🔄 Reconnection attempt', attemptNumber, '/20');
             });
 
             socket.on('reconnect_error', function(error) {
@@ -2782,8 +2865,12 @@
 
             socket.on('reconnect_failed', function() {
                 updateUserStatus('error', I18N.user_connection_failed);
-                addMessage(I18N.reconnect_failed, 'info');
-                console.log('❌ Reconnection failed');
+                addMessage(`❌ ${I18N.reconnect_failed} (已尝试20次重连)`, 'error');
+                
+                // 隐藏重连进度条
+                hideReconnectProgress();
+                
+                console.log('❌ Reconnection failed after 20 attempts');
             });
             
             socket.on('auth_failed', function(data) {
@@ -2808,6 +2895,10 @@
             });
 
             socket.on('task_started', function(data) {
+                // 任务开始时重置消息状态，确保新的任务从新的info消息框开始
+                lastMessageType = null;
+                lastMessageDiv = null;
+                
                 addMessage(data.message, 'info');
                 setTaskRunning(true);
                 // 任务真正开始时才清空输入框和待执行内容
@@ -2976,13 +3067,25 @@
             for (const messageData of messageBatchQueue) {
                 const { message, type } = messageData;
                 
-                // 检查是否可以与上一条消息合并
-                if (['info', 'error', 'success'].includes(type) && 
+                // 对于info类型的消息，总是尝试合并到上一个info消息框中
+                if (type === 'info' && 
+                    lastMessageType === 'info' && 
+                    lastMessageDiv && 
+                    lastMessageDiv.parentNode === chatMessages) {
+                    
+                    // 合并到现有info消息
+                    const textSpan = lastMessageDiv.querySelector('.message-text');
+                    if (textSpan) {
+                        textSpan.innerHTML += '<br>' + escapeHtml(message);
+                    } else {
+                        lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                    }
+                } else if (['error', 'success'].includes(type) && 
                     lastMessageType === type && 
                     lastMessageDiv && 
                     lastMessageDiv.parentNode === chatMessages) {
                     
-                    // 合并到现有消息
+                    // 对于error和success类型，保持原有合并逻辑
                     const textSpan = lastMessageDiv.querySelector('.message-text');
                     if (textSpan) {
                         textSpan.innerHTML += '<br>' + escapeHtml(message);
@@ -3097,7 +3200,28 @@
         function addMessageImmediate(message, type = 'info') {
             const shouldScroll = shouldAutoScroll();
             
-            if (['info', 'error', 'success'].includes(type) && lastMessageType === type && lastMessageDiv) {
+            // 对于info类型的消息，总是尝试追加到上一个info消息框中
+            if (type === 'info' && lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages) {
+                // 追加到现有的info消息框
+                const textSpan = lastMessageDiv.querySelector('.message-text');
+                if (textSpan) {
+                    textSpan.innerHTML += '<br>' + escapeHtml(message);
+                } else {
+                    // If no text span found, fallback to original method but with escaping
+                    lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                }
+                if (shouldScroll) {
+                    // 使用节流的自动滚动函数，减少跳动
+                    throttledAutoScroll(true);
+                } else {
+                    // If can't auto-scroll, show new message indicator
+                    showNewMessageIndicator();
+                }
+                return;
+            }
+            
+            // 对于其他类型的消息，保持原有逻辑
+            if (['error', 'success'].includes(type) && lastMessageType === type && lastMessageDiv) {
                 // For consecutive messages of the same type, safely add content
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
@@ -3809,37 +3933,59 @@
         /**
          * 目录管理 - 刷新目录列表
          * @description 从后端获取最新的工作目录列表并更新UI显示
-         * 保持用户的展开/收起状态，显示加载状态，处理错误情况
+         * 保持用户的展开/收起状态、目录列表滚动位置和每个展开目录的文件树滚动位置，直接更新列表不显示加载状态
          */
-        function refreshDirectories() {
+                        function refreshDirectories() {
             // 保存当前展开状态，避免刷新后用户展开的目录被重置
             const currentExpanded = new Set(expandedDirectories);
-            
-            sidebarLoading.classList.add('show');
-            directoryList.innerHTML = '';
-            
+
+            // 保存当前滚动位置
+            const currentScrollTop = directoryList.scrollTop;
+
+            // 保存所有展开目录的文件树滚动位置
+            const fileTreeScrollPositions = {};
+            currentExpanded.forEach(dirName => {
+                const treeElement = document.getElementById(`tree-${dirName}`);
+                if (treeElement) {
+                    fileTreeScrollPositions[dirName] = treeElement.scrollTop;
+                }
+            });
+
             // Include current user info in API call
             const params = new URLSearchParams();
             if (currentUser && currentUser !== 'default') {
                 params.set('api_key', currentUser);
             }
-            
+
             const headers = {};
             if (currentUser && currentUser !== 'default') {
                 headers['X-API-Key'] = currentUser;
             }
-            
+
             fetch(`/api/output-dirs?${params}`, {
                 headers: headers
             })
                 .then(response => response.json())
                 .then(data => {
-                    sidebarLoading.classList.remove('show');
-                    
                     if (data.success) {
+                        // 清空列表并渲染新数据（数据准备好后一次性更新）
+                        directoryList.innerHTML = '';
                         // 恢复展开状态
                         expandedDirectories = currentExpanded;
                         renderDirectories(data.directories);
+
+                        // 恢复滚动位置
+                        setTimeout(() => {
+                            directoryList.scrollTop = currentScrollTop;
+
+                            // 恢复每个展开目录的文件树滚动位置
+                            Object.keys(fileTreeScrollPositions).forEach(dirName => {
+                                const treeElement = document.getElementById(`tree-${dirName}`);
+                                if (treeElement && fileTreeScrollPositions[dirName] !== undefined) {
+                                    treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                }
+                            });
+                        }, 0);
                     } else {
                         directoryList.innerHTML = `
                             <div class="message error">
@@ -3850,7 +3996,6 @@
                     }
                 })
                 .catch(error => {
-                    sidebarLoading.classList.remove('show');
                     directoryList.innerHTML = `
                         <div class="message error">
                             <i class="fas fa-exclamation-triangle"></i>
@@ -4051,12 +4196,12 @@
 
         function isFilePreviewable(filename) {
             const ext = filename.split('.').pop().toLowerCase();
-            return ['html', 'htm', 'md', 'markdown', 'py', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 
-                    'txt', 'log', 'yaml', 'yml', 'pdf', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 
-                    'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 
-                    'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl', 
-                    'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg', 
-                    'conf', 'toml', 'mmd', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
+            return ['html', 'htm', 'md', 'markdown', 'py', 'js', 'jsx', 'ts', 'tsx', 'css', 'json',
+                    'txt', 'log', 'yaml', 'yml', 'pdf', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp',
+                    'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat',
+                    'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl',
+                    'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg',
+                    'conf', 'toml', 'mmd', 'out', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
                     'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico'].includes(ext);
         }
 
@@ -4530,12 +4675,12 @@
                         const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath || '';
                         const currentDir = originalFilePath && originalFilePath.includes('/') ? originalFilePath.substring(0, originalFilePath.lastIndexOf('/')) : '';
                         const containerStyle = 'display: flex; align-items: flex-start; gap: 8px; position: relative; width: 100%;';
-                        const imgStyle = 'width: 100%; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;';
+                        const imgStyle = 'width: 85%; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;';
                         const btnStyle = 'background: #007acc; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 18px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
                         const btnDangerStyle = 'background: #d32f2f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 18px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
                              + `<img src=\"${src}\" alt=\"${text || ''}\"${titleAttr} style=\"${imgStyle}\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\">`
-                             + `<div class=\"md-img-actions\" style=\"display: flex; flex-direction: column; gap: 8px; margin: 10px 0; position: absolute; right: 10px; top: 10px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 6px;\">`
+                             + `<div class=\"md-img-actions\" style=\"display: flex; flex-direction: column; gap: 8px; margin: 10px 0; flex: 1; padding: 8px; max-width: 15%;\">`
                              +   `<button class=\"md-prev-btn\" style=\"${btnStyle}\" title=\"上一张\" onclick=\"prevWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-left\\\"></i> 上一张</button>`
                              +   `<button class=\"md-next-btn\" style=\"${btnStyle}\" title=\"下一张\" onclick=\"nextWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-right\\\"></i> 下一张</button>`
                              +   `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`
@@ -4543,7 +4688,7 @@
                              + `</div>`;
                     }
 
-                    return `<img src="${src}" alt="${text || ''}"${titleAttr} style="width: 100%; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;">`;
+                    return `<img src="${src}" alt="${text || ''}"${titleAttr} style="width: 85%; height: auto; border-radius: 4px; margin: 10px 0; object-fit: contain;">`;
                 };
                 
                 // 自定义代码块渲染
@@ -4644,7 +4789,7 @@
                         ${htmlContent}
                     </div>
                     <div id="markdownSource" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: visible; display: none; border: 1px solid #404040;">
-                        <pre style="margin: 0; font-size: 24px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e;"><code style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${escapedContent}</code></pre>
+                        <pre style="margin: 0; font-size: 18px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e;"><code style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${escapedContent}</code></pre>
                     </div>
                 `;
                 
@@ -4712,7 +4857,7 @@
                 const { headers, data: csvRows, total_rows, displayed_rows, truncated, encoding } = data;
                 
                 // 创建表格HTML
-                let tableHtml = '<table id="csvTable" style="width: 100%; border-collapse: collapse; background: white; font-size: 20px; color: #333;">';
+                let tableHtml = '<table id="csvTable" style="width: 100%; border-collapse: collapse; background: white; font-size: 18px; color: #333;">';
                 
                 // 表头
                 if (headers && headers.length > 0) {
@@ -6340,28 +6485,40 @@
             }
         }
 
-        // 手动刷新目录
+        // 手动刷新目录 - 保持展开状态和滚动位置
         function manualRefresh() {
             const refreshBtn = document.querySelector('.sidebar-header .action-btn');
             const icon = refreshBtn.querySelector('i');
-            
+
             // 添加旋转动画
             icon.classList.add('fa-spin');
             refreshBtn.disabled = true;
-            
+
             // 保存当前展开状态
             const currentExpanded = new Set(expandedDirectories);
-            
+
+            // 保存当前滚动位置
+            const currentScrollTop = directoryList.scrollTop;
+
+            // 保存所有展开目录的文件树滚动位置
+            const fileTreeScrollPositions = {};
+            currentExpanded.forEach(dirName => {
+                const treeElement = document.getElementById(`tree-${dirName}`);
+                if (treeElement) {
+                    fileTreeScrollPositions[dirName] = treeElement.scrollTop;
+                }
+            });
+
             const headers = {
                 'Content-Type': 'application/json'
             };
-            
+
             const body = {};
             if (currentUser && currentUser !== 'default') {
                 headers['X-API-Key'] = currentUser;
                 body.api_key = currentUser;
             }
-            
+
             fetch('/api/refresh-dirs', {
                 method: 'POST',
                 headers: headers,
@@ -6373,6 +6530,20 @@
                     // 恢复展开状态
                     expandedDirectories = currentExpanded;
                     renderDirectories(data.directories);
+
+                    // 恢复滚动位置
+                    setTimeout(() => {
+                        directoryList.scrollTop = currentScrollTop;
+
+                        // 恢复每个展开目录的文件树滚动位置
+                        Object.keys(fileTreeScrollPositions).forEach(dirName => {
+                            const treeElement = document.getElementById(`tree-${dirName}`);
+                            if (treeElement && fileTreeScrollPositions[dirName] !== undefined) {
+                                treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                            }
+                        });
+                    }, 0);
+
                     // 显示成功消息（更简洁）
                     console.log('Directory refreshed');
                 } else {

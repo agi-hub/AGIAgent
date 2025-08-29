@@ -1,15 +1,8 @@
 Chinese font configuration: For matplotlib with Chinese text, configure fonts properly using 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', with 'DejaVu Sans' fallback
 
-Chinese character preservation: Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
+Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
 
 Avoid using non-ascii characters in GUI and report figures if user not specified.
 
-PowerPoint Generation with python-pptx:
-- Create professional presentations with maximum 10 lines per slide for readability
-- Use consistent layouts, professional colors, and clear hierarchy
-- Add charts/graphs when appropriate; use consistent slide layouts
-- Structure logically: title, agenda, content, conclusion
-- CRITICAL: Write plain text without bullet points (•) or dashes (-) - let templates handle formatting
 
-Use xelatex to compile Latex, when creating Latex script, you must use \usepackage{xeCJK} package and compile using terminal command 'xelatex -interaction=nonstopmode file_name.tex'. Ensure the image is scaled and not overfit the boundary of the paper or slide.
 
