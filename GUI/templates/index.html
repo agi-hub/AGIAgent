@@ -369,36 +369,6 @@
             background: #dc3545;
         }
 
-        .reconnect-progress {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: 10px;
-            font-size: 0.85em;
-            color: #ffc107;
-        }
-
-        .progress-bar {
-            width: 100px;
-            height: 6px;
-            background: #3e3e42;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ffc107, #ff9800);
-            border-radius: 3px;
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-
-        .reconnect-progress #reconnectCount {
-            font-weight: 500;
-            min-width: 40px;
-        }
-
         .container {
             display: flex;
             height: calc(100vh - 50px);  /* Subtract auth area height */
@@ -2238,12 +2208,6 @@
                     <div class="user-status-indicator" id="userStatusIndicator"></div>
                     <span id="userStatusText">{{ i18n.user_disconnected }}</span>
                 </div>
-                <div id="reconnectProgress" class="reconnect-progress" style="display: none;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="reconnectProgressFill"></div>
-                    </div>
-                    <span id="reconnectCount">0/20</span>
-                </div>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
         </div>
@@ -2551,12 +2515,8 @@
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
             return io({
-                reconnection: true,
-                reconnectionDelay: 1000,        // 1秒重连间隔
-                reconnectionDelayMax: 5000,     // 最大重连间隔5秒
-                maxReconnectionAttempts: 50,    // 增加重连尝试次数到50次
+                reconnection: false,  // 禁用自动重连
                 timeout: 60000,                 // 连接超时60秒
-                randomizationFactor: 0.5,       // 重连间隔随机化因子
                 forceNew: true,
                 // 🔧 修复传输配置：优先使用WebSocket，fallback到polling
                 transports: ['websocket', 'polling'],
@@ -2594,11 +2554,6 @@
         const userStatusText = document.getElementById('userStatusText');
         const userIdentity = document.getElementById('userIdentity');
         
-        // Reconnection progress elements
-        const reconnectProgress = document.getElementById('reconnectProgress');
-        const reconnectProgressFill = document.getElementById('reconnectProgressFill');
-        const reconnectCount = document.getElementById('reconnectCount');
-
         // State management
         let isTaskRunning = false;
         let selectedDirectory = null;
@@ -2673,23 +2628,6 @@
             });
         }
         
-        // Reconnection progress control functions
-        function showReconnectProgress() {
-            reconnectProgress.style.display = 'flex';
-            reconnectProgressFill.style.width = '0%';
-            reconnectCount.textContent = '0/20';
-        }
-        
-        function updateReconnectProgress(attemptNumber) {
-            const progress = (attemptNumber / 20) * 100;
-            reconnectProgressFill.style.width = progress + '%';
-            reconnectCount.textContent = `${attemptNumber}/20`;
-        }
-        
-        function hideReconnectProgress() {
-            reconnectProgress.style.display = 'none';
-        }
-        
         function connectUser() {
             const apiKey = apiKeyInput.value.trim();
             
@@ -2757,9 +2695,6 @@
         
         let currentUploadDir = null;
         
-        // Auto-scroll status indicator (removed)
-        // const autoScrollIndicator = document.getElementById('autoScrollIndicator');
-
         // Setup socket event listeners
         function setupSocketListeners() {
             if (!socket) return;
@@ -2771,9 +2706,6 @@
                 updateStatus('connected');
                 updateTaskModeInfo(); // Initialize task mode info display
 
-                // 隐藏重连进度条（防止在初始连接时显示0/20）
-                hideReconnectProgress();
-                
                 // Save API key to localStorage for session restoration
                 try {
                     if (currentUser && currentUser !== 'default') {
@@ -2790,9 +2722,6 @@
                 
                 // Refresh directories for this user
                 refreshDirectories();
-                
-                // 启动自动刷新
-                startAutoRefresh();
                 
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
@@ -2817,76 +2746,24 @@
             });
 
             socket.on('disconnect', function(reason) {
-                updateUserStatus('connecting', '连接中断，正在尝试重连...');
-                addMessage(`🔌 ${I18N.disconnected} (${reason}) - 系统将自动尝试重连最多20次`, 'warning');
+                updateUserStatus('disconnected', I18N.user_disconnected);
+                addMessage(`🔌 ${I18N.disconnected} (${reason})`, 'warning');
                 updateStatus('disconnected');
                 
-                // 显示重连进度条
-                showReconnectProgress();
-                
-                // 停止自动刷新
-                stopAutoRefresh();
-                
-                // 如果是运行任务时断开，给出特殊提示
+                                 // If task is running, give special prompt
                 if (isTaskRunning) {
-                    addMessage('⚠️ 连接中断，但任务仍在后台继续执行。重连后可查看最新进度。', 'warning');
+                    addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
                 }
                 
-                console.log('❌ Socket disconnected:', reason, '- will attempt reconnection up to 20 times');
+                console.log('❌ Socket disconnected:', reason);
             });
 
-            socket.on('reconnect', function(attemptNumber) {
-                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
-                updateUserStatus('connected', I18N.user_connected, identity);
-                addMessage(`✅ ${I18N.reconnected} (经过${attemptNumber}次重连尝试)`, 'system');
-                updateStatus('connected');
-                
-                // 隐藏重连进度条
-                hideReconnectProgress();
-                
-                console.log('🔄 Socket reconnected after', attemptNumber, '/20 attempts');
-            });
-
-            socket.on('reconnect_attempt', function(attemptNumber) {
-                updateUserStatus('connecting', `${I18N.user_reconnecting} (${attemptNumber}/20)`);
-                // 更新重连进度条
-                updateReconnectProgress(attemptNumber);
-                // 显示所有重连尝试，但限制消息数量避免刷屏
-                if (attemptNumber <= 5 || attemptNumber % 5 === 0 || attemptNumber >= 15) {
-                    addMessage(`🔄 正在尝试重连... (第${attemptNumber}/20次尝试)`, 'info');
-                }
-                console.log('🔄 Reconnection attempt', attemptNumber, '/20');
-            });
-
-            socket.on('reconnect_error', function(error) {
-                updateUserStatus('error', I18N.user_connection_failed);
-                console.log('❌ Reconnection error:', error);
-            });
-
-            socket.on('reconnect_failed', function() {
-                updateUserStatus('error', I18N.user_connection_failed);
-                addMessage(`❌ ${I18N.reconnect_failed} (已尝试20次重连)`, 'error');
-                
-                // 隐藏重连进度条
-                hideReconnectProgress();
-                
-                console.log('❌ Reconnection failed after 20 attempts');
-            });
-            
             socket.on('auth_failed', function(data) {
                 updateUserStatus('error', '认证失败');
                 addMessage('认证失败: ' + (data.message || '未知错误'), 'error');
                 console.log('❌ Authentication failed:', data);
             });
-            
-            socket.on('reconnection_restored', function(data) {
-                addMessage('✅ ' + data.message, 'system');
-                if (data.has_running_task) {
-                    setTaskRunning(true);
-                    addMessage('🔄 检测到正在运行的任务，将继续显示执行进度', 'info');
-                }
-                console.log('🔗 Session restored:', data);
-            });
+
             
             socket.on('connect_error', function(error) {
                 updateUserStatus('error', '连接错误');
@@ -5717,8 +5594,6 @@
             `;
         }
 
-
-
         // 重置Office预览界面
         function resetOfficePreview() {
             const container = document.getElementById('officeContainer');
@@ -5745,8 +5620,6 @@
             }
         }
 
-        // 云预览相关函数已移除
-        
         // Mermaid相关函数
         let mermaidShowingChart = false;
         
@@ -5917,8 +5790,6 @@
         previewClose.onclick = function() {
             previewModal.style.display = 'none';
         }
-
-
 
         // 重命名功能
         const renameModal = document.getElementById('renameModal');
@@ -6399,35 +6270,6 @@
                     toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
                     toggleBtn.title = '切换到预览模式';
                 }
-            }
-        }
-
-        /**
-         * 自动刷新功能
-         * @description 定时自动刷新工作目录列表，提升用户体验
-         * - 每30秒自动刷新一次目录列表
-         * - 连接时自动启动，断开连接时自动停止
-         */
-        
-        let autoRefreshInterval = null;
-        function startAutoRefresh() {
-            // 如果已经有定时器在运行，先清除它
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-            }
-            
-            // 每30秒自动刷新一次目录列表
-            autoRefreshInterval = setInterval(() => {
-                refreshDirectories();
-            }, 30000);
-            console.log('✅ Auto-refresh started: refreshing directories every 30 seconds');
-        }
-        
-        function stopAutoRefresh() {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-                console.log('⏹️ Auto-refresh stopped');
             }
         }
 
