@@ -67,20 +67,20 @@ if (Test-Path "build") {
     Write-Host "[INFO] No build directory found" -ForegroundColor Blue
 }
 
-# 删除 agibot.egg-info 目录
-if (Test-Path "agibot.egg-info") {
-    Remove-Item "agibot.egg-info" -Recurse -Force
-    Write-Host "[SUCCESS] Deleted agibot.egg-info directory" -ForegroundColor Green
+# 删除 agia.egg-info 目录
+if (Test-Path "agia.egg-info") {
+    Remove-Item "agia.egg-info" -Recurse -Force
+    Write-Host "[SUCCESS] Deleted agia.egg-info directory" -ForegroundColor Green
 } else {
-    Write-Host "[INFO] No agibot.egg-info directory found" -ForegroundColor Blue
+    Write-Host "[INFO] No agia.egg-info directory found" -ForegroundColor Blue
 }
 
-# 删除 .agibot_last_output.json 文件
-if (Test-Path ".agibot_last_output.json") {
-    Remove-Item ".agibot_last_output.json" -Force
-    Write-Host "[SUCCESS] Deleted .agibot_last_output.json file" -ForegroundColor Green
+# 删除 .agia_last_output.json 文件
+if (Test-Path ".agia_last_output.json") {
+    Remove-Item ".agia_last_output.json" -Force
+    Write-Host "[SUCCESS] Deleted .agia_last_output.json file" -ForegroundColor Green
 } else {
-    Write-Host "[INFO] No .agibot_last_output.json file found" -ForegroundColor Blue
+    Write-Host "[INFO] No .agia_last_output.json file found" -ForegroundColor Blue
 }
 
 # 删除 .DS_Store 文件

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FastMCP wrapper for AGIBot
+FastMCP wrapper for AGIAgent
 Using FastMCP library as MCP client with persistent server management
 """
 
@@ -86,7 +86,7 @@ class FastMcpWrapper:
         if not FASTMCP_AVAILABLE:
             if not self._installation_message_shown:
                 print_current("❌ FastMCP not found. Please install it using: pip install fastmcp")
-                print_current("💡 After installation, restart AGIBot to use MCP tools.")
+                print_current("💡 After installation, restart AGIAgent to use MCP tools.")
                 self._installation_message_shown = True
             return
     

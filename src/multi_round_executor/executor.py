@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -145,8 +145,8 @@ class MultiRoundTaskExecutor:
                 if workspace_root:
                     if os.path.basename(workspace_root) == 'workspace':
                         outdir = os.path.dirname(workspace_root)
-                        return f"{outdir}/.agibot_spawn_{agent_id}_status.json"
-                    return f"{workspace_root}/.agibot_spawn_{agent_id}_status.json"
+                        return f"{outdir}/.agia_spawn_{agent_id}_status.json"
+                    return f"{workspace_root}/.agia_spawn_{agent_id}_status.json"
         except Exception:
             return None
         return None
@@ -243,7 +243,7 @@ class MultiRoundTaskExecutor:
                     base_dir = os.path.dirname(base_dir)
             if not base_dir:
                 base_dir = os.getcwd()
-            signal_file = os.path.join(base_dir, '.agibot_round_sync.signal')
+            signal_file = os.path.join(base_dir, '.agia_round_sync.signal')
             # read current epoch
             def read_epoch() -> int:
                 try:

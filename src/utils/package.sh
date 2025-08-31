@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2025 AGI Bot Research Group.
+# Copyright (c) 2025 AGI Agent Research Group.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,8 +53,8 @@ show_usage() {
     echo "  1. Clean all __pycache__ directories"
     echo "  2. Remove all .pyc and .pyo files"
     echo "  3. Clean API keys from config/config.txt"
-    echo "  4. Remove build and agibot.egg-info directories"
-    echo "  5. Remove .agibot_last_output.json file"
+    echo "  4. Remove build and agia.egg-info directories"
+    echo "  5. Remove .agia_last_output.json file"
     echo "  6. Remove hidden files (starting with .) except important ones"
     echo "  7. Remove other temporary files"
 }
@@ -127,20 +127,20 @@ else
     print_info "No build directory found"
 fi
 
-# Delete agibot.egg-info directory
-if [ -d "agibot.egg-info" ]; then
-    rm -rf agibot.egg-info
-    print_success "Deleted agibot.egg-info directory"
+# Delete agia.egg-info directory
+if [ -d "agia.egg-info" ]; then
+    rm -rf agia.egg-info
+    print_success "Deleted agia.egg-info directory"
 else
-    print_info "No agibot.egg-info directory found"
+    print_info "No agia.egg-info directory found"
 fi
 
-# Delete .agibot_last_output.json file
-if [ -f ".agibot_last_output.json" ]; then
-    rm -f .agibot_last_output.json
-    print_success "Deleted .agibot_last_output.json file"
+# Delete .agia_last_output.json file
+if [ -f ".agia_last_output.json" ]; then
+    rm -f .agia_last_output.json
+    print_success "Deleted .agia_last_output.json file"
 else
-    print_info "No .agibot_last_output.json file found"
+    print_info "No .agia_last_output.json file found"
 fi
 
 # Delete .DS_Store files (macOS)

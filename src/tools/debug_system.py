@@ -399,7 +399,7 @@ class DebugSystem:
         """Finish operation"""
         if self.enable_execution_tracker and self.execution_stack:
             # 🔧 MULTI-INSTANCE FIX: Disable strict operation name matching in multi-instance/concurrent environments
-            # because multiple AGIBot instances may share the same debug system, causing execution stack confusion
+            # because multiple AGIAgent instances may share the same debug system, causing execution stack confusion
             if operation_name and self.execution_stack[-1] != operation_name:
                 # Only record debug log, don't print warning to avoid false positives in normal multi-instance execution
                 self.log_event("operation_mismatch", 

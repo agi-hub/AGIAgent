@@ -1,15 +1,15 @@
 {
   "keys": [
     {
-      "name": "test",
-      "description": "test user",
-      "sha256_hash": "fbb0cae961822f592f87a873ad32fde70f27a1a2f90b2a0ecf1815e1a678f336",
+      "name": "agiagenttest",
+      "description": "agiagenttest user",
+      "sha256_hash": "134c753ae8604c0fda2a9517db30801412dabf361ba173922726576e7a94d7ad",
       "permissions": [
         "read",
         "write",
         "execute"
       ],
-      "created_at": "2025-08-23T12:01:44.368632",
+      "created_at": "2025-08-31T06:49:48.708992",
       "expires_at": null,
       "enabled": true
     }

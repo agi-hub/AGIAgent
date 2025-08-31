@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ class GlobalRoundSyncManager:
                 base_dir = os.path.dirname(base_dir)
             if not base_dir:
                 base_dir = os.getcwd()
-            signal_file = os.path.join(base_dir, '.agibot_round_sync.signal')
+            signal_file = os.path.join(base_dir, '.agia_round_sync.signal')
             sync_epoch = 0
             # Initialize signal file if it doesn't exist
             try:
@@ -134,9 +134,9 @@ class GlobalRoundSyncManager:
                         status_file = None
                         if self._workspace_root:
                             if os.path.basename(self._workspace_root) == 'workspace':
-                                status_file = os.path.join(os.path.dirname(self._workspace_root), f'.agibot_spawn_{agent_id}_status.json')
+                                status_file = os.path.join(os.path.dirname(self._workspace_root), f'.agia_spawn_{agent_id}_status.json')
                             else:
-                                status_file = os.path.join(self._workspace_root, f'.agibot_spawn_{agent_id}_status.json')
+                                status_file = os.path.join(self._workspace_root, f'.agia_spawn_{agent_id}_status.json')
                         if not status_file or not os.path.exists(status_file):
                             # no file yet → not started; skip from consideration to avoid deadlock
                             continue
@@ -221,7 +221,7 @@ class MultiAgentTools:
         self.debug_mode = debug_mode  # Save debug mode setting
         self.max_concurrent_agents = max_concurrent_agents
         
-        # Add session-level AGIBot task tracking
+        # Add session-level AGIAgent task tracking
         self.session_spawned_tasks = set()
         # Add thread tracking dictionary
         self.active_threads = {}  # task_id -> thread
@@ -248,19 +248,19 @@ class MultiAgentTools:
 
     def spawn_agent(self, task_description: str, agent_id: str = None, api_key: str = None, model: str = None, max_loops: int = 25, MCP_config_file: str = None, prompts_folder: str = None, **kwargs) -> Dict[str, Any]:
         """
-        Spawn a new AGIBot instance to handle a specific task asynchronously.
+        Spawn a new AGIAgent instance to handle a specific task asynchronously.
         This allows for complex task decomposition and parallel execution.
         All spawned agents run asynchronously in the background.
         
         Args:
-            task_description: Description of the task for the new AGIBot instance
+            task_description: Description of the task for the new AGIAgent instance
             agent_id: Custom agent ID (optional, will auto-generate if not provided). Must match format 'agent_XXX'
             api_key: API key for the new instance (optional, will use current if not provided)
             model: Model name for the new instance (optional, will use current if not provided)  
             max_loops: Maximum execution loops for the new instance
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts'). Allows using different prompt templates and tool interfaces
-            **kwargs: Additional parameters for AGIBotClient
+            **kwargs: Additional parameters for AGIAgentClient
             
         Returns:
             Dict containing spawn information and agent ID
@@ -296,8 +296,8 @@ class MultiAgentTools:
             except:
                 streaming = False  # Default fallback
             
-            # Import AGIBot Client from main module
-            from src.main import AGIBotClient
+            # Import AGIAgent Client from main module
+            from src.main import AGIAgentClient
             
             # Handle agent ID generation or validation
             if agent_id is not None:
@@ -327,7 +327,7 @@ class MultiAgentTools:
             # Normalize Agent references in task description
             task_description = task_description
             
-            # Determine the parent AGIBot's working directory (always use shared workspace mode)
+            # Determine the parent AGIAgent's working directory (always use shared workspace mode)
             if hasattr(self, 'workspace_root') and self.workspace_root:
                 # If workspace_root ends with 'workspace', use its parent directory
                 if os.path.basename(self.workspace_root) == 'workspace':
@@ -378,7 +378,7 @@ class MultiAgentTools:
             abs_output_dir = os.path.abspath(output_directory)
             os.makedirs(abs_output_dir, exist_ok=True)
             
-            # Always use shared workspace mode - child AGIBot works in parent's workspace
+            # Always use shared workspace mode - child AGIAgent works in parent's workspace
             if hasattr(self, 'workspace_root') and self.workspace_root:
                 if os.path.basename(self.workspace_root) == 'workspace':
                     parent_output_dir = os.path.dirname(self.workspace_root)
@@ -437,7 +437,7 @@ class MultiAgentTools:
                 MCP_config_file = mcp_config_path
 
             # Create status file for tracking
-            status_file_path = os.path.join(abs_output_dir, f".agibot_spawn_{agent_id}_status.json")
+            status_file_path = os.path.join(abs_output_dir, f".agia_spawn_{agent_id}_status.json")
             initial_status = {
                 "agent_id": agent_id,
                 "status": "running",
@@ -460,17 +460,17 @@ class MultiAgentTools:
                 print_current(f"⚠️ Warning: Could not create status file: {e}")
             
             # Define the async task execution function
-            def execute_agibot_task():
+            def execute_agia_task():
                 try:
                     # Set up agent context for print operations
                     set_output_directory(workspace_dir)
 
                     # Print spawn start info (will be routed to agent log under current outdir)
-                    print_current(task_id, f"🚀 AGIBot {task_id} started")
+                    print_current(task_id, f"🚀 AGIAgent {task_id} started")
                     
-                    # Agent id will be injected into AGIBotClient, not print system
+                    # Agent id will be injected into AGIAgentClient, not print system
                     
-                    # Register AGIBot mailbox
+                    # Register AGIAgent mailbox
                     try:
                         from .message_system import get_message_router
                         router = get_message_router(workspace_dir, cleanup_on_init=False)
@@ -488,9 +488,9 @@ class MultiAgentTools:
 
                     if with_agent_print is not None:
                         with with_agent_print(task_id):
-                            # Create AGIBot client with agent_id
+                            # Create AGIAgent client with agent_id
                             debug_mode_to_use = kwargs.get('debug_mode', self.debug_mode)
-                            client = AGIBotClient(
+                            client = AGIAgentClient(
                                 api_key=api_key,
                                 model=model,
                                 debug_mode=debug_mode_to_use,
@@ -513,7 +513,7 @@ class MultiAgentTools:
                     else:
                         # Fallback without context manager
                         debug_mode_to_use = kwargs.get('debug_mode', self.debug_mode)
-                        client = AGIBotClient(
+                        client = AGIAgentClient(
                             api_key=api_key,
                             model=model,
                             debug_mode=debug_mode_to_use,
@@ -639,15 +639,15 @@ class MultiAgentTools:
                     
                     # Print completion status
                     if is_terminated:
-                        print_current(task_id, f"🛑 AGIBot spawn {task_id} terminated successfully")
+                        print_current(task_id, f"🛑 AGIAgent spawn {task_id} terminated successfully")
                     elif response["success"]:
-                        print_current(task_id, f"✅ AGIBot spawn {task_id} completed successfully")
+                        print_current(task_id, f"✅ AGIAgent spawn {task_id} completed successfully")
                     else:
                         response_message = response.get('message', 'Unknown error')
                         if "reached maximum execution rounds" in response_message or "max_rounds_reached" in response_message:
-                            print_current(task_id, f"⚠️ AGIBot spawn {task_id} reached maximum execution rounds")
+                            print_current(task_id, f"⚠️ AGIAgent spawn {task_id} reached maximum execution rounds")
                         else:
-                            print_current(task_id, f"❌ AGIBot spawn {task_id} failed: {response_message}")
+                            print_current(task_id, f"❌ AGIAgent spawn {task_id} failed: {response_message}")
                     
                     # remove active_threads after finished
                     if hasattr(self, 'active_threads') and task_id in self.active_threads:
@@ -657,7 +657,7 @@ class MultiAgentTools:
                         
                 except Exception as e:
                     error_msg = str(e)
-                    print_current(task_id, f"❌ AGIBot spawn {task_id} error: {error_msg}")
+                    print_current(task_id, f"❌ AGIAgent spawn {task_id} error: {error_msg}")
                     
                     # Update status file with error
                     error_status = {
@@ -697,7 +697,7 @@ class MultiAgentTools:
                     
             
 
-            thread = threading.Thread(target=execute_agibot_task, daemon=True)
+            thread = threading.Thread(target=execute_agia_task, daemon=True)
             thread.start()
             
             # Wait a moment to let the thread start
@@ -715,7 +715,7 @@ class MultiAgentTools:
             # Base result information
             result = {
                 "status": "success", 
-                "message": f"AGIBot instance spawned successfully with agent ID: {agent_id}",
+                "message": f"AGIAgent instance spawned successfully with agent ID: {agent_id}",
                 "agent_id": agent_id,
                 "output_directory": abs_output_dir,
                 "working_directory": workspace_dir,
@@ -732,7 +732,7 @@ class MultiAgentTools:
             }
             
             # All agents run asynchronously
-            result["note"] = f"✅ AGIBot {task_id} is running asynchronously in background. Task will execute independently and send messages when completed."
+            result["note"] = f"✅ AGIAgent {task_id} is running asynchronously in background. Task will execute independently and send messages when completed."
             result["success"] = True
             result["thread_id"] = thread.ident if thread else None
             
@@ -741,7 +741,7 @@ class MultiAgentTools:
         except Exception as e:
             return {
                 "status": "failed",
-                "message": f"Failed to spawn AGIBot instance: {str(e)}",
+                "message": f"Failed to spawn AGIAgent instance: {str(e)}",
                 "task_id": task_id if 'task_id' in locals() else "unknown"
             }
 
@@ -1288,7 +1288,7 @@ class MultiAgentTools:
             
             # Terminal output
             print_current("📊 ===========================================")
-            print_current("📊 AGIBot Session Information")
+            print_current("📊 AGIAgent Session Information")
             print_current("📊 ===========================================")
             print_current(f"📊 Total Agents: {total_agents}")
             print_current(f"📊 Active Agents: {active_agents}")
@@ -1299,7 +1299,7 @@ class MultiAgentTools:
             print_current("📊 ===========================================")
             
             if active_agents_info:
-                print_current("🤖 Running AGIBot List:")
+                print_current("🤖 Running AGIAgent List:")
                 for i, agent in enumerate(active_agents_info, 1):
                     # 🔧 Use more detailed status icons and status descriptions
                     status_icon = agent.get("status_icon", "🔵")
@@ -1349,7 +1349,7 @@ class MultiAgentTools:
                     if agent.get("thread_id"):
                         print_current(f"   └─ Thread ID: {agent['thread_id']}, Thread Name: {agent.get('thread_name', 'Unknown')}")
             else:
-                print_current("🤖 No active AGIBot detected")
+                print_current("🤖 No active AGIAgent detected")
             
             result = {
                 "status": "success",
@@ -1380,7 +1380,7 @@ class MultiAgentTools:
 
     def terminate_agent(self, agent_id: str, reason: str = None) -> Dict[str, Any]:
         """
-        Terminate a specific AGIBot agent by sending a terminate signal.
+        Terminate a specific AGIAgent agent by sending a terminate signal.
         
         Args:
             agent_id: ID of the agent to terminate. Use "self" or leave empty to terminate current agent.
@@ -1585,11 +1585,11 @@ class MultiAgentTools:
             if self.workspace_root:
                 if os.path.basename(self.workspace_root) == "workspace":
                     outdir = os.path.dirname(self.workspace_root)
-                    status_file_paths.append(f"{outdir}/.agibot_spawn_{agent_id}_status.json")
+                    status_file_paths.append(f"{outdir}/.agia_spawn_{agent_id}_status.json")
                 else:
-                    status_file_paths.append(f"{self.workspace_root}/.agibot_spawn_{agent_id}_status.json")
+                    status_file_paths.append(f"{self.workspace_root}/.agia_spawn_{agent_id}_status.json")
             
-            #status_file_paths.append(f".agibot_spawn_{agent_id}_status.json")
+            #status_file_paths.append(f".agia_spawn_{agent_id}_status.json")
 
             for status_file in status_file_paths:
                 if os.path.exists(status_file):
@@ -1635,9 +1635,9 @@ class MultiAgentTools:
             if self.workspace_root:
                 if os.path.basename(self.workspace_root) == "workspace":
                     outdir = os.path.dirname(self.workspace_root)
-                    status_file_paths.append(f"{outdir}/.agibot_spawn_{agent_id}_status.json")
+                    status_file_paths.append(f"{outdir}/.agia_spawn_{agent_id}_status.json")
                 else:
-                    status_file_paths.append(f"{self.workspace_root}/.agibot_spawn_{agent_id}_status.json")
+                    status_file_paths.append(f"{self.workspace_root}/.agia_spawn_{agent_id}_status.json")
             
             
             for status_file in status_file_paths:
@@ -1745,13 +1745,13 @@ class MultiAgentTools:
             if hasattr(self, 'workspace_root') and self.workspace_root:
                 # Try to find in parent directory of workspace
                 parent_dir = os.path.dirname(self.workspace_root)
-                potential_status_file = os.path.join(parent_dir, f".agibot_spawn_{agent_id}_status.json")
+                potential_status_file = os.path.join(parent_dir, f".agia_spawn_{agent_id}_status.json")
                 if os.path.exists(potential_status_file):
                     status_file_path = potential_status_file
             
             # If not found in workspace directory, try current directory
             if not status_file_path:
-                potential_status_file = os.path.join(os.getcwd(), f".agibot_spawn_{agent_id}_status.json")
+                potential_status_file = os.path.join(os.getcwd(), f".agia_spawn_{agent_id}_status.json")
                 if os.path.exists(potential_status_file):
                     status_file_path = potential_status_file
             
@@ -1767,7 +1767,7 @@ class MultiAgentTools:
                 
                 for search_dir in search_dirs:
                     if os.path.exists(search_dir):
-                        potential_file = os.path.join(search_dir, f".agibot_spawn_{agent_id}_status.json")
+                        potential_file = os.path.join(search_dir, f".agia_spawn_{agent_id}_status.json")
                         if os.path.exists(potential_file):
                             status_file_path = potential_file
                             break

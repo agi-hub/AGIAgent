@@ -1,8 +1,8 @@
-# AGI Bot 模型选择指南
+# AGI Agent 模型选择指南
 
 **中文** | [**English**](MODELS.md)
 
-AGI Bot 支持多种AI模型，本指南帮助您根据需求和预算选择最适合的模型。
+AGI Agent 支持多种AI模型，本指南帮助您根据需求和预算选择最适合的模型。
 
 ## 🌟 推荐模型
 
@@ -27,7 +27,7 @@ AGI Bot 支持多种AI模型，本指南帮助您根据需求和预算选择最�
 
 **配置示例：**
 ```bash
-python agibot.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "您的任务"
+python agia.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "您的任务"
 ```
 
 ### OpenAI GPT-4 Turbo
@@ -50,7 +50,7 @@ python agibot.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "您�
 
 **配置示例：**
 ```bash
-python agibot.py --model gpt-4-turbo --api-key your_key -r "您的任务"
+python agia.py --model gpt-4-turbo --api-key your_key -r "您的任务"
 ```
 
 ### DeepSeek V3 (💰 性价比之选)
@@ -74,7 +74,7 @@ python agibot.py --model gpt-4-turbo --api-key your_key -r "您的任务"
 
 **配置示例：**
 ```bash
-python agibot.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "您的任务"
+python agia.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "您的任务"
 ```
 
 ### Kimi K2 (🚀 国产优选)
@@ -97,7 +97,7 @@ python agibot.py --model deepseek-chat --api-base https://api.deepseek.com --api
 
 **配置示例：**
 ```bash
-python agibot.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key your_key -r "您的任务"
+python agia.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key your_key -r "您的任务"
 ```
 
 ### Qwen2.5-7B-Instruct (🆓 免费试用)
@@ -121,7 +121,7 @@ python agibot.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key yo
 
 **配置示例：**
 ```bash
-python agibot.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "您的任务"
+python agia.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "您的任务"
 ```
 
 ## 📊 模型对比表
@@ -215,7 +215,7 @@ model=Qwen/Qwen2.5-7B-Instruct
 
 ```bash
 # 临时使用不同模型
-python agibot.py --model MODEL_NAME --api-key YOUR_KEY --api-base API_BASE -r "任务描述"
+python agia.py --model MODEL_NAME --api-key YOUR_KEY --api-base API_BASE -r "任务描述"
 ```
 
 ## 🔧 优化建议
@@ -285,14 +285,14 @@ Tool_calling_format=True  # 推荐保持默认
 
 ## 🔄 模型切换
 
-AGI Bot 支持随时切换模型，无需重新开始任务：
+AGI Agent 支持随时切换模型，无需重新开始任务：
 
 ```bash
 # 当前任务使用 DeepSeek
-python agibot.py --model deepseek-chat -r "开始任务"
+python agia.py --model deepseek-chat -r "开始任务"
 
 # 需要更高质量时切换到 Claude
-python agibot.py --model claude-3-5-sonnet-20241022 -c  # 继续之前的任务
+python agia.py --model claude-3-5-sonnet-20241022 -c  # 继续之前的任务
 ```
 
-选择合适的模型是成功使用AGI Bot的关键。建议从性价比高的模型开始，根据实际需求逐步调整。 
+选择合适的模型是成功使用AGI Agent的关键。建议从性价比高的模型开始，根据实际需求逐步调整。 

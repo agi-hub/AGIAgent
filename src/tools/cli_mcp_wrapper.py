@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-cli-mcp wrapper for AGIBot
+cli-mcp wrapper for AGIAgent
 Using mature cli-mcp library as MCP client
 """
 
@@ -36,7 +36,7 @@ def find_cli_mcp_path():
     return 'cli-mcp'
 
 class CliMcpWrapper:
-    """cli-mcp wrapper, providing MCP functionality for AGIBot"""
+    """cli-mcp wrapper, providing MCP functionality for AGIAgent"""
     
     # Class variable to track if installation message has been shown
     _installation_message_shown = False
@@ -245,7 +245,7 @@ class CliMcpWrapper:
             if "cli-mcp" in str(e):
                 if not self._installation_message_shown:
                     print_error(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
-                    print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
+                    print_current(f"💡 After installation, restart AGIAgent to use MCP tools.")
                     self._installation_message_shown = True
             else:
                 print_current(f"❌ Failed to list tools for server {server_name}: {e}")
@@ -255,7 +255,7 @@ class CliMcpWrapper:
             if "No such file or directory" in error_msg and "cli-mcp" in error_msg:
                 if not self._installation_message_shown:
                     print_error(f"❌ cli-mcp command not found. Please install it using: pip install cli-mcp")
-                    print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
+                    print_current(f"💡 After installation, restart AGIAgent to use MCP tools.")
                     self._installation_message_shown = True
             else:
                 print_current(f"❌ Failed to list tools for server {server_name}: {e}")
@@ -335,7 +335,7 @@ class CliMcpWrapper:
                 error_msg = "cli-mcp command not found. Please install it using: pip install cli-mcp"
                 if not self._installation_message_shown:
                     print_current(f"❌ {error_msg}")
-                    print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
+                    print_current(f"💡 After installation, restart AGIAgent to use MCP tools.")
                     self._installation_message_shown = True
                 return {
                     "status": "error",
@@ -357,7 +357,7 @@ class CliMcpWrapper:
                 friendly_error = "cli-mcp command not found. Please install it using: pip install cli-mcp"
                 if not self._installation_message_shown:
                     print_current(f"❌ {friendly_error}")
-                    print_current(f"💡 After installation, restart AGIBot to use MCP tools.")
+                    print_current(f"💡 After installation, restart AGIAgent to use MCP tools.")
                     self._installation_message_shown = True
                 return {
                     "status": "error",

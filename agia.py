@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@ limitations under the License.
 """
 
 """
-AGI Bot Command Line Interface
+AGI Agent Command Line Interface
 
-This file provides the command line interface for AGI Bot.
+This file provides the command line interface for AGI Agent.
 All source code has been moved to the src/ directory.
 """
 
@@ -55,11 +55,11 @@ def custom_excepthook(exc_type, exc_value, exc_traceback):
 sys.excepthook = custom_excepthook
 
 # Application name macro definition
-APP_NAME = "AGIBot"
+APP_NAME = "AGIAgent"
 
 from src.tools.print_system import print_current
 from src.tools.debug_system import install_debug_system
-from src.main import AGIBotMain
+from src.main import AGIAgentMain
 
 import argparse
 import json
@@ -68,7 +68,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Configuration file to store last output directory
-LAST_OUTPUT_CONFIG_FILE = ".agibot_last_output.json"
+LAST_OUTPUT_CONFIG_FILE = ".agia_last_output.json"
 
 # Global cleanup flag
 _cleanup_executed = False
@@ -171,7 +171,7 @@ def should_show_banner():
     return False
 
 def print_ascii_banner():
-    """Print ASCII art banner for AGI Bot (only if appropriate environment)"""
+    """Print ASCII art banner for AGI Agent (only if appropriate environment)"""
     if not should_show_banner():
         return
     
@@ -180,17 +180,17 @@ def print_ascii_banner():
     RESET = '\033[0m'
     
     banner = f"""{BRIGHT_BLUE}
-                                                             
-       █████╗  ██████╗ ██╗    ██████╗  ██████╗ ████████╗     
-      ██╔══██╗██╔════╝ ██║    ██╔══██╗██╔═══██╗╚══██╔══╝     
-      ███████║██║  ███╗██║    ██████╔╝██║   ██║   ██║        
-      ██╔══██║██║   ██║██║    ██╔══██╗██║   ██║   ██║        
-      ██║  ██║╚██████╔╝██║    ██████╔╝╚██████╔╝   ██║        
-      ╚═╝  ╚═╝ ╚═════╝ ╚═╝    ╚═════╝  ╚═════╝    ╚═╝        
-                                                             
-         🚀 Autonomous Task Execution System                 
-         🧠 LLM-Powered Cognitive Architecture              
-                                                             {RESET}
+                                                                  
+       █████╗  ██████╗ ██╗     █████╗  ██████╗ ███████╗███╗   ██╗████████╗
+      ██╔══██╗██╔════╝ ██║    ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝
+      ███████║██║  ███╗██║    ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   
+      ██╔══██║██║   ██║██║    ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   
+      ██║  ██║╚██████╔╝██║    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   
+      ╚═╝  ╚═╝ ╚═════╝ ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   
+                                                                  
+                     🚀 Autonomous Task Execution System                      
+                    🧠 LLM-Powered Cognitive Architecture                   
+                                                                  {RESET}
     """
     print(banner)
 
@@ -264,7 +264,7 @@ def save_last_output_dir(out_dir: str, requirement: str = None):
         
         # Only allow manager (None or "manager") to update the configuration file
         if current_agent_id is not None and current_agent_id != "manager":
-            print_current(f"🔒 Agent {current_agent_id} skipping .agibot_last_output.json update (only manager can update)")
+            print_current(f"🔒 Agent {current_agent_id} skipping .agia_last_output.json update (only manager can update)")
             return
         
         config = {
@@ -333,40 +333,40 @@ def main():
         epilog="""
 Usage Examples:
   # Single task mode (default) - directly execute user requirement without task decomposition
-  python agibot.py "Fix game sound effect playback issue"
-  python agibot.py --requirement "Fix game sound effect playback issue"
-  python agibot.py -r "Fix game sound effect playback issue"
-  python agibot.py --singletask "Optimize code performance"
+  python agia.py "Fix game sound effect playback issue"
+  python agia.py --requirement "Fix game sound effect playback issue"
+  python agia.py -r "Fix game sound effect playback issue"
+  python agia.py --singletask "Optimize code performance"
   
   # Multi-task mode - automatically decompose task into multiple subtasks for execution
-  python agibot.py --todo "Develop a complete Python Web application"
-  python agibot.py --todo --requirement "Develop a complete Python Web application"
+  python agia.py --todo "Develop a complete Python Web application"
+  python agia.py --todo --requirement "Develop a complete Python Web application"
   
   # Multi-task mode with routine file - use routine guidelines for task planning
-  python agibot.py --todo --routine "my_routine.txt" "Develop a web application"
-  python agibot.py --todo -u "routines/development.md" --requirement "Build an API server"
+  python agia.py --todo --routine "my_routine.txt" "Develop a web application"
+  python agia.py --todo -u "routines/development.md" --requirement "Build an API server"
   
   # Single task mode with routine file - append routine content to user requirement
-  python agibot.py --routine "my_routine.txt" "Create a Python script"
-  python agibot.py -u "routines/coding_style.md" --requirement "Refactor existing code"
+  python agia.py --routine "my_routine.txt" "Create a Python script"
+  python agia.py -u "routines/coding_style.md" --requirement "Refactor existing code"
   
   # Continue from last output directory
-  python agibot.py --continue "Continue working on the previous task"
-  python agibot.py -c --requirement "Add new features to existing project"
+  python agia.py --continue "Continue working on the previous task"
+  python agia.py -c --requirement "Add new features to existing project"
   
-  # Link to external code directory - AGI Bot will operate on external code
-  python agibot.py --link-dir /path/to/your/project "Add new features to the project"
-  python agibot.py --link-dir ./my_project --dir output_folder "Refactor the codebase"
+  # Link to external code directory - AGI Agent will operate on external code
+  python agia.py --link-dir /path/to/your/project "Add new features to the project"
+  python agia.py --link-dir ./my_project --dir output_folder "Refactor the codebase"
   
   # Interactive mode - prompt user for requirement input
-  python agibot.py  # Single task mode
-  python agibot.py --todo  # Multi-task mode
+  python agia.py  # Single task mode
+  python agia.py --todo  # Multi-task mode
   
   # Specify output directory and execution rounds
-  python agibot.py --dir my_project --loops 5 "Requirement description"
+  python agia.py --dir my_project --loops 5 "Requirement description"
   
   # Use custom model configuration
-  python agibot.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
+  python agia.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
         """
     )
     
@@ -471,7 +471,7 @@ Usage Examples:
     parser.add_argument(
         "--link-dir",
         default=None,
-        help="Link to external code directory. Creates a symbolic link in workspace directory pointing to the specified path, allowing AGI Bot to manipulate external code projects."
+        help="Link to external code directory. Creates a symbolic link in workspace directory pointing to the specified path, allowing AGI Agent to manipulate external code projects."
     )
     
     parser.add_argument(
@@ -564,7 +564,7 @@ Usage Examples:
     
     # Create and run main program
     try:
-        main_app = AGIBotMain(
+        main_app = AGIAgentMain(
             out_dir=args.dir,
             api_key=api_key,
             model=args.model,

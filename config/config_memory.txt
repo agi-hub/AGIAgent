@@ -1,4 +1,4 @@
-# AGIBot Long-Term Memory System Configuration File
+# AGI Agent Long-Term Memory System Configuration File
 # This file is used to configure parameters related to the long-term memory feature
 
 # API configuration - inherited from config/config.txt

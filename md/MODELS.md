@@ -1,8 +1,8 @@
-# AGI Bot Model Selection Guide
+# AGI Agent Model Selection Guide
 
 [**中文**](MODELS_zh.md) | **English**
 
-AGI Bot supports multiple AI models. This guide helps you choose the most suitable model based on your needs and budget.
+AGI Agent supports multiple AI models. This guide helps you choose the most suitable model based on your needs and budget.
 
 ## 🌟 Recommended Models
 
@@ -27,7 +27,7 @@ AGI Bot supports multiple AI models. This guide helps you choose the most suitab
 
 **Configuration Example:**
 ```bash
-python agibot.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "Your task"
+python agia.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "Your task"
 ```
 
 ### OpenAI GPT-4 Turbo
@@ -50,7 +50,7 @@ python agibot.py --model claude-3-5-sonnet-20241022 --api-key your_key -r "Your 
 
 **Configuration Example:**
 ```bash
-python agibot.py --model gpt-4-turbo --api-key your_key -r "Your task"
+python agia.py --model gpt-4-turbo --api-key your_key -r "Your task"
 ```
 
 ### DeepSeek V3 (💰 Best Value)
@@ -74,7 +74,7 @@ python agibot.py --model gpt-4-turbo --api-key your_key -r "Your task"
 
 **Configuration Example:**
 ```bash
-python agibot.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "Your task"
+python agia.py --model deepseek-chat --api-base https://api.deepseek.com --api-key your_key -r "Your task"
 ```
 
 ### Kimi K2 (🚀 Domestic Excellence)
@@ -97,7 +97,7 @@ python agibot.py --model deepseek-chat --api-base https://api.deepseek.com --api
 
 **Configuration Example:**
 ```bash
-python agibot.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key your_key -r "Your task"
+python agia.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key your_key -r "Your task"
 ```
 
 ### Qwen2.5-7B-Instruct (🆓 Free Trial)
@@ -121,7 +121,7 @@ python agibot.py --model kimi --api-base https://api.moonshot.cn/v1 --api-key yo
 
 **Configuration Example:**
 ```bash
-python agibot.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "Your task"
+python agia.py --model Qwen/Qwen2.5-7B-Instruct --api-base https://api.siliconflow.cn/v1 --api-key your_free_key -r "Your task"
 ```
 
 ## 📊 Model Comparison Table
@@ -215,7 +215,7 @@ You can also specify models directly via command line:
 
 ```bash
 # Temporarily use different models
-python agibot.py --model MODEL_NAME --api-key YOUR_KEY --api-base API_BASE -r "Task description"
+python agia.py --model MODEL_NAME --api-key YOUR_KEY --api-base API_BASE -r "Task description"
 ```
 
 ## 🔧 Optimization Recommendations
@@ -285,14 +285,14 @@ Tool_calling_format=True  # Recommended to keep default
 
 ## 🔄 Model Switching
 
-AGI Bot supports switching models anytime without restarting tasks:
+AGI Agent supports switching models anytime without restarting tasks:
 
 ```bash
 # Current task using DeepSeek
-python agibot.py --model deepseek-chat -r "Start task"
+python agia.py --model deepseek-chat -r "Start task"
 
 # Switch to Claude when needing higher quality
-python agibot.py --model claude-3-5-sonnet-20241022 -c  # Continue previous task
+python agia.py --model claude-3-5-sonnet-20241022 -c  # Continue previous task
 ```
 
-Choosing the right model is key to successfully using AGI Bot. It's recommended to start with cost-effective models and adjust gradually based on actual needs. 
+Choosing the right model is key to successfully using AGI Agent. It's recommended to start with cost-effective models and adjust gradually based on actual needs. 

@@ -1,6 +1,6 @@
-# AGI Bot GUI
+# AGI Agent GUI
 
-AGI Bot 的图形用户界面，提供直观便捷的任务执行和文件管理功能。
+AGI Agent 的图形用户界面，提供直观便捷的任务执行和文件管理功能。
 
 ## 🚀 快速开始
 
@@ -13,7 +13,7 @@ python GUI/app.py
 
 ## 界面示例
 <div align="center">
-      <img src="../fig/AGIBot_GUI.png" alt="AGI Bot GUI"/>
+      <img src="../fig/AGIAgent_GUI.png" alt="AGI Agent GUI"/>
 </div>
 
 ## 主要用法
@@ -28,7 +28,7 @@ python GUI/app.py
 ## 🔐 用户认证与多用户管理
 
 ### 登录方式
-AGI Bot GUI 采用 API Key 认证方式：
+AGI Agent GUI 采用 API Key 认证方式：
 1. 启动 GUI 后，首次访问会要求输入 API Key
 2. 输入有效的 API Key 后即可登录使用
 3. API Key 在浏览器会话中保持有效，关闭浏览器后需重新输入

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ limitations under the License.
 """
 
 """
-AGI Bot Main Program
+AGI Agent Main Program
 
 A complete automated task processing workflow:
 1. Receive user requirement input
@@ -27,7 +27,7 @@ A complete automated task processing workflow:
 """
 
 # Application name macro definition
-APP_NAME = "AGI Bot"
+APP_NAME = "AGI Agent"
 
 # Imports
 from src.tools.print_system import print_current, print_system
@@ -47,7 +47,7 @@ from src.config_loader import get_api_key, get_api_base, get_model, get_truncati
 from src.routine_utils import append_routine_to_requirement
 from src.tools.agent_context import get_current_agent_id, set_current_agent_id
 # Configuration file to store last output directory
-LAST_OUTPUT_CONFIG_FILE = ".agibot_last_output.json"
+LAST_OUTPUT_CONFIG_FILE = ".agia_last_output.json"
 
 # Global cleanup flag
 _cleanup_executed = False
@@ -134,7 +134,7 @@ def save_last_output_dir(out_dir: str, requirement: str = None):
         
         # Only allow manager (None or "manager") to update the configuration file
         if current_agent_id is not None and current_agent_id != "manager":
-            print_current(f"🔒 Agent {current_agent_id} skipping .agibot_last_output.json update (only manager can update)")
+            print_current(f"🔒 Agent {current_agent_id} skipping .agia_last_output.json update (only manager can update)")
             return
         
         config = {
@@ -192,7 +192,7 @@ def load_last_requirement() -> Optional[str]:
         print_current(f"⚠️ Failed to load last requirement: {e}")
         return None
 
-class AGIBotMain:
+class AGIAgentMain:
     def __init__(self, 
                  out_dir: str = "output", 
                  api_key: Optional[str] = None, 
@@ -211,7 +211,7 @@ class AGIBotMain:
                  routine_file: Optional[str] = None):
 
         """
-        Initialize AGI Bot main program
+        Initialize AGI Agent main program
         
         Args:
             out_dir: Output directory
@@ -349,7 +349,7 @@ class AGIBotMain:
         try:
             os.symlink(link_target, link_path)
             print_current(f"🔗 Created symbolic link: {link_path} -> {link_target}")
-            print_current(f"🎯 AGI Bot will now operate on external code directory: {link_target}")
+            print_current(f"🎯 AGI Agent will now operate on external code directory: {link_target}")
         except Exception as e:
             print_current(f"⚠️ Warning: Failed to create symbolic link: {e}")
             print_current(f"    This may be due to insufficient permissions or unsupported file system")
@@ -620,7 +620,7 @@ class AGIBotMain:
                     except Exception as e:
                         print_current(f"⚠️ Detailed summary report generation failed: {e}")
                 
-                # 🔧 Store execution report for AGIBotClient access
+                # 🔧 Store execution report for AGIAgentClient access
                 self.last_execution_report = execution_report
                 
                 # Clean up resources before returning
@@ -664,7 +664,7 @@ class AGIBotMain:
                 except Exception as e:
                     print_current(f"⚠️ Report save failed: {e}")
                 
-                # 🔧 Store execution report for AGIBotClient access (max_rounds_reached case)
+                # 🔧 Store execution report for AGIAgentClient access (max_rounds_reached case)
                 self.last_execution_report = execution_report
                 
                 # Clean up resources before returning
@@ -1265,15 +1265,15 @@ Please generate a markdown format detailed summary report, retaining all importa
         return True
 
 
-class AGIBotClient:
+class AGIAgentClient:
     """
-    AGI Bot Python Library Interface
+    AGI Agent Python Library Interface
     
-    Provides OpenAI-like chat interface for programmatic access to AGI Bot functionality.
+    Provides OpenAI-like chat interface for programmatic access to AGI Agent functionality.
                 Does not rely on config/config.txt file - all configuration is passed during initialization.
     
     Example usage:
-        client = AGIBotClient(
+        client = AGIAgentClient(
             api_key="your_api_key",
             model="claude-3-sonnet-20240229"
         )
@@ -1305,7 +1305,7 @@ class AGIBotClient:
                  agent_id: Optional[str] = None,
                  routine_file: Optional[str] = None):
         """
-        Initialize AGI Bot Client
+        Initialize AGI Agent Client
         
         Args:
             api_key: API key for LLM service (optional, will read from config/config.txt if not provided)
@@ -1412,18 +1412,18 @@ class AGIBotClient:
         # Generate output directory if not provided
         if dir is None:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            dir = f"agibot_output_{timestamp}"
+            dir = f"agia_output_{timestamp}"
         
         try:
-            # 🔧 Check current thread's agent_id (set in agent_context when AGIBotClient initializes)
+            # 🔧 Check current thread's agent_id (set in agent_context when AGIAgentClient initializes)
             current_agent_id = get_current_agent_id()
             
 
             from src.tools.print_system import set_output_directory
             set_output_directory(dir)
             
-            # Create AGI Bot main instance
-            main_app = AGIBotMain(
+            # Create AGI Agent main instance
+            main_app = AGIAgentMain(
                 out_dir=dir,
                 api_key=self.api_key,
                 model=self.model,
@@ -1442,7 +1442,7 @@ class AGIBotClient:
             
             # 🔧 If agent_id exists
             if current_agent_id:
-                print_current(f"🏷️ AGIBotClient using agent ID: {current_agent_id}")
+                print_current(f"🏷️ AGIAgentClient using agent ID: {current_agent_id}")
             
             # Execute the task
             if current_agent_id:
@@ -1551,9 +1551,9 @@ class AGIBotClient:
 
 
 # Convenience function for quick usage
-def create_client(api_key: Optional[str] = None, model: Optional[str] = None, user_id: Optional[str] = None, **kwargs) -> AGIBotClient:
+def create_client(api_key: Optional[str] = None, model: Optional[str] = None, user_id: Optional[str] = None, **kwargs) -> AGIAgentClient:
     """
-    Convenience function to create AGI Bot client
+    Convenience function to create AGI Agent client
     
     Args:
         api_key: API key for LLM service (optional, will read from config/config.txt if not provided)
@@ -1562,14 +1562,14 @@ def create_client(api_key: Optional[str] = None, model: Optional[str] = None, us
         **kwargs: Additional configuration parameters
         
     Returns:
-        AGIBotClient instance
+        AGIAgentClient instance
     """
-    return AGIBotClient(api_key=api_key, model=model, user_id=user_id, **kwargs)
+    return AGIAgentClient(api_key=api_key, model=model, user_id=user_id, **kwargs)
 
 
 def print_ascii_banner():
-    """Print ASCII art banner for AGI Bot"""
-    # This function is imported from agibot.py
+    """Print ASCII art banner for AGI Agent"""
+    # This function is imported from agia.py
     pass
 
 
@@ -1767,7 +1767,7 @@ Usage Examples:
     
     # Create and run main program
     try:
-        main_app = AGIBotMain(
+        main_app = AGIAgentMain(
             out_dir=args.dir,
             api_key=api_key,
             model=args.model,

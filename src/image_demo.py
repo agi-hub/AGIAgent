@@ -11,15 +11,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from main import AGIBotMain
+    from main import AGIAgentMain
 except ImportError:
-    print("❌ Unable to import AGIBotMain")
+    print("❌ Unable to import AGIAgentMain")
     sys.exit(1)
 
 
 def demo_image_input():
     """Demonstrate image input function"""
-    print("🎯 AGIBot image input function demonstration")
+    print("🎯 AGIAgent image input function demonstration")
     print("=" * 50)
     
     # Check if there are available image files
@@ -42,9 +42,9 @@ def demo_image_input():
     image_file = image_files[0]
     print(f"📸 Using image file: {image_file}")
     
-    # Create AGIBot instance
+    # Create AGIAgent instance
     try:
-        agibot = AGIBotMain(
+        agia = AGIAgentMain(
             debug_mode=True,
             detailed_summary=True,
             single_task_mode=True,
@@ -61,7 +61,7 @@ def demo_image_input():
         print(f"Task description: {requirement_with_image}")
         
         # Execute task
-        success = agibot.run(requirement_with_image)
+        success = agia.run(requirement_with_image)
         
         if success:
             print("✅ Task execution successful!")
@@ -97,7 +97,7 @@ def demo_multi_image_input():
     print(f"📸 Using image file: {image1} and {image2}")
     
     try:
-        agibot = AGIBotMain(
+        agia = AGIAgentMain(
             debug_mode=True,
             detailed_summary=True,
             single_task_mode=True,
@@ -116,7 +116,7 @@ def demo_multi_image_input():
         print(f"Task description: {requirement_with_images}")
         
         # Execute task
-        success = agibot.run(requirement_with_images)
+        success = agia.run(requirement_with_images)
         
         if success:
             print("✅ Multi-image task execution successful!")
