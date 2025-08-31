@@ -4666,7 +4666,7 @@
                         ${htmlContent}
                     </div>
                     <div id="markdownSource" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: visible; display: none; border: 1px solid #404040;">
-                        <pre style="margin: 0; font-size: 18px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e;"><code style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${escapedContent}</code></pre>
+                        <textarea id="markdownEditor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: none; font-size: 18px; line-height: 1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 0; margin: 0; white-space: pre-wrap;" placeholder="编辑Markdown内容...">${escapedContent}</textarea>
                     </div>
                 `;
                 
@@ -4832,6 +4832,9 @@
                             <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
                                 <span>文件大小: ${size} | 语言: ${language}</span>
                                 <div style="display: flex; gap: 10px;">
+                                    <button onclick="saveMermaidFile()" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="保存当前Mermaid文件">
+                                        <i class="fas fa-save"></i> 保存
+                                    </button>
                                     <button onclick="toggleMermaidView()" style="padding: 6px 12px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;">
                                         <i class="fas fa-eye"></i> <span id="mermaid-view-btn-text">显示图表</span>
                                     </button>
@@ -4841,7 +4844,7 @@
                                 </div>
                             </div>
                             <div id="mermaid-source-view" style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
-                                <pre class="language-${language}" style="margin: 0; font-size: 21px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
+                                <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 21px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="编辑Mermaid内容...">${content}</textarea>
                             </div>
                             <div id="mermaid-chart-view" style="display: none; max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; background: white; border: 1px solid #ddd; padding: 20px; text-align: center;">
                                 <div id="mermaid-chart-container">正在渲染图表...</div>
@@ -4851,6 +4854,21 @@
                         // Store the mermaid content and file path for later use
                         window.currentMermaidContent = content;
                         window.currentFilePath = actualFilePath;
+                        
+                        // 默认聚焦到编辑器并添加键盘事件监听
+                        setTimeout(() => {
+                            const editor = document.getElementById('mermaid-editor');
+                            if (editor) {
+                                editor.focus();
+                                // 添加Ctrl+S保存快捷键
+                                editor.addEventListener('keydown', function(e) {
+                                    if (e.ctrlKey && e.key === 's') {
+                                        e.preventDefault();
+                                        saveMermaidFile();
+                                    }
+                                });
+                            }
+                        }, 100);
                     } else {
                         previewContent.innerHTML = `
                             <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
@@ -5402,10 +5420,22 @@
                     return;
                 }
                 
-                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
+                // 优先从编辑器获取内容
+                const editor = document.getElementById('markdownEditor');
+                let contentToSave;
+                if (editor && editor.parentElement.style.display !== 'none') {
+                    contentToSave = editor.value;
+                    // 更新当前内容
+                    if (window.currentMarkdownContent) {
+                        window.currentMarkdownContent.processed = contentToSave;
+                    }
+                } else if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
+                    contentToSave = window.currentMarkdownContent.processed;
+                } else {
                     alert('未检测到可保存的Markdown内容');
                     return;
                 }
+                
                 if (!window.currentOriginalFilePath && !currentFilePath) {
                     alert('无法确定当前Markdown文件路径');
                     return;
@@ -5413,7 +5443,7 @@
                 const headers = { 'Content-Type': 'application/json' };
                 const body = {
                     path: window.currentOriginalFilePath || currentFilePath,
-                    content: window.currentMarkdownContent.processed
+                    content: contentToSave
                 };
                 if (currentUser && currentUser !== 'default') {
                     headers['X-API-Key'] = currentUser;
@@ -5429,6 +5459,45 @@
             } catch (e) {
                 console.error('保存Markdown失败:', e);
                 addMessage('保存失败: 网络或服务器错误', 'error');
+            }
+        }
+
+        // 更新Markdown预览内容
+        async function updateMarkdownPreview(markdownContent) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                const body = { content: markdownContent };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+                
+                const response = await fetch('/api/render-markdown', { 
+                    method: 'POST', 
+                    headers, 
+                    body: JSON.stringify(body) 
+                });
+                const data = await response.json();
+                
+                if (data && data.html) {
+                    const previewDiv = document.getElementById('markdownPreview');
+                    if (previewDiv) {
+                        previewDiv.innerHTML = data.html;
+                        
+                        // 重新触发渲染
+                        setTimeout(() => {
+                            // 触发Prism.js语法高亮
+                            if (typeof Prism !== 'undefined') {
+                                Prism.highlightAll();
+                            }
+                            
+                            // 触发数学公式渲染
+                            renderMath(previewDiv);
+                        }, 50);
+                    }
+                }
+            } catch (e) {
+                console.error('更新预览失败:', e);
             }
         }
 
@@ -5474,6 +5543,66 @@
             } catch (e) {
                 console.error('自动保存Markdown失败:', e);
                 return false;
+            }
+        }
+
+        // Mermaid编辑相关函数
+        // 简化的函数，不再需要编辑模式切换
+        function updateMermaidContent() {
+            const editor = document.getElementById('mermaid-editor');
+            if (editor) {
+                window.currentMermaidContent = editor.value;
+            }
+        }
+
+        async function saveMermaidFile() {
+            try {
+                if (isGuest) {
+                    alert('guest用户为演示账户，无法保存。');
+                    return;
+                }
+                
+                // 从编辑器获取内容
+                const editor = document.getElementById('mermaid-editor');
+                if (!editor) {
+                    alert('未找到Mermaid编辑器');
+                    return;
+                }
+                
+                const contentToSave = editor.value;
+                // 更新当前内容
+                window.currentMermaidContent = contentToSave;
+                
+                if (!window.currentFilePath) {
+                    alert('无法确定当前Mermaid文件路径');
+                    return;
+                }
+                
+                const headers = { 'Content-Type': 'application/json' };
+                const body = {
+                    path: window.currentFilePath,
+                    content: contentToSave
+                };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+                
+                const resp = await fetch('/api/save-markdown', { 
+                    method: 'POST', 
+                    headers, 
+                    body: JSON.stringify(body) 
+                });
+                const data = await resp.json();
+                
+                if (data && data.success) {
+                    addMessage('Mermaid文件已保存', 'success');
+                } else {
+                    addMessage(`保存失败: ${data && data.error ? data.error : '未知错误'}`, 'error');
+                }
+            } catch (e) {
+                console.error('保存Mermaid失败:', e);
+                addMessage('保存失败: 网络或服务器错误', 'error');
             }
         }
 
@@ -5629,6 +5758,9 @@
             const btnText = document.getElementById('mermaid-view-btn-text');
             
             if (!mermaidShowingChart) {
+                // 更新当前内容
+                updateMermaidContent();
+                
                 // 切换到图表视图
                 sourceView.style.display = 'none';
                 chartView.style.display = 'block';
@@ -6062,6 +6194,7 @@
             const previewDiv = document.getElementById('markdownPreview');
             const sourceDiv = document.getElementById('markdownSource');
             const toggleBtn = document.getElementById('markdownToggleBtn');
+            const editor = document.getElementById('markdownEditor');
             
             if (!previewDiv || !sourceDiv || !toggleBtn) {
                 console.error('Markdown toggle elements not found');
@@ -6071,32 +6204,35 @@
             const isPreviewMode = previewDiv.style.display !== 'none';
             
             if (isPreviewMode) {
-                // 切换到源码模式
+                // 切换到源码编辑模式
                 previewDiv.style.display = 'none';
                 sourceDiv.style.display = 'block';
                 toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
                 toggleBtn.title = '切换到预览模式';
                 // 保存用户偏好
                 localStorage.setItem('markdownDisplayMode', 'source');
+                
+                // 聚焦到编辑器
+                if (editor) {
+                    setTimeout(() => editor.focus(), 100);
+                }
             } else {
-                // 切换到预览模式
+                // 从编辑模式切换到预览模式，需要更新内容
+                if (editor && window.currentMarkdownContent) {
+                    const editedContent = editor.value;
+                    // 更新当前内容
+                    window.currentMarkdownContent.processed = editedContent;
+                    
+                    // 重新渲染HTML
+                    updateMarkdownPreview(editedContent);
+                }
+                
                 previewDiv.style.display = 'block';
                 sourceDiv.style.display = 'none';
                 toggleBtn.innerHTML = '<i class="fas fa-eye"></i> 源码模式';
                 toggleBtn.title = '切换到源码模式';
                 // 保存用户偏好
                 localStorage.setItem('markdownDisplayMode', 'preview');
-                
-                // 重新触发渲染
-                setTimeout(() => {
-                    // 触发Prism.js语法高亮
-                    if (typeof Prism !== 'undefined') {
-                        Prism.highlightAll();
-                    }
-                    
-                    // 触发数学公式渲染（智能fallback）
-                    renderMath(previewDiv);
-                }, 50);
             }
         }
 
@@ -7022,32 +7158,6 @@
             });
         });
 
-    </script>
-    
-    <!-- Prism.js for syntax highlighting -->
-    <script src="{{ url_for('static', filename='js/prism-core.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/prism-autoloader.min.js') }}"></script>
-    <script>
-        // Configure Prism.js autoloader
-        Prism.plugins.autoloader.languages_path = '{{ url_for("static", filename="js/prism-components/") }}';
-        
-        // Configure PDF.js
-        if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '{{ url_for("static", filename="js/pdf.worker.min.js") }}';
-            console.log('PDF.js configured with worker:', pdfjsLib.GlobalWorkerOptions.workerSrc);
-        } else {
-            console.error('PDF.js library not loaded');
-        }
-        
-        // 重试PDF加载函数
-        function retryPDFLoad(filePath) {
-            document.getElementById('pdfContainer').innerHTML = `
-                <div style="text-align: center; padding: 20px;">
-                    <i class="fas fa-spinner fa-spin"></i> 正在重新加载PDF...
-                </div>
-            `;
-            setTimeout(() => loadPDF(filePath), 500);
-        }
     </script>
 </body>
 </html> 

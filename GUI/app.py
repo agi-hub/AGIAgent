@@ -3138,6 +3138,54 @@ def save_markdown():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/api/render-markdown', methods=['POST'])
+def render_markdown():
+    """Render Markdown content to HTML for preview."""
+    try:
+        data = request.get_json() or {}
+        content = data.get('content', '')
+        
+        if not content:
+            return jsonify({'success': False, 'error': 'Content is required'})
+        
+        # 使用现有的markdown处理逻辑
+        import markdown
+        from markdown.extensions import codehilite, tables, toc, fenced_code
+        
+        # 配置markdown扩展
+        extensions = [
+            'markdown.extensions.tables',
+            'markdown.extensions.fenced_code',
+            'markdown.extensions.codehilite',
+            'markdown.extensions.toc',
+            'markdown.extensions.attr_list',
+            'markdown.extensions.def_list',
+            'markdown.extensions.footnotes',
+            'markdown.extensions.md_in_html'
+        ]
+        
+        # 创建markdown实例
+        md = markdown.Markdown(
+            extensions=extensions,
+            extension_configs={
+                'codehilite': {
+                    'css_class': 'highlight',
+                    'use_pygments': True
+                },
+                'toc': {
+                    'permalink': True
+                }
+            }
+        )
+        
+        # 转换为HTML
+        html = md.convert(content)
+        
+        return jsonify({'success': True, 'html': html})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/gui-configs', methods=['GET'])
 def get_gui_configs():
     """Get available GUI model configurations"""
