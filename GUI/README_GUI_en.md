@@ -1,6 +1,6 @@
-# AGI Bot GUI
+# AGI Agent GUI
 
-Graphical user interface for AGI Bot, providing intuitive and convenient task execution and file management functions.
+Graphical user interface for AGI Agent, providing intuitive and convenient task execution and file management functions.
 
 ## 🚀 Quick Start
 
@@ -13,7 +13,7 @@ After startup, visit: `http://localhost:5001`
 
 ## Interface Example
 <div align="center">
-      <img src="../fig/AGIBot_GUI.png" alt="AGI Bot GUI"/>
+      <img src="../fig/AGIAgent_GUI.png" alt="AGI Agent GUI"/>
 </div>
 
 ## Usage
@@ -27,7 +27,7 @@ After task execution is completed or interrupted, you can continue the task by s
 ## 🔐 User Authentication & Multi-User Management
 
 ### Login Method
-AGI Bot GUI uses API Key authentication:
+AGI Agent GUI uses API Key authentication:
 1. After starting the GUI, first-time access will require entering an API Key
 2. Enter a valid API Key to log in and use the system
 3. API Key remains valid during the browser session, requires re-entry after closing browser

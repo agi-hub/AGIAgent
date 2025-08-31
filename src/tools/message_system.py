@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AGIBot Message System
+AGIAgent Message System
 Supports message passing and mailbox functionality between agents
 """
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from .print_system import print_system, print_current
 """
-AGIBot ID Manager
+AGIAgent ID Manager
 Provides sequential ID generation as an alternative to random UUIDs
 """
 
@@ -32,7 +32,7 @@ class IDManager:
         
         self._initialized = True
         self.workspace_root = workspace_root if workspace_root is not None else "."
-        self.state_file = os.path.join(self.workspace_root, ".agibot_id_state.json")
+        self.state_file = os.path.join(self.workspace_root, ".agia_id_state.json")
         
         # Counters
         self._agent_counter = 1

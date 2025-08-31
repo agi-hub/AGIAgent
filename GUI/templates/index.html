@@ -2231,7 +2231,7 @@
                 <div class="chat-messages scrollbar-custom" id="chatMessages">
                     <div class="message system">
                         <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
-                        {{ i18n.get('welcome_message', '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Bot! Please enter your requirements below, and the system will automatically process tasks for you.') }}
+                        {{ i18n.get('welcome_message', '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Agent! Please enter your requirements below, and the system will automatically process tasks for you.') }}
                     </div>
                 </div>
                 
@@ -2333,14 +2333,14 @@
             
             <!-- GitHub Link - moved to bottom right corner -->
             <div class="github-link-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-                <a href="https://github.com/agi-hub/AGIBot" target="_blank" rel="noopener noreferrer" 
+                <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer" 
                    style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; 
                           background: #333; color: #fff; text-decoration: none; border-radius: 6px; 
                           font-size: 0.9em; border: 1px solid #555; transition: all 0.3s ease;
                           box-shadow: 0 2px 4px rgba(0,0,0,0.3);"
                    onmouseover="this.style.background='#444'; this.style.borderColor='#777'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.4)'"
                    onmouseout="this.style.background='#333'; this.style.borderColor='#555'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.3)'"
-                   title="访问AGIBot项目主页">
+                   title="访问AGIAgent项目主页">
                     <i class="fab fa-github" style="font-size: 1.1em;"></i>
                     <span>{{ 'GitHub' if lang == 'en' else 'GitHub' }}</span>
                 </a>
@@ -2655,7 +2655,7 @@
             
             // Clear saved session from localStorage
             try {
-                localStorage.removeItem('agibot_api_key');
+                localStorage.removeItem('agia_api_key');
                 console.log('🗑️ Cleared saved session from localStorage');
             } catch (error) {
                 console.warn('⚠️ Failed to clear session from localStorage:', error);
@@ -2665,7 +2665,7 @@
             chatMessages.innerHTML = `
                 <div class="message system">
                     <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
-                    ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                    ${I18N.welcome_message || '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。'}
                 </div>
             `;
             
@@ -2709,11 +2709,11 @@
                 // Save API key to localStorage for session restoration
                 try {
                     if (currentUser && currentUser !== 'default') {
-                        localStorage.setItem('agibot_api_key', currentUser);
+                        localStorage.setItem('agia_api_key', currentUser);
                         console.log('💾 API key saved to localStorage for session restoration');
                     } else {
                         // For default user, save a special marker
-                        localStorage.setItem('agibot_api_key', '');
+                        localStorage.setItem('agia_api_key', '');
                         console.log('💾 Default user session saved to localStorage');
                     }
                 } catch (error) {
@@ -3324,7 +3324,7 @@
                 chatMessages.innerHTML = `
                     <div class="message system">
                         <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
-                        ${I18N.welcome_message || '欢迎使用 AGI Bot！请在下方输入您的需求，系统将自动为您处理任务。'}
+                        ${I18N.welcome_message || '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。'}
                     </div>
                 `;
                 
@@ -3395,7 +3395,7 @@
          */
         function checkSessionRestore() {
             try {
-                const savedApiKey = localStorage.getItem('agibot_api_key');
+                const savedApiKey = localStorage.getItem('agia_api_key');
                 
                 if (savedApiKey !== null) { // null means no item, empty string is valid for default user
                     console.log('🔄 Found saved session in localStorage');

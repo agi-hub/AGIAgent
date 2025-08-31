@@ -1,8 +1,8 @@
-# AGI Bot Python Library Interface
+# AGI Agent Python Library Interface
 
 > **⚠️ Experimental Feature**: The Python library interface is currently an experimental feature, and the API may change in future versions. Use with caution in production environments.
 
-AGI Bot now supports usage as a Python library, providing an OpenAI Chat API-like programming interface. You can call AGI Bot directly in Python code without using the command line.
+AGI Agent now supports usage as a Python library, providing an OpenAI Chat API-like programming interface. You can call AGI Agent directly in Python code without using the command line.
 
 ## Features
 
@@ -17,26 +17,26 @@ AGI Bot now supports usage as a Python library, providing an OpenAI Chat API-lik
 
 ### Method 1: pip Installation (Recommended)
 
-AGI Bot can be installed directly as a Python package:
+AGI Agent can be installed directly as a Python package:
 
 ```bash
 # Install from source
 pip install .
 
 # Or install from git repository
-pip install git+https://github.com/agi-hub/AGIBot.git
+pip install git+https://github.com/agi-hub/AGIAgent.git
 
 ```
 
 After installation, you can import and use directly in Python code:
 
 ```python
-from agibot import AGIBotClient, create_client
+from agia import AGIAgentClient, create_client
 ```
 
 ### Method 2: Dependencies Installation
 
-If you choose not to install as a system package, make sure you have installed all AGI Bot dependencies:
+If you choose not to install as a system package, make sure you have installed all AGI Agent dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -48,12 +48,12 @@ pip install -r requirements.txt
 
 ```python
 # If installed via pip, use:
-from agibot import AGIBotClient
+from agia import AGIAgentClient
 # If using source code, use:
-# from main import AGIBotClient
+# from main import AGIAgentClient
 
 # Initialize client
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="your_api_key_here",
     model="claude-3-sonnet-20240229",  # or "gpt-4", "gpt-3.5-turbo", etc.
     api_base="https://api.anthropic.com"  # Optional
@@ -79,7 +79,7 @@ else:
 
 ```python
 # If installed via pip, use:
-from agibot import create_client
+from agia import create_client
 # If using source code, use:
 # from main import create_client
 
@@ -98,12 +98,12 @@ response = client.chat(
 
 ## API Reference
 
-### AGIBotClient
+### AGIAgentClient
 
 #### Initialization Parameters
 
 ```python
-AGIBotClient(
+AGIAgentClient(
     api_key: str,              # Required: API key
     model: str,                # Required: Model name
     api_base: str = None,      # Optional: API base URL
@@ -162,7 +162,7 @@ Get supported model list through `client.get_models()`:
 ### 1. Single Task Execution
 
 ```python
-client = AGIBotClient(api_key="xxx", model="gpt-4")
+client = AGIAgentClient(api_key="xxx", model="gpt-4")
 
 response = client.chat(
     messages=[{"role": "user", "content": "Create a todo list application"}],
@@ -208,7 +208,7 @@ for task in tasks:
 ### 4. Multi-Task Mode (Complex Projects)
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="gpt-4",
     single_task_mode=False  # Enable multi-task mode
@@ -226,7 +226,7 @@ response = client.chat(
 ### Debug Mode
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="gpt-4",
     debug_mode=True  # Enable detailed logging
@@ -236,7 +236,7 @@ client = AGIBotClient(
 ### Custom Configuration
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="claude-3-haiku-20240307",
     api_base="https://custom-api.com",
@@ -253,7 +253,7 @@ print(config)
 
 ```python
 try:
-    client = AGIBotClient(api_key="", model="gpt-4")  # Empty API key
+    client = AGIAgentClient(api_key="", model="gpt-4")  # Empty API key
 except ValueError as e:
     print(f"Configuration error: {e}")
 
@@ -300,11 +300,11 @@ Recommended to use environment variables for managing API keys:
 ```python
 import os
 # If installed via pip, use:
-from agibot import AGIBotClient
+from agia import AGIAgentClient
 # If using source code, use:
-# from main import AGIBotClient
+# from main import AGIAgentClient
 
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key=os.environ.get("OPENAI_API_KEY"),  # or ANTHROPIC_API_KEY
     model=os.environ.get("MODEL_NAME", "gpt-4")
 )
@@ -312,11 +312,11 @@ client = AGIBotClient(
 
 ## Summary
 
-AGI Bot's Python library interface provides powerful and flexible programmatic access, allowing you to:
+AGI Agent's Python library interface provides powerful and flexible programmatic access, allowing you to:
 
-- 🔧 Directly integrate AGI Bot functionality in Python applications
+- 🔧 Directly integrate AGI Agent functionality in Python applications
 - 📊 Get structured execution results and detailed information
 - 🔄 Easily implement batch processing and workflow automation
 - ⚙️ Precise configuration control through code
 
-Start using AGI Bot Python library and make AI-driven task execution part of your Python projects! 
+Start using AGI Agent Python library and make AI-driven task execution part of your Python projects! 

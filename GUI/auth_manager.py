@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GUI Authentication Manager for AGI Bot
+GUI Authentication Manager for AGI Agent
 Provides secure API key authentication with SHA-256 hashing
 """
 
@@ -35,7 +35,7 @@ class AuthenticationManager:
         """Initialize authorized keys file with default structure"""
         if not os.path.exists(self.authorized_keys_file):
             default_config = {
-                "description": "Authorized API keys for AGI Bot GUI access",
+                "description": "Authorized API keys for AGI Agent GUI access",
                 "version": "1.0",
                 "keys": [
                     {
@@ -297,7 +297,7 @@ def main():
     """CLI interface for managing authorized keys"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Manage AGI Bot GUI authorized keys")
+    parser = argparse.ArgumentParser(description="Manage AGI Agent GUI authorized keys")
     parser.add_argument("--config-dir", default="config", help="Configuration directory")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

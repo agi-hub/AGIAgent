@@ -1,8 +1,8 @@
-# AGI Bot Python Library Interface
+# AGI Agent Python Library Interface
 
 > **⚠️ 实验性功能**: Python库接口目前为实验性功能，API可能会在未来版本中发生变化。建议在生产环境中谨慎使用。
 
-AGI Bot现在支持作为Python库使用，提供类似OpenAI Chat API的编程接口。你可以直接在Python代码中调用AGI Bot，而不需要通过命令行。
+AGI Agent现在支持作为Python库使用，提供类似OpenAI Chat API的编程接口。你可以直接在Python代码中调用AGI Agent，而不需要通过命令行。
 
 ## 特性
 
@@ -17,7 +17,7 @@ AGI Bot现在支持作为Python库使用，提供类似OpenAI Chat API的编程�
 
 ### 方式一：pip安装（推荐）
 
-AGI Bot可以作为Python包直接安装：
+AGI Agent可以作为Python包直接安装：
 
 ```bash
 # 从源码安装
@@ -29,12 +29,12 @@ pip install .
 安装完成后，你可以直接在Python代码中导入使用：
 
 ```python
-from agibot import AGIBotClient, create_client
+from agia import AGIAgentClient, create_client
 ```
 
 ### 方式二：依赖安装
 
-如果选择不安装为系统包，确保你已经安装了AGI Bot的所有依赖：
+如果选择不安装为系统包，确保你已经安装了AGI Agent的所有依赖：
 
 ```bash
 pip install -r requirements.txt
@@ -46,12 +46,12 @@ pip install -r requirements.txt
 
 ```python
 # 如果通过pip安装，使用：
-from agibot import AGIBotClient
+from agia import AGIAgentClient
 # 如果使用源码，使用：
-# from main import AGIBotClient
+# from main import AGIAgentClient
 
 # 初始化客户端
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="your_api_key_here",
     model="claude-3-sonnet-20240229",  # 或 "gpt-4", "gpt-3.5-turbo"等
     api_base="https://api.anthropic.com"  # 可选
@@ -77,7 +77,7 @@ else:
 
 ```python
 # 如果通过pip安装，使用：
-from agibot import create_client
+from agia import create_client
 # 如果使用源码，使用：
 # from main import create_client
 
@@ -96,12 +96,12 @@ response = client.chat(
 
 ## API 参考
 
-### AGIBotClient
+### AGIAgentClient
 
 #### 初始化参数
 
 ```python
-AGIBotClient(
+AGIAgentClient(
     api_key: str,              # 必需: API密钥
     model: str,                # 必需: 模型名称
     api_base: str = None,      # 可选: API基础URL
@@ -160,7 +160,7 @@ messages = [
 ### 1. 单个任务执行
 
 ```python
-client = AGIBotClient(api_key="xxx", model="gpt-4")
+client = AGIAgentClient(api_key="xxx", model="gpt-4")
 
 response = client.chat(
     messages=[{"role": "user", "content": "创建一个待办事项应用"}],
@@ -206,7 +206,7 @@ for task in tasks:
 ### 4. 多任务模式（复杂项目）
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="gpt-4",
     single_task_mode=False  # 启用多任务模式
@@ -224,7 +224,7 @@ response = client.chat(
 ### 调试模式
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="gpt-4",
     debug_mode=True  # 启用详细日志
@@ -234,7 +234,7 @@ client = AGIBotClient(
 ### 自定义配置
 
 ```python
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key="xxx",
     model="claude-3-haiku-20240307",
     api_base="https://custom-api.com",
@@ -251,7 +251,7 @@ print(config)
 
 ```python
 try:
-    client = AGIBotClient(api_key="", model="gpt-4")  # 空API密钥
+    client = AGIAgentClient(api_key="", model="gpt-4")  # 空API密钥
 except ValueError as e:
     print(f"配置错误: {e}")
 
@@ -298,11 +298,11 @@ if not response["success"]:
 ```python
 import os
 # 如果通过pip安装，使用：
-from agibot import AGIBotClient
+from agia import AGIAgentClient
 # 如果使用源码，使用：
-# from main import AGIBotClient
+# from main import AGIAgentClient
 
-client = AGIBotClient(
+client = AGIAgentClient(
     api_key=os.environ.get("OPENAI_API_KEY"),  # 或 ANTHROPIC_API_KEY
     model=os.environ.get("MODEL_NAME", "gpt-4")
 )
@@ -310,11 +310,11 @@ client = AGIBotClient(
 
 ## 总结
 
-AGI Bot的Python库接口提供了强大而灵活的编程访问方式，让你可以：
+AGI Agent的Python库接口提供了强大而灵活的编程访问方式，让你可以：
 
-- 🔧 在Python应用中直接集成AGI Bot功能
+- 🔧 在Python应用中直接集成AGI Agent功能
 - 📊 获得结构化的执行结果和详细信息
 - 🔄 轻松实现批处理和工作流自动化
 - ⚙️ 通过代码进行精确的配置控制
 
-开始使用AGI Bot Python库，让AI驱动的任务执行成为你Python项目的一部分！ 
+开始使用AGI Agent Python库，让AI驱动的任务执行成为你Python项目的一部分！ 

@@ -1,6 +1,6 @@
-# AGI Bot 演示案例
+# AGI Agent 演示案例
 
-本文档展示了 AGI Bot 在各种任务场景中的能力。每个案例都包含具体的任务描述和生成的输出文件。
+本文档展示了 AGI Agent 在各种任务场景中的能力。每个案例都包含具体的任务描述和生成的输出文件。
 
 所有示例可在以下链接找到： 
 https://drive.google.com/drive/folders/14SwKNCCUYWODzxjb-DdCzeHo0VdYTSt9?usp=sharing

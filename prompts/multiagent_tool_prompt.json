@@ -1,12 +1,12 @@
 {
   "spawn_agent": {
-    "description": "Spawn a new AGIBot agent to handle a specific task asynchronously in a shared workspace. All spawned agents run in the background for parallel execution. Useful for complex task decomposition and parallel execution.",
+    "description": "Spawn a new AGIAgent agent to handle a specific task asynchronously in a shared workspace. All spawned agents run in the background for parallel execution. Useful for complex task decomposition and parallel execution.",
     "parameters": {
       "type": "object",
       "properties": {
         "task_description": {
           "type": "string",
-          "description": "Description of the task for the new AGIBot agent"
+          "description": "Description of the task for the new AGIAgent agent"
         },
         "agent_id": {
           "type": "string",
@@ -129,7 +129,7 @@
     }
   },
   "terminate_agent": {
-    "description": "Terminate a specific AGIBot agent. Use 'self' or leave agent_id empty to terminate current agent. This sends a terminate signal to the agent, causing it to stop execution and clean up resources.",
+    "description": "Terminate a specific AGIAgent agent. Use 'self' or leave agent_id empty to terminate current agent. This sends a terminate signal to the agent, causing it to stop execution and clean up resources.",
     "parameters": {
       "type": "object",
       "properties": {

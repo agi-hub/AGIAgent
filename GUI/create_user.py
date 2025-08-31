@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AGI Bot GUI User Management Script
+AGI Agent GUI User Management Script
 Simple command-line tool for creating and managing GUI users
 """
 
@@ -18,7 +18,7 @@ from auth_manager import AuthenticationManager
 
 def create_user_interactive():
     """Interactive user creation"""
-    print("=== AGI Bot GUI - User Creation Wizard ===\n")
+    print("=== AGI Agent GUI - User Creation Wizard ===\n")
     
     # Initialize auth manager (find config dir relative to script location)
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -201,7 +201,7 @@ def list_users():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AGI Bot GUI User Management Tool",
+        description="AGI Agent GUI User Management Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Usage examples:

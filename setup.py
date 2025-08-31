@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ limitations under the License.
 """
 
 """
-AGI Bot project installation script
+AGI Agent project installation script
 """
 
 # Application name macro definition
-APP_NAME = "AGIBot"
+APP_NAME = "AGIAgent"
 
 from setuptools import setup, find_packages
 
@@ -29,13 +29,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="agibot",
+    name="agiagent",
     version="1.0.0",
     author=f"{APP_NAME} Team",
-    description="AI Code Auto-Generator - Intelligent code generation and task execution system based on Claude Sonnet",
+    description="AGI Agent for general purposed task execution",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/agibot/agibot",
+    url="https://github.com/agia/agia",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -121,7 +121,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "agibot=agibot:main",
+            "agia=agia:main",
         ],
     },
     include_package_data=True,

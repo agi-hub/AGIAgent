@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1997,7 +1997,7 @@ class ToolExecutor:
             except json.JSONDecodeError as e:
                 pass
         
-        # Try to parse JSON array format (AGIBot's chat-based tool calls)
+        # Try to parse JSON array format (AGIAgent's chat-based tool calls)
         try:
             # Look for JSON array structure in the content
             array_start = content.find('[')
@@ -2048,7 +2048,7 @@ class ToolExecutor:
                             "name": tool_data["name"],
                             "arguments": tool_data["parameters"]
                         }]
-                    # Support for AGIBot's chat-based tool calling format
+                    # Support for AGIAgent's chat-based tool calling format
                     elif 'tool_name' in tool_data and 'parameters' in tool_data:
                         return [{
                             "name": tool_data["tool_name"],
@@ -3561,7 +3561,7 @@ class ToolExecutor:
                     api_type = "Claude API" if self.is_claude else "OpenAI API"
                     print_current(f"⚠️ {api_type} {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
                     print_current(f"💡 Consider switching to a different model or trying again later")
-                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
@@ -3575,7 +3575,7 @@ class ToolExecutor:
                     if is_retryable:
                         print_current(f"❌ {api_type} {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
                         print_current(f"💡 Consider switching to a different model or trying again later")
-                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     else:
                         print_current(f"❌ Chat-based LLM API call failed: {e}")
                     
@@ -3765,7 +3765,7 @@ class ToolExecutor:
                     
                     print_current(f"⚠️ OpenAI API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
                     print_current(f"💡 Consider switching to a different model or trying again later")
-                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
@@ -3778,7 +3778,7 @@ class ToolExecutor:
                     if is_retryable:
                         print_current(f"❌ OpenAI API {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
                         print_current(f"💡 Consider switching to a different model or trying again later")
-                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     else:
                         print_current(f"❌ OpenAI API call failed: {e}")
                     
@@ -4056,7 +4056,7 @@ class ToolExecutor:
                     
                     print_current(f"⚠️ Claude API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
                     print_current(f"💡 Consider switching to a different model or trying again later")
-                    print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
@@ -4069,7 +4069,7 @@ class ToolExecutor:
                     if is_retryable:
                         print_current(f"❌ Claude API {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
                         print_current(f"💡 Consider switching to a different model or trying again later")
-                        print_current(f"🔄 You can change the model in config.txt and restart AGIBot")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     else:
                         print_current(f"❌ Claude API call failed: {e}")
                     

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ limitations under the License.
 """
 
 """
-AGIBot Print System
+AGIAgent Print System
 ----------------------------------
 Features:
 1. print_current   Write to <agent_id>.out according to agent_id, manager/None → terminal.
 2. print_debug     Write to <agent_id>.log according to agent_id; manager/None → manager.log.
-3. print_system    Write to agibot.log.
+3. print_system    Write to agia.log.
 4. streaming_context   For streaming writes (no automatic newline).
 """
 
@@ -151,12 +151,12 @@ def print_debug(*args: object, **kwargs) -> None:  # noqa: D401
 
 
 def print_system(*args: object, **kwargs) -> None:  # noqa: D401
-    """Write to agibot.log."""
+    """Write to agia.log."""
     message = _join_message(*args)
     if _emoji_disabled():
         message = remove_emoji(message)
     end_char = kwargs.get('end', '\n')
-    _write_to_file('agibot.log', message, newline=(end_char != ''))
+    _write_to_file('agia.log', message, newline=(end_char != ''))
 
 
 class _StreamWriter:

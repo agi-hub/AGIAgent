@@ -1,14 +1,14 @@
-# AGI Bot
+# AGI Agent
 
 [**中文**](README_zh.md) | **English**
 
 ## 🚀 Project Introduction
 
-**AGI Bot** is an L3-level fully automated general-purpose intelligent agent powered by Large Language Models (LLM). It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIBot can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIBot's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
+**AGI Agent** is an L3-level fully automated general-purpose intelligent agent powered by Large Language Models (LLM). It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIAgent can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIAgent's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
 
 
 <div align="center">
-      <img src="md/images/AGIBot.png" alt="AGI Bot - L3 Autonomous Programming System" width="800"/>
+      <img src="md/images/AGIAgent.png" alt="AGI Agent - L3 Autonomous Programming System" width="800"/>
 </div>
 
 ## ✨ Core Features
@@ -43,7 +43,7 @@
 ## 🔄 Working Principle
 
 ### Input-Output Mechanism
-AGI Bot receives **user prompts** and **working directory** as input, and outputs **processed working directory**. All generated code, documents, and other files are uniformly placed in the workspace folder.
+AGI Agent receives **user prompts** and **working directory** as input, and outputs **processed working directory**. All generated code, documents, and other files are uniformly placed in the workspace folder.
 
 ### Multi-round Iterative Process
 1. **Task Analysis Phase**: The system sends user prompts, historical chat records, and previous tool execution results to the large model
@@ -59,7 +59,7 @@ AGI Bot receives **user prompts** and **working directory** as input, and output
 
 ## ⚠️ Security Notice
 
-As a general-purpose task agent, AGI Bot has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
+As a general-purpose task agent, AGI Agent has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
 - Carefully review executed commands
 - Recommend running important tasks in a sandbox environment
 - Regularly backup important data
@@ -96,18 +96,18 @@ As a general-purpose task agent, AGI Bot has the capability to call system termi
 
 ## 🎬 Demo Video
 
-[![Watch Demo Video](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![Watch Demo Video](./md/images/AGIAgent_CLI.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 > If you cannot play directly, please [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 ## 📋 Demo Cases
 
-To understand AGI Bot's comprehensive capabilities in various scenarios, please check our [Demo Cases](md/DEMO.md). This includes real use cases, output files, and detailed examples of what AGI Bot can accomplish.
+To understand AGI Agent's comprehensive capabilities in various scenarios, please check our [Demo Cases](md/DEMO.md). This includes real use cases, output files, and detailed examples of what AGI Agent can accomplish.
 
 ## 🔗 Extended Features
 
 ### 🐍 Python Library Interface
-AGI Bot now supports being called directly as a Python library in code, providing a programming interface similar to the OpenAI Chat API.
+AGI Agent now supports being called directly as a Python library in code, providing a programming interface similar to the OpenAI Chat API.
 
 **📖 [View Python Library Usage Guide →](md/README_python_lib.md)**
 
@@ -128,11 +128,11 @@ Supports Model Context Protocol (MCP) for communication with external tool serve
 
 ## 🚀 Quick Start
 
-**Experience AGI Bot for free in Google Colab with no configuration required!**
+**Experience AGI Agent for free in Google Colab with no configuration required!**
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
-*Click the badge above to launch AGI Bot directly in your browser and start experiencing autonomous AI programming.*
+*Click the badge above to launch AGI Agent directly in your browser and start experiencing autonomous AI programming.*
 
 ### Basic Usage
 
@@ -140,44 +140,44 @@ Supports Model Context Protocol (MCP) for communication with external tool serve
 Suitable for single-objective tasks such as bug fixes and feature optimization. If no `-r` parameter is specified, the program will prompt you to enter a task description, supporting multi-line complex prompts.
 
 ```bash
-python agibot.py --requirement "Search today's news"
-python agibot.py -r "Write a joke"
+python agia.py --requirement "Search today's news"
+python agia.py -r "Write a joke"
 
 # Image input support
-python agibot.py -r "Analyze this chart: [img=chart.png]"
+python agia.py -r "Analyze this chart: [img=chart.png]"
 
 # MCP tool integration
-python agibot.py -r "Use AISearch_search to search for AI news"
+python agia.py -r "Use AISearch_search to search for AI news"
 ```
 
 #### 📋 Task Decomposition Mode
 Suitable for complex multi-step tasks. The system will automatically decompose large tasks into subtasks for step-by-step execution.
 
 ```bash
-python agibot.py --todo --requirement "Develop a complete blog system"
+python agia.py --todo --requirement "Develop a complete blog system"
 ```
 
 #### 💬 Interactive Mode
 Provides a more flexible interactive experience where the system guides you to input task requirements.
 
 ```bash
-python agibot.py -i
-python agibot.py --interactive 
+python agia.py -i
+python agia.py --interactive 
 ```
 
 #### 📁 Specify Output Directory
 Customize project output location. If not specified, the system will automatically create an `output_` directory with timestamp.
 
 ```bash
-python agibot.py --dir "my_dir"
+python agia.py --dir "my_dir"
 ```
 
 #### 🔄 Continue Task Execution
-Resume previous task execution. AGI Bot remembers the last used output directory.
+Resume previous task execution. AGI Agent remembers the last used output directory.
 
 ```bash
-python agibot.py -c
-python agibot.py --continue
+python agia.py -c
+python agia.py --continue
 ```
 
 > **Note**: Continue execution only restores the working directory and the last requirement prompt, not the large model's context.
@@ -186,8 +186,8 @@ python agibot.py --continue
 Control the maximum number of task execution rounds to avoid infinite loops.
 
 ```bash
-python agibot.py --loops 5 -r "Requirement description"
-python agibot.py -d "my_dir" -l 10 -r "Requirement description"
+python agia.py --loops 5 -r "Requirement description"
+python agia.py -d "my_dir" -l 10 -r "Requirement description"
 ```
 
 > **Note**: Rounds do not equal model call count. Each round usually calls the large model once, but may call it an additional time for summarization when chat history is too long, and may also summarize after task completion.
@@ -196,7 +196,7 @@ python agibot.py -d "my_dir" -l 10 -r "Requirement description"
 Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
 
 ```bash
-python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
+python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
 ```
 
 ## 🎯 Core Features
@@ -217,17 +217,17 @@ python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.
 
 ## 🌐 Network Search Function
 
-AGI Bot integrates powerful network search functionality to obtain real-time information:
+AGI Agent integrates powerful network search functionality to obtain real-time information:
 
 Usage: Add "search web" in the requirement prompt to perform search, "don't search web" to avoid search. If not specified, the large model will decide autonomously.
 
 ## 📚 Codebase Retrieval System
 
-AGI Bot is equipped with real-time codebase vectorization and retrieval functionality. After each round of tool calls, it searches for newly modified files, performs dynamic incremental indexing, and supports the large model's fuzzy semantic retrieval capability. Additionally, the large model can call commands like grep to observe the workspace situation.
+AGI Agent is equipped with real-time codebase vectorization and retrieval functionality. After each round of tool calls, it searches for newly modified files, performs dynamic incremental indexing, and supports the large model's fuzzy semantic retrieval capability. Additionally, the large model can call commands like grep to observe the workspace situation.
 
 ## 🛠️ Tool Library
 
-AGI Bot has a comprehensive tool library:
+AGI Agent has a comprehensive tool library:
 
 ### File System Tools
 - **File Operations**: Create, read, update, delete files and directories
@@ -256,7 +256,7 @@ AGI Bot has a comprehensive tool library:
 
 ## 🖥️ Web GUI Interface
 
-AGI Bot provides a modern, intuitive web interface to enhance user experience:
+AGI Agent provides a modern, intuitive web interface to enhance user experience:
 
 ### Main Features
 - **Real-time Execution Monitoring**: Real-time observation of task execution and detailed logs
@@ -277,7 +277,7 @@ Note: Web GUI is currently experimental, providing only a single-user developmen
 
 ## 🤖 Model Selection
 
-AGI Bot supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets.
+AGI Agent supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets.
 
 **🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
 
@@ -293,7 +293,7 @@ AGI Bot supports various mainstream AI models including Claude, GPT-4, DeepSeek 
 
 ## ⚙️ Configuration Files
 
-AGI Bot uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
+AGI Agent uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
 
 ### Quick Configuration
 After installation, please configure the following basic options:

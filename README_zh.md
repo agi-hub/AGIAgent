@@ -1,14 +1,14 @@
-# AGI Bot
+# AGI Agent
 
 **中文** | [**English**](README.md)
 
 ## 🚀 项目简介
 
-**AGI Bot** 是一个由大语言模型（LLM）驱动的L3级别全流程自动化通用智能体。其采用多轮迭代的工作机制，大模型可在每轮进行工具调用并收到反馈结果。用于根据用户需求，更新工作区的文件或通过工具改变外部环境。AGIBot可以自主调用广泛的MCP工具及操作系统工具，具有多智能体协同、多层次长期记忆、具身智能感知等特色。强调智能体的通用性及自主决策能力。AGIBot广泛的操作系统支持、大模型支持、多种运行模态支持，可用于构建拟人的通用智能系统，实现复杂报告调研与生成、项目级代码编写、计算机自动运行、多智能体研究（如竞争、辩论、协作）等应用。
+**AGI Agent** 是一个由大语言模型（LLM）驱动的L3级别全流程自动化通用智能体。其采用多轮迭代的工作机制，大模型可在每轮进行工具调用并收到反馈结果。用于根据用户需求，更新工作区的文件或通过工具改变外部环境。AGIAgent可以自主调用广泛的MCP工具及操作系统工具，具有多智能体协同、多层次长期记忆、具身智能感知等特色。强调智能体的通用性及自主决策能力。AGIAgent广泛的操作系统支持、大模型支持、多种运行模态支持，可用于构建拟人的通用智能系统，实现复杂报告调研与生成、项目级代码编写、计算机自动运行、多智能体研究（如竞争、辩论、协作）等应用。
 
 
 <div align="center">
-      <img src="md/images/AGIBot.png" alt="AGI Bot" width="800"/>
+      <img src="md/images/AGIAgent.png" alt="AGI Agent" width="800"/>
 </div>
 
 ## ✨ 核心特性
@@ -43,7 +43,7 @@
 ## 🔄 工作原理
 
 ### 输入输出机制
-AGI Bot接收**用户提示词**和**工作目录**作为输入，输出**处理后的工作目录**，所有生成的代码、文档等文件都统一放置在workspace文件夹中。
+AGI Agent接收**用户提示词**和**工作目录**作为输入，输出**处理后的工作目录**，所有生成的代码、文档等文件都统一放置在workspace文件夹中。
 
 ### 多轮迭代流程
 1. **任务分析阶段**：系统将用户提示词、历史聊天记录、上轮工具执行结果发送给大模型
@@ -59,7 +59,7 @@ AGI Bot接收**用户提示词**和**工作目录**作为输入，输出**处理
 
 ## ⚠️ 安全提醒
 
-AGI Bot作为通用任务智能体，具备调用系统终端命令的能力。虽然通常不会操作工作目录外的文件，但大模型可能会执行软件安装命令（如pip、apt等）。请在使用时注意：
+AGI Agent作为通用任务智能体，具备调用系统终端命令的能力。虽然通常不会操作工作目录外的文件，但大模型可能会执行软件安装命令（如pip、apt等）。请在使用时注意：
 - 仔细审查执行的命令
 - 建议在沙盒环境中运行重要任务
 - 定期备份重要数据
@@ -96,18 +96,18 @@ AGI Bot作为通用任务智能体，具备调用系统终端命令的能力。�
 
 ## 🎬 演示视频
 
-[![观看演示视频](./md/images/AGIBot_demo.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![观看演示视频](./md/images/AGIAgent_CLI.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 > 如果无法直接播放，请[点击这里观看演示视频](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
 ## 📋 演示案例
 
-想要了解 AGI Bot 在各种场景下的综合能力展示，请查看我们的[演示案例](md/DEMO_zh.md)。这包括真实的使用案例、输出文件和 AGI Bot 能够完成的详细示例。
+想要了解 AGI Agent 在各种场景下的综合能力展示，请查看我们的[演示案例](md/DEMO_zh.md)。这包括真实的使用案例、输出文件和 AGI Agent 能够完成的详细示例。
 
 ## 🔗 扩展功能
 
 ### 🐍 Python 库接口
-AGI Bot 现在支持作为 Python 库直接在代码中调用，提供类似 OpenAI Chat API 的编程接口。
+AGI Agent 现在支持作为 Python 库直接在代码中调用，提供类似 OpenAI Chat API 的编程接口。
 
 **📖 [查看 Python 库使用指南 →](md/README_python_lib_zh.md)**
 
@@ -128,11 +128,11 @@ AGI Bot 现在支持作为 Python 库直接在代码中调用，提供类似 Ope
 
 ## 🚀 立即体验
 
-**在Google Colab中免费体验AGI Bot，无需任何配置！**
+**在Google Colab中免费体验AGI Agent，无需任何配置！**
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc)
 
-*点击上方徽章，直接在浏览器中启动AGI Bot并开始体验自主AI编程。*
+*点击上方徽章，直接在浏览器中启动AGI Agent并开始体验自主AI编程。*
 
 ### 基本使用
 
@@ -140,44 +140,44 @@ AGI Bot 现在支持作为 Python 库直接在代码中调用，提供类似 Ope
 适合Bug修复、功能优化等单一目标任务。如果没有指定`-r`参数，程序会提示您输入任务描述，支持多行复杂提示词。
 
 ```bash
-python agibot.py --requirement "搜索今日新闻"
-python agibot.py -r "写一个笑话"
+python agia.py --requirement "搜索今日新闻"
+python agia.py -r "写一个笑话"
 
 # 图像输入支持
-python agibot.py -r "分析这张图表：[img=chart.png]"
+python agia.py -r "分析这张图表：[img=chart.png]"
 
 # MCP工具集成
-python agibot.py -r "使用AISearch_search搜索AI新闻"
+python agia.py -r "使用AISearch_search搜索AI新闻"
 ```
 
 #### 📋 任务分解模式
 适合复杂的多步骤任务，系统会自动将大任务分解为子任务逐步执行。
 
 ```bash
-python agibot.py --todo --requirement "开发一个完整的博客系统"
+python agia.py --todo --requirement "开发一个完整的博客系统"
 ```
 
 #### 💬 交互模式
 提供更灵活的交互体验，系统会引导您输入任务需求。
 
 ```bash
-python agibot.py -i
-python agibot.py --interactive 
+python agia.py -i
+python agia.py --interactive 
 ```
 
 #### 📁 指定输出目录
 自定义项目输出位置。如果不指定，系统会自动创建带时间戳的`output_`目录。
 
 ```bash
-python agibot.py --dir "my_dir"
+python agia.py --dir "my_dir"
 ```
 
 #### 🔄 继续执行任务
-恢复之前的任务继续执行。AGI Bot会记住最后一次使用的输出目录。
+恢复之前的任务继续执行。AGI Agent会记住最后一次使用的输出目录。
 
 ```bash
-python agibot.py -c
-python agibot.py --continue
+python agia.py -c
+python agia.py --continue
 ```
 
 > **注意**：继续执行仅恢复工作目录和上一次的需求提示词，不会恢复大模型的上下文。
@@ -186,8 +186,8 @@ python agibot.py --continue
 控制任务执行的最大轮数，避免无限循环。
 
 ```bash
-python agibot.py --loops 5 -r "需求描述"
-python agibot.py -d "my_dir" -l 10 -r "需求描述"
+python agia.py --loops 5 -r "需求描述"
+python agia.py -d "my_dir" -l 10 -r "需求描述"
 ```
 
 > **说明**：轮数不等于模型调用次数。每轮通常调用一次大模型，但在聊天历史过长时会额外调用一次进行总结，任务完成后也可能进行总结。
@@ -196,7 +196,7 @@ python agibot.py -d "my_dir" -l 10 -r "需求描述"
 直接通过命令行指定API配置，但建议在`config/config.txt`中配置以便重复使用。
 
 ```bash
-python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
+python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
 ```
 
 ## 🎯 核心特性
@@ -217,18 +217,18 @@ python agibot.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.
 
 ## 🌐 网络搜索功能
 
-AGI Bot 集成了强大的网络搜索功能，可以获取实时信息：
+AGI Agent 集成了强大的网络搜索功能，可以获取实时信息：
 
 使用方式：在需求提示词中加入"搜索网页"则会进行搜索，"不要搜索网页"则不会搜索，如不注明则大模型会自行判断。
 
 ## 📚 代码库检索系统
 
-AGI Bot配备了实时代码库的向量化和检索功能，在每轮工具调用结束后，会搜索新修改的文件，进行动态增量入库，并支持大模型的模糊语义检索能力。此外，大模型也可以调用grep等命令观察工作空间的情况。
+AGI Agent配备了实时代码库的向量化和检索功能，在每轮工具调用结束后，会搜索新修改的文件，进行动态增量入库，并支持大模型的模糊语义检索能力。此外，大模型也可以调用grep等命令观察工作空间的情况。
 
 
 ## 🛠️ 工具库
 
-AGI Bot 拥有全面的工具库：
+AGI Agent 拥有全面的工具库：
 
 ### 文件系统工具
 - **文件操作**：创建、读取、更新、删除文件和目录
@@ -257,7 +257,7 @@ AGI Bot 拥有全面的工具库：
 
 ## 🖥️ Web GUI 界面
 
-AGI Bot 提供现代化、直观的网页界面，提升用户体验：
+AGI Agent 提供现代化、直观的网页界面，提升用户体验：
 
 ### 主要功能
 - **实时执行监控**：实时观察任务执行和详细日志
@@ -279,7 +279,7 @@ Web GUI会显示文件列表，默认带有workspace子目录的文件夹都会�
 
 ## 🤖 模型选择
 
-AGI Bot 支持多种主流AI模型，包括Claude、GPT-4、DeepSeek V3、Kimi K2等，满足不同用户的需求和预算。
+AGI Agent 支持多种主流AI模型，包括Claude、GPT-4、DeepSeek V3、Kimi K2等，满足不同用户的需求和预算。
 
 **🎯 [查看详细模型选择指南 →](md/MODELS_zh.md)**
 
@@ -295,7 +295,7 @@ AGI Bot 支持多种主流AI模型，包括Claude、GPT-4、DeepSeek V3、Kimi K
 
 ## ⚙️ 配置文件
 
-AGI Bot 使用 `config/config.txt` 和 `config/config_memory.txt` 文件进行系统配置。
+AGI Agent 使用 `config/config.txt` 和 `config/config_memory.txt` 文件进行系统配置。
 
 
 ### 快速配置

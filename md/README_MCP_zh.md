@@ -1,6 +1,6 @@
-# AGIBot MCP (Model Context Protocol) 支持
+# AGIAgent MCP (Model Context Protocol) 支持
 
-AGIBot 现在支持 MCP (Model Context Protocol) 协议，可以与外部工具服务器进行通信，大大扩展了系统的工具生态。
+AGIAgent 现在支持 MCP (Model Context Protocol) 协议，可以与外部工具服务器进行通信，大大扩展了系统的工具生态。
 
 ## 🌟 功能特性
 
@@ -72,7 +72,7 @@ config/mcp_servers.json
 ```
 
 ### 2. 使用 MCP 工具
-在 AGIBot 中，MCP 工具使用 `服务器名:工具名` 的格式调用：
+在 AGIAgent 中，MCP 工具使用 `服务器名:工具名` 的格式调用：
 
 ```python
 # 调用文件系统工具
@@ -267,7 +267,7 @@ if __name__ == "__main__":
 - 验证文件路径访问权限
 
 ### 调试模式
-AGIBot 支持详细的调试日志，可以帮助诊断 MCP 相关问题：
+AGIAgent 支持详细的调试日志，可以帮助诊断 MCP 相关问题：
 
 ```python
 # 启用调试模式
@@ -286,4 +286,4 @@ executor = ToolExecutor(debug_mode=True)
 
 ## 📄 许可证
 
-此功能遵循 AGIBot 项目的许可证条款。 
+此功能遵循 AGIAgent 项目的许可证条款。 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 """
 
 """
-AGI Bot startup script
+AGI Agent startup script
 """
 
 import sys
 
 # Application name macro definition
-APP_NAME = "AGI Bot"
+APP_NAME = "AGI Agent"
 
 def main():
     print(f"🚀 Starting {APP_NAME}...")

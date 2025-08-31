@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Long-term Memory Management Module
-Implements AGIBot's long-term memory functionality based on the mem project architecture.
+Implements AGIAgent's long-term memory functionality based on the mem project architecture.
 """
 
 import os
@@ -39,7 +39,7 @@ from .print_system import print_current, print_system, print_error, print_debug
 class LongTermMemoryManager:
     """
     Long-term Memory Manager
-    Integrates mem project's memory management into AGIBot
+    Integrates mem project's memory management into AGIAgent
     """
 
     def __init__(self, workspace_root: str, memory_config_file: str = None):
@@ -53,8 +53,8 @@ class LongTermMemoryManager:
         self.workspace_root = workspace_root
 
         # Store long-term memory in the project root for global sharing
-        # Get project root (AGIBot directory)
-        # From src/tools/long_term_memory.py -> AGIBot/
+        # Get project root (AGIAgent directory)
+        # From src/tools/long_term_memory.py -> AGIAgent/
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(current_dir))
         self.memory_dir = os.path.join(project_root, "long_term_memory")
@@ -62,7 +62,7 @@ class LongTermMemoryManager:
 
         # Set memory config file path
         if memory_config_file is None:
-            # Use AGIBot's config_memory.txt file
+            # Use AGIAgent's config_memory.txt file
             memory_config_file = os.path.join(project_root, "config", "config_memory.txt")
             # Fallback to config.txt if config_memory.txt does not exist
             if not os.path.exists(memory_config_file):

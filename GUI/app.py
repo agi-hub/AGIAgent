@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025 AGI Bot Research Group.
+Copyright (c) 2025 AGI Agent Research Group.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -67,9 +67,9 @@ else:
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Application name macro definition
-APP_NAME = "AGI Bot"
+APP_NAME = "AGI Agent"
 
-from src.main import AGIBotMain
+from src.main import AGIAgentMain
 
 # Concurrency control and performance monitoring class
 class ConcurrencyManager:
@@ -694,7 +694,7 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None):
+def execute_agia_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None):
     # Get i18n texts for this process
     i18n = get_i18n_texts()
     """
@@ -771,7 +771,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
         output_queue.put({'event': 'output', 'data': {'message': gui_config_message, 'type': 'info'}})
         
         # Create a temporary configuration that overrides config.txt for GUI mode
-        # We'll use environment variables to pass these settings to the AGIBot system
+        # We'll use environment variables to pass these settings to the AGIAgent system
         original_env = {}
         
         # Model configuration: GUI setting overrides config.txt
@@ -831,13 +831,13 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             mode_message = "\n".join(mode_lines)
             output_queue.put({'event': 'output', 'data': {'message': mode_message, 'type': 'info'}})
         
-        agibot = AGIBotMain(
+        agia = AGIAgentMain(
             out_dir=out_dir,
             debug_mode=False,
             detailed_summary=True,
             single_task_mode=single_task_mode,  # Set based on plan_mode
             interactive_mode=False,  # Disable interactive mode
-            continue_mode=False,  # Always use False for GUI mode to avoid shared .agibot_last_output.json
+            continue_mode=False,  # Always use False for GUI mode to avoid shared .agia_last_output.json
             MCP_config_file=mcp_config_file,  # Set based on GUI MCP option
             user_id=user_id,  # Pass user ID for MCP knowledge base tools
             routine_file=routine_file  # Pass routine file to main application
@@ -991,7 +991,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
                     "Normal mode: Direct execution (single task)",
                     "Plan mode enabled: Using task decomposition",
                     "MCP enabled with config:",
-                    "Initialized AGI Bot with output directory:",
+                    "Initialized AGI Agent with output directory:",
                     "Starting task execution...",
                     "Search configuration:",
                     "Workspace information included in prompt",
@@ -1084,7 +1084,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
             sys.stdout = stdout_handler
             sys.stderr = stderr_handler
             
-            success = agibot.run(user_requirement=final_requirement, loops=50)
+            success = agia.run(user_requirement=final_requirement, loops=50)
             
             # Ensure important completion information is displayed
             workspace_dir = os.path.join(out_dir, "workspace")
@@ -1110,7 +1110,7 @@ def execute_agibot_task_process_target(user_requirement, output_queue, out_dir=N
     finally:
         output_queue.put({'event': 'STOP'})
 
-class AGIBotGUI:
+class AGIAgentGUI:
     def __init__(self):
         # User session management
         self.user_sessions = {}  # session_id -> UserSession
@@ -1435,7 +1435,7 @@ class UserSession:
         summarized_req = "Previous conversation context:\n" + "\n".join(history_summary[-5:])  # Last 5 entries
         return summarized_req
 
-gui_instance = AGIBotGUI()
+gui_instance = AGIAgentGUI()
 
 def create_temp_session_id(request, api_key=None):
     """Create a temporary session ID for API calls with user isolation"""
@@ -2572,7 +2572,7 @@ def handle_execute_task(data):
     
     try:
         user_session.current_process = multiprocessing.Process(
-            target=execute_agibot_task_process_target,
+            target=execute_agia_task_process_target,
             args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id)
         )
         user_session.current_process.daemon = True
@@ -3232,5 +3232,5 @@ def get_gui_configs():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5003))
+    port = int(os.environ.get('PORT', 5004))
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
