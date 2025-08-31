@@ -1634,16 +1634,13 @@ class FileSystemTools:
                             # Check available PDF engines
                             engine_name, engine_option = self._check_pdf_engine_availability()
                             if not engine_name:
-                                # No PDF engines available - use Word as fallback
-                                print_current(f"⚠️ No PDF engines available, using Word document as fallback")
+                                # No PDF engines available - skip PDF conversion
+                                print_current(f"⚠️ No PDF engines available, skipping PDF conversion")
                                 conversion_results['conversions']['pdf'] = {
-                                    'status': 'fallback_to_word',
+                                    'status': 'failed',
                                     'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
-                                    'fallback_method': 'word_document',
-                                    'message': 'Generated Word document instead of PDF due to missing LaTeX/PDF engines'
+                                    'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
                                 }
-                                # Generate an additional Word document as PDF fallback
-                                self._generate_fallback_word_document(md_path, output_dir, conversion_results)
                                 return conversion_results
                             
                             # Get engine-specific options
@@ -1712,16 +1709,13 @@ class FileSystemTools:
                     # Check available PDF engines
                     engine_name, engine_option = self._check_pdf_engine_availability()
                     if not engine_name:
-                        # No PDF engines available - use Word as fallback
-                        print_current(f"⚠️ No PDF engines available, using Word document as fallback")
+                        # No PDF engines available - skip PDF conversion
+                        print_current(f"⚠️ No PDF engines available, skipping PDF conversion")
                         conversion_results['conversions']['pdf'] = {
-                            'status': 'fallback_to_word',
+                            'status': 'failed',
                             'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
-                            'fallback_method': 'word_document',
-                            'message': 'Generated Word document instead of PDF due to missing LaTeX/PDF engines'
+                            'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
                         }
-                        # Generate an additional Word document as PDF fallback
-                        self._generate_fallback_word_document(md_path, output_dir, conversion_results)
                         return conversion_results
                     
                     # Get engine-specific options
@@ -1813,76 +1807,6 @@ class FileSystemTools:
                 'message': f'Error occurred during conversion: {str(e)}'
             }
 
-    def _generate_fallback_word_document(self, md_path, output_dir, conversion_results):
-        """
-        Generate a Word document as fallback when PDF engines are not available
-        
-        Args:
-            md_path: Path object of the markdown file
-            output_dir: Path object of the output directory
-            conversion_results: Dict to store conversion results
-        """
-        try:
-            # Generate fallback Word filename with suffix to indicate it's a PDF fallback
-            base_name = md_path.stem
-            fallback_word_file = output_dir / f"{base_name}_pdf_fallback.docx"
-            
-            print_current(f"📄 Generating fallback Word document: {fallback_word_file.name}")
-            
-            # Use pandoc to convert to Word with enhanced formatting for PDF-like appearance
-            cmd = [
-                'pandoc',
-                md_path.name,
-                '-o', fallback_word_file.name,
-                '--from', 'markdown',
-                '--to', 'docx',
-                '--toc',  # Include table of contents
-                '--highlight-style=tango',  # Code highlighting
-                '--reference-doc=' if self._check_reference_doc_exists() else ''
-            ]
-            
-            # Remove empty reference-doc parameter if no reference document exists
-            cmd = [arg for arg in cmd if arg]
-            
-            # Execute command in markdown file directory
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
-            
-            if fallback_word_file.exists():
-                file_size = fallback_word_file.stat().st_size
-                conversion_results['conversions']['pdf_fallback_word'] = {
-                    'status': 'success',
-                    'file': str(fallback_word_file.relative_to(self.workspace_root)),
-                    'size': file_size,
-                    'size_kb': f"{file_size / 1024:.1f} KB",
-                    'type': 'word_document',
-                    'message': 'Generated as PDF fallback due to missing LaTeX/PDF engines'
-                }
-                print_current(f"✅ Fallback Word document generated successfully: {fallback_word_file.name} ({file_size / 1024:.1f} KB)")
-                print_current(f"💡 Tip: Install xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint for PDF generation")
-            else:
-                conversion_results['conversions']['pdf_fallback_word'] = {
-                    'status': 'failed',
-                    'error': 'Fallback Word document not generated'
-                }
-                print_current(f"❌ Fallback Word document generation failed: File not created")
-                
-        except subprocess.CalledProcessError as e:
-            conversion_results['conversions']['pdf_fallback_word'] = {
-                'status': 'failed',
-                'error': f'Fallback Word generation failed: {e.stderr}'
-            }
-            print_current(f"❌ Fallback Word document generation failed: {e.stderr}")
-        except Exception as e:
-            conversion_results['conversions']['pdf_fallback_word'] = {
-                'status': 'failed',
-                'error': f'Fallback Word generation exception: {str(e)}'
-            }
-            print_current(f"❌ Fallback Word document generation exception: {str(e)}")
 
-    def _check_reference_doc_exists(self):
-        """Check if a reference Word document exists for styling"""
-        # This could be enhanced to look for a reference document in the utils directory
-        # For now, return False to use default Word styling
-        return False
 
  
