@@ -118,41 +118,12 @@ get_engine_options() {
     esac
 }
 
-# 生成Word文档作为PDF的fallback
-generate_fallback_word_document() {
-    # 生成fallback Word文档的文件名
-    local base_name="${OUTPUT_FILE%.*}"
-    local word_output="${base_name}_pdf_fallback.docx"
-    
-    echo "📄 生成fallback Word文档: $word_output"
-    
-    # 使用pandoc转换为Word文档
-    local word_cmd="pandoc \"$ACTUAL_INPUT_FILE\" -o \"$word_output\" --from markdown --to docx --toc --highlight-style=tango"
-    
-    echo "执行命令: $word_cmd"
-    
-    # 执行pandoc转换
-    if eval $word_cmd; then
-        if [ -f "$word_output" ]; then
-            echo "✅ Fallback Word文档生成成功: $word_output"
-            ls -lh "$word_output"
-            echo "💡 提示: 安装 xelatex, lualatex, pdflatex, wkhtmltopdf, 或 weasyprint 以生成PDF"
-            return 0
-        else
-            echo "❌ Fallback Word文档生成失败: 文件未创建"
-            return 1
-        fi
-    else
-        echo "❌ Fallback Word文档生成失败: pandoc命令执行失败"
-        return 1
-    fi
-}
+
 
 # 选择PDF引擎
 if ! select_pdf_engine; then
-    echo "⚠️ 没有可用的PDF引擎，尝试生成Word文档作为替代..."
-    generate_fallback_word_document
-    exit $?
+    echo "❌ 没有可用的PDF引擎。请安装以下之一: xelatex, lualatex, pdflatex, wkhtmltopdf, 或 weasyprint"
+    exit 1
 fi
 
 # 获取引擎特定选项

@@ -194,9 +194,10 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     # Check available PDF engines
     engine_name, engine_option = check_pdf_engine_availability()
     if not engine_name:
-        # Try fallback to Word document generation
-        print("⚠️ No PDF engines available, attempting to generate Word document as fallback...")
-        return generate_fallback_word_document(input_file, output_file)
+        # No PDF engines available - fail the conversion
+        error_msg = "No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint"
+        print(f"❌ {error_msg}")
+        return False, error_msg
     
     # Preprocess images and create emoji-free markdown
     temp_files = []
@@ -377,114 +378,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
                         pass
 
 
-def generate_fallback_word_document(input_file, output_file):
-    """
-    Generate a Word document as fallback when PDF engines are not available
-    
-    Args:
-        input_file: Input markdown file path
-        output_file: Originally intended PDF output file path
-        
-    Returns:
-        Tuple of (success: bool, message: str)
-    """
-    temp_files = []
-    actual_input_file = input_file
-    
-    try:
-        # Step 1: Preprocess images if possible
-        try:
-            import sys
-            from pathlib import Path
-            
-            # Add the project root to path for absolute imports
-            script_dir = Path(__file__).parent.parent.parent
-            if str(script_dir) not in sys.path:
-                sys.path.insert(0, str(script_dir))
-                
-            from src.utils.image_preprocessor import create_preprocessed_markdown
-            
-            print("🖼️ Preprocessing images for Word document...")
-            preprocessed_file, image_temp_files = create_preprocessed_markdown(Path(input_file))
-            
-            if preprocessed_file and preprocessed_file != Path(input_file):
-                actual_input_file = str(preprocessed_file)
-                temp_files.extend(image_temp_files)
-                print(f"✅ Image preprocessing for Word completed: {len(image_temp_files)} files processed")
-                
-        except Exception as e:
-            print(f"⚠️ Warning: Image preprocessing failed: {e}")
-            print("📝 Continuing with original file...")
-        
-        # Step 2: Create emoji-free version if needed
-        try:
-            temp_md_file = create_emoji_free_markdown(actual_input_file)
-            if temp_md_file:
-                actual_input_file = temp_md_file
-                temp_files.append(temp_md_file)
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
-        
-        # Convert PDF extension to Word extension
-        from pathlib import Path
-        output_path = Path(output_file)
-        word_output = output_path.with_name(f"{output_path.stem}_pdf_fallback.docx")
-        
-        print(f"📄 Generating fallback Word document: {word_output}")
-        
-        # Use pandoc to convert to Word
-        cmd = [
-            'pandoc',
-            actual_input_file,  # Use emoji-free file if available
-            '-o', str(word_output),
-            '--from', 'markdown',
-            '--to', 'docx',
-            '--toc',  # Include table of contents
-            '--highlight-style=tango',  # Code highlighting
-        ]
-        
-        # Execute pandoc command
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0 and word_output.exists():
-            file_size = word_output.stat().st_size
-            success_msg = f"✅ Fallback Word document generated: {word_output} ({file_size / 1024:.1f} KB)"
-            print(success_msg)
-            print("💡 Tip: Install xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint for PDF generation")
-            return True, success_msg
-        else:
-            error_msg = f"Failed to generate fallback Word document: {result.stderr}"
-            print(f"❌ {error_msg}")
-            return False, error_msg
-            
-    except Exception as e:
-        error_msg = f"Exception during fallback Word generation: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
-    finally:
-        # Clean up all temporary files
-        try:
-            import sys
-            from pathlib import Path
-            
-            # Add the project root to path for absolute imports
-            script_dir = Path(__file__).parent.parent.parent
-            if str(script_dir) not in sys.path:
-                sys.path.insert(0, str(script_dir))
-                
-            from src.utils.image_preprocessor import cleanup_temp_files
-            cleanup_temp_files(temp_files)
-            if temp_files:
-                print(f"🗑️ Cleaned up {len(temp_files)} temporary files")
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to clean up temporary files: {e}")
-            # Fallback manual cleanup
-            for temp_file in temp_files:
-                if temp_file and os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except Exception:
-                        pass
+
 
 
 def main():

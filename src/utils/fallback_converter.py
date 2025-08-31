@@ -34,8 +34,7 @@ def apply_fallback_strategies(input_file: str, output_file: str) -> Tuple[bool, 
         ('image_stripping', 'Remove images and convert'),
         ('simplified_markdown', 'Simplify markdown and convert'),  
         ('html_intermediate', 'Convert via HTML intermediate'),
-        ('plain_text', 'Convert to plain text PDF'),
-        ('word_fallback', 'Generate Word document instead')
+        ('plain_text', 'Convert to plain text PDF')
     ]
     
     for strategy_name, strategy_desc in strategies:
@@ -51,8 +50,7 @@ def apply_fallback_strategies(input_file: str, output_file: str) -> Tuple[bool, 
                 success, message, files = _try_html_intermediate_strategy(input_file, output_file)
             elif strategy_name == 'plain_text':
                 success, message, files = _try_plain_text_strategy(input_file, output_file)
-            elif strategy_name == 'word_fallback':
-                success, message, files = _try_word_fallback_strategy(input_file, output_file)
+            
             else:
                 continue
                 
@@ -286,27 +284,4 @@ def _try_plain_text_strategy(input_file: str, output_file: str) -> Tuple[bool, s
         return False, str(e), []
 
 
-def _try_word_fallback_strategy(input_file: str, output_file: str) -> Tuple[bool, str, List[str]]:
-    """Generate Word document as final fallback"""
-    try:
-        # Generate Word document instead of PDF
-        word_output = output_file.replace('.pdf', '_fallback.docx')
-        
-        cmd = [
-            'pandoc',
-            input_file,
-            '-o', word_output,
-            '--from', 'markdown',
-            '--to', 'docx',
-            '--toc'
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0 and os.path.exists(word_output):
-            return True, f"Word document generated: {word_output}", [word_output]
-        else:
-            return False, f"Word fallback failed: {result.stderr}", []
-            
-    except Exception as e:
-        return False, str(e), []
+
