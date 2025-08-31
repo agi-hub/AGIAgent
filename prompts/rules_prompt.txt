@@ -65,8 +65,8 @@ For Report Generation Tasks:
    ```
    <!-- the_example_diagram_caption -->
 
-Rich mermaid chart types are encouraged (such as Flowchart, Class, Sequence, Entity Relationship, State, Mindmap, Architecture, Block, C4, Gantt, Git, Kanban, Packet, Pie, Quadrant, Radar, Requirement, Sankey). Don't use TD type, and using LR instead. 
-   You can also search for relevant images to supplement the report.
+   Rich mermaid chart types are encouraged. Don't use TD type or TB type, and using LR instead. 
+   You should also search for relevant images from web to supplement the report.
 9. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
 10. Citation and References: Mark information sources in the form of literature citations, using academic citation format. 
 </reports>
