@@ -405,7 +405,7 @@ class ToolExecutor:
         self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
         # Create direct MCP client with specific config file instead of using global singleton
         from tools.mcp_client import MCPClient
-        self.direct_mcp_client = MCPClient(self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json")
+        self.direct_mcp_client = MCPClient(self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json", workspace_dir=self.workspace_dir)
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
         
@@ -626,7 +626,7 @@ class ToolExecutor:
             
             # Directly get the FastMCP wrapper, do not rely on is_fastmcp_initialized()
             try:
-                fastmcp_wrapper = get_fastmcp_wrapper()
+                fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
                 
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     # Get FastMCP tools
@@ -2440,7 +2440,7 @@ class ToolExecutor:
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             # Use tool name directly (no prefix removal needed for SSE tools)
                             future = executor.submit(asyncio.run, self.direct_mcp_client.call_tool(tool_name, params))
-                            result = future.result(timeout=30)  # 30 seconds timeout
+                            result = future.result(timeout=300)  # 300 seconds timeout for long-running tasks like image generation
                             return result
                 except RuntimeError:
                     # No event loop, safe to run asyncio.run
@@ -3279,8 +3279,8 @@ class ToolExecutor:
             if tool_source == 'fastmcp':
                 try:
                     from tools.fastmcp_wrapper import get_fastmcp_wrapper
-                    
-                    fastmcp_wrapper = get_fastmcp_wrapper()
+
+                    fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
                     if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                         # Get tool definition from FastMCP wrapper
                         fastmcp_tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
@@ -4261,8 +4261,8 @@ class ToolExecutor:
             # 🔧 NEW: Load FastMCP tool definitions dynamically
             try:
                 from tools.fastmcp_wrapper import get_fastmcp_wrapper
-                
-                fastmcp_wrapper = get_fastmcp_wrapper()
+
+                fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     fastmcp_tools = fastmcp_wrapper.get_available_tools()
                     if fastmcp_tools:
