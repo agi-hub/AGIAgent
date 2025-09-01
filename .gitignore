@@ -45,3 +45,4 @@ Thumbs.db
 # Claude Code files
 .claude/
 CLAUDE.md
+config/config.txt

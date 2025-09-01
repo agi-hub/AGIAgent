@@ -121,19 +121,20 @@ class MCPServer:
 
 class MCPClient:
     """MCP Client"""
-    def __init__(self, config_path: str = "config/mcp_servers.json"):
+    def __init__(self, config_path: str = "config/mcp_servers.json", workspace_dir: Optional[str] = None):
         self.config_path = config_path
+        self.workspace_dir = workspace_dir
         self.servers: Dict[str, MCPServer] = {}
         self.connections: Dict[str, Any] = {}
         self.tools: Dict[str, Dict[str, Any]] = {}
         self.initialized = False
         self.protocol_adapters: Dict[str, ProtocolAdapter] = {}
-        
+
         # FastMCP integration
         self.fastmcp_available = FASTMCP_INTEGRATION_AVAILABLE and FASTMCP_AVAILABLE
         self.fastmcp_wrapper = None
         self.fastmcp_initialized = False
-        
+
         self._init_builtin_adapters()
     
     def _init_builtin_adapters(self):
@@ -289,8 +290,8 @@ class MCPClient:
             # Initialize FastMCP wrapper if available
             if self.fastmcp_available:
                 try:
-                    self.fastmcp_wrapper = get_fastmcp_wrapper(self.config_path)
-                    self.fastmcp_initialized = await initialize_fastmcp_wrapper(self.config_path)
+                    self.fastmcp_wrapper = get_fastmcp_wrapper(self.config_path, workspace_dir=self.workspace_dir)
+                    self.fastmcp_initialized = await initialize_fastmcp_wrapper(self.config_path, workspace_dir=self.workspace_dir)
                     if self.fastmcp_initialized:
                         logger.info("FastMCP wrapper initialized successfully")
                     else:

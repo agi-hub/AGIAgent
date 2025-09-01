@@ -14,6 +14,14 @@ import shutil
 from typing import Dict, Any, List, Optional, Union
 from .print_system import print_current, print_system, print_error, print_debug
 
+# Import FastMCP wrapper to check for conflicts
+try:
+    from .fastmcp_wrapper import get_fastmcp_wrapper
+    FASTMCP_AVAILABLE = True
+except ImportError:
+    FASTMCP_AVAILABLE = False
+    get_fastmcp_wrapper = None
+
 def find_cli_mcp_path():
     """Find the cli-mcp executable path"""
     # First try to find it using shutil.which (respects PATH)
@@ -92,9 +100,21 @@ class CliMcpWrapper:
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            
+
             all_servers = config.get("mcpServers", {})
-            
+
+            # Check for FastMCP wrapper to avoid conflicts
+            fastmcp_wrapper = None
+            if FASTMCP_AVAILABLE:
+                try:
+                    fastmcp_wrapper = get_fastmcp_wrapper(self.config_path)
+                    # Ensure FastMCP wrapper is initialized to check server support
+                    if fastmcp_wrapper and not fastmcp_wrapper.initialized:
+                        await fastmcp_wrapper.initialize()
+                except Exception as e:
+                    print_current(f"⚠️ Could not initialize FastMCP wrapper: {e}")
+                    fastmcp_wrapper = None
+
             # Filter out SSE servers, only handle NPX/NPM format servers
             self.servers = {}
             for server_name, server_config in all_servers.items():
@@ -102,7 +122,14 @@ class CliMcpWrapper:
                 if server_config.get("url") and "sse" in server_config.get("url", "").lower():
                     print_current(f"⏭️  Skipping SSE server {server_name}, will be handled by direct MCP client")
                     continue
-                
+
+                # Check if FastMCP is already handling this server
+                if (fastmcp_wrapper and
+                    server_config.get("command") and
+                    fastmcp_wrapper.supports_server(server_name)):
+                    print_current(f"⏭️  Skipping server {server_name}, already handled by FastMCP")
+                    continue
+
                 # Only handle servers with command field (NPX/NPM format)
                 if server_config.get("command"):
                     self.servers[server_name] = server_config

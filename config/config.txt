@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-LANG=en
-# LANG=zh
+# LANG=en
+LANG=zh
 
 # GUI API configuration 
 api_key=your key
@@ -20,12 +20,6 @@ max_tokens=16384
 # model=claude-sonnet-4-0
 # max_tokens=32768
 
-# GUI API configuration 
-# api_key=your key
-# api_base=https://api.tu-zi.com/v1
-# model=claude-sonnet-4-0
-# max_tokens=32768
-
 # Openrouter
 api_key=your key
 api_base=https://openrouter.ai/api/v1
@@ -33,10 +27,10 @@ model=qwen/qwen3-coder:free
 max_tokens=32768
 
 # Zhipu API configuration 
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/paas/v4/
-# model=glm-4.5
-# max_tokens=16384
+api_key=your key
+api_base=https://open.bigmodel.cn/api/paas/v4/
+model=glm-4.5
+max_tokens=16384
 
 # Bailian API configuration 
 # api_key=your key
@@ -221,7 +215,7 @@ auto_fix_interactive_commands=True
 
 # Multi-Agent Mode Configuration
 # Controls whether to enable multi-agent functionality
-# When enabled, multi-agent tools like spawn_agent, wait_for_agia_spawns, etc. are available
+# When enabled, multi-agent tools like spawn_agent, wait_for_agibot_spawns, etc. are available
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
@@ -253,3 +247,11 @@ enable_jieba=True
 # Default: False (emoji enabled)
 # Set to True to disable emoji display
 emoji_disabled=False
+
+# PDF Fallback Document Configuration
+# Controls whether to generate Word documents when PDF conversion fails
+# When enabled (True), generates _pdf_fallback.docx files when no PDF engines are available
+# When disabled (False), skips fallback document generation and only shows error messages
+# Default: True (fallback enabled)
+# Set to False to disable PDF fallback document generation
+pdf_fallback_enabled=False
