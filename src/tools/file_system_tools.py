@@ -1469,7 +1469,7 @@ class FileSystemTools:
                 continue
         
         if not available_engines:
-            print("❌ No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint")
+            print_debug("❌ No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint")
             return None, None
         
         # Return the best available engine (prioritize xelatex > lualatex > pdflatex > others)

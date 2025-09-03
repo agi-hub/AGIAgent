@@ -413,7 +413,7 @@ class ToolExecutor:
         import asyncio
         try:
             loop = asyncio.get_running_loop()
-            if loop.is_running():
+            if loop and loop.is_running():
                 # We're in an async context, use thread pool for initialization
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -1122,7 +1122,9 @@ class ToolExecutor:
         for i, record in enumerate(task_history, 1):
             if record.get("role") == "system":
                 continue
+            
             elif "result" in record:
+                '''
                 # Add clear separator line for each round with improved labeling
                 if record.get("is_summary", False):
                     message_parts.append(f"### Summary of Earlier Rounds:")
@@ -1136,6 +1138,7 @@ class ToolExecutor:
                     else:
                         message_parts.append(f"### Recent Round (T-{position_from_end}):")
                 message_parts.append("")
+                '''
                 
                 # 🔧 优化：只在第一轮显示用户请求，后续轮次只显示轮次信息
                 if "prompt" in record:
@@ -1611,8 +1614,8 @@ class ToolExecutor:
                 print_current("📝 No tool calls found, returning LLM response")
                 
                 # 🔧 NEW: Add base64 data status information when no tools are called
-                base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
-                content = content + base64_status_info
+                #base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
+                #content = content + base64_status_info
                 
                 # Save debug log for response without tools
                 if self.debug_mode:
@@ -2783,6 +2786,22 @@ class ToolExecutor:
             # Save to JSON file only if log_path is available
             if log_path:
                 with open(log_path, 'w', encoding='utf-8') as f:
+                    # Convert escaped newlines to actual newlines in response_content
+                    if "response_content" in debug_data:
+                        debug_data["response_content"] = debug_data["response_content"].replace('\\n', '\n')
+
+                    # Convert escaped newlines in messages content
+                    if "messages" in debug_data:
+                        for message in debug_data["messages"]:
+                            if "content" in message:
+                                message["content"] = message["content"].replace('\\n', '\n')
+
+                    # Convert escaped newlines in tool_calls_info
+                    if "tool_calls_info" in debug_data:
+                        tool_calls_info = debug_data["tool_calls_info"]
+                        if "formatted_tool_results" in tool_calls_info:
+                            tool_calls_info["formatted_tool_results"] = tool_calls_info["formatted_tool_results"].replace('\\n', '\n')
+
                     json.dump(debug_data, f, ensure_ascii=False, indent=2)
             
             
