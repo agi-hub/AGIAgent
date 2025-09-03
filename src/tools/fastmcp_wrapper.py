@@ -260,6 +260,16 @@ class FastMcpWrapper:
             traceback.print_exc()
             return False
     
+    def _run_shared_loop(self):
+        """Run the shared event loop in a separate thread"""
+        asyncio.set_event_loop(self._shared_loop)
+        try:
+            self._shared_loop.run_forever()
+        except Exception as e:
+            print_current(f"⚠️ Shared event loop error: {e}")
+        finally:
+            self._shared_loop.close()
+
     def _initialize_shared_loop(self):
         """Initialize shared event loop for all servers (all are treated as stateful)"""
         with self._loop_lock:

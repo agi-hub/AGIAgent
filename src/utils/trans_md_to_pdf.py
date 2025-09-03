@@ -147,7 +147,6 @@ def check_pdf_engine_availability():
             continue
     
     if not available_engines:
-        print("❌ No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint")
         return None, None
     
     # Return the best available engine (prioritize xelatex > lualatex > pdflatex > others)
@@ -195,8 +194,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     engine_name, engine_option = check_pdf_engine_availability()
     if not engine_name:
         # No PDF engines available - fail the conversion
-        error_msg = "No PDF engines available. Please install at least one of: xelatex, lualatex, pdflatex, wkhtmltopdf, or weasyprint"
-        print(f"❌ {error_msg}")
+        error_msg = "No PDF engines available. "
         return False, error_msg
     
     # Preprocess images and create emoji-free markdown
