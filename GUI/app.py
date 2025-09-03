@@ -29,6 +29,7 @@ import multiprocessing
 import queue
 import re
 import time
+import json
 import psutil
 from collections import defaultdict
 from threading import Lock, Semaphore
@@ -59,9 +60,8 @@ current_dir_name = os.path.basename(current_dir)
 if current_dir_name == 'GUI':
     parent_dir = os.path.dirname(current_dir)
     os.chdir(parent_dir)
-    print(f"🔄 Detected startup in GUI directory, switched to parent directory: {parent_dir}")
 else:
-    print(f"📁 Current working directory: {current_dir}")
+    pass
 
 # Add parent directory to path to import main.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -110,7 +110,7 @@ class ConcurrencyManager:
         self.timeout_thread = threading.Thread(target=self._monitor_timeouts, daemon=True)
         self.timeout_thread.start()
         
-        print(f"🚀 Concurrency manager initialization: Maximum tasks={max_concurrent_tasks}, Maximum connections={max_connections}, Task timeout={task_timeout}Seconds")
+
     
     def can_accept_connection(self):
         """Check if new connections can be accepted"""
@@ -246,10 +246,7 @@ class ConcurrencyManager:
         self.resource_monitor_active = False
         self.timeout_monitor_active = False
 
-print(f"📁 Template directory: {template_dir}")
-print(f"📁 Template exists: {os.path.exists(template_dir)}")
-print(f"📁 Static directory: {static_dir}")
-print(f"📁 Static exists: {os.path.exists(static_dir)}")
+
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
@@ -257,8 +254,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading',
                    ping_timeout=3600, ping_interval=60)  # 1小时超时，1分钟心跳
 
 # 修复 werkzeug write() before start_response 错误
-import logging
-logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
+#import logging
+#logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
 
 I18N_TEXTS = {
     'zh': {
@@ -362,7 +359,7 @@ I18N_TEXTS = {
         'enable_knowledge_base': '搜索知识库',
         'enable_multi_agent': '启动多智能体',
         'enable_long_term_memory': '启动长期记忆',
-        'enable_mcp': '启动MCP',
+        'enable_mcp': 'MCP工具配置',
         'enable_jieba': '启用中文分词',
         
         # Others
@@ -703,9 +700,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
     It communicates back to the main process via the queue.
     """
     try:
-        # Combine task start information into a single message
-        init_lines = ["Task execution started..."]
-        
         if not out_dir:
             # Get GUI default data directory from config for new directories
             from src.config_loader import get_gui_default_data_directory
@@ -717,15 +711,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_dir = os.path.join(base_dir, f"output_{timestamp}")
-        
-        if continue_mode:
-            init_lines.append(f"Continuing with existing directory: {out_dir}")
-        else:
-            init_lines.append(f"Creating output directory: {out_dir}")
-        
-        # Send combined initialization message
-        init_message = "\n".join(init_lines)
-        output_queue.put({'event': 'task_started', 'data': {'message': init_message}})
         
         # Process GUI configuration options
         if gui_config is None:
@@ -742,8 +727,14 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         # Routine file configuration from GUI
         routine_file = gui_config.get('routine_file')
         if routine_file:
-            # Construct full path to routine file
-            routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+            # 检查是否是workspace文件（以routine_开头）
+            if routine_file.startswith('routine_'):
+                # 直接使用workspace根目录下的文件
+                routine_file = os.path.join(os.getcwd(), routine_file)
+            else:
+                # 使用routine文件夹下的文件
+                routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+            
             if not os.path.exists(routine_file):
                 output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
                 routine_file = None
@@ -753,22 +744,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         model_api_key = gui_config.get('model_api_key')
         model_api_base = gui_config.get('model_api_base')
         
-        # Log GUI configuration as a single merged message
-        gui_config_lines = [
-            "GUI Configuration:",
-            f"  - Model: {selected_model}",
-            f"  - Web Search: {enable_web_search}",
-            f"  - Knowledge Base: {enable_knowledge_base}",
-            f"  - Multi-Agent: {enable_multi_agent}",
-            f"  - Long-term Memory: {enable_long_term_memory}",
-            f"  - MCP: {enable_mcp}",
-            f"  - Chinese Segmentation: {enable_jieba}"
-        ]
-        if routine_file:
-            gui_config_lines.append(f"  - Routine File: {os.path.basename(routine_file)}")
-        
-        gui_config_message = "\n".join(gui_config_lines)
-        output_queue.put({'event': 'output', 'data': {'message': gui_config_message, 'type': 'info'}})
+
         
         # Create a temporary configuration that overrides config.txt for GUI mode
         # We'll use environment variables to pass these settings to the AGIAgent system
@@ -812,24 +788,23 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'false'
         
         # Set parameters based on mode
-        mode_lines = []
         if plan_mode:
-            mode_lines.append("Plan mode enabled: Using task decomposition (--todo)")
             single_task_mode = False  # Plan mode uses task decomposition
         else:
-            mode_lines.append("Normal mode: Direct execution (single task)")
             single_task_mode = True   # Default mode executes directly
         
         # Determine MCP config file based on GUI setting
         mcp_config_file = None
         if enable_mcp:
-            mcp_config_file = "config/mcp_servers.json"  # Use default MCP config when enabled
-            mode_lines.append(f"MCP enabled with config: {mcp_config_file}")
-        
-        # Send combined mode information if any
-        if mode_lines:
-            mode_message = "\n".join(mode_lines)
-            output_queue.put({'event': 'output', 'data': {'message': mode_message, 'type': 'info'}})
+            # Get selected MCP servers from GUI config
+            selected_mcp_servers = gui_config.get('selected_mcp_servers', [])
+
+            if selected_mcp_servers:
+                # Generate custom MCP config file based on selected servers
+                mcp_config_file = generate_custom_mcp_config(selected_mcp_servers, out_dir)
+            else:
+                # Use default MCP config if no servers selected
+                mcp_config_file = "config/mcp_servers.json"
         
         agia = AGIAgentMain(
             out_dir=out_dir,
@@ -922,21 +897,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         # Send user requirement as separate message
         output_queue.put({'event': 'output', 'data': {'message': f"User requirement: {user_requirement}", 'type': 'user'}})
         
-        # Combine system status information into a single message
-        status_lines = [
-            f"Initialized {APP_NAME} with output directory: {out_dir}",
-            "Starting task execution..."
-        ]
-        
-        if detailed_requirement and detailed_requirement != user_requirement:
-            status_lines.append("With conversation context included")
-        if search_hints:
-            status_lines.append(f"Search configuration: {' '.join(search_hints)}")
-        if workspace_info:
-            status_lines.append("Workspace information included in prompt")
-        
-        status_message = "\n".join(status_lines)
-        output_queue.put({'event': 'output', 'data': {'message': status_message, 'type': 'info'}})
+        # Send task_started event to update UI buttons
+        output_queue.put({'event': 'task_started', 'data': {'message': '🚀 任务开始执行...'}})
         
         class QueueSocketHandler:
             def __init__(self, q, socket_type='info'):
@@ -988,13 +950,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                 
                 # List of message patterns to filter out (only redundant status messages)
                 filter_patterns = [
-                    "Normal mode: Direct execution (single task)",
-                    "Plan mode enabled: Using task decomposition",
-                    "MCP enabled with config:",
-                    "Initialized AGI Agent with output directory:",
-                    "Starting task execution...",
-                    "Search configuration:",
-                    "Workspace information included in prompt",
                     "Received user requirement:",
                     "Currently selected directory:",
                     "workspace subdirectory path:",
@@ -1037,12 +992,15 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                             
                             # Check if it's warning or progress info, if so display as normal info instead of error
                             line_lower = filtered_line.lower()
-                            if ('warning' in line_lower or 
-                                'progress' in line_lower or 
+                            if ('warning' in line_lower or
+                                'progress' in line_lower or
                                 'processing files' in line_lower or
                                 filtered_line.startswith('Processing files:') or
                                 'userwarning' in line_lower or
-                                'warnings.warn' in line_lower):
+                                'warnings.warn' in line_lower or
+                                '⚠️' in filtered_line or  # 中文警告符号
+                                filtered_line.startswith('W: ') or  # apt warning format
+                                'W: ' in filtered_line):  # apt warning format
                                 message_type = 'info'
                             else:
                                 message_type = self.socket_type
@@ -1061,12 +1019,15 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                     
                     # Check if it's warning or progress info, if so display as normal info instead of error
                     buffer_lower = self.buffer.lower()
-                    if ('warning' in buffer_lower or 
-                        'progress' in buffer_lower or 
+                    if ('warning' in buffer_lower or
+                        'progress' in buffer_lower or
                         'processing files' in buffer_lower or
                         self.buffer.strip().startswith('Processing files:') or
                         'userwarning' in buffer_lower or
-                        'warnings.warn' in buffer_lower):
+                        'warnings.warn' in buffer_lower or
+                        '⚠️' in self.buffer or  # 中文警告符号
+                        self.buffer.strip().startswith('W: ') or  # apt warning format
+                        'W: ' in self.buffer):  # apt warning format
                         message_type = 'info'
                     else:
                         message_type = self.socket_type
@@ -1128,18 +1089,14 @@ class AGIAgentGUI:
         config_data_dir = get_gui_default_data_directory()
         if config_data_dir:
             self.base_data_dir = config_data_dir
-            print(f"📁 Using configured GUI base data directory: {self.base_data_dir}")
         else:
             self.base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            print(f"📁 Using default GUI base data directory: {self.base_data_dir}")
         
         # Ensure base directory exists
         os.makedirs(self.base_data_dir, exist_ok=True)
         
         # Don't create default userdata directory until needed
         self.default_user_dir = os.path.join(self.base_data_dir, 'userdata')
-        print(f"📁 Default user directory path: {self.default_user_dir} (will be created when needed)")
-        print(f"🔐 Authentication manager initialized")
         
         # Start session cleanup thread
         self.session_cleanup_active = True
@@ -1259,20 +1216,22 @@ class AGIAgentGUI:
         try:
             if session_id in self.user_sessions:
                 user_session = self.user_sessions[session_id]
-                
+
                 # Terminate process
                 if user_session.current_process and user_session.current_process.is_alive():
                     print(f"🛑 Terminating timeout process for user {session_id}")
                     user_session.current_process.terminate()
                     user_session.current_process.join(timeout=10)
-                    
+
                     # Send timeout message to user
                     from flask_socketio import emit
                     emit('task_timeout', {
                         'message': f'Task execution timeout ({self.concurrency_manager.task_timeout}seconds)'
                     }, room=session_id)
-                
-                # Release task resources already handled in concurrency_manager.finish_task
+
+                # Release task resources - call finish_task to clean up active_tasks
+                self.concurrency_manager.finish_task(session_id, success=False)
+                print(f"✅ Cleaned up timeout task for user {session_id}")
         except Exception as e:
             print(f"⚠️ Error handling user task timeout: {e}")
     
@@ -1518,7 +1477,8 @@ def index():
     """Main page"""
     i18n = get_i18n_texts()
     current_lang = get_language()
-    return render_template('index.html', i18n=i18n, lang=current_lang)
+    mcp_servers = get_mcp_servers_config()
+    return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers)
 
 @app.route('/test_toggle_simple.html')
 def test_toggle_simple():
@@ -2442,28 +2402,32 @@ def handle_connect(auth):
 def handle_disconnect():
     """Handle user disconnection"""
     session_id = request.sid
-    
+
     # Remove connection from concurrency manager
     gui_instance.concurrency_manager.remove_connection()
-    
+
     if session_id in gui_instance.user_sessions:
         user_session = gui_instance.user_sessions[session_id]
-        
+
         # Leave room and clean up session immediately
         leave_room(session_id)
-        
+
         # Terminate any running processes
         if user_session.current_process and user_session.current_process.is_alive():
             print(f"🛑 Terminating process for disconnected user {session_id}")
             user_session.current_process.terminate()
             user_session.current_process.join(timeout=5)
-        
+
+        # Clean up active task if exists
+        gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        print(f"✅ Cleaned up task for disconnected user {session_id}")
+
         # Clean up session
         gui_instance.auth_manager.destroy_session(session_id)
         del gui_instance.user_sessions[session_id]
-        
+
         print(f"🔌 User {session_id} disconnected and cleaned up")
-        
+
         # Get updated metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
         print(f"📊 Updated metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
@@ -2509,14 +2473,7 @@ def handle_execute_task(data):
     # Get user's base directory
     user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
     
-    # Debug logging
-    print(f"🔍 Execute task debug info for user {session_id}:")
-    print(f"   Task type: {task_type}")
-    print(f"   Plan mode: {plan_mode}")
-    print(f"   Frontend selected_directory: {selected_directory}")
-    print(f"   Backend user_session.selected_output_dir: {user_session.selected_output_dir}")
-    print(f"   Backend user_session.last_output_dir: {user_session.last_output_dir}")
-    print(f"   User base directory: {user_base_dir}")
+
     
     if task_type == 'new':
         # New task: create new output directory
@@ -2659,18 +2616,23 @@ def handle_stop_task():
     
     if user_session.current_process and user_session.current_process.is_alive():
         print(f"Received stop request for user {session_id}. Terminating process.")
-        
+
         # 🔧 Fix: save current conversation to history when stopping task
         if hasattr(user_session, '_current_task_requirement'):
             print(f"💾 Saving interrupted conversation to history for user {session_id}")
             user_session.add_to_conversation_history(
-                user_session._current_task_requirement, 
+                user_session._current_task_requirement,
                 "Task stopped by user"
             )
             delattr(user_session, '_current_task_requirement')
-        
+
         user_session.current_process.terminate()
         user_session.current_output_dir = None  # Clear current directory mark
+
+        # 🔧 Fix: Clean up active task to prevent timeout detection
+        if hasattr(gui_instance, 'finish_task'):
+            gui_instance.finish_task(session_id, success=False)
+
         emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'}, room=session_id)
     else:
         emit('output', {'message': i18n['no_task_running'], 'type': 'info'}, room=session_id)
@@ -3009,11 +2971,13 @@ def delete_directory(dir_name):
 
 @app.route('/api/routine-files', methods=['GET'])
 def get_routine_files():
-    """Get list of routine files from routine directory"""
+    """Get list of routine files from routine directory and workspace files starting with 'routine_'"""
     try:
-        routine_dir = os.path.join(os.getcwd(), 'routine')
         routine_files = []
+        workspace_dir = os.getcwd()
         
+        # 1. 添加routine文件夹下的文件
+        routine_dir = os.path.join(workspace_dir, 'routine')
         if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
             for filename in os.listdir(routine_dir):
                 if os.path.isfile(os.path.join(routine_dir, filename)):
@@ -3021,10 +2985,25 @@ def get_routine_files():
                     name_without_ext = os.path.splitext(filename)[0]
                     routine_files.append({
                         'name': name_without_ext,
-                        'filename': filename
+                        'filename': filename,
+                        'type': 'routine_folder'
                     })
         
-        routine_files.sort(key=lambda x: x['name'])  # Sort alphabetically
+        # 2. 添加当前workspace下routine_开头的文件
+        for filename in os.listdir(workspace_dir):
+            if filename.startswith('routine_') and os.path.isfile(os.path.join(workspace_dir, filename)):
+                # Remove file extension and 'routine_' prefix
+                name_without_ext = os.path.splitext(filename)[0]
+                display_name = name_without_ext[8:] if name_without_ext.startswith('routine_') else name_without_ext
+                routine_files.append({
+                    'name': display_name,
+                    'filename': filename,
+                    'type': 'workspace_file'
+                })
+        
+        # 按名称排序
+        routine_files.sort(key=lambda x: x['name'])
+        
         return jsonify({
             'success': True,
             'files': routine_files
@@ -3229,6 +3208,83 @@ def get_gui_configs():
             'success': False,
             'error': str(e)
         })
+
+
+def get_mcp_servers_config():
+    """Get MCP servers configuration from mcp_servers_GUI.json for GUI
+
+    Returns:
+        dict: MCP servers configuration, or empty dict if failed
+    """
+    try:
+        # Path to the example MCP config file
+        example_config_path = os.path.join(os.getcwd(), 'config', 'mcp_servers_GUI.json')
+
+        # Check if example config exists
+        if not os.path.exists(example_config_path):
+            print(f"Warning: MCP example config not found at {example_config_path}")
+            return {}
+
+        # Load the example configuration
+        with open(example_config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # Return the mcpServers section
+        return config.get('mcpServers', {})
+
+    except Exception as e:
+        print(f"Error loading MCP servers config: {str(e)}")
+        return {}
+
+
+def generate_custom_mcp_config(selected_servers, out_dir):
+    """Generate a custom MCP configuration file based on selected servers.
+
+    Args:
+        selected_servers: List of selected MCP server names
+        out_dir: Output directory for the task
+
+    Returns:
+        str: Path to the generated MCP configuration file, or None if failed
+    """
+    try:
+        # Path to the example MCP config file
+        example_config_path = os.path.join(os.getcwd(), 'config', 'mcp_servers_GUI.json')
+
+        # Check if example config exists
+        if not os.path.exists(example_config_path):
+            print(f"Warning: MCP example config not found at {example_config_path}")
+            return None
+
+        # Load the example configuration
+        with open(example_config_path, 'r', encoding='utf-8') as f:
+            example_config = json.load(f)
+
+        # Create custom config with only selected servers
+        custom_config = {"mcpServers": {}}
+
+        # Add selected servers to custom config
+        for server_name in selected_servers:
+            if server_name in example_config.get('mcpServers', {}):
+                custom_config['mcpServers'][server_name] = example_config['mcpServers'][server_name]
+            else:
+                print(f"Warning: MCP server '{server_name}' not found in example config")
+
+        # Generate filename with timestamp to avoid conflicts
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        config_filename = f"mcp_servers_custom_{timestamp}.json"
+        custom_config_path = os.path.join(out_dir, config_filename)
+
+        # Write custom configuration to file
+        with open(custom_config_path, 'w', encoding='utf-8') as f:
+            json.dump(custom_config, f, indent=2, ensure_ascii=False)
+
+        print(f"Generated custom MCP config: {custom_config_path}")
+        return custom_config_path
+
+    except Exception as e:
+        print(f"Error generating custom MCP config: {str(e)}")
+        return None
 
 
 if __name__ == '__main__':

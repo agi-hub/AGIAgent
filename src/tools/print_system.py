@@ -143,6 +143,23 @@ def print_debug(*args: object, **kwargs) -> None:  # noqa: D401
     """Write to <agent_id>.log or manager.log (not output to terminal)."""
     current_id = get_current_agent_id()
     file_name = 'manager.log' if current_id in (None, 'manager') else f"{current_id}.log"
+
+    # Get the final path to check if it would write to code root directory
+    log_dir = get_current_log_dir()
+    if log_dir:
+        final_path = os.path.join(log_dir, file_name)
+    else:
+        final_path = file_name
+
+    # Resolve to absolute path for comparison
+    final_path = os.path.abspath(final_path)
+    code_root = os.path.abspath(os.getcwd())
+
+    # Filter out logs that would be written to code root directory
+    if os.path.commonpath([final_path, code_root]) == code_root and os.path.dirname(final_path) == code_root:
+        # Skip writing to avoid polluting code directory with log files
+        return
+
     message = _join_message(*args)
     if _emoji_disabled():
         message = remove_emoji(message)

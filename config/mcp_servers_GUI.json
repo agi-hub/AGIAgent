@@ -1,0 +1,33 @@
+{
+	"mcpServers": {
+		"taobao-mcp": {
+			"name": "导购助手",
+			"type": "stdio",
+			"isActive": true,
+			"command": "npx",
+			"args": [
+				"-y",
+				"@liuliang520500/sinataoke_cn@latest"
+			],
+			"env": {
+				"ENV_URL": "https://config.sinataoke.cn/api/mcp/secret",
+				"ENV_SECRET": "url:mcp.sinataoke.cn",
+				"ENV_OVERRIDE": "false",
+				"TAOBAO_PID": "mm_9262596987_3341150149_116125700001",
+				"TAOBAO_SESSION": "6102613373ac12974ee761db8d4d7051cfe79b89831fae172239580"
+			}
+		},
+    "baidu-maps": {
+      "command": "python",
+      "args": ["-m", "mcp_server_baidu_maps"]
+    },
+    "jina-mcp-tools": {
+      "command": "npx",
+      "args": ["jina-mcp-tools"]
+    },
+    "tuzi-mcp": {
+      "command": "uvx",
+      "args": [ "tuzi-mcp"]
+    }
+	}
+}

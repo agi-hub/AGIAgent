@@ -132,8 +132,8 @@ class FastMcpWrapper:
 
             # Strategy 2: Check if we're in an output_xxx directory (directly)
             if dir_name.startswith('output_') and os.path.exists(os.path.join(current_dir, 'workspace')):
-                workspace_dir = os.path.join(current_dir, 'workspace')
-                print_current(f"📁 Found workspace directory in current output dir: {workspace_dir}")
+                workspace_dir = os.path.join(current_dir, latest_output_dir, 'workspace')
+                # print_current(f"📁 Found workspace directory in current output dir: {workspace_dir}")
                 return workspace_dir
 
             # Strategy 3: Look for the most recent output_xxx directory in current directory
@@ -155,7 +155,7 @@ class FastMcpWrapper:
                         # Create workspace in the latest output directory
                         try:
                             os.makedirs(workspace_dir, exist_ok=True)
-                            print_current(f"📁 Created workspace directory in latest output: {workspace_dir}")
+                            # print_current(f"📁 Created workspace directory in latest output: {workspace_dir}")
                             return workspace_dir
                         except Exception as e:
                             print_current(f"⚠️ Could not create workspace in latest output dir: {e}")
@@ -177,7 +177,7 @@ class FastMcpWrapper:
                         workspace_dir = os.path.join(parent_dir, latest_output_dir, 'workspace')
 
                         if os.path.exists(workspace_dir):
-                            print_current(f"📁 Found workspace directory in parent: {workspace_dir}")
+                            # print_current(f"📁 Found workspace directory in parent: {workspace_dir}")
                             return workspace_dir
                 except Exception as e:
                     print_current(f"⚠️ Error searching parent directory: {e}")
@@ -185,18 +185,18 @@ class FastMcpWrapper:
             # Strategy 5: Check if workspace directory exists in current directory (only as last resort)
             workspace_dir = os.path.join(current_dir, 'workspace')
             if os.path.exists(workspace_dir):
-                print_current(f"📁 Found workspace directory in current dir (fallback): {workspace_dir}")
+                # print_current(f"📁 Found workspace directory in current dir (fallback): {workspace_dir}")
                 return workspace_dir
 
             # Strategy 6: Create workspace directory in current directory if nothing else works
             try:
                 os.makedirs(workspace_dir, exist_ok=True)
-                print_current(f"📁 Created workspace directory (fallback): {workspace_dir}")
+                # print_current(f"📁 Created workspace directory (fallback): {workspace_dir}")
             except Exception as e:
-                print_current(f"⚠️ Could not create workspace directory: {e}")
+                # print_current(f"⚠️ Could not create workspace directory: {e}")
                 # Fallback to current directory
                 workspace_dir = current_dir
-                print_current(f"📁 Using current directory as workspace (final fallback): {workspace_dir}")
+                # print_current(f"📁 Using current directory as workspace (final fallback): {workspace_dir}")
 
             return workspace_dir
 
@@ -215,6 +215,7 @@ class FastMcpWrapper:
     async def initialize(self) -> bool:
         """Initialize MCP client with persistent server manager"""
         if not FASTMCP_AVAILABLE:
+            print_current("❌ FastMCP not available")
             return False
             
         try:
@@ -225,51 +226,48 @@ class FastMcpWrapper:
             await self._load_config()
             
             # Discover tools from running servers
-            await self._discover_tools_from_servers()
+            if self.server_manager:
+                # Use server manager if available
+                await self._discover_tools_from_servers()
+            else:
+                # Fall back to standalone mode if no server manager
+                print_current("⚠️ No server manager available, using standalone tool discovery")
+                await self._discover_tools_standalone()
             
             # Start health monitoring for subprocess management
             self._start_health_monitoring()
 
             self.initialized = True
+            # print_current(f"✅ FastMCP initialization completed successfully with {len(self.available_tools)} tools")
             logger.info(f"FastMCP client initialized, discovered {len(self.available_tools)} tools")
+            
+            # Register wrapper to agent context if available
+            try:
+                from .agent_context import get_current_agent_id, set_agent_fastmcp_wrapper
+                current_agent_id = get_current_agent_id()
+                if current_agent_id:
+                    set_agent_fastmcp_wrapper(current_agent_id, self)
+            except Exception as e:
+                # Silently ignore agent context errors
+                pass
+            
             return True
             
         except Exception as e:
+            # print_current(f"❌ FastMCP initialization failed: {e}")
             logger.error(f"FastMCP client initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _initialize_shared_loop(self):
         """Initialize shared event loop for all servers (all are treated as stateful)"""
         with self._loop_lock:
-            if self._shared_loop is None or self._shared_loop.is_closed():
-                def run_shared_loop():
-                    """Run the shared event loop in a separate thread"""
-                    self._shared_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(self._shared_loop)
-                    try:
-                        self._shared_loop.run_forever()
-                    except Exception as e:
-                        print_current(f"⚠️ Shared event loop error: {e}")
-                    finally:
-                        self._shared_loop.close()
-                
-                self._shared_thread = threading.Thread(target=run_shared_loop, daemon=True)
+            if not self._shared_loop or self._shared_loop.is_closed():
+                self._shared_loop = asyncio.new_event_loop()
+                self._shared_thread = threading.Thread(target=self._run_shared_loop, daemon=True)
                 self._shared_thread.start()
-                
-                # Wait for loop to be ready
-                import time
-                timeout = 5.0
-                start_time = time.time()
-                while self._shared_loop is None and (time.time() - start_time) < timeout:
-                    time.sleep(0.01)
-                
-                # Give a bit more time for the loop to start
-                time.sleep(0.1)
-                
-                if self._shared_loop:
-                    print_current("🔄 Shared event loop initialized for all servers")
-                else:
-                    print_current("⚠️ Failed to initialize shared event loop")
+                # print_current("🔄 Shared event loop initialized for all servers")
 
     def _get_server_tool_info(self, tool_name: str) -> tuple:
         """Get server name and original tool name for a tool"""
@@ -292,7 +290,7 @@ class FastMcpWrapper:
             import time
             self._server_processes[server_name]['tracked_at'] = time.time()
 
-            print_current(f"📋 Tracking subprocess for server: {server_name} (PID: {process_info.get('pid', 'unknown')})")
+            # print_current(f"📋 Tracking subprocess for server: {server_name} (PID: {process_info.get('pid', 'unknown')})")
 
     def _force_kill_processes(self):
         """Force kill all tracked subprocesses"""
@@ -311,7 +309,7 @@ class FastMcpWrapper:
                     try:
                         process.kill()
                         killed_count += 1
-                        print_current(f"💀 Force killed process: {pid}")
+                        # print_current(f"💀 Force killed process: {pid}")
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -320,7 +318,8 @@ class FastMcpWrapper:
                     self._tracked_processes.discard(pid)
 
             if killed_count > 0:
-                print_current(f"💀 Force killed {killed_count} subprocess(es)")
+                # print_current(f"💀 Force killed {killed_count} subprocess(es)")
+                pass
 
     def _start_health_monitoring(self):
         """Start background health monitoring"""
@@ -335,7 +334,7 @@ class FastMcpWrapper:
                 name="FastMCP-HealthMonitor"
             )
             self._health_check_thread.start()
-            print_current("🏥 Started subprocess health monitoring")
+            # print_current("🏥 Started subprocess health monitoring")
 
     def _stop_health_monitoring(self):
         """Stop background health monitoring"""
@@ -355,7 +354,8 @@ class FastMcpWrapper:
                     self._perform_health_check()
                     self._last_health_check = current_time
             except Exception as e:
-                print_current(f"⚠️ Health check error: {e}")
+                # print_current(f"⚠️ Health check error: {e}")
+                pass
 
             time.sleep(10)  # Check every 10 seconds
 
@@ -373,14 +373,14 @@ class FastMcpWrapper:
                     process = psutil.Process(pid)
                     if not process.is_running():
                         dead_processes.append(pid)
-                        print_current(f"⚠️ Detected dead process: {pid}")
+                        # print_current(f"⚠️ Detected dead process: {pid}")
                     elif hasattr(process, 'status') and process.status() in [psutil.STATUS_ZOMBIE]:
                         dead_processes.append(pid)
-                        print_current(f"👻 Detected zombie process: {pid}")
+                        # print_current(f"👻 Detected zombie process: {pid}")
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     dead_processes.append(pid)
                 except Exception as e:
-                    print_current(f"⚠️ Error checking process {pid}: {e}")
+                    # print_current(f"⚠️ Error checking process {pid}: {e}")
                     dead_processes.append(pid)
 
             # Clean up dead processes
@@ -402,7 +402,7 @@ class FastMcpWrapper:
                             process = psutil.Process(process_info['pid'])
                             process.terminate()
                             process.wait(timeout=5)
-                            print_current(f"🧹 Cleaned up old temporary process: {server_name}")
+                            # print_current(f"🧹 Cleaned up old temporary process: {server_name}")
                         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
                             pass
                     del self._server_processes[server_name]
@@ -418,11 +418,12 @@ class FastMcpWrapper:
                         process = psutil.Process(pid)
                         # Send SIGTERM first
                         process.terminate()
-                        print_current(f"🛑 Sent SIGTERM to server process: {server_name} (PID: {pid})")
+                        # print_current(f"🛑 Sent SIGTERM to server process: {server_name} (PID: {pid})")
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
                 except Exception as e:
-                    print_current(f"⚠️ Error terminating server process {server_name}: {e}")
+                    # print_current(f"⚠️ Error terminating server process {server_name}: {e}")
+                    pass
 
             # Wait a bit for graceful shutdown
             import time
@@ -437,22 +438,24 @@ class FastMcpWrapper:
 
     async def cleanup_persistent_clients(self):
         """Clean up all persistent MCP clients"""
-        print_current("🔄 Starting comprehensive cleanup of MCP clients and processes...")
+        # print_current("🔄 Starting comprehensive cleanup of MCP clients and processes...")
 
         # First clean up server processes (most critical)
         try:
             self._cleanup_server_processes()
         except Exception as e:
-            print_current(f"⚠️ Error during process cleanup: {e}")
+            # print_current(f"⚠️ Error during process cleanup: {e}")
+            pass
 
         # Then clean up persistent clients
         for server_name, client_info in list(self._persistent_clients.items()):
             try:
                 if client_info['entered']:
                     await client_info['client'].__aexit__(None, None, None)
-                    print_current(f"🧹 Cleaned up persistent client for server: {server_name}")
+                    # print_current(f"🧹 Cleaned up persistent client for server: {server_name}")
             except Exception as e:
-                print_current(f"⚠️ Error cleaning up client for {server_name}: {e}")
+                # print_current(f"⚠️ Error cleaning up client for {server_name}: {e}")
+                pass
         self._persistent_clients.clear()
 
         # Clean up shared loop
@@ -462,7 +465,7 @@ class FastMcpWrapper:
                 if self._shared_thread and self._shared_thread.is_alive():
                     self._shared_thread.join(timeout=2.0)
 
-        print_current("✅ Comprehensive cleanup completed")
+        # print_current("✅ Comprehensive cleanup completed")
     
     def __del__(self):
         """Destructor to ensure cleanup"""
@@ -502,7 +505,7 @@ class FastMcpWrapper:
         """Load configuration file"""
         try:
             if not os.path.exists(self.config_path):
-                print_current(f"⚠️ MCP config file not found: {self.config_path}")
+                # print_current(f"⚠️ MCP config file not found: {self.config_path}")
                 return
             
             with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -515,15 +518,12 @@ class FastMcpWrapper:
             for server_name, server_config in all_servers.items():
                 # Skip SSE servers
                 if server_config.get("url") and "sse" in server_config.get("url", "").lower():
-                    print_current(f"⏭️  Skipping SSE server {server_name}")
+                    # print_current(f"⏭️  Skipping SSE server {server_name}")
                     continue
                 
                 # Only handle servers with command field
                 if server_config.get("command"):
                     self.servers[server_name] = server_config
-                    print_current(f"📋 Loading server: {server_name}")
-                else:
-                    print_current(f"⏭️  Skipping server without command: {server_name}")
             
             # Set default values
             for server_name, server_config in self.servers.items():
@@ -532,10 +532,10 @@ class FastMcpWrapper:
                 if "timeout" not in server_config:
                     server_config["timeout"] = 30
             
-            print_current(f"📊 Loaded configuration for {len(self.servers)} servers")
+
             
         except Exception as e:
-            print_current(f"❌ Failed to load config file: {e}")
+            # print_current(f"❌ Failed to load config file: {e}")
             raise
     
     async def _discover_tools_from_servers(self):
@@ -543,7 +543,7 @@ class FastMcpWrapper:
         self.available_tools = {}
         
         if not self.server_manager:
-            print_current("⚠️ No server manager available for tool discovery")
+            # print_current("⚠️ No server manager available for tool discovery")
             return
         
         # Try to discover tools from each enabled server
@@ -553,11 +553,13 @@ class FastMcpWrapper:
                     discovered_tools = await self._discover_tools_from_server(server_name)
                     if discovered_tools:
                         self.available_tools.update(discovered_tools)
-                        print_current(f"✅ Discovered {len(discovered_tools)} tools from {server_name}")
+                        # print_current(f"✅ Discovered {len(discovered_tools)} tools from {server_name}")
                     else:
-                        print_current(f"⚠️ No tools discovered from {server_name}")
+                        # print_current(f"⚠️ No tools discovered from {server_name}")
+                        pass
                 except Exception as e:
-                    print_current(f"❌ Failed to discover tools from {server_name}: {e}")
+                    # print_current(f"❌ Failed to discover tools from {server_name}: {e}")
+                    pass
         
         logger.info(f"Tool discovery completed: {len(self.available_tools)} tools total")
     
@@ -565,7 +567,7 @@ class FastMcpWrapper:
         """Discover tools from all configured servers without server manager (standalone mode)"""
         self.available_tools = {}
         
-        print_current("🔍 Starting standalone tool discovery for FastMCP servers")
+        # print_current("🔍 Starting standalone tool discovery for FastMCP servers")
         
         # Try to discover tools from each enabled server
         for server_name in self.servers.keys():
@@ -574,11 +576,14 @@ class FastMcpWrapper:
                     discovered_tools = await self._discover_tools_from_server_standalone(server_name)
                     if discovered_tools:
                         self.available_tools.update(discovered_tools)
-                        print_current(f"✅ Discovered {len(discovered_tools)} tools from {server_name}")
+                        # print_current(f"✅ Discovered {len(discovered_tools)} tools from {server_name}")
                     else:
-                        print_current(f"⚠️ No tools discovered from {server_name}")
+                        # print_current(f"⚠️ No tools discovered from {server_name}")
+                        pass
                 except Exception as e:
-                    print_current(f"❌ Failed to discover tools from {server_name}: {e}")
+                    # print_current(f"❌ Failed to discover tools from {server_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
         
         logger.info(f"Standalone tool discovery completed: {len(self.available_tools)} tools total")
     
@@ -587,13 +592,13 @@ class FastMcpWrapper:
         try:
             # Check if server is ready
             if not await self.server_manager.is_server_ready(server_name):
-                print_current(f"⚠️ Server {server_name} is not ready")
+                # print_current(f"⚠️ Server {server_name} is not ready")
                 return {}
             
             return await self._discover_tools_from_server_standalone(server_name)
                 
         except Exception as e:
-            print_current(f"⚠️ Failed to discover tools from {server_name}: {e}")
+            # print_current(f"⚠️ Failed to discover tools from {server_name}: {e}")
             return {}
     
     async def _discover_tools_from_server_standalone(self, server_name: str) -> Dict[str, Dict[str, Any]]:
@@ -606,7 +611,7 @@ class FastMcpWrapper:
             if not command:
                 return {}
             
-            print_current(f"🔍 Discovering tools from {server_name}")
+            # print_current(f"🔍 Discovering tools from {server_name}")
             
             # Create temporary FastMCP client to query the server
             from fastmcp import Client
@@ -622,12 +627,34 @@ class FastMcpWrapper:
             # Add workspace directory (cwd - current working directory for subprocess)
             if self._workspace_dir and os.path.exists(self._workspace_dir):
                 server_config_for_fastmcp["cwd"] = self._workspace_dir
-                print_current(f"📂 Setting MCP server workspace: {self._workspace_dir}")
 
             # Add environment variables if they exist
             env_vars = server_config.get("env", {})
-            if env_vars:
-                server_config_for_fastmcp["env"] = env_vars
+
+            # Auto-detect relevant environment variables
+            # Look for all environment variables that contain API_KEY, TOKEN, SECRET, or KEY
+            auto_env_vars = {}
+            server_name_lower = server_name.lower()
+
+            # Look for common API-related environment variables
+            api_related_patterns = ['API_KEY', 'TOKEN', 'SECRET', 'KEY']
+
+            for env_var in os.environ:
+                env_var_upper = env_var.upper()
+                # If environment variable contains any of the API-related patterns
+                for pattern in api_related_patterns:
+                    if pattern in env_var_upper:
+                        auto_env_vars[env_var] = os.environ[env_var]
+                        break
+
+                # Also include environment variables that contain the server name
+                if server_name_lower in env_var.lower():
+                    auto_env_vars[env_var] = os.environ[env_var]
+
+            # Merge config env vars with auto-detected vars
+            if env_vars or auto_env_vars:
+                final_env_vars = {**auto_env_vars, **env_vars}
+                server_config_for_fastmcp["env"] = final_env_vars
             
             mcp_config = MCPConfig(
                 mcpServers={
@@ -641,18 +668,18 @@ class FastMcpWrapper:
             stderr_buffer = io.StringIO()
 
             try:
-                # 创建一个更安静的环境来隐藏FastMCP logo
-                # 保存原始的stderr
+
                 original_stderr = os.dup(2)
 
-                # 创建临时文件来重定向stderr
+                # write logo to file
                 with tempfile.NamedTemporaryFile(mode='w', delete=True) as temp_file:
-                    # 重定向stderr到临时文件
+
                     os.dup2(temp_file.fileno(), 2)
 
                     try:
                         # Add timeout to prevent hanging (Python 3.10 compatible)
                         async with Client(mcp_config) as client:
+                            
                             # Track subprocess for tool discovery (temporary client)
                             try:
                                 if hasattr(client, '_process') and client._process:
@@ -682,11 +709,12 @@ class FastMcpWrapper:
                             # Use asyncio.wait_for for Python 3.10 compatibility
                             tools = await asyncio.wait_for(client.list_tools(), timeout=10)
                     finally:
-                        # 恢复原始的stderr
+
                         os.dup2(original_stderr, 2)
                         os.close(original_stderr)
                 
                 discovered_tools = {}
+                
                 for tool in tools:
                     tool_name = f"{server_name}_{tool.name}"
                     
@@ -708,10 +736,14 @@ class FastMcpWrapper:
                 return {}
             except Exception as e:
                 print_current(f"⚠️ Tool discovery error for {server_name}: {e}")
+                import traceback
+                traceback.print_exc()
                 return {}
                 
         except Exception as e:
             print_current(f"⚠️ Failed to discover tools from {server_name}: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
     def _convert_tool_schema(self, input_schema: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -770,12 +802,34 @@ class FastMcpWrapper:
                 # Add workspace directory (cwd - current working directory for subprocess)
                 if self._workspace_dir and os.path.exists(self._workspace_dir):
                     server_config_for_fastmcp["cwd"] = self._workspace_dir
-                    print_current(f"📂 Setting MCP server workspace: {self._workspace_dir}")
 
                 # Add environment variables if they exist
                 env_vars = server_config.get("env", {})
-                if env_vars:
-                    server_config_for_fastmcp["env"] = env_vars
+
+                # Auto-detect relevant environment variables
+                # Look for all environment variables that contain API_KEY, TOKEN, SECRET, or KEY
+                auto_env_vars = {}
+                server_name_lower = server_name.lower()
+
+                # Look for common API-related environment variables
+                api_related_patterns = ['API_KEY', 'TOKEN', 'SECRET', 'KEY']
+
+                for env_var in os.environ:
+                    env_var_upper = env_var.upper()
+                    # If environment variable contains any of the API-related patterns
+                    for pattern in api_related_patterns:
+                        if pattern in env_var_upper:
+                            auto_env_vars[env_var] = os.environ[env_var]
+                            break
+
+                    # Also include environment variables that contain the server name
+                    if server_name_lower in env_var.lower():
+                        auto_env_vars[env_var] = os.environ[env_var]
+
+                # Merge config env vars with auto-detected vars
+                if env_vars or auto_env_vars:
+                    final_env_vars = {**auto_env_vars, **env_vars}
+                    server_config_for_fastmcp["env"] = final_env_vars
                 
                 mcp_config = MCPConfig(
                     mcpServers={
@@ -816,12 +870,13 @@ class FastMcpWrapper:
                                 }
                                 self._track_subprocess(server_name, process_info)
                     except Exception as track_error:
-                        print_current(f"⚠️ Could not track subprocess for {server_name}: {track_error}")
+                        # print_current(f"⚠️ Could not track subprocess for {server_name}: {track_error}")
+                        pass
 
-                    print_current(f"🔗 Created and connected persistent MCP client for server: {server_name}")
+                    # print_current(f"🔗 Created and connected persistent MCP client for server: {server_name}")
                 except Exception as e:
-                    print_current(f"❌ Failed to connect persistent client for {server_name}: {e}")
-                    return {"status": "failed", "error": f"Failed to connect to server {server_name}: {e}"}
+                    # print_current(f"❌ Failed to connect persistent client for {server_name}: {e}")
+                    pass
             
             client_info = self._persistent_clients[server_name]
             client = client_info['client']
@@ -845,7 +900,7 @@ class FastMcpWrapper:
                                 timeout=300
                             )
                             
-                            print_current(f"✅ Tool call successful on persistent connection: {tool_name}")
+                            # print_current(f"✅ Tool call successful on persistent connection: {tool_name}")
                             return {
                                 "status": "success",
                                 "result": tool_result
@@ -854,7 +909,7 @@ class FastMcpWrapper:
                             # If the call fails due to connection issues, try to reconnect
                             error_str = str(call_error).lower()
                             if "not connected" in error_str or "connection" in error_str:
-                                print_current(f"🔄 Reconnecting client for {server_name} due to connection issue")
+                                # print_current(f"🔄 Reconnecting client for {server_name} due to connection issue")
                                 # Clean up the old client
                                 try:
                                     await client.__aexit__(None, None, None)
@@ -876,8 +931,31 @@ class FastMcpWrapper:
                                     server_config_for_new_client["cwd"] = self._workspace_dir
 
                                 env_vars = server_config.get("env", {})
-                                if env_vars:
-                                    server_config_for_new_client["env"] = env_vars
+
+                                # Auto-detect relevant environment variables
+                                # Look for all environment variables that contain API_KEY, TOKEN, SECRET, or KEY
+                                auto_env_vars = {}
+                                server_name_lower = server_name.lower()
+
+                                # Look for common API-related environment variables
+                                api_related_patterns = ['API_KEY', 'TOKEN', 'SECRET', 'KEY']
+
+                                for env_var in os.environ:
+                                    env_var_upper = env_var.upper()
+                                    # If environment variable contains any of the API-related patterns
+                                    for pattern in api_related_patterns:
+                                        if pattern in env_var_upper:
+                                            auto_env_vars[env_var] = os.environ[env_var]
+                                            break
+
+                                    # Also include environment variables that contain the server name
+                                    if server_name_lower in env_var.lower():
+                                        auto_env_vars[env_var] = os.environ[env_var]
+
+                                # Merge config env vars with auto-detected vars
+                                if env_vars or auto_env_vars:
+                                    final_env_vars = {**auto_env_vars, **env_vars}
+                                    server_config_for_new_client["env"] = final_env_vars
                                 
                                 mcp_config = MCPConfig(
                                     mcpServers={
@@ -913,7 +991,8 @@ class FastMcpWrapper:
                                             }
                                             self._track_subprocess(server_name, process_info)
                                 except Exception as track_error:
-                                    print_current(f"⚠️ Could not track subprocess for reconnected {server_name}: {track_error}")
+                                    # print_current(f"⚠️ Could not track subprocess for reconnected {server_name}: {track_error}")
+                                    pass
                                 
                                 # Retry the tool call with new client
                                 tool_result = await asyncio.wait_for(
@@ -921,7 +1000,7 @@ class FastMcpWrapper:
                                     timeout=300
                                 )
                                 
-                                print_current(f"✅ Tool call successful after reconnection: {tool_name}")
+                                # print_current(f"✅ Tool call successful after reconnection: {tool_name}")
                                 return {
                                     "status": "success",
                                     "result": tool_result
@@ -935,14 +1014,14 @@ class FastMcpWrapper:
                         os.close(original_stderr)
                         
             except asyncio.TimeoutError:
-                print_current(f"⏰ Tool call timeout for {tool_name} (300s)")
+                # print_current(f"⏰ Tool call timeout for {tool_name} (300s)")
                 return {"status": "failed", "error": f"Tool call timeout for {tool_name}"}
             except Exception as e:
-                print_current(f"❌ Tool call error for {tool_name}: {e}")
+                # print_current(f"❌ Tool call error for {tool_name}: {e}")
                 # All servers are treated as stateful - be careful about connection cleanup
                 error_str = str(e).lower()
                 if "not connected" in error_str or "connection" in error_str or "broken pipe" in error_str:
-                    print_current(f"⚠️ Connection error on server {server_name}, will attempt automatic reconnection")
+                    # print_current(f"⚠️ Connection error on server {server_name}, will attempt automatic reconnection")
                     # For all servers, attempt reconnection to preserve state
                     if server_name in self._persistent_clients:
                         try:
@@ -953,11 +1032,12 @@ class FastMcpWrapper:
                             del self._persistent_clients[server_name]
                             
                             # Attempt immediate reconnection for all servers
-                            print_current(f"🔄 Attempting immediate reconnection for server {server_name}")
+                            # print_current(f"🔄 Attempting immediate reconnection for server {server_name}")
                             # This will be handled by the reconnection logic in the next call
                             
                         except Exception as cleanup_e:
-                            print_current(f"⚠️ Error during server cleanup: {cleanup_e}")
+                            # print_current(f"⚠️ Error during server cleanup: {cleanup_e}")
+                            pass
                 
                 return {"status": "failed", "error": f"Tool call error: {e}"}
                 
@@ -990,15 +1070,15 @@ class FastMcpWrapper:
                 if not await self.server_manager.is_server_ready(server_name):
                     raise Exception(f"Server {server_name} is not ready")
 
-                print_current(f"🚀 Calling tool: {tool_name} on persistent server: {server_name}")
+                # print_current(f"🚀 Calling tool: {tool_name} on persistent server: {server_name}")
                 result = await self.server_manager.call_server_tool(server_name, original_tool_name, arguments)
             else:
                 # Fallback to standalone mode without server manager
-                print_current(f"🚀 Calling tool: {tool_name} in standalone mode")
+                # print_current(f"🚀 Calling tool: {tool_name} in standalone mode")
                 result = await self._call_tool_standalone(server_name, original_tool_name, arguments)
             
             if result.get("status") == "success":
-                print_current(f"✅ Persistent server call successful: {tool_name}")
+                # print_current(f"✅ Persistent server call successful: {tool_name}")
                 return {
                     "status": "success",
                     "result": self._format_tool_result(result.get("result")),
@@ -1011,7 +1091,7 @@ class FastMcpWrapper:
                     
         except Exception as e:
             error_msg = str(e)
-            print_current(f"❌ Tool call failed for {tool_name}: {error_msg}")
+            # print_current(f"❌ Tool call failed for {tool_name}: {error_msg}")
             return {
                 "status": "failed",
                 "error": error_msg,
@@ -1173,14 +1253,14 @@ class FastMcpWrapper:
                 
                 # Wait for loop to be ready
                 if loop_ready.wait(timeout=5.0):
-                    print_current("🔄 Shared event loop re-initialized for all servers")
+                    # print_current("🔄 Shared event loop re-initialized for all servers")
                     return True
                 else:
-                    print_current("⚠️ Failed to initialize shared event loop (timeout)")
+                    # print_current("⚠️ Failed to initialize shared event loop (timeout)")
                     return False
                     
             except Exception as e:
-                print_current(f"⚠️ Error initializing shared event loop: {e}")
+                # print_current(f"⚠️ Error initializing shared event loop: {e}")
                 return False
     
     def _format_tool_result(self, result) -> Any:
@@ -1324,7 +1404,7 @@ class FastMcpWrapper:
     async def cleanup(self):
         """Cleanup resources gracefully"""
         try:
-            print_current("🔄 Starting FastMCP client cleanup...")
+            # print_current("🔄 Starting FastMCP client cleanup...")
 
             # First, clear tool references to prevent new calls
             self.available_tools.clear()
@@ -1334,7 +1414,8 @@ class FastMcpWrapper:
             try:
                 self._cleanup_server_processes()
             except Exception as e:
-                print_current(f"⚠️ Error during process cleanup: {e}")
+                # print_current(f"⚠️ Error during process cleanup: {e}")
+                pass
 
             # If we have a server manager reference, let it know we're cleaning up
             if self.server_manager:
@@ -1343,7 +1424,8 @@ class FastMcpWrapper:
                     # We just need to clear our reference
                     self.server_manager = None
                 except Exception as e:
-                    print_current(f"⚠️ Error clearing server manager reference: {e}")
+                    # print_current(f"⚠️ Error clearing server manager reference: {e}")
+                    pass
 
                         # Stop health monitoring
             self._stop_health_monitoring()
@@ -1354,11 +1436,12 @@ class FastMcpWrapper:
             # Give a small delay to allow any pending operations to complete
             await asyncio.sleep(0.1)
 
-            print_current("🔌 FastMCP client cleaned up")
+            # print_current("🔌 FastMCP client cleaned up")
 
         except Exception as e:
-            print_current(f"⚠️ FastMCP cleanup error: {e}")
+            # print_current(f"⚠️ FastMCP cleanup error: {e}")
             # Continue with cleanup even if there are errors
+            pass
 
 
 # Global instance with thread safety
@@ -1371,10 +1454,51 @@ def get_fastmcp_wrapper(config_path: str = "config/mcp_servers.json", workspace_
     """Get FastMCP wrapper instance (thread-safe)"""
     global _fastmcp_wrapper, _fastmcp_config_path
 
+    # Try to get agent-specific wrapper first
+    try:
+        from .agent_context import get_current_agent_id, get_agent_fastmcp_wrapper
+        current_agent_id = get_current_agent_id()
+        
+        if current_agent_id:
+            agent_wrapper = get_agent_fastmcp_wrapper(current_agent_id)
+            if agent_wrapper and agent_wrapper.initialized:
+                return agent_wrapper
+    except Exception as e:
+        # Silently ignore agent context errors, fall back to global wrapper
+        pass
+
     with _fastmcp_lock:
-        if _fastmcp_wrapper is None or _fastmcp_config_path != config_path:
+        # For custom config paths (containing timestamps), we should reuse existing instances
+        # to avoid creating new instances for each run
+        is_custom_config = 'mcp_servers_custom_' in config_path
+        is_standard_config = config_path == "config/mcp_servers.json" or config_path.endswith("/config/mcp_servers.json")
+        
+        # Priority 1: If we have an initialized instance with tools, always try to reuse it first
+        # This ensures that even if config paths are different, we can reuse a working instance
+        if (_fastmcp_wrapper and _fastmcp_wrapper.initialized and 
+            hasattr(_fastmcp_wrapper, 'available_tools') and len(_fastmcp_wrapper.available_tools) > 0):
+            return _fastmcp_wrapper
+
+        # Check if we need to create a new instance
+        need_new_instance = False
+        
+        if _fastmcp_wrapper is None:
+            # No existing instance, create new one
+            need_new_instance = True
+        elif _fastmcp_config_path != config_path:
+            # Config path changed - this means a different agent with different config
+            # But if we have an initialized instance with tools, we can still reuse it
+            if (_fastmcp_wrapper and _fastmcp_wrapper.initialized and 
+                hasattr(_fastmcp_wrapper, 'available_tools') and len(_fastmcp_wrapper.available_tools) > 0):
+                return _fastmcp_wrapper
+            else:
+                # Create new instance for different config files
+                need_new_instance = True
+        
+        if need_new_instance:
             _fastmcp_wrapper = FastMcpWrapper(config_path, workspace_dir)
             _fastmcp_config_path = config_path
+        
         return _fastmcp_wrapper
 
 
@@ -1398,43 +1522,60 @@ async def initialize_fastmcp_with_server_manager(config_path: str = "config/mcp_
             if not result:
                 raise Exception("FastMCP wrapper initialization failed")
             
-            print_current(f"✅ FastMCP wrapper initialized with persistent server manager")
+            # print_current(f"✅ FastMCP wrapper initialized with persistent server manager")
             yield wrapper
             
         finally:
             # Clean up
             wrapper.server_manager = None
-            print_current("🔄 FastMCP wrapper context exiting...")
+            # print_current("🔄 FastMCP wrapper context exiting...")
 
 
 async def initialize_fastmcp_wrapper(config_path: str = "config/mcp_servers.json", workspace_dir: Optional[str] = None) -> bool:
     """Initialize FastMCP wrapper (backward compatibility)"""
-    global _fastmcp_wrapper
+    global _fastmcp_wrapper, _fastmcp_config_path
 
     try:
         # Create wrapper instance
         with _fastmcp_lock:
             wrapper = get_fastmcp_wrapper(config_path, workspace_dir)
+            # Ensure global variables are updated
+            _fastmcp_wrapper = wrapper
+            _fastmcp_config_path = config_path
         
         # For backward compatibility, we'll initialize without server manager first
         # This allows basic functionality without requiring the full server manager context
         if not wrapper.initialized:
             # Load configuration
             await wrapper._load_config()
-            
+
             # Try to discover tools using standalone tool discovery (without server manager)
             try:
                 await wrapper._discover_tools_standalone()
-                print_current(f"✅ FastMCP wrapper initialized with {len(wrapper.available_tools)} tools discovered")
+                # print_current(f"✅ FastMCP wrapper initialized with {len(wrapper.available_tools)} tools discovered")
             except Exception as tool_discovery_error:
-                print_current(f"⚠️ FastMCP wrapper basic initialization completed, tool discovery will retry later: {tool_discovery_error}")
-            
+                # print_current(f"⚠️ FastMCP wrapper basic initialization completed, tool discovery will retry later: {tool_discovery_error}")
+                pass
+
             # Mark as initialized
             wrapper.initialized = True
+        
+        # Register wrapper to agent context if available
+        try:
+            from .agent_context import get_current_agent_id, set_agent_fastmcp_wrapper
+            current_agent_id = get_current_agent_id()
+            if current_agent_id and wrapper.initialized:
+                set_agent_fastmcp_wrapper(current_agent_id, wrapper)
+        except Exception as e:
+            # Silently ignore agent context errors
+            pass
         
         return True
     except Exception as e:
         logger.error(f"FastMCP wrapper initialization failed: {e}")
+        # print_current(f"❌ FastMCP wrapper initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -1559,7 +1700,7 @@ def _signal_cleanup(signum=None, frame=None):
         except:
             signal_name = str(signum)
 
-    print_current(f"🛑 Received signal {signal_name}, performing emergency cleanup...")
+    # print_current(f"🛑 Received signal {signal_name}, performing emergency cleanup...")
 
     try:
         # Force kill all tracked processes first (most critical)
@@ -1568,12 +1709,14 @@ def _signal_cleanup(signum=None, frame=None):
             try:
                 _fastmcp_wrapper._force_kill_processes()
             except Exception as e:
-                print_current(f"⚠️ Signal cleanup process kill failed: {e}")
+                # print_current(f"⚠️ Signal cleanup process kill failed: {e}")
+                pass
 
         # Then perform normal cleanup
         safe_cleanup_fastmcp_wrapper()
     except Exception as e:
-        print_current(f"⚠️ Signal cleanup failed: {e}")
+        # print_current(f"⚠️ Signal cleanup failed: {e}")
+        pass
 
     # Re-raise the signal to allow normal exit behavior
     if signum:
@@ -1614,35 +1757,35 @@ _register_signal_handlers()
 # Test function for FastMCP wrapper
 async def test_fastmcp_wrapper():
     """Test FastMCP wrapper functionality"""
-    print_current("🧪 Starting FastMCP wrapper test...")
+    # print_current("🧪 Starting FastMCP wrapper test...")
     
     config_path = "config/mcp_servers.json"
     
     # Test with server manager
     async with initialize_fastmcp_with_server_manager(config_path) as wrapper:
         # Test status
-        print_current("📊 Testing status...")
+        # print_current("📊 Testing status...")
         status = wrapper.get_status()
-        print_current(f"Status: {json.dumps(status, indent=2)}")
+        # print_current(f"Status: {json.dumps(status, indent=2)}")
         
         # Test available tools
-        print_current("🔧 Testing available tools...")
+        # print_current("🔧 Testing available tools...")
         tools = wrapper.get_available_tools()
-        print_current(f"Available tools: {tools}")
+        # print_current(f"Available tools: {tools}")
         
         if tools:
             # Test tool info
             first_tool = tools[0]
-            print_current(f"📋 Testing tool info for: {first_tool}")
+            # print_current(f"📋 Testing tool info for: {first_tool}")
             tool_info = wrapper.get_tool_info(first_tool)
-            print_current(f"Tool info: {json.dumps(tool_info, indent=2)}")
+            # print_current(f"Tool info: {json.dumps(tool_info, indent=2)}")
             
             # Test tool definition
-            print_current(f"📝 Testing tool definition for: {first_tool}")
-            tool_def = wrapper.get_tool_definition(first_tool)
-            print_current(f"Tool definition: {json.dumps(tool_def, indent=2)}")
+            # print_current(f"📝 Testing tool definition for: {first_tool}")
+            tool_def = wrapper.get_tool_info(first_tool)
+            # print_current(f"Tool definition: {json.dumps(tool_def, indent=2)}")
     
-    print_current("✅ FastMCP wrapper test completed!")
+    # print_current("✅ FastMCP wrapper test completed!")
 
 
 def test_fastmcp_wrapper_sync():
