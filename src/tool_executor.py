@@ -125,9 +125,9 @@ def get_anthropic_client():
 
 
 class ToolExecutor:
-    def __init__(self, api_key: Optional[str] = None, 
-                 model: Optional[str] = None, 
-                 api_base: Optional[str] = None, 
+    def __init__(self, api_key: Optional[str] = None,
+                 model: Optional[str] = None,
+                 api_base: Optional[str] = None,
                  workspace_dir: Optional[str] = None,
                  debug_mode: bool = False,
                  logs_dir: str = "logs",
@@ -139,7 +139,7 @@ class ToolExecutor:
                  user_id: Optional[str] = None):
         """
         Initialize the ToolExecutor
-        
+
         Args:
             api_key: API key for LLM service
             model: Model name to use
@@ -494,6 +494,8 @@ class ToolExecutor:
         if self.cli_mcp_initialized or self.direct_mcp_initialized:
             self._add_mcp_tools_to_map()
             #print_current(f"🔧 MCP tools loaded successfully during startup")
+        else:
+            pass  # Neither MCP client initialized
         
         # Log related settings
         # Only create logs directory if we have a valid workspace_dir
@@ -626,17 +628,19 @@ class ToolExecutor:
             
             # Directly get the FastMCP wrapper, do not rely on is_fastmcp_initialized()
             try:
-                fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
-                
+                # Use the same config file that was used for initialization
+                fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     # Get FastMCP tools
                     fastmcp_tools = fastmcp_wrapper.get_available_tools()
-                    
+
                     if fastmcp_tools:
                         # Get the server names handled by FastMCP
                         if hasattr(fastmcp_wrapper, 'servers'):
                             fastmcp_server_names = list(fastmcp_wrapper.servers.keys())
+                        
                         for tool_name in fastmcp_tools:
+                            
                             # Create a wrapper function for each FastMCP tool
                             def create_fastmcp_tool_wrapper(tool_name=tool_name, wrapper=fastmcp_wrapper):
                                 def sync_fastmcp_tool_wrapper(**kwargs):
@@ -3280,7 +3284,7 @@ class ToolExecutor:
                 try:
                     from tools.fastmcp_wrapper import get_fastmcp_wrapper
 
-                    fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
+                    fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
                     if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                         # Get tool definition from FastMCP wrapper
                         fastmcp_tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
@@ -4262,7 +4266,7 @@ class ToolExecutor:
             try:
                 from tools.fastmcp_wrapper import get_fastmcp_wrapper
 
-                fastmcp_wrapper = get_fastmcp_wrapper(workspace_dir=self.workspace_dir)
+                fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     fastmcp_tools = fastmcp_wrapper.get_available_tools()
                     if fastmcp_tools:

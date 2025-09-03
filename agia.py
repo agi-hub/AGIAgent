@@ -245,7 +245,7 @@ def global_cleanup():
 
 def signal_handler(signum, frame):
     """Handle interrupt signals"""
-    print_current(f"\n⚠️ Signal received {signum}，正在清理...")
+    print_current(f"\n⚠️ Signal received {signum}, cleaning up...")
     global_cleanup()
     sys.exit(1)
 

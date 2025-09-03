@@ -116,7 +116,6 @@
             startup: {
                 ready() {
                     MathJax.startup.defaultReady();
-                    console.log('✅ MathJax loaded successfully from CDN');
                     window.mathJaxAvailable = true;
                 }
             }
@@ -187,12 +186,10 @@
             if (window.mathJaxAvailable && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
                 // 使用MathJax渲染
                 return MathJax.typesetPromise([element]).catch(function (err) {
-                    console.warn('❌ MathJax rendering failed, using fallback:', err);
                     fallbackMathRendering(element);
                 });
             } else {
                 // 使用fallback渲染
-                console.log('📝 Using fallback math rendering (MathJax unavailable)');
                 fallbackMathRendering(element);
                 return Promise.resolve();
             }
@@ -202,7 +199,6 @@
         function checkMathJaxStatus() {
             setTimeout(function() {
                 if (!window.mathJaxAvailable && window.mathJaxLoadAttempted) {
-                    console.warn('⚠️ MathJax failed to load from CDN, fallback mode activated');
                     // 静默处理，不显示用户提示
                 }
             }, 3000); // 3秒后检查
@@ -212,7 +208,7 @@
     <!-- 尝试加载MathJax CDN -->
     <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mtml-chtml.js" 
             onload="window.mathJaxLoadAttempted = true; checkMathJaxStatus();"
-            onerror="window.mathJaxLoadAttempted = true; console.error('❌ Failed to load MathJax from primary CDN'); checkMathJaxStatus();"></script>
+            onerror="window.mathJaxLoadAttempted = true; checkMathJaxStatus();"></script>
     <style>
         * {
             margin: 0;
@@ -2066,10 +2062,10 @@
             background-color: #2d2d2d;
             border-radius: 3px;
             padding: 2px 4px;
-            font-size: inherit !important;
+            font-size: 14px !important;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             color: #ffffff !important;
-            font-weight: 500 !important;
+            font-weight: normal !important;
         }
 
         #markdownPreview hr {
@@ -2104,8 +2100,8 @@
             padding: 0;
             border-radius: 0;
             color: #ffffff !important;
-            font-size: inherit !important;
-            font-weight: 500 !important;
+            font-size: 14px !important;
+            font-weight: normal !important;
         }
 
         /* 覆盖Prism.js语法高亮颜色，适配深色主题 */
@@ -2160,6 +2156,48 @@
         #markdownPreview .token.important,
         #markdownPreview .token.variable {
             color: #9cdcfe !important;
+        }
+
+        /* Configuration options responsive layout */
+        .config-options .config-option {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        /* Mobile responsive configuration options */
+        @media (max-width: 768px) {
+            .config-options .config-option {
+                flex-basis: 100%;
+                margin-bottom: 8px;
+            }
+
+            .config-options {
+                flex-direction: column;
+                gap: 6px;
+            }
+        }
+
+        /* Tablet configuration options */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .config-options .config-option {
+                flex-basis: calc(33.333% - 5px);
+                min-width: 120px;
+            }
+        }
+
+        /* MCP server options styling */
+        .mcp-option {
+            transition: all 0.2s ease;
+        }
+
+        .mcp-option:hover {
+            background: #3e3e42 !important;
+            border-color: #569cd6 !important;
+        }
+
+        .mcp-option input[type="checkbox"]:checked + span {
+            color: #569cd6;
+            font-weight: 500;
         }
     </style>
 </head>
@@ -2286,32 +2324,47 @@
                         <i class="fas fa-cog"></i>
                         <span>{{ i18n.get('config_options', '配置选项' if lang == 'zh' else 'Configuration Options') }}</span>
                     </div>
-                    <div class="config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85em;">
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                    <div class="config-options" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85em; justify-content: flex-start;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableKnowledgeBase" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_knowledge_base', '搜索知识库' if lang == 'zh' else 'Knowledge Base') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
                             <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableMCP" style="margin: 0;">
                             <span>{{ i18n.get('enable_mcp', '启动MCP' if lang == 'zh' else 'Enable MCP') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableJieba" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
                         </label>
+                    </div>
 
+                    <!-- MCP Server Selection (moved below all config options) -->
+                    <div id="mcpServerSelection" style="display: none; margin-top: 12px; padding: 8px; background: #1e1e1e; border-radius: 6px; border: 1px solid #3e3e42;">
+                        <label style="color: #cccccc; font-size: 0.9em; margin-bottom: 6px; display: block; font-weight: 500;">
+                            <i class="fas fa-server" style="margin-right: 6px;"></i>
+                            {{ '选择MCP服务器' if lang == 'zh' else 'Select MCP Servers' }}:
+                        </label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            {% for server_name, server_config in mcp_servers.items() %}
+                            <label class="mcp-option" style="display: flex; align-items: center; gap: 4px; color: #cccccc; cursor: pointer; font-size: 0.8em; padding: 4px 6px; border-radius: 4px; background: #2d2d30; border: 1px solid #3e3e42;">
+                                <input type="checkbox" class="mcp-server-checkbox" data-server="{{ server_name }}" style="margin: 0;">
+                                <span>{{ server_name.replace('-', ' ').replace('_', ' ').title() }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
                 
@@ -2616,7 +2669,8 @@
         }
         
         function enableUI(enabled) {
-            userInput.disabled = !enabled || isTaskRunning;
+            // 允许用户在任务执行过程中输入新的需求，但不允许执行
+            userInput.disabled = !enabled;
             sendButton.disabled = !enabled || isTaskRunning;
             planButton.disabled = !enabled || isTaskRunning;
             newTaskButton.disabled = !enabled || isTaskRunning;
@@ -2656,9 +2710,8 @@
             // Clear saved session from localStorage
             try {
                 localStorage.removeItem('agia_api_key');
-                console.log('🗑️ Cleared saved session from localStorage');
             } catch (error) {
-                console.warn('⚠️ Failed to clear session from localStorage:', error);
+                // 静默处理错误
             }
             
             // Clear chat messages
@@ -2710,14 +2763,12 @@
                 try {
                     if (currentUser && currentUser !== 'default') {
                         localStorage.setItem('agia_api_key', currentUser);
-                        console.log('💾 API key saved to localStorage for session restoration');
                     } else {
                         // For default user, save a special marker
                         localStorage.setItem('agia_api_key', '');
-                        console.log('💾 Default user session saved to localStorage');
                     }
                 } catch (error) {
-                    console.warn('⚠️ Failed to save session to localStorage:', error);
+                    // 静默处理错误
                 }
                 
                 // Refresh directories for this user
@@ -2727,7 +2778,6 @@
                 setTimeout(() => {
                     scrollToBottom(false);
                 }, 100);
-                console.log('✅ Socket connected for user:', currentUser);
             });
             
             socket.on('status', function(data) {
@@ -2742,7 +2792,6 @@
                 }
                 
                 updateUserStatus('connected', I18N.user_connected, identity, isGuest);
-                console.log('✅ Socket status updated:', data);
             });
 
             socket.on('disconnect', function(reason) {
@@ -2754,8 +2803,6 @@
                 if (isTaskRunning) {
                     addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
                 }
-                
-                console.log('❌ Socket disconnected:', reason);
             });
 
             socket.on('auth_failed', function(data) {
@@ -2768,7 +2815,6 @@
             socket.on('connect_error', function(error) {
                 updateUserStatus('error', '连接错误');
                 addMessage('连接错误: ' + error.message, 'error');
-                console.log('❌ Connection error:', error);
             });
 
             socket.on('task_started', function(data) {
@@ -2904,17 +2950,10 @@
             
             // 如果用户正在向上滚动且不在底部附近，则不执行自动滚动
             if (isUserScrolling && scrollDirection === 'up' && !isNearBottom) {
-                console.log('🚫 User scrolling up away from bottom');
                 return false;
             }
             
             // 其他情况下，只要自动滚动启用就允许滚动
-            console.log('✅ Auto-scroll allowed', {
-                autoScrollEnabled,
-                isUserScrolling,
-                scrollDirection,
-                isNearBottom
-            });
             return autoScrollEnabled;
         }
         
@@ -2945,9 +2984,10 @@
                 const { message, type } = messageData;
                 
                 // 对于info类型的消息，总是尝试合并到上一个info消息框中
-                if (type === 'info' && 
-                    lastMessageType === 'info' && 
-                    lastMessageDiv && 
+                // 也包括normal类型的消息，如果它们是警告信息的话
+                if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
+                    lastMessageType === 'info' &&
+                    lastMessageDiv &&
                     lastMessageDiv.parentNode === chatMessages) {
                     
                     // 合并到现有info消息
@@ -3046,7 +3086,7 @@
             
             // Check if message contains warning and treat it as normal text
             const messageLower = message.toLowerCase();
-            if (type === 'info' && (messageLower.includes('warning') || messageLower.includes('userwarning') || messageLower.includes('warnings.warn'))) {
+            if (type === 'info' && (messageLower.includes('warning') || messageLower.includes('userwarning') || messageLower.includes('warnings.warn') || message.includes('⚠️') || message.includes('W: '))) {
                 type = 'normal'; // Use normal style for warning messages
             }
             
@@ -3078,7 +3118,9 @@
             const shouldScroll = shouldAutoScroll();
             
             // 对于info类型的消息，总是尝试追加到上一个info消息框中
-            if (type === 'info' && lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages) {
+            // 也包括normal类型的消息，如果它们是警告信息的话
+            if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
+                lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages) {
                 // 追加到现有的info消息框
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
@@ -3182,7 +3224,8 @@
 
         function setTaskRunning(running) {
             isTaskRunning = running;
-            userInput.disabled = running;
+            // 允许用户在任务执行过程中输入新的需求，但不允许执行
+            userInput.disabled = false;
             
             if (running) {
                 sendButton.style.display = 'none';
@@ -3190,12 +3233,16 @@
                 newTaskButton.style.display = 'none';
                 stopButton.style.display = 'flex';
                 updateStatus('running');
+                // 更新输入框提示文本
+                userInput.placeholder = '任务执行中，您可以输入新需求（等待当前任务完成后执行）...';
             } else {
                 sendButton.style.display = 'flex';
                 planButton.style.display = 'flex';
                 newTaskButton.style.display = 'flex';
                 stopButton.style.display = 'none';
                 updateStatus('connected');
+                // 恢复原始提示文本
+                userInput.placeholder = '{{ i18n.input_placeholder }}';
             }
         }
 
@@ -3271,9 +3318,11 @@
                     selected_model: modelConfig.model,
                     model_api_key: result.config.api_key,
                     model_api_base: result.config.api_base,
-                    model_max_tokens: result.config.max_tokens
+                    model_max_tokens: result.config.max_tokens,
+                    // Add selected MCP servers
+                    selected_mcp_servers: getSelectedMCPServers()
                 };
-                
+
                 if (taskMode === 'selected' && selectedDirectory) {
                     socket.emit('execute_task', {
                         requirement: message,
@@ -3477,9 +3526,11 @@
                     selected_model: modelConfig.model,
                     model_api_key: result.config.api_key,
                     model_api_base: result.config.api_base,
-                    model_max_tokens: result.config.max_tokens
+                    model_max_tokens: result.config.max_tokens,
+                    // Add selected MCP servers
+                    selected_mcp_servers: getSelectedMCPServers()
                 };
-                
+
                 socket.emit('execute_task', {
                     requirement: message,
                     type: 'selected',
@@ -3730,8 +3781,6 @@
          */
         function updateAutoScrollIndicator() {
             // Auto-scroll indicator UI has been removed
-            // Only keep console logging for debugging
-            console.log(`🔄 Auto-scroll status updated: ${autoScrollEnabled ? 'ENABLED' : 'DISABLED'}`);
         }
 
         /**
@@ -4572,7 +4621,7 @@
                 renderer.code = function(code, language) {
                     const validLanguage = language && typeof language === 'string' ? language : 'text';
                     const escapedCode = escapeHtml(code);
-                    return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 21px !important; background: transparent !important;">${escapedCode}</code></pre>`;
+                    return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
                 };
                 
                 // 配置marked选项
@@ -4666,7 +4715,7 @@
                         ${htmlContent}
                     </div>
                     <div id="markdownSource" style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: visible; display: none; border: 1px solid #404040;">
-                        <textarea id="markdownEditor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: none; font-size: 18px; line-height: 1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 0; margin: 0; white-space: pre-wrap;" placeholder="编辑Markdown内容...">${escapedContent}</textarea>
+                        <textarea id="markdownEditor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: none; font-size: 14px; line-height: 1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 0; margin: 0; white-space: pre-wrap;" placeholder="编辑Markdown内容...">${escapedContent}</textarea>
                     </div>
                 `;
                 
@@ -4819,7 +4868,7 @@
                         <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
                             文件大小: ${size} | 类型: ${language.toUpperCase()}
                         </div>
-                        <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 21px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: 500;">${processedContent}</div>
+                        <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: normal;">${processedContent}</div>
                     `;
                 } else {
                     // 使用Prism.js进行语法高亮
@@ -4844,7 +4893,7 @@
                                 </div>
                             </div>
                             <div id="mermaid-source-view" style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
-                                <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 21px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="编辑Mermaid内容...">${content}</textarea>
+                                <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 14px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="编辑Mermaid内容...">${content}</textarea>
                             </div>
                             <div id="mermaid-chart-view" style="display: none; max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; background: white; border: 1px solid #ddd; padding: 20px; text-align: center;">
                                 <div id="mermaid-chart-container">正在渲染图表...</div>
@@ -4875,7 +4924,7 @@
                                 文件大小: ${size} | 语言: ${language}
                             </div>
                             <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
-                                <pre class="language-${language}" style="margin: 0; font-size: 21px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
+                                <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
                             </div>
                         `;
                     }
@@ -6116,7 +6165,13 @@
             
             // 初始化配置选项切换功能
             initConfigToggle();
-            
+
+            // 初始化MCP服务器选择功能
+            initMCPServerSelection();
+
+            // 初始化routine下拉框动态加载功能
+            initRoutineSelect();
+
             // 加载模型配置选项
             loadModelConfigs();
             
@@ -6170,12 +6225,16 @@
                         const routineSelect = document.getElementById('routineSelect');
                         // 清除现有选项（除了"无"选项）
                         routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
-                        
+
                         // 添加routine文件选项
                         data.files.forEach(file => {
                             const option = document.createElement('option');
                             option.value = file.filename;
                             option.textContent = file.name;
+                            // 为workspace文件添加特殊标识
+                            if (file.type === 'workspace_file') {
+                                option.textContent = file.name + ' (工作区)';
+                            }
                             routineSelect.appendChild(option);
                         });
                     } else {
@@ -6185,6 +6244,70 @@
                 .catch(error => {
                     console.error('Error loading routine files:', error);
                 });
+        }
+
+        /**
+         * 为routine下拉框添加动态加载功能
+         */
+        function initRoutineSelect() {
+            const routineSelect = document.getElementById('routineSelect');
+            if (routineSelect) {
+                // 添加点击事件监听器，每次点击时重新加载文件列表
+                routineSelect.addEventListener('click', function() {
+                    // 延迟加载，避免在用户快速点击时重复请求
+                    clearTimeout(this.loadTimeout);
+                    this.loadTimeout = setTimeout(() => {
+                        loadRoutineFiles();
+                    }, 100);
+                });
+                
+                // 添加焦点事件监听器，获得焦点时也重新加载
+                routineSelect.addEventListener('focus', function() {
+                    clearTimeout(this.focusTimeout);
+                    this.focusTimeout = setTimeout(() => {
+                        loadRoutineFiles();
+                    }, 100);
+                });
+            }
+        }
+
+        /**
+         * 初始化MCP服务器选择功能
+         */
+        function initMCPServerSelection() {
+            const enableMCPCheckbox = document.getElementById('enableMCP');
+            const mcpServerSelection = document.getElementById('mcpServerSelection');
+
+            // 监听MCP开关变化
+            enableMCPCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    mcpServerSelection.style.display = 'block';
+                } else {
+                    mcpServerSelection.style.display = 'none';
+                    // 取消选择所有MCP服务器
+                    const checkboxes = mcpServerSelection.querySelectorAll('.mcp-server-checkbox');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                }
+            });
+
+            // 默认隐藏MCP服务器选择区域
+            mcpServerSelection.style.display = 'none';
+        }
+
+        /**
+         * 获取选中的MCP服务器列表
+         */
+        function getSelectedMCPServers() {
+            const selectedServers = [];
+            const checkboxes = document.querySelectorAll('.mcp-server-checkbox:checked');
+
+            checkboxes.forEach(checkbox => {
+                selectedServers.push(checkbox.getAttribute('data-server'));
+            });
+
+            return selectedServers;
         }
 
         /**

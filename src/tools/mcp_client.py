@@ -336,12 +336,10 @@ class MCPClient:
                         # This is a command-based server (NPX/NPM format)
                         if self.fastmcp_initialized and self.fastmcp_wrapper and self.fastmcp_wrapper.supports_server(server_name):
                             # FastMCP can handle this server
-                            print_current(f"🚀 NPX/NPM server {server_name} will be handled by FastMCP")
                             # Continue processing as STDIO type
                             transport_type = MCPTransportType.STDIO
                         else:
                             # Skip it as it should be handled by cli-mcp wrapper
-                            print_current(f"⏭️  Skipping NPX/NPM server {server_name}, will be handled by cli-mcp wrapper")
                             continue
                     
                     # Determine transport type based on configuration
