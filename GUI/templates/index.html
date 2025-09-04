@@ -2084,17 +2084,6 @@
             margin: 16px 0 !important;
         }
 
-        /* 数学公式样式 */
-        .math-display {
-            text-align: center;
-            margin: 16px 0;
-            padding: 8px 0;
-        }
-
-        .math-inline {
-            display: inline;
-        }
-
         /* 代码块样式增强 */
         #markdownPreview pre {
             background-color: #1e1e1e !important;
@@ -4653,39 +4642,7 @@
                     gfm: true
                 });
                 
-                // 使用后端API进行markdown渲染，包括数学公式保护
-                let htmlContent = '';
-                try {
-                    const headers = { 'Content-Type': 'application/json' };
-                    const body = { content: processedContent };
-                    if (currentUser && currentUser !== 'default') {
-                        headers['X-API-Key'] = currentUser;
-                        body.api_key = currentUser;
-                    }
-
-                    const response = await fetch('/api/render-markdown', {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify(body)
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.html) {
-                            htmlContent = data.html;
-                        } else {
-                            // Fallback to marked.parse if API fails
-                            htmlContent = marked.parse(processedContent);
-                        }
-                    } else {
-                        // Fallback to marked.parse if API fails
-                        htmlContent = marked.parse(processedContent);
-                    }
-                } catch (e) {
-                    console.warn('Backend markdown rendering failed, using frontend fallback:', e);
-                    // Fallback to marked.parse if API fails
-                    htmlContent = marked.parse(processedContent);
-                }
+                let htmlContent = marked.parse(processedContent);
                 
                 // 处理HTML中的img标签路径（处理HTML格式的图像引用）
                 const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath;
