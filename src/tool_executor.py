@@ -1182,19 +1182,19 @@ class ToolExecutor:
                     tool_results_section = parts[1].strip() if len(parts) > 1 else ""
                     
                 # Display the main assistant response
-                message_parts.append(f"**Assistant Response:**")
+                message_parts.append(f"**LLM Response:**")
                 message_parts.append(main_content)
                 message_parts.append("")
                 
                 # Display tool calls if present
                 if tool_calls_section:
-                    message_parts.append("**LLM Called Following Tools:**")
+                    message_parts.append("**LLM Called Following Tools in this round:**")
                     message_parts.append(tool_calls_section)
                     #message_parts.append("")
                 
                 # Display tool execution results if present
                 if tool_results_section:
-                    # message_parts.append("**Tool Execution Results:**")
+                    message_parts.append("**Tool Execution Results:**")
                     # Standardize tool results format for better cache consistency
                     tool_results_section = self._standardize_tool_results_format(tool_results_section)
                     message_parts.append(tool_results_section)
@@ -2334,14 +2334,12 @@ class ToolExecutor:
                             else:
                                 print_debug(f"⚠️ [Thread: {current_thread}] cli-mcp initialization attempt {retry_count} failed")
                                 if retry_count < max_retries:
-                                    import time
-                                    time.sleep(3)  # Wait 3 seconds before retry
+                                                time.sleep(3)  # Wait 3 seconds before retry
                                     
                         except Exception as e:
                             print_debug(f"⚠️ [Thread: {current_thread}] cli-mcp client initialization attempt {retry_count} failed: {e}")
                             if retry_count < max_retries:
-                                import time
-                                time.sleep(3)  # Wait 3 seconds before retry
+                                            time.sleep(3)  # Wait 3 seconds before retry
                             else:
                                 error_msg = f"cli-mcp client initialization failed after {max_retries} attempts in thread {current_thread}: {e}"
                                 print_debug(f"❌ {error_msg}")
@@ -2423,14 +2421,12 @@ class ToolExecutor:
                         else:
                             print_debug(f"⚠️ Direct MCP initialization attempt {retry_count} failed")
                             if retry_count < max_retries:
-                                import time
-                                time.sleep(2)  # Wait 2 seconds before retry
+                                            time.sleep(2)  # Wait 2 seconds before retry
                                 
                     except Exception as e:
                         print_debug(f"⚠️ Direct MCP client initialization attempt {retry_count} failed: {e}")
                         if retry_count < max_retries:
-                            import time
-                            time.sleep(2)  # Wait 2 seconds before retry
+                                        time.sleep(2)  # Wait 2 seconds before retry
                         else:
                             return {"error": f"Direct MCP client initialization failed after {max_retries} attempts: {e}"}
             
@@ -3489,9 +3485,19 @@ class ToolExecutor:
                                 temperature=0.7
                             ) as stream:
                                 content = ""
+                                hallucination_detected = False
                                 for text in stream.text_stream:
+                                    # Check for hallucination pattern
+                                    if "Tool execution results" in text:
+                                        printer.write("Hallucination Detected, stop chat")
+                                        print_current("\n🚨 Hallucination Detected, stop chat")
+                                        hallucination_detected = True
+                                        break
                                     printer.write(text)
                                     content += text
+                                # If hallucination was detected, return early
+                                if hallucination_detected:
+                                    return content, []
                     else:
                         # print_current("🔄 LLM is thinking:")
                         response = self.client.messages.create(
@@ -3523,14 +3529,24 @@ class ToolExecutor:
                                 top_p=0.8,
                                 stream=True
                             )
-                            
+
                             content = ""
+                            hallucination_detected = False
                             for chunk in response:
                                 if chunk.choices and len(chunk.choices) > 0:
                                     delta = chunk.choices[0].delta
                                     if delta.content is not None:
+                                        # Check for hallucination pattern
+                                        if "Tool execution results" in delta.content:
+                                            printer.write("Hallucination Detected, stop chat")
+                                            print_current("\n🚨 Hallucination Detected, stop chat")
+                                            hallucination_detected = True
+                                            break
                                         printer.write(delta.content)
                                         content += delta.content
+                            # If hallucination was detected, return early
+                            if hallucination_detected:
+                                return content, []
                         
                     else:
                         # print_current("🔄 LLM is thinking:")
@@ -3588,7 +3604,6 @@ class ToolExecutor:
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
-                    import time
                     time.sleep(retry_delay)
                     continue  # Retry the loop
                     
@@ -3640,6 +3655,7 @@ class ToolExecutor:
                     tool_calls = []
                     
                     with streaming_context(show_start_message=False) as printer:
+                        hallucination_detected = False
 
                         response = self.client.chat.completions.create(
                             model=self.model,
@@ -3650,16 +3666,24 @@ class ToolExecutor:
                             top_p=0.8,
                             stream=True
                         )
-                        
+
                         current_tool_call = None
                         tool_calls_detected = False
-                        
+
                         for chunk in response:
                             if chunk.choices and len(chunk.choices) > 0:
                                 delta = chunk.choices[0].delta
-                                
+
                                 # Handle content (streaming text output - keep in lock)
                                 if delta.content is not None:
+                                    # Check for hallucination pattern
+                                    if "Tool execution results" in delta.content:
+                                        printer.write("Hallucination Detected, stop chat")
+                                        print_current("\n🚨 Hallucination Detected, stop chat")
+                                        # Set hallucination flag and break from streaming loop
+                                        hallucination_detected = True
+                                        break
+
                                     printer.write(delta.content)
                                     content += delta.content
                                 
@@ -3731,7 +3755,11 @@ class ToolExecutor:
                     for tool_call in tool_calls:
                         tool_call.pop("_stream_shown_name", None)
                         tool_call.pop("_stream_args_started", None)
-                    
+
+                    # If hallucination was detected, return early with empty tool calls
+                    if hallucination_detected:
+                        return content, []
+
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
                 else:
@@ -3792,7 +3820,6 @@ class ToolExecutor:
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
-                    import time
                     time.sleep(retry_delay)
                     continue  # Retry the loop
                     
@@ -3883,6 +3910,7 @@ class ToolExecutor:
                     tool_call_buffers = {}  # Track partial tool calls by index
                     
                     with streaming_context(show_start_message=True) as printer:
+                        hallucination_detected = False
                         with self.client.messages.stream(
                             model=self.model,
                             max_tokens=self._get_max_tokens_for_model(self.model),
@@ -3919,6 +3947,13 @@ class ToolExecutor:
                                             if delta.type == "text_delta":
                                                 # Stream text content
                                                 text = getattr(delta, 'text', '')
+                                                # Check for hallucination pattern
+                                                if "Tool execution results" in text:
+                                                    printer.write("Hallucination Detected, stop chat")
+                                                    print_current("\n🚨 Hallucination Detected, stop chat")
+                                                    # Set hallucination flag and break from streaming loop
+                                                    hallucination_detected = True
+                                                    break
                                                 printer.write(text)
                                                 content += text
                                             elif delta.type == "input_json_delta":
@@ -3977,8 +4012,18 @@ class ToolExecutor:
                                 # Fallback to text-only streaming if event processing fails
                                 print_error(f"Enhanced streaming failed, falling back to text-only: {e}")
                                 for text in stream.text_stream:
+                                    # Check for hallucination pattern in fallback mode
+                                    if "Tool execution results" in text:
+                                        printer.write("Hallucination Detected, stop chat")
+                                        print_current("\n🚨 Hallucination Detected, stop chat")
+                                        hallucination_detected = True
+                                        break
                                     printer.write(text)
                                     content += text
+
+                            # If hallucination was detected, stop processing and return early
+                            if hallucination_detected:
+                                return content, []
                         
                         print_current("")
                         # Get final message - if we missed any tool calls in streaming, extract them here
@@ -4083,7 +4128,6 @@ class ToolExecutor:
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
                     
                     # Wait before retry
-                    import time
                     time.sleep(retry_delay)
                     continue  # Retry the loop
                     
@@ -4221,7 +4265,6 @@ class ToolExecutor:
         """
         try:
             import json
-            import time
             
             # Check cache first (unless force_reload is True)
             if not force_reload and self._tool_definitions_cache is not None:
