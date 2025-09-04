@@ -1391,7 +1391,7 @@ class UserSession:
             history_summary.append(f"User requested: {entry['user_input']}")
         
         # Combine into a comprehensive requirement
-        summarized_req = "Previous conversation context:\n" + "\n".join(history_summary[-5:])  # Last 5 entries
+        summarized_req =  "\n".join(history_summary[-5:])  # Last 5 entries
         return summarized_req
 
 gui_instance = AGIAgentGUI()
@@ -3123,43 +3123,117 @@ def render_markdown():
     try:
         data = request.get_json() or {}
         content = data.get('content', '')
-        
+
         if not content:
             return jsonify({'success': False, 'error': 'Content is required'})
-        
-        # 使用现有的markdown处理逻辑
-        import markdown
-        from markdown.extensions import codehilite, tables, toc, fenced_code
-        
-        # 配置markdown扩展
-        extensions = [
-            'markdown.extensions.tables',
-            'markdown.extensions.fenced_code',
-            'markdown.extensions.codehilite',
-            'markdown.extensions.toc',
-            'markdown.extensions.attr_list',
-            'markdown.extensions.def_list',
-            'markdown.extensions.footnotes',
-            'markdown.extensions.md_in_html'
-        ]
-        
-        # 创建markdown实例
-        md = markdown.Markdown(
-            extensions=extensions,
-            extension_configs={
-                'codehilite': {
-                    'css_class': 'highlight',
-                    'use_pygments': True
-                },
-                'toc': {
-                    'permalink': True
-                }
-            }
-        )
-        
-        # 转换为HTML
-        html = md.convert(content)
-        
+
+        # 保护数学公式，防止markdown解析器破坏它们
+        import re
+
+        # 存储数学公式的占位符
+        math_placeholders = []
+        placeholder_counter = 0
+
+        def protect_display_math(match):
+            nonlocal placeholder_counter
+            formula_content = match.group(1)
+
+            # 创建唯一的占位符
+            placeholder = f"__MATH_DISPLAY_PLACEHOLDER_{placeholder_counter}__"
+            placeholder_counter += 1
+
+            # 存储公式信息
+            math_placeholders.append({
+                'placeholder': placeholder,
+                'type': 'display',
+                'content': formula_content
+            })
+
+            return placeholder
+
+        def protect_inline_math(match):
+            nonlocal placeholder_counter
+            formula_content = match.group(1)
+
+            # 创建唯一的占位符
+            placeholder = f"__MATH_INLINE_PLACEHOLDER_{placeholder_counter}__"
+            placeholder_counter += 1
+
+            # 存储公式信息
+            math_placeholders.append({
+                'placeholder': placeholder,
+                'type': 'inline',
+                'content': formula_content
+            })
+
+            return placeholder
+
+        # 保护块级数学公式 $$...$$
+        content = re.sub(r'\$\$([^$]+)\$\$', protect_display_math, content)
+
+        # 保护行内数学公式 $...$
+        content = re.sub(r'\$([^$\n]+?)\$', protect_inline_math, content)
+
+        # 简化的markdown处理逻辑，避免依赖外部markdown库
+        import re
+
+        # 基本markdown转换函数
+        def simple_markdown_to_html(text):
+            # 标题
+            text = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+            text = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
+            text = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
+
+            # 粗体和斜体
+            text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+            text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+
+            # 代码块
+            text = re.sub(r'```(.*?)```', r'<pre><code>\1</code></pre>', text, flags=re.DOTALL)
+
+            # 内联代码
+            text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+
+            # 链接
+            text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
+
+            # 列表
+            text = re.sub(r'^\* (.*?)$', r'<li>\1</li>', text, flags=re.MULTILINE)
+            text = re.sub(r'^\d+\. (.*?)$', r'<li>\1</li>', text, flags=re.MULTILINE)
+
+            # 段落
+            paragraphs = []
+            for para in text.split('\n\n'):
+                para = para.strip()
+                if para and not para.startswith('<'):
+                    para = f'<p>{para}</p>'
+                paragraphs.append(para)
+
+            text = '\n\n'.join(paragraphs)
+
+            # 换行
+            text = text.replace('\n', '<br>')
+
+            return text
+
+        # 使用简化的markdown转换
+        html = simple_markdown_to_html(content)
+
+        # 恢复数学公式
+        for math_info in math_placeholders:
+            placeholder = math_info['placeholder']
+            formula_type = math_info['type']
+            formula_content = math_info['content']
+
+            if formula_type == 'display':
+                # 块级数学公式
+                math_html = f'<div class="math-display">$${formula_content}$$</div>'
+            else:
+                # 行内数学公式
+                math_html = f'<span class="math-inline">${formula_content}$</span>'
+
+            html = html.replace(placeholder, math_html)
+
         return jsonify({'success': True, 'html': html})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

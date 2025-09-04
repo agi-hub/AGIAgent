@@ -230,8 +230,6 @@ class FastMcpWrapper:
                 # Use server manager if available
                 await self._discover_tools_from_servers()
             else:
-                # Fall back to standalone mode if no server manager
-                print_current("⚠️ No server manager available, using standalone tool discovery")
                 await self._discover_tools_standalone()
             
             # Start health monitoring for subprocess management

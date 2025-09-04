@@ -4,7 +4,7 @@ LANG=zh
 
 # GUI API configuration 
 api_key=your key
-api_base=https://open.bigmodel.cn/api/paas/v4/
+api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.5
 max_tokens=16384
 
@@ -21,10 +21,10 @@ max_tokens=16384
 # max_tokens=32768
 
 # Openrouter
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=qwen/qwen3-coder:free
-# max_tokens=32768
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=qwen/qwen3-coder:free
+max_tokens=32768
 
 # Zhipu API configuration 
 api_key=your key
@@ -188,6 +188,7 @@ summary_report=False
 # Controls whether to use AI to generate comprehensive summaries of web search results
 # When enabled, the search results will be analyzed and summarized by the large model
 # providing detailed individual webpage analysis and synthesis across all sources
+# Default: True (enabled for better user experience)
 web_search_summary=False
 
 # Web search summary usage recommendations:

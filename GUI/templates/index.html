@@ -2084,6 +2084,17 @@
             margin: 16px 0 !important;
         }
 
+        /* 数学公式样式 */
+        .math-display {
+            text-align: center;
+            margin: 16px 0;
+            padding: 8px 0;
+        }
+
+        .math-inline {
+            display: inline;
+        }
+
         /* 代码块样式增强 */
         #markdownPreview pre {
             background-color: #1e1e1e !important;
@@ -4642,7 +4653,39 @@
                     gfm: true
                 });
                 
-                let htmlContent = marked.parse(processedContent);
+                // 使用后端API进行markdown渲染，包括数学公式保护
+                let htmlContent = '';
+                try {
+                    const headers = { 'Content-Type': 'application/json' };
+                    const body = { content: processedContent };
+                    if (currentUser && currentUser !== 'default') {
+                        headers['X-API-Key'] = currentUser;
+                        body.api_key = currentUser;
+                    }
+
+                    const response = await fetch('/api/render-markdown', {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify(body)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.html) {
+                            htmlContent = data.html;
+                        } else {
+                            // Fallback to marked.parse if API fails
+                            htmlContent = marked.parse(processedContent);
+                        }
+                    } else {
+                        // Fallback to marked.parse if API fails
+                        htmlContent = marked.parse(processedContent);
+                    }
+                } catch (e) {
+                    console.warn('Backend markdown rendering failed, using frontend fallback:', e);
+                    // Fallback to marked.parse if API fails
+                    htmlContent = marked.parse(processedContent);
+                }
                 
                 // 处理HTML中的img标签路径（处理HTML格式的图像引用）
                 const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath;
@@ -6169,8 +6212,6 @@
             // 初始化MCP服务器选择功能
             initMCPServerSelection();
 
-            // 初始化routine下拉框动态加载功能
-            initRoutineSelect();
 
             // 加载模型配置选项
             loadModelConfigs();
@@ -6244,31 +6285,6 @@
                 .catch(error => {
                     console.error('Error loading routine files:', error);
                 });
-        }
-
-        /**
-         * 为routine下拉框添加动态加载功能
-         */
-        function initRoutineSelect() {
-            const routineSelect = document.getElementById('routineSelect');
-            if (routineSelect) {
-                // 添加点击事件监听器，每次点击时重新加载文件列表
-                routineSelect.addEventListener('click', function() {
-                    // 延迟加载，避免在用户快速点击时重复请求
-                    clearTimeout(this.loadTimeout);
-                    this.loadTimeout = setTimeout(() => {
-                        loadRoutineFiles();
-                    }, 100);
-                });
-                
-                // 添加焦点事件监听器，获得焦点时也重新加载
-                routineSelect.addEventListener('focus', function() {
-                    clearTimeout(this.focusTimeout);
-                    this.focusTimeout = setTimeout(() => {
-                        loadRoutineFiles();
-                    }, 100);
-                });
-            }
         }
 
         /**
