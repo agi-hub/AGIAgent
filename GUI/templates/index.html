@@ -2330,10 +2330,6 @@
                             <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                         </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableKnowledgeBase" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_knowledge_base', '搜索知识库' if lang == 'zh' else 'Knowledge Base') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
                             <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
                         </label>
@@ -2699,6 +2695,19 @@
         }
         
         function disconnectUser() {
+            // 如果当前有任务在运行，先停止任务
+            if (isTaskRunning && socket) {
+                socket.emit('stop_task');
+                // 等待任务停止后再断开连接
+                setTimeout(() => {
+                    performDisconnect();
+                }, 500); // 给服务器500ms时间处理停止任务请求
+            } else {
+                performDisconnect();
+            }
+        }
+        
+        function performDisconnect() {
             if (socket) {
                 socket.disconnect();
                 socket = null;
@@ -2832,6 +2841,15 @@
 
             socket.on('output', function(data) {
                 addMessage(data.message, data.type || 'info');
+                
+                // 如果收到"没有任务运行"的消息，恢复到默认状态
+                if (data.message && (
+                    data.message.includes('没有任务在运行') || 
+                    data.message.includes('No task is currently running') ||
+                    data.message.includes('no_task_running')
+                )) {
+                    setTaskRunning(false);
+                }
             });
 
             socket.on('task_completed', function(data) {
@@ -3234,7 +3252,7 @@
                 stopButton.style.display = 'flex';
                 updateStatus('running');
                 // 更新输入框提示文本
-                userInput.placeholder = '任务执行中，您可以输入新需求（等待当前任务完成后执行）...';
+                userInput.placeholder = I18N.running_input_placeholder || 'Task is running. You can type a new request (will execute after current task)...';
             } else {
                 sendButton.style.display = 'flex';
                 planButton.style.display = 'flex';
@@ -3256,7 +3274,7 @@
 
             // 检查guest用户权限
             if (isGuest) {
-                addMessage('guest用户为演示账户，无法执行新任务。', 'error');
+                addMessage(I18N.guest_cannot_execute, 'error');
                 return;
             }
 
@@ -3269,7 +3287,7 @@
             // Get selected model configuration
             const modelConfig = getSelectedModelConfig();
             if (!modelConfig) {
-                addMessage('请选择有效的模型配置', 'error');
+                addMessage(I18N.select_valid_config, 'error');
                 return;
             }
             
@@ -3304,11 +3322,10 @@
                     addMessage(message, 'user');
                     addMessage(I18N.direct_mode_info, 'info');
                 }
-                
+
                 // Get GUI configuration options
                 const guiConfig = {
                     enable_web_search: document.getElementById('enableWebSearch').checked,
-                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
                     enable_multi_agent: document.getElementById('enableMultiAgent').checked,
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
@@ -3341,7 +3358,7 @@
                 
             } catch (error) {
                 console.error('Configuration validation error:', error);
-                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+                addMessage(`${I18N.config_error_title}: ${I18N.config_validation_failed}`, 'error');
             }
         }
 
@@ -3350,7 +3367,7 @@
             
             // 检查guest用户权限
             if (isGuest) {
-                addMessage('guest用户为演示账户，无法创建新目录。', 'error');
+                addMessage(I18N.guest_cannot_create, 'error');
                 return;
             }
             
@@ -3487,7 +3504,7 @@
             // Get selected model configuration
             const modelConfig = getSelectedModelConfig();
             if (!modelConfig) {
-                addMessage('请选择有效的模型配置', 'error');
+                addMessage(I18N.select_valid_config, 'error');
                 return;
             }
             
@@ -3512,11 +3529,10 @@
                 
                 // Configuration is valid, proceed with execution
                 addMessage(message, 'user');
-                
+
                 // Get GUI configuration options
                 const guiConfig = {
                     enable_web_search: document.getElementById('enableWebSearch').checked,
-                    enable_knowledge_base: document.getElementById('enableKnowledgeBase').checked,
                     enable_multi_agent: document.getElementById('enableMultiAgent').checked,
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
@@ -3539,7 +3555,7 @@
                 
             } catch (error) {
                 console.error('Configuration validation error:', error);
-                addMessage(`${I18N.config_error_title}: 配置验证失败，请检查网络连接`, 'error');
+                addMessage(`${I18N.config_error_title}: ${I18N.config_validation_failed}`, 'error');
             }
         }
 
@@ -3944,7 +3960,7 @@
                 directoryList.innerHTML = `
                     <div class="message system">
                         <i class="fas fa-folder-open"></i>
-                        暂无工作目录（包含workspace子目录的目录）
+                        ${I18N.no_workspace_directories}
                     </div>
                 `;
                 return;
@@ -3957,7 +3973,7 @@
                 // 根据目录状态添加相应的CSS类和状态文本
                 if (dir.is_current) {
                     classes.push('current');
-                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(当前执行)</span>';
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(' + I18N.current_executing + ')</span>';
                 }
                 
                 // 优先使用前端的selectedDirectory变量，这样可以确保新建目录后立即高亮正确
@@ -3966,12 +3982,12 @@
                 
                 if (isSelectedByFrontend || isSelectedByBackend) {
                     classes.push('selected');
-                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(已选择)</span>';
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(' + I18N.selected + ')</span>';
                 }
                 
                 if (dir.is_last && !dir.is_current && !isSelectedByFrontend && !isSelectedByBackend) {
                     classes.push('last');
-                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(上次使用)</span>';
+                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(' + I18N.last_used + ')</span>';
                 }
                 
                 // 检查该目录是否应该展开显示文件树
@@ -3989,19 +4005,19 @@
                                 ${statusText}
                             </div>
                             <div class="directory-actions">
-                                <button class="action-btn" onclick="return toggleDirectory('${dir.name}', event)" title="展开/收起">
+                                <button class="action-btn" onclick="return toggleDirectory('${dir.name}', event)" title="${I18N.expand_collapse}">
                                     <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
                                 </button>
-                                <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="上传文件到Workspace">
+                                <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="${I18N.upload_to_workspace}">
                                     <i class="fas fa-upload"></i>
                                 </button>
-                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="下载目录为ZIP（排除code_index）">
+                                <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="${I18N.download_as_zip}">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                <button class="action-btn rename-btn" onclick="event.stopPropagation(); showRenameDialog('${dir.name}')" title="重命名目录">
+                                <button class="action-btn rename-btn" onclick="event.stopPropagation(); showRenameDialog('${dir.name}')" title="${I18N.rename_directory}">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteDirectory('${dir.name}')" title="删除目录">
+                                <button class="action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteDirectory('${dir.name}')" title="${I18N.delete_directory}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -4144,7 +4160,7 @@
             // 获取DOM元素
             const tree = document.getElementById(`tree-${dirName}`);
             const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
-            const button = document.querySelector(`[data-dir="${dirName}"] .directory-actions button[title="展开/收起"]`);
+            const button = document.querySelector(`[data-dir="${dirName}"] .directory-actions button:first-child`);
             const icon = button ? button.querySelector('i') : null;
             
             console.log(`🔍 DOM elements:`, {
@@ -4276,13 +4292,13 @@
             const isCurrentDir = document.querySelector(`[data-dir="${dirName}"]`).classList.contains('current');
             const isSelectedDir = document.querySelector(`[data-dir="${dirName}"]`).classList.contains('selected');
             
-            let warningMessage = `确定要删除目录 "${dirName}" 吗？\n\n此操作不可撤销，将永久删除该目录及其所有内容。`;
+            let warningMessage = `${I18N.confirm_delete_directory} "${dirName}"?\n\n${I18N.delete_warning}`;
             
             if (isCurrentDir) {
-                warningMessage += '\n\n⚠️ 警告：这是当前正在执行的目录！';
+                warningMessage += '\n\n' + I18N.delete_current_executing_warning;
             }
             if (isSelectedDir) {
-                warningMessage += '\n\n⚠️ 警告：这是当前选择的目录！';
+                warningMessage += '\n\n' + I18N.delete_selected_warning;
             }
             
             if (confirm(warningMessage)) {
@@ -4293,7 +4309,7 @@
         function deleteDirectory(dirName) {
             // 检查guest用户权限
             if (isGuest) {
-                alert('guest用户为演示账户，无法删除目录。');
+                alert(I18N.guest_cannot_delete);
                 return;
             }
             
@@ -4483,7 +4499,7 @@
             
             previewContent.innerHTML = `
                 <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                    文件大小: ${fileSize} | 类型: 图片
+                    ${I18N.file_size || 'File Size'}: ${fileSize} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'}
                 </div>
                 <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
                     <img src="${imageUrl}" 
@@ -4538,7 +4554,7 @@
                 const processedContent = processFileContent(content).replace(/"/g, '&quot;');
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                        文件大小: ${size} | 类型: HTML
+                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: HTML
                     </div>
                     <iframe srcdoc="${processedContent}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
                 `;
@@ -4692,13 +4708,13 @@
                 
                 previewContent.innerHTML = `
                     <div class="markdown-toolbar-header" style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #9cdcfe; display: flex; justify-content: space-between; align-items: center;">
-                        <span>文件大小: ${size} | 类型: Markdown</span>
+                        <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: Markdown</span>
                         <div class="markdown-toolbar-buttons" style="display: flex; gap: 8px; align-items: center;">
-                            <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="重新从文件加载">
-                                <i class="fas fa-sync" style="margin-right: 5px;"></i> 重新加载
+                            <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.reload || 'Reload'}">
+                                <i class="fas fa-sync" style="margin-right: 5px;"></i> ${I18N.reload || 'Reload'}
                             </button>
-                            <button id="saveMarkdownBtn" onclick="saveCurrentMarkdown()" style="background: #ff9800; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 80px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="保存当前Markdown文本">
-                                <i class="fas fa-save" style="margin-right: 5px;"></i> 保存
+                            <button id="saveMarkdownBtn" onclick="saveCurrentMarkdown()" style="background: #ff9800; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 80px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.save_markdown_title || 'Save current Markdown text'}">
+                                <i class="fas fa-save" style="margin-right: 5px;"></i> ${I18N.save || 'Save'}
                             </button>
                             <button id="convertWordBtn" onclick="convertMarkdownToWord()" style="background: #2e7d32; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 80px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="转换为Word文档">
                                 <i class="fas fa-file-word" style="margin-right: 5px;"></i> Word
@@ -4707,7 +4723,7 @@
                                 <i class="fas fa-file-pdf" style="margin-right: 5px;"></i> PDF
                             </button>
                             <button id="markdownToggleBtn" onclick="toggleMarkdownMode()" style="background: #569cd6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 110px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;">
-                                <i class="fas fa-eye" style="margin-right: 5px;"></i> 源码模式
+                                <i class="fas fa-eye" style="margin-right: 5px;"></i> ${I18N.source_mode || 'Source Mode'}
                             </button>
                         </div>
                     </div>
@@ -4741,7 +4757,7 @@
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                        文件大小: ${size} | 类型: PDF
+                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: PDF
                     </div>
                     <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: visible; background: #f5f5f5;">
                         <div style="text-align: center; padding: 20px;">
@@ -4755,24 +4771,24 @@
                 const { file_ext } = data;
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                        文件大小: ${size} | 类型: ${file_ext.toUpperCase()} Office文档
+                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${file_ext.toUpperCase()} ${I18N.office_preview_note || 'Office Document Preview'}
                     </div>
                     <div id="officeContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
                         <div style="text-align: center; padding: 40px; color: #666;">
                             <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
-                            <h3 style="margin-bottom: 20px;">Office文档预览</h3>
-                            <p style="margin-bottom: 20px;">Office文档需要下载到本地查看：</p>
+                            <h3 style="margin-bottom: 20px;">${I18N.office_preview_title || 'Office Document Preview'}</h3>
+                            <p style="margin-bottom: 20px;">${I18N.office_download_instruction || 'Office documents need to be downloaded for local viewing:'}</p>
                             <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                                 <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 21px; min-width: 200px; text-align: center; display: inline-block;">
-                                    <i class="fas fa-download"></i> 下载文件
+                                    <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
                                 </a>
                             </div>
                             <div style="margin-top: 30px; padding: 20px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px; text-align: left; max-width: 600px;">
-                                <h4 style="color: #0c5460; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> 使用说明</h4>
+                                <h4 style="color: #0c5460; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> ${I18N.usage_instructions || 'Usage Instructions'}</h4>
                                 <ul style="color: #0c5460; margin: 0; padding-left: 20px;">
-                                    <li>点击"下载文件"按钮将文件保存到本地</li>
-                                    <li>使用Microsoft Office、WPS或其他兼容软件打开</li>
-                                    <li>支持.doc、.docx、.xls、.xlsx、.ppt、.pptx等格式</li>
+                                    <li>${I18N.office_instruction_1 || 'Click the "Download File" button to save the file locally'}</li>
+                                    <li>${I18N.office_instruction_2 || 'Open with Microsoft Office, WPS, or other compatible software'}</li>
+                                    <li>${I18N.office_instruction_3 || 'Supports .doc, .docx, .xls, .xlsx, .ppt, .pptx and other formats'}</li>
                                 </ul>
                             </div>
                         </div>
@@ -4839,7 +4855,7 @@
                 
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                        文件大小: ${size} | 类型: CSV表格 | 总行数: ${total_rows} | 列数: ${headers.length}
+                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: CSV | ${I18N.total_rows || 'Total Rows'}: ${total_rows} | ${I18N.columns || 'Columns'}: ${headers.length}                                                                             
                         ${truncated ? ' | ⚠️ 大文件已截断显示' : ''}
                     </div>
                     <div style="border: 1px solid #dee2e6; border-radius: 5px; overflow: hidden; max-height: calc(90vh - 160px); display: flex; flex-direction: column;">
@@ -4866,7 +4882,7 @@
                     const processedContent = escapeHtml(processFileContent(content));
                     previewContent.innerHTML = `
                         <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                            文件大小: ${size} | 类型: ${language.toUpperCase()}
+                            ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${language.toUpperCase()}
                         </div>
                         <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: normal;">${processedContent}</div>
                     `;
@@ -4879,21 +4895,21 @@
                     if (language === 'mermaid') {
                         previewContent.innerHTML = `
                             <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
-                                <span>文件大小: ${size} | 语言: ${language}</span>
+                                <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.language || 'Language'}: ${language}</span>
                                 <div style="display: flex; gap: 10px;">
-                                    <button onclick="saveMermaidFile()" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="保存当前Mermaid文件">
-                                        <i class="fas fa-save"></i> 保存
+                                    <button onclick="saveMermaidFile()" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="${I18N.save_mermaid_title || 'Save current Mermaid file'}">                                                       
+                                        <i class="fas fa-save"></i> ${I18N.save || 'Save'}
                                     </button>
-                                    <button onclick="toggleMermaidView()" style="padding: 6px 12px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;">
-                                        <i class="fas fa-eye"></i> <span id="mermaid-view-btn-text">显示图表</span>
+                                    <button onclick="toggleMermaidView()" style="padding: 6px 12px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;">                                                                                 
+                                        <i class="fas fa-eye"></i> <span id="mermaid-view-btn-text">${I18N.preview || 'Preview'}</span>                                                                           
                                     </button>
-                                    <button onclick="convertMermaidToImages()" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="将mermaid转换为PNG和SVG图像">
-                                        <i class="fas fa-image"></i> 转换为图像
+                                    <button onclick="convertMermaidToImages()" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="${I18N.convert_to_images || 'Convert Mermaid to PNG and SVG images'}">                                        
+                                        <i class="fas fa-image"></i> ${I18N.convert_to_images_short || 'Convert to Images'}
                                     </button>
                                 </div>
                             </div>
                             <div id="mermaid-source-view" style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
-                                <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 14px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="编辑Mermaid内容...">${content}</textarea>
+                                <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 14px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="${I18N.edit_mermaid_placeholder || 'Edit Mermaid content...'}">${content}</textarea>                                                                                      
                             </div>
                             <div id="mermaid-chart-view" style="display: none; max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; background: white; border: 1px solid #ddd; padding: 20px; text-align: center;">
                                 <div id="mermaid-chart-container">正在渲染图表...</div>
@@ -4921,7 +4937,7 @@
                     } else {
                         previewContent.innerHTML = `
                             <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                                文件大小: ${size} | 语言: ${language}
+                                ${I18N.file_size || 'File Size'}: ${size} | ${I18N.language || 'Language'}: ${language}
                             </div>
                             <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
                                 <pre class="language-${language}" style="margin: 0; font-size: 14px; line-height: 1.4; background: #1e1e1e !important; border: 1px solid #404040;"><code class="language-${language}" style="color: #ffffff !important; font-weight: normal !important; background: transparent !important;">${processedContent}</code></pre>
@@ -4943,7 +4959,7 @@
                 
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
-                        文件大小: ${size} | 类型: 图片 (${format}) | 尺寸: ${width} × ${height}
+                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'} (${format}) | ${I18N.dimensions || 'Dimensions'}: ${width} × ${height}                                                                                          
                     </div>
                     <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
                         <img src="${imageData}" 
@@ -5033,9 +5049,9 @@
                 const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                 
                 nav.innerHTML = `
-                    <span id="pageInfo">共 ${pdf.numPages} 页</span>
+                    <span id="pageInfo">${I18N.pdf_pages.replace('{pages}', pdf.numPages)}</span>
                     <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 18px;">
-                        <i class="fas fa-download"></i> 下载PDF
+                        <i class="fas fa-download"></i> ${I18N.download_pdf}
                     </a>
                 `;
                 container.appendChild(nav);
@@ -5081,9 +5097,9 @@
                         const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                         
                         nav.innerHTML = `
-                            <span id="pageInfo">共 ${pdf.numPages} 页 (简化模式)</span>
+                            <span id="pageInfo">${I18N.pdf_pages_simple.replace('{pages}', pdf.numPages)}</span>
                             <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 18px;">
-                                <i class="fas fa-download"></i> 下载PDF
+                                <i class="fas fa-download"></i> ${I18N.download_pdf}
                             </a>
                         `;
                         container.appendChild(nav);
@@ -5465,7 +5481,7 @@
             try {
                 // 检查guest用户权限
                 if (isGuest) {
-                    alert('guest用户为演示账户，无法保存。');
+                    alert(I18N.guest_cannot_save);
                     return;
                 }
                 
@@ -5607,7 +5623,7 @@
         async function saveMermaidFile() {
             try {
                 if (isGuest) {
-                    alert('guest用户为演示账户，无法保存。');
+                    alert(I18N.guest_cannot_save);
                     return;
                 }
                 
@@ -5682,7 +5698,7 @@
             if (!window.currentPDF) return;
             
             const pagesContainer = document.getElementById('pdfPages');
-            pagesContainer.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> 正在加载所有页面...</div>';
+            pagesContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ${I18N.pdf_loading}</div>`;
             
             const scale = 2.5;
             const promises = [];
@@ -5733,7 +5749,7 @@
                 });
                 
                 // 更新页面信息
-                document.getElementById('pageInfo').textContent = `共 ${window.currentPDF.numPages} 页`;
+                document.getElementById('pageInfo').textContent = I18N.pdf_pages.replace('{pages}', window.currentPDF.numPages);
             }).catch(function(error) {
                 console.error('PDF页面渲染失败:', error);
                 pagesContainer.innerHTML = `
@@ -5754,7 +5770,7 @@
             // 显示不支持在线预览的提示
             container.innerHTML = `
                 <div style="background: #ffc107; color: #856404; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;">
-                    <span>Office文档预览</span>
+                    <span>${I18N.office_preview_title || 'Office Document Preview'}</span>
                     <button onclick="resetOfficePreview()" style="float: right; padding: 5px 10px; background: rgba(0,0,0,0.1); color: #856404; border: none; border-radius: 3px; cursor: pointer;">返回</button>
                 </div>
                 <div style="text-align: center; padding: 40px; color: #666;">
@@ -5762,10 +5778,10 @@
                         <i class="fas fa-info-circle" style="font-size: 48px; color: #ffc107;"></i>
                     </div>
                     <h3 style="margin-bottom: 20px; color: #856404;">在线预览功能已禁用</h3>
-                    <p style="margin-bottom: 20px; color: #666;">为了支持离线部署，云存储预览功能已被移除。请下载文件到本地查看。</p>
+                    <p style="margin-bottom: 20px; color: #666;">${I18N.office_offline_note || 'To support offline deployment, cloud storage preview functionality has been removed. Please download files for local viewing.'}</p>
                     <div class="preview-button-group" style="display: flex; justify-content: center; gap: 15px;">
                         <a href="/api/download-file/${downloadFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 21px; display: inline-block;">
-                            <i class="fas fa-download"></i> 下载文件
+                            <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
                         </a>
                     </div>
                 </div>
@@ -5783,14 +5799,14 @@
                 container.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #666;">
                         <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
-                        <h3 style="margin-bottom: 20px;">Office文档预览</h3>
+                        <h3 style="margin-bottom: 20px;">${I18N.office_preview_title || 'Office Document Preview'}</h3>
                         <p style="margin-bottom: 20px;">选择以下方式预览Office文档：</p>
                         <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                             <button onclick="previewOfficeCloud('${downloadFilePath}')" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 21px; min-width: 200px;" disabled>
                                 <i class="fas fa-ban"></i> 在线预览已禁用
                             </button>
                             <a href="/api/download-file/${downloadFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-size: 21px; min-width: 200px; text-align: center; display: inline-block;">
-                                <i class="fas fa-download"></i> 下载文件
+                                <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
                             </a>
                         </div>
                     </div>
@@ -5878,7 +5894,7 @@
         function convertMermaidToImages() {
             // 检查guest用户权限
             if (isGuest) {
-                alert('guest用户为演示账户，无法转换图表。');
+                alert(I18N.guest_cannot_convert);
                 return;
             }
             
@@ -6002,7 +6018,7 @@
             
             // 检查guest用户权限
             if (isGuest) {
-                alert('guest用户为演示账户，无法重命名目录。');
+                alert(I18N.guest_cannot_rename);
                 return;
             }
             
@@ -6152,8 +6168,7 @@
             
             // 设置GUI配置选项的默认值
             document.getElementById('enableWebSearch').checked = true;       // 搜索网络默认选择
-            document.getElementById('enableKnowledgeBase').checked = true;   // 搜索知识库默认选择
-            
+
             document.getElementById('enableMultiAgent').checked = false;     // 启动多智能体默认不选择
             document.getElementById('enableLongTermMemory').checked = true;  // 启动长期记忆默认选择
             document.getElementById('enableMCP').checked = false;            // 启动MCP默认不选择
@@ -6303,8 +6318,8 @@
                 // 切换到源码编辑模式
                 previewDiv.style.display = 'none';
                 sourceDiv.style.display = 'block';
-                toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
-                toggleBtn.title = '切换到预览模式';
+                toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + (I18N.preview_mode || 'Preview Mode');
+                toggleBtn.title = I18N.toggle_to_preview_title || 'Switch to preview mode';
                 // 保存用户偏好
                 localStorage.setItem('markdownDisplayMode', 'source');
                 
@@ -6325,8 +6340,8 @@
                 
                 previewDiv.style.display = 'block';
                 sourceDiv.style.display = 'none';
-                toggleBtn.innerHTML = '<i class="fas fa-eye"></i> 源码模式';
-                toggleBtn.title = '切换到源码模式';
+                toggleBtn.innerHTML = '<i class="fas fa-eye"></i> ' + (I18N.source_mode || 'Source Mode');
+                toggleBtn.title = I18N.toggle_to_source_title || 'Switch to source mode';
                 // 保存用户偏好
                 localStorage.setItem('markdownDisplayMode', 'preview');
             }
@@ -6338,7 +6353,7 @@
         function convertMarkdownToWord() {
             // 检查guest用户权限
             if (isGuest) {
-                alert('guest用户为演示账户，无法转换文档。');
+                alert(I18N.guest_cannot_convert);
                 return;
             }
             
@@ -6414,7 +6429,7 @@
         function convertMarkdownToPdf() {
             // 检查guest用户权限
             if (isGuest) {
-                alert('guest用户为演示账户，无法转换文档。');
+                alert(I18N.guest_cannot_convert);
                 return;
             }
             
@@ -6681,7 +6696,7 @@
         function uploadFiles(files) {
             // 检查guest用户权限
             if (isGuest) {
-                uploadResult.innerHTML = `<div class="error">guest用户为演示账户，无法上传文件。</div>`;
+                uploadResult.innerHTML = `<div class="error">${I18N.guest_cannot_upload}</div>`;
                 return;
             }
             
