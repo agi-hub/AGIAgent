@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-# LANG=en
-LANG=zh
+LANG=en
+# LANG=zh
 
 # GUI API configuration 
 api_key=your key
@@ -203,7 +203,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=.
+gui_default_data_directory=~/data_zh
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions

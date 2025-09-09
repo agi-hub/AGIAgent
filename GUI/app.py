@@ -34,6 +34,7 @@ import psutil
 from collections import defaultdict
 from threading import Lock, Semaphore
 
+
 # Determine template and static directories FIRST - always relative to this app.py file
 # Get the directory where app.py is located (before any directory changes)
 app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -70,6 +71,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 APP_NAME = "AGI Agent"
 
 from src.main import AGIAgentMain
+
+
+
 
 # Concurrency control and performance monitoring class
 class ConcurrencyManager:
@@ -337,6 +341,17 @@ I18N_TEXTS = {
         'error_file_too_large': '文件过大无法显示',
         'error_file_not_supported': '不支持预览此文件类型',
         
+        # PDF preview
+        'pdf_pages': '共 {pages} 页',
+        'pdf_pages_simple': '共 {pages} 页 (简化模式)',
+        'download_pdf': '下载PDF',
+        'pdf_loading': '正在加载所有页面...',
+        'pdf_render_error': 'PDF页面渲染失败',
+        
+        # Delete warnings
+        'delete_current_executing_warning': '⚠️ 警告：这是当前正在执行的目录！',
+        'delete_selected_warning': '⚠️ 警告：这是当前选择的目录！',
+        
         # File operations
         'file_size': '文件大小',
         'download_file': '下载文件',
@@ -348,6 +363,10 @@ I18N_TEXTS = {
         'tool_success': '成功',
         'tool_error': '错误',
         'function_calling': '调用中',
+        'image': '图片',
+        'dimensions': '尺寸',
+        'total_rows': '总行数',
+        'columns': '列数',
         
         # Configuration options
         'config_options': '配置选项',
@@ -356,7 +375,6 @@ I18N_TEXTS = {
         'routine_file': '指导文件',
         'no_routine': '无',
         'enable_web_search': '搜索网络',
-        'enable_knowledge_base': '搜索知识库',
         'enable_multi_agent': '启动多智能体',
         'enable_long_term_memory': '启动长期记忆',
         'enable_mcp': 'MCP工具配置',
@@ -366,6 +384,9 @@ I18N_TEXTS = {
         'deleting': '删除中...',
         'renaming': '重命名中...',
         'uploading': '上传中...',
+        'edit_mermaid_placeholder': '编辑Mermaid内容...',
+        'convert_to_images': '将mermaid转换为PNG和SVG图像',
+        'convert_to_images_short': '转换为图像',
         'loading': '加载中...',
         'system_message': '系统消息',
         'welcome_message': f'欢迎使用 {APP_NAME}！请在下方输入您的需求，系统将自动为您处理任务。',
@@ -459,6 +480,30 @@ I18N_TEXTS = {
         'new_messages': '条新消息',
         'auto_scrolling': '自动滚动',
         'uploading': '上传中...',
+        'running_input_placeholder': '任务执行中，您可以输入新需求（等待当前任务完成后执行）...',
+        'reload': '重新加载',
+        'save': '保存',
+        'type_label': '类型',
+        'language': '语言',
+        'image': '图片',
+        'dimensions': '尺寸',
+        'total_rows': '总行数',
+        'columns': '列数',
+        'preview': '显示图表',
+        'office_preview_title': 'Office文档预览',
+        'office_download_instruction': 'Office文档需要下载到本地查看：',
+        'download_file': '下载文件',
+        'usage_instructions': '使用说明',
+        'office_instruction_1': '点击"下载文件"按钮将文件保存到本地',
+        'office_instruction_2': '使用Microsoft Office、WPS或其他兼容软件打开',
+        'office_instruction_3': '支持.doc、.docx、.xls、.xlsx、.ppt、.pptx等格式',
+        'office_offline_note': '为了支持离线部署，云存储预览功能已被移除。请下载文件到本地查看。',
+        'source_mode': '源码模式',
+        'preview_mode': '预览模式',
+        'save_markdown_title': '保存当前Markdown文本',
+        'save_mermaid_title': '保存当前Mermaid文件',
+        'toggle_to_preview_title': '切换到预览模式',
+        'toggle_to_source_title': '切换到源码模式',
         
         # Mermaid conversion
         'mermaid_conversion_completed': 'Mermaid图表转换完成',
@@ -470,6 +515,29 @@ I18N_TEXTS = {
         'config_missing': '模型配置信息缺失',
         'config_incomplete': '配置信息不完整：缺少 API Key、API Base 或模型名称',
         'custom_label': '自定义',
+        'task_starting': '🚀 任务开始执行...',
+        
+        # Directory status messages
+        'no_workspace_directories': '暂无工作目录（包含workspace子目录的目录）',
+        'current_executing': '当前执行',
+        'selected': '已选择',
+        'last_used': '上次使用',
+        'expand_collapse': '展开/收起',
+        'upload_to_workspace': '上传文件到Workspace',
+        'download_as_zip': '下载目录为ZIP（排除code_index）',
+        'rename_directory': '重命名目录',
+        'delete_directory': '删除目录',
+        'confirm_delete_directory': '确定要删除目录',
+        'delete_warning': '此操作不可撤销，将永久删除该目录及其所有内容。',
+        'guest_cannot_execute': 'guest用户为演示账户，无法执行新任务。',
+        'guest_cannot_create': 'guest用户为演示账户，无法创建新目录。',
+        'guest_cannot_delete': 'guest用户为演示账户，无法删除目录。',
+        'guest_cannot_save': 'guest用户为演示账户，无法保存。',
+        'guest_cannot_convert': 'guest用户为演示账户，无法转换图表。',
+        'guest_cannot_rename': 'guest用户为演示账户，无法重命名目录。',
+        'guest_cannot_upload': 'guest用户为演示账户，无法上传文件。',
+        'select_valid_config': '请选择有效的模型配置',
+        'config_validation_failed': '配置验证失败，请检查网络连接',
     },
     'en': {
         # Page title and basic info
@@ -550,6 +618,17 @@ I18N_TEXTS = {
         'error_file_too_large': 'File too large to display',
         'error_file_not_supported': 'File type not supported for preview',
         
+        # PDF preview
+        'pdf_pages': 'Total {pages} pages',
+        'pdf_pages_simple': 'Total {pages} pages (Simple mode)',
+        'download_pdf': 'Download PDF',
+        'pdf_loading': 'Loading all pages...',
+        'pdf_render_error': 'PDF page rendering failed',
+        
+        # Delete warnings
+        'delete_current_executing_warning': '⚠️ Warning: This is the currently executing directory!',
+        'delete_selected_warning': '⚠️ Warning: This is the currently selected directory!',
+        
         # File operations
         'file_size': 'File Size',
         'download_file': 'Download File',
@@ -561,6 +640,10 @@ I18N_TEXTS = {
         'tool_success': 'Success',
         'tool_error': 'Error',
         'function_calling': 'Calling',
+        'image': 'Image',
+        'dimensions': 'Dimensions',
+        'total_rows': 'Total Rows',
+        'columns': 'Columns',
         
         # Configuration options
         'config_options': 'Configuration Options',
@@ -569,7 +652,6 @@ I18N_TEXTS = {
         'routine_file': 'Routine File',
         'no_routine': 'None',
         'enable_web_search': 'Web Search',
-        'enable_knowledge_base': 'Knowledge Base',
         'enable_multi_agent': 'Multi-Agent',
         'enable_long_term_memory': 'Long-term Memory',
         'enable_mcp': 'Enable MCP',
@@ -579,6 +661,9 @@ I18N_TEXTS = {
         'deleting': 'Deleting...',
         'renaming': 'Renaming...',
         'uploading': 'Uploading...',
+        'edit_mermaid_placeholder': 'Edit Mermaid content...',
+        'convert_to_images': 'Convert Mermaid to PNG and SVG images',
+        'convert_to_images_short': 'Convert to Images',
         'loading': 'Loading...',
         'system_message': 'System Message',
         'welcome_message': f'Welcome to {APP_NAME}! Please enter your requirements below, and the system will automatically process tasks for you.',
@@ -672,6 +757,30 @@ I18N_TEXTS = {
         'new_messages': 'new messages',
         'auto_scrolling': 'Auto Scroll',
         'uploading': 'Uploading...',
+        'running_input_placeholder': 'Task is running. You can type a new request (will execute after current task)...',
+        'reload': 'Reload',
+        'save': 'Save',
+        'type_label': 'Type',
+        'language': 'Language',
+        'image': 'Image',
+        'dimensions': 'Dimensions',
+        'total_rows': 'Total Rows',
+        'columns': 'Columns',
+        'preview': 'Preview',
+        'office_preview_title': 'Office Document Preview',
+        'office_download_instruction': 'Office documents need to be downloaded for local viewing:',
+        'download_file': 'Download File',
+        'usage_instructions': 'Usage Instructions',
+        'office_instruction_1': 'Click the "Download File" button to save the file locally',
+        'office_instruction_2': 'Open with Microsoft Office, WPS, or other compatible software',
+        'office_instruction_3': 'Supports .doc, .docx, .xls, .xlsx, .ppt, .pptx and other formats',
+        'office_offline_note': 'To support offline deployment, cloud storage preview functionality has been removed. Please download files for local viewing.',
+        'source_mode': 'Source Mode',
+        'preview_mode': 'Preview Mode',
+        'save_markdown_title': 'Save current Markdown text',
+        'save_mermaid_title': 'Save current Mermaid file',
+        'toggle_to_preview_title': 'Switch to preview mode',
+        'toggle_to_source_title': 'Switch to source mode',
         
         # Mermaid conversion
         'mermaid_conversion_completed': 'Mermaid chart conversion completed',
@@ -683,6 +792,29 @@ I18N_TEXTS = {
         'config_missing': 'Model configuration information missing',
         'config_incomplete': 'Incomplete configuration: missing API Key, API Base, or model name',
         'custom_label': 'Custom',
+        'task_starting': '🚀 Task starting...',
+        
+        # Directory status messages
+        'no_workspace_directories': 'No workspace directories (directories containing workspace subdirectories)',
+        'current_executing': 'Currently Executing',
+        'selected': 'Selected',
+        'last_used': 'Last Used',
+        'expand_collapse': 'Expand/Collapse',
+        'upload_to_workspace': 'Upload Files to Workspace',
+        'download_as_zip': 'Download Directory as ZIP (excluding code_index)',
+        'rename_directory': 'Rename Directory',
+        'delete_directory': 'Delete Directory',
+        'confirm_delete_directory': 'Are you sure you want to delete directory',
+        'delete_warning': 'This operation cannot be undone and will permanently delete the directory and all its contents.',
+        'guest_cannot_execute': 'Guest user is a demo account and cannot execute new tasks.',
+        'guest_cannot_create': 'Guest user is a demo account and cannot create new directories.',
+        'guest_cannot_delete': 'Guest user is a demo account and cannot delete directories.',
+        'guest_cannot_save': 'Guest user is a demo account and cannot save.',
+        'guest_cannot_convert': 'Guest user is a demo account and cannot convert charts.',
+        'guest_cannot_rename': 'Guest user is a demo account and cannot rename directories.',
+        'guest_cannot_upload': 'Guest user is a demo account and cannot upload files.',
+        'select_valid_config': 'Please select a valid model configuration',
+        'config_validation_failed': 'Configuration validation failed, please check network connection',
     }
 }
 
@@ -718,7 +850,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         
         # Set default values based on user requirements
         enable_web_search = gui_config.get('enable_web_search', True)
-        enable_knowledge_base = gui_config.get('enable_knowledge_base', True)  # Default selection
         enable_multi_agent = gui_config.get('enable_multi_agent', False)
         enable_long_term_memory = gui_config.get('enable_long_term_memory', True)  # Default selection
         enable_mcp = gui_config.get('enable_mcp', False)
@@ -879,10 +1010,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         search_hints = []
         if not enable_web_search:
             search_hints.append("[Don't search network]")
-        if not enable_knowledge_base:
-            search_hints.append("[Don't search knowledge base]")
-        elif enable_knowledge_base:
-            search_hints.append("[Searchable knowledge base]")
         
         # Combine base requirement with workspace info and search hints
         requirement_parts = []
@@ -898,7 +1025,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         output_queue.put({'event': 'output', 'data': {'message': f"User requirement: {user_requirement}", 'type': 'user'}})
         
         # Send task_started event to update UI buttons
-        output_queue.put({'event': 'task_started', 'data': {'message': '🚀 任务开始执行...'}})
+        output_queue.put({'event': 'task_started', 'data': {'message': i18n.get('task_starting', '🚀 Task starting...')}})
         
         class QueueSocketHandler:
             def __init__(self, q, socket_type='info'):
@@ -3290,3 +3417,4 @@ def generate_custom_mcp_config(selected_servers, out_dir):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5004))
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
+
