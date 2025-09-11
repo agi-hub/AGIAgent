@@ -23,14 +23,14 @@ max_tokens=16384
 # Openrouter
 # api_key=your key
 # api_base=https://openrouter.ai/api/v1
-# model=qwen/qwen3-coder:free
+# model=qwen/qwen3-coder
 # max_tokens=32768
 
 # Zhipu API configuration 
-api_key=your key
-api_base=https://open.bigmodel.cn/api/paas/v4/
-model=glm-4.5
-max_tokens=16384
+# api_key=your key
+# api_base=https://open.bigmodel.cn/api/anthropic
+# model=glm-4.5
+# max_tokens=16384
 
 # Bailian API configuration 
 # api_key=your key
