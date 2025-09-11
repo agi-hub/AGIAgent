@@ -59,6 +59,7 @@ For Report Generation Tasks:
    <!-- the_example_diagram_caption -->
 
    Rich mermaid chart types are encouraged. Don't use TD type or TB type, and using LR instead. 
+   Use style notation to draw colorful and beautiful diagram, limit to at most three colors. (Eg. 'style A fill:#ff9999,stroke:#333,stroke-width:2px'). 
    You should also search for relevant images from web to supplement the report.
 9. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
 10. Citation and References: Mark information sources in the form of literature citations, using academic citation format. 
@@ -101,7 +102,7 @@ When using get_sensor_data tool for physical world information:
 
 <search>
 For web search usage:
-- Consecutive search limitation: Limit to 2 consecutive web search rounds per task. After 2 searches, synthesize available information or ask for more specific guidance.
+- Consecutive search limitation: Limit to 2 consecutive web_search rounds per task. After 2 searches, synthesize available information or ask for more specific guidance.
 - For non-research tasks, try to avoid using the `web_search` tool.
 - When using the search_img tool for image search:
 1. **Query Optimization**: Use specific, descriptive search terms for better results (e.g., "red rose flower", "blue sky landscape", "modern office building")
