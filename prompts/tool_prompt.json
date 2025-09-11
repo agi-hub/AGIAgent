@@ -272,6 +272,26 @@
       "required": ["type", "source"]
     }
   },
+  "merge_file": {
+    "description": "Merge multiple files into a single output file using the system cat command. If the output file is a Markdown file (.md), it will automatically be converted to Word and PDF formats.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of files to merge, e.g., ['file1.txt', 'file2.txt', 'file3.md']. Files will be merged in the order specified."
+        },
+        "output_file": {
+          "type": "string",
+          "description": "Name of the merged output file, e.g., 'combined_report.md'."
+        }
+      },
+      "required": ["file_list", "output_file"]
+    }
+  },
   "todo_update": {
     "description": "Update todo task status in todo.md file and return the complete updated file content. This tool allows you to mark tasks as completed, in progress, blocked, or pending, and provides real-time progress tracking.",
     "parameters": {
