@@ -1298,6 +1298,126 @@ class FileSystemTools:
         
         return '\n'.join(processed_lines)
 
+    def merge_file(self, file_list: List[str], output_file: str, **kwargs) -> Dict[str, Any]:
+        """
+        合并多个文件的内容到一个新文件中
+        
+        Args:
+            file_list: 要合并的文件列表，如 ['file1.txt', 'file2.txt']
+            output_file: 合并后的输出文件名，如 'merged.txt'
+            
+        Returns:
+            Dictionary containing merge results
+        """
+        import subprocess
+        from pathlib import Path
+        
+        try:
+            # 验证输入参数
+            if not file_list or not isinstance(file_list, list):
+                return {
+                    'status': 'failed',
+                    'error': 'file_list must be a non-empty list of filenames',
+                    'file_list': file_list,
+                    'output_file': output_file
+                }
+            
+            if not output_file:
+                return {
+                    'status': 'failed',
+                    'error': 'output_file must be provided',
+                    'file_list': file_list,
+                    'output_file': output_file
+                }
+            
+            # 解析文件路径
+            resolved_files = []
+            missing_files = []
+            
+            for file_path in file_list:
+                resolved_path = self._resolve_path(file_path)
+                if Path(resolved_path).exists():
+                    resolved_files.append(resolved_path)
+                else:
+                    missing_files.append(file_path)
+            
+            if missing_files:
+                return {
+                    'status': 'failed',
+                    'error': f'Following files not found: {missing_files}',
+                    'file_list': file_list,
+                    'output_file': output_file,
+                    'missing_files': missing_files
+                }
+            
+            # 解析输出文件路径
+            output_path = self._resolve_path(output_file)
+            output_path_obj = Path(output_path)
+            
+            print_current(f"🔄 Merging {len(resolved_files)} files into: {output_file}")
+            
+            # 使用 cat 命令合并文件
+            try:
+                cmd = ['cat'] + resolved_files
+                with open(output_path, 'w', encoding='utf-8') as outfile:
+                    result = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=True)
+                
+                if not output_path_obj.exists():
+                    return {
+                        'status': 'failed',
+                        'error': 'Output file was not created',
+                        'file_list': file_list,
+                        'output_file': output_file
+                    }
+                
+                # 获取合并后文件的信息
+                file_size = output_path_obj.stat().st_size
+                relative_output_path = str(output_path_obj.relative_to(self.workspace_root))
+                
+                print_current(f"✅ Successfully merged files into: {output_file} ({file_size / 1024:.1f} KB)")
+                
+                result_data = {
+                    'status': 'success',
+                    'file_list': file_list,
+                    'output_file': output_file,
+                    'resolved_output_path': relative_output_path,
+                    'merged_files_count': len(resolved_files),
+                    'output_size': file_size,
+                    'output_size_kb': f"{file_size / 1024:.1f} KB"
+                }
+                
+                # 如果输出文件是 markdown 文件，自动转换为 Word 和 PDF
+                if output_file.lower().endswith('.md'):
+                    print_current(f"📄 Detected Markdown file, converting to Word and PDF formats...")
+                    try:
+                        conversion_result = self._convert_markdown_to_formats(output_path, relative_output_path)
+                        result_data['format_conversions'] = conversion_result
+                        print_current(f"✅ Format conversion completed for: {output_file}")
+                    except Exception as e:
+                        result_data['format_conversions'] = {
+                            'status': 'failed',
+                            'error': f'Format conversion failed: {str(e)}'
+                        }
+                        print_current(f"❌ Format conversion failed for {output_file}: {str(e)}")
+                
+                return result_data
+                
+            except subprocess.CalledProcessError as e:
+                return {
+                    'status': 'failed',
+                    'error': f'File merge command failed: {e.stderr}',
+                    'file_list': file_list,
+                    'output_file': output_file
+                }
+            
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'error': f'Merge operation failed: {str(e)}',
+                'file_list': file_list,
+                'output_file': output_file
+            }
+
     def parse_doc_to_md(self, folder_path: str) -> Dict[str, Any]:
         """
         Recursively traverse a folder and convert document files to markdown using markitdown.
@@ -1537,7 +1657,7 @@ class FileSystemTools:
             }
             
             # Convert to Word document
-            print_current(f"📄 Converting Markdown to Word document: {word_file.name}")
+            #print_current(f"📄 Converting Markdown to Word document: {word_file.name}")
             try:
                 # Use pandoc to convert to Word
                 cmd = [
@@ -1581,7 +1701,7 @@ class FileSystemTools:
                 print_current(f"❌ Word document conversion exception: {str(e)}")
             
             # Convert to PDF document
-            print_current(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
+            #sprint_current(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
             try:
                 # Use trans_md_to_pdf.py script to convert to PDF
                 trans_script = Path(__file__).parent.parent / "utils" / "trans_md_to_pdf.py"
@@ -1790,10 +1910,8 @@ class FileSystemTools:
                                        if conv.get('status') == 'success')
             total_conversions = len(conversion_results['conversions'])
             
-            if successful_conversions > 0:
-                print_current(f"📊 Conversion completed: {successful_conversions}/{total_conversions} formats converted successfully")
-            else:
-                print_current(f"⚠️ All format conversions failed")
+            if successful_conversions == 0:
+                #print_current(f"⚠️ All format conversions failed")
                 conversion_results['status'] = 'partial_failure'
             
             return conversion_results

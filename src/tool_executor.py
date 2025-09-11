@@ -355,6 +355,7 @@ class ToolExecutor:
             "idle": self.tools.idle,
             "get_sensor_data": self.tools.get_sensor_data,
             "todo_update": self.tools.todo_update,  # Add todo task status update tool
+            "merge_file": self.tools.merge_file,  # Add file merging tool
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
         }
         
@@ -1423,9 +1424,9 @@ class ToolExecutor:
             else:
                 print_debug("⚠️ Skipping history optimization - conditions not met")
             # Show raw model response for debugging
-            if self.debug_mode and content:
-                print_current("🤖 Raw model response:")
-                print_current(content)
+            #if self.debug_mode and content:
+            #    print_current("🤖 Raw model response:")
+            #    print_current(content)
             
             # Calculate and display token and character statistics
             self._display_llm_statistics(messages, content, tool_calls)
@@ -3488,7 +3489,7 @@ class ToolExecutor:
                                 hallucination_detected = False
                                 for text in stream.text_stream:
                                     # Check for hallucination pattern
-                                    if "**LLM Called Following Tools in this round:" in text:
+                                    if "**LLM Called Following Tools in this round" in text:
                                         print_current("\n🚨 Hallucination Detected, stop chat")
                                         hallucination_detected = True
                                         break
@@ -3536,7 +3537,7 @@ class ToolExecutor:
                                     delta = chunk.choices[0].delta
                                     if delta.content is not None:
                                         # Check for hallucination pattern
-                                        if "**LLM Called Following Tools in this round:**" in delta.content:
+                                        if "**LLM Called Following Tools in this round" in delta.content:
                                             print_current("\n🚨 Hallucination Detected, stop chat")
                                             hallucination_detected = True
                                             break
@@ -3667,15 +3668,16 @@ class ToolExecutor:
 
                         current_tool_call = None
                         tool_calls_detected = False
+                        stream_complete = False
 
                         for chunk in response:
                             if chunk.choices and len(chunk.choices) > 0:
                                 delta = chunk.choices[0].delta
-
+                                
                                 # Handle content (streaming text output - keep in lock)
                                 if delta.content is not None:
                                     # Check for hallucination pattern
-                                    if "**LLM Called Following Tools in this round:**" in delta.content:
+                                    if "**LLM Called Following Tools in this round" in delta.content:
                                         print_current("\n🚨 Hallucination Detected, stop chat")
                                         # Set hallucination flag and break from streaming loop
                                         hallucination_detected = True
@@ -3698,34 +3700,55 @@ class ToolExecutor:
                                                     "id": "",
                                                     "type": "function",
                                                     "function": {"name": "", "arguments": ""},
-                                                    "_stream_shown_name": False
+                                                    "_stream_shown_name": False,
+                                                    "_stream_complete": False,
+                                                    "_last_update_time": time.time(),
+                                                    "_args_chunks": 0
                                                 })
                                             
                                             current_tool_call = tool_calls[tool_call_delta.index]
+                                            current_tool_call["_last_update_time"] = time.time()
                                             
                                             if tool_call_delta.id:
                                                 current_tool_call["id"] = tool_call_delta.id
-                                            
+
                                             if tool_call_delta.function:
                                                 if tool_call_delta.function.name:
                                                     current_tool_call["function"]["name"] = tool_call_delta.function.name
                                                     # Show tool name when first detected
                                                     if not current_tool_call.get("_stream_shown_name", False):
-                                                        #printer.write(f"\n🔧 calling tool: {tool_call_delta.function.name}\n")
                                                         current_tool_call["_stream_shown_name"] = True
                                                 
                                                 if tool_call_delta.function.arguments:
                                                     current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
-                                                    #printer.write(tool_call_delta.function.arguments)
-                    print_current("")
-                    # Phase 2: Tool execution with completion feedback
-                    if tool_calls_detected:
+                                                    current_tool_call["_args_chunks"] += 1
+                            
+                            # Check if this is the last chunk (finish_reason is present)
+                            if (chunk.choices and len(chunk.choices) > 0 and 
+                                chunk.choices[0].finish_reason is not None):
+                                stream_complete = True
+                                break
+                        print_current("")
+                        
+                        # Mark tool calls as complete and validate them
+                        for tool_call in tool_calls:
+                            if (tool_call["function"]["name"] and 
+                                tool_call["function"]["arguments"]):
+                                try:
+                                    # Validate JSON completeness
+                                    json.loads(tool_call["function"]["arguments"])
+                                    tool_call["_stream_complete"] = True
+                                except json.JSONDecodeError:
+                                    tool_call["_stream_complete"] = False
+                                    print_debug(f"⚠️ Tool call arguments incomplete: {tool_call['function']['name']}")
+                        
                         executed_tool_calls = []
                         
                         # Execute complete tool calls
                         for i, tool_call in enumerate(tool_calls):
                             if (tool_call["function"]["name"] and 
                                 tool_call["function"]["arguments"] and
+                                tool_call.get("_stream_complete", False) and
                                 i not in executed_tool_calls):
                                 
                                 try:
@@ -3734,24 +3757,34 @@ class ToolExecutor:
                                     if tool_call.get("_stream_shown_name", True):
                                         print_current(f"🎯 Tool {i + 1}: {tool_call['function']['name']}")
                                     
-                                    # Execute tool immediately (no lock!)
+                                    # Execute tool immediately
                                     self._execute_tool_immediately(tool_call, i + 1)
                                     executed_tool_calls.append(i)
                                     
-                                except json.JSONDecodeError:
+                                except json.JSONDecodeError as e:
                                     # Arguments incomplete, show error if we were tracking this
                                     if tool_call.get("_stream_shown_name", False):
-
-                                        print_error(f"Failed to parse tool arguments: {tool_call['function']['arguments']}")
+                                        print_error(f"Failed to parse tool arguments for {tool_call['function']['name']}: {str(e)}")
+                                    print_debug(f"Raw arguments: {tool_call['function']['arguments']}")
                                     continue
                         
+                        # Report on incomplete tool calls
+                        incomplete_calls = [tc for tc in tool_calls if not tc.get("_stream_complete", False) and tc["function"]["name"]]
+                        if incomplete_calls:
+                            print_current(f"⚠️ {len(incomplete_calls)} tool call(s) were incomplete and skipped")
+                            for tc in incomplete_calls:
+                                print_debug(f"Incomplete: {tc['function']['name']} - Args: {tc['function']['arguments'][:100]}...")
+                        
                         if executed_tool_calls:
-                            print_debug("✅ All detected tools have been executed")
+                            print_debug("✅ All complete tools have been executed")
                     
                     # Clean up streaming metadata from tool_calls
                     for tool_call in tool_calls:
                         tool_call.pop("_stream_shown_name", None)
                         tool_call.pop("_stream_args_started", None)
+                        tool_call.pop("_stream_complete", None)
+                        tool_call.pop("_last_update_time", None)
+                        tool_call.pop("_args_chunks", None)
 
                     # If hallucination was detected, return early with empty tool calls
                     if hallucination_detected:
@@ -3937,7 +3970,7 @@ class ToolExecutor:
                                                 cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
 
                                                 if cache_creation_tokens > 0 or cache_read_tokens > 0:
-                                                    print_current(f"\n📊  Token Usage - Input: {input_tokens}, Output: {output_tokens} Cache Usage - Creation: {cache_creation_tokens}, Read: {cache_read_tokens}")
+                                                    print_debug(f"\n📊  Token Usage - Input: {input_tokens}, Output: {output_tokens} Cache Usage - Creation: {cache_creation_tokens}, Read: {cache_read_tokens}")
 
                                     # Handle content block start
                                     elif event_type == "content_block_start":
@@ -3961,7 +3994,7 @@ class ToolExecutor:
                                                 # Stream text content
                                                 text = getattr(delta, 'text', '')
                                                 # Detect hallucination mode
-                                                if "**LLM Called Following Tools in this round:**" in text:
+                                                if "**LLM Called Following Tools in this round" in text:
                                                     print_current("\n🚨 Hallucination detected, stopping conversation")
                                                     hallucination_detected = True
                                                     break
@@ -4002,7 +4035,7 @@ class ToolExecutor:
                                 print_error(f"Streaming failed, falling back to text mode: {e}")
                                 try:
                                     for text in stream.text_stream:
-                                        if "**LLM Called Following Tools in this round:**" in text:
+                                        if "**LLM Called Following Tools in this round" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                             hallucination_detected = True
                                             break

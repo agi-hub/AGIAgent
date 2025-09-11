@@ -2859,6 +2859,50 @@ def refresh_directories():
             'error': str(e)
         }), 500
 
+@app.route('/api/file-count/<path:dir_name>', methods=['GET'])
+def get_file_count(dir_name):
+    """Get file count in specified directory's workspace folder"""
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Target directory path
+        target_dir = os.path.join(user_base_dir, secure_filename(dir_name))
+        if not os.path.exists(target_dir):
+            return jsonify({
+                'success': False,
+                'error': 'Directory not found'
+            }), 404
+        
+        # workspace directory path
+        workspace_dir = os.path.join(target_dir, 'workspace')
+        if not os.path.exists(workspace_dir):
+            return jsonify({
+                'success': True,
+                'file_count': 0
+            })
+        
+        # Count files recursively in workspace directory
+        file_count = 0
+        for root, dirs, files in os.walk(workspace_dir):
+            file_count += len(files)
+        
+        return jsonify({
+            'success': True,
+            'file_count': file_count
+        })
+    except Exception as e:
+        print(f"Failed to get file count: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # File upload functionality
 @app.route('/api/upload/<path:dir_name>', methods=['POST'])
 def upload_files(dir_name):
@@ -3094,6 +3138,63 @@ def delete_directory(dir_name):
         return jsonify({'success': False, 'error': f'Permission denied: {str(e)}'})
     except Exception as e:
         print(f"Error deleting directory {dir_name}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/delete-file', methods=['DELETE'])
+def delete_file():
+    """Delete specified file from workspace"""
+    try:
+        # Get file path from request
+        data = request.get_json()
+        file_path = data.get('file_path') if data else request.args.get('file_path')
+        
+        if not file_path:
+            return jsonify({'success': False, 'error': 'File path is required'})
+        
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        if data:
+            api_key = api_key or data.get('api_key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Construct full file path
+        full_file_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure file is within user's directory
+        real_user_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_file_path)
+        if not real_file_path.startswith(real_user_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid file path'})
+        
+        # Check if file exists
+        if not os.path.exists(full_file_path):
+            return jsonify({'success': False, 'error': f'File not found: {file_path}'})
+        
+        # Check if it's actually a file (not a directory)
+        if not os.path.isfile(full_file_path):
+            return jsonify({'success': False, 'error': f'Path is not a file: {file_path}'})
+        
+        print(f"Deleting file: {full_file_path}")
+        
+        # Delete the file
+        os.remove(full_file_path)
+        
+        print(f"Successfully deleted file: {file_path}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'File "{os.path.basename(file_path)}" has been successfully deleted'
+        })
+        
+    except PermissionError as e:
+        print(f"Permission error deleting file {file_path}: {str(e)}")
+        return jsonify({'success': False, 'error': f'Permission denied: {str(e)}'})
+    except Exception as e:
+        print(f"Error deleting file {file_path}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/routine-files', methods=['GET'])
