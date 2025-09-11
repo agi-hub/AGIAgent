@@ -1188,7 +1188,7 @@ class ToolExecutor:
                 
                 # Display tool calls if present
                 if tool_calls_section:
-                    message_parts.append("**LLM Called Following Tools in this round:**")
+                    message_parts.append("**LLM Called Following Tools in this round (It is a reply from the environment, if you want to calling tools, you should fill in the tool calls section, not here!!!), you should not print this section in your response**")
                     message_parts.append(tool_calls_section)
                     #message_parts.append("")
                 
@@ -2244,7 +2244,7 @@ class ToolExecutor:
                         self._stream_tool_execution(tool_name, params, self.tool_map[tool_name])
                         result = self.tool_map[tool_name](**params)
                         # Stream the result output immediately after execution
-                        self._stream_tool_result(tool_name, result)
+                        self._stream_tool_result(tool_name, result, params)
                     else:
                         result = self.tool_map[tool_name](**params)
                     
@@ -2529,7 +2529,7 @@ class ToolExecutor:
                     self._stream_tool_execution(tool_name, filtered_params, tool_func)
                     result = tool_func(**filtered_params)
                     # Stream the result output immediately after execution
-                    self._stream_tool_result(tool_name, result)
+                    self._stream_tool_result(tool_name, result, filtered_params)
                 else:
                     result = tool_func(**filtered_params)
                 
@@ -3488,8 +3488,7 @@ class ToolExecutor:
                                 hallucination_detected = False
                                 for text in stream.text_stream:
                                     # Check for hallucination pattern
-                                    if "Tool execution results" in text:
-                                        printer.write("Hallucination Detected, stop chat")
+                                    if "**LLM Called Following Tools in this round:" in text:
                                         print_current("\n🚨 Hallucination Detected, stop chat")
                                         hallucination_detected = True
                                         break
@@ -3537,8 +3536,7 @@ class ToolExecutor:
                                     delta = chunk.choices[0].delta
                                     if delta.content is not None:
                                         # Check for hallucination pattern
-                                        if "Tool execution results" in delta.content:
-                                            printer.write("Hallucination Detected, stop chat")
+                                        if "**LLM Called Following Tools in this round:**" in delta.content:
                                             print_current("\n🚨 Hallucination Detected, stop chat")
                                             hallucination_detected = True
                                             break
@@ -3677,8 +3675,7 @@ class ToolExecutor:
                                 # Handle content (streaming text output - keep in lock)
                                 if delta.content is not None:
                                     # Check for hallucination pattern
-                                    if "Tool execution results" in delta.content:
-                                        printer.write("Hallucination Detected, stop chat")
+                                    if "**LLM Called Following Tools in this round:**" in delta.content:
                                         print_current("\n🚨 Hallucination Detected, stop chat")
                                         # Set hallucination flag and break from streaming loop
                                         hallucination_detected = True
@@ -3904,13 +3901,14 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # Phase 1: Enhanced LLM streaming with tool call visibility
+                    # Simplified streaming logic
                     content = ""
                     tool_calls = []
-                    tool_call_buffers = {}  # Track partial tool calls by index
-                    
+                    tool_call_buffers = {}  # Track partial tool calls
+
                     with streaming_context(show_start_message=True) as printer:
                         hallucination_detected = False
+
                         with self.client.messages.stream(
                             model=self.model,
                             max_tokens=self._get_max_tokens_for_model(self.model),
@@ -3919,20 +3917,34 @@ class ToolExecutor:
                             tools=tools,
                             temperature=0.7
                         ) as stream:
-                            # Try to process all stream events, with fallback to text-only streaming
                             try:
-                                # Process all stream events, not just text
                                 for event in stream:
                                     event_type = getattr(event, 'type', None)
-                                    
-                                    if event_type == "content_block_start":
+
+                                    if event_type == "message_delta":
+                                        # Handle message-level delta updates (usage statistics, etc.)
+                                        delta = getattr(event, 'delta', None)
+                                        if delta:
+                                            # Extract usage information from message_delta
+                                            usage = getattr(delta, 'usage', None) or getattr(event, 'usage', None)
+                                            if usage:
+                                                # Token counts in message_delta are cumulative
+                                                input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                                                output_tokens = getattr(usage, 'output_tokens', 0) or 0
+
+                                                # Check for additional usage fields
+                                                cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                                                cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+
+                                                if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                                                    print_current(f"\n📊  Token Usage - Input: {input_tokens}, Output: {output_tokens} Cache Usage - Creation: {cache_creation_tokens}, Read: {cache_read_tokens}")
+
+                                    # Handle content block start
+                                    elif event_type == "content_block_start":
                                         content_block = getattr(event, 'content_block', None)
                                         if content_block and hasattr(content_block, 'type'):
-                                            if content_block.type == "text":
-                                                # Text content block started
-                                                pass
-                                            elif content_block.type == "tool_use":
-                                                # Tool use block started - show tool name immediately
+                                            if content_block.type == "tool_use":
+                                                # Tool call started
                                                 tool_name = getattr(content_block, 'name', 'Unknown Tool')
                                                 printer.write(f"\n\n🔧 Calling tool: {tool_name}\n")
                                                 tool_call_buffers[getattr(event, 'index', 0)] = {
@@ -3940,60 +3952,37 @@ class ToolExecutor:
                                                     "name": tool_name,
                                                     "input_json": ""
                                                 }
-                                    
+
+                                    # Handle content block delta
                                     elif event_type == "content_block_delta":
                                         delta = getattr(event, 'delta', None)
                                         if delta and hasattr(delta, 'type'):
                                             if delta.type == "text_delta":
                                                 # Stream text content
                                                 text = getattr(delta, 'text', '')
-                                                # Check for hallucination pattern
-                                                if "Tool execution results" in text:
-                                                    printer.write("Hallucination Detected, stop chat")
-                                                    print_current("\n🚨 Hallucination Detected, stop chat")
-                                                    # Set hallucination flag and break from streaming loop
+                                                # Detect hallucination mode
+                                                if "**LLM Called Following Tools in this round:**" in text:
+                                                    print_current("\n🚨 Hallucination detected, stopping conversation")
                                                     hallucination_detected = True
                                                     break
                                                 printer.write(text)
                                                 content += text
+
                                             elif delta.type == "input_json_delta":
-                                                # Stream tool input construction
+                                                # Stream tool input JSON
                                                 event_index = getattr(event, 'index', 0)
                                                 if event_index in tool_call_buffers:
                                                     partial_json = getattr(delta, 'partial_json', '')
                                                     tool_call_buffers[event_index]["input_json"] += partial_json
-                                                    # Show partial JSON construction with chunked display for long content
-                                                    if partial_json:  # Only print if there's actual content
-                                                        # Break long partial_json into smaller chunks for smoother display
-                                                        chunk_size = 50  # Display 50 characters at a time
-                                                        if len(partial_json) > chunk_size:
-                                                            # For long content, display in small chunks with micro delays
-                                                            for i in range(0, len(partial_json), chunk_size):
-                                                                chunk = partial_json[i:i+chunk_size]
-                                                                printer.write(chunk)
-                                                                sys.stdout.flush()
-                                                                # Tiny delay to allow terminal to process and display
-                                                                time.sleep(0.001)  # 1ms delay for smooth display
-                                                        else:
-                                                            # For short content, display immediately
-                                                            printer.write(partial_json)
-                                                            sys.stdout.flush()
-                                                        
-                                                        # Add periodic progress indicator for very long content
-                                                        buffer = tool_call_buffers[event_index]
-                                                        current_length = len(buffer["input_json"])
-                                                        if not hasattr(buffer, '_last_progress_length'):
-                                                            buffer['_last_progress_length'] = 0
-                                                        
-                                                        # Show progress every 1000 characters
-                                                        if current_length - buffer['_last_progress_length'] >= 1000:
-                                                            buffer['_last_progress_length'] = current_length
-                                                            sys.stdout.flush()
-                                    
+                                                    # Simplified display: only show parameter content, no complex chunk handling
+                                                    if partial_json:
+                                                        printer.write(partial_json)
+
+                                    # Handle content block stop
                                     elif event_type == "content_block_stop":
                                         event_index = getattr(event, 'index', 0)
                                         if event_index in tool_call_buffers:
-                                            # Tool use block completed - parse final JSON
+                                            # Tool call finished, parse final JSON
                                             buffer = tool_call_buffers[event_index]
                                             try:
                                                 parsed_input = json.loads(buffer["input_json"])
@@ -4002,74 +3991,76 @@ class ToolExecutor:
                                                     "name": buffer["name"],
                                                     "input": parsed_input
                                                 })
-                                                # Parameters were already shown during streaming, no need to repeat
+                                                printer.write(f"\n✅ Tool parameter parsing complete\n")
                                             except json.JSONDecodeError:
                                                 print_error(f"Failed to parse tool input JSON: {buffer['input_json']}")
-                                            
-                                            del tool_call_buffers[event_index]
-                            
-                            except Exception as e:
-                                # Fallback to text-only streaming if event processing fails
-                                print_error(f"Enhanced streaming failed, falling back to text-only: {e}")
-                                for text in stream.text_stream:
-                                    # Check for hallucination pattern in fallback mode
-                                    if "Tool execution results" in text:
-                                        printer.write("Hallucination Detected, stop chat")
-                                        print_current("\n🚨 Hallucination Detected, stop chat")
-                                        hallucination_detected = True
-                                        break
-                                    printer.write(text)
-                                    content += text
 
-                            # If hallucination was detected, stop processing and return early
+                                            del tool_call_buffers[event_index]
+
+                            except Exception as e:
+                                # Simplified fallback handling
+                                print_error(f"Streaming failed, falling back to text mode: {e}")
+                                try:
+                                    for text in stream.text_stream:
+                                        if "**LLM Called Following Tools in this round:**" in text:
+                                            print_current("\n🚨 Hallucination detected, stopping conversation")
+                                            hallucination_detected = True
+                                            break
+                                        printer.write(text)
+                                        content += text
+                                except:
+                                    # If even text streaming fails, fully fall back to non-streaming
+                                    print_error("Text streaming also failed, falling back to non-streaming mode")
+                                    break
+
+                            # If hallucination detected, return early
                             if hallucination_detected:
                                 return content, []
-                        
+
                         print_current("")
-                        # Get final message - if we missed any tool calls in streaming, extract them here
-                        final_message = stream.get_final_message()
-                        
-                        # Check if we missed any tool calls during streaming (backup extraction)
-                        if not tool_calls:
-                            for content_block in final_message.content:
-                                if content_block.type == "tool_use":
-                                    tool_calls.append({
-                                        "id": content_block.id,
-                                        "name": content_block.name,
-                                        "input": content_block.input
-                                    })
-                    
+
+                        # Get final message, check if any tool calls were missed
+                        try:
+                            final_message = stream.get_final_message()
+                            if not tool_calls:
+                                for content_block in final_message.content:
+                                    if content_block.type == "tool_use":
+                                        tool_calls.append({
+                                            "id": content_block.id,
+                                            "name": content_block.name,
+                                            "input": content_block.input
+                                        })
+                        except Exception as e:
+                            print_error(f"Failed to get final message: {e}")
+
+                    # Execute tool calls
                     if tool_calls:
-                        for content_block_data in tool_calls:
-                            # Execute tool immediately (no lock!) - let streaming_output handle all display
+                        for tool_call_data in tool_calls:
                             try:
-                                # Convert to standard format for execute_tool
+                                # Convert to standard format
                                 standard_tool_call = {
-                                    "name": content_block_data['name'],
-                                    "arguments": content_block_data['input']
+                                    "name": tool_call_data['name'],
+                                    "arguments": tool_call_data['input']
                                 }
-                                
+
                                 tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
-                                
-                                # Store result for later response formatting
+
+                                # Store result
                                 if not hasattr(self, '_streaming_tool_results'):
                                     self._streaming_tool_results = []
-                                
+
                                 self._streaming_tool_results.append({
-                                    'tool_name': content_block_data['name'],
-                                    'tool_params': content_block_data['input'],
+                                    'tool_name': tool_call_data['name'],
+                                    'tool_params': tool_call_data['input'],
                                     'tool_result': tool_result
                                 })
-                                
-                                # Set flag indicating tools were executed during streaming
+
                                 self._tools_executed_in_stream = True
-                                
-                                # Tool result is already displayed by streaming output, no need to duplicate
-                                
+
                             except Exception as e:
                                 print_error(f"❌ Tool execution failed: {str(e)}")
-                        
-                        print_debug("✅ All detected tools have been executed")
+
+                        print_debug("✅ All tool executions completed")
                     
                     return content, tool_calls
                 else:
@@ -4937,13 +4928,14 @@ class ToolExecutor:
         except Exception as e:
             print_error(f"⚠️ Error showing tool execution progress: {e}")
 
-    def _stream_tool_result(self, tool_name: str, result: Any) -> None:
+    def _stream_tool_result(self, tool_name: str, result: Any, tool_params: dict = None) -> None:
         """
         Stream tool execution result in real-time.
         
         Args:
             tool_name: Name of the tool that was executed
             result: Result from tool execution
+            tool_params: Parameters passed to the tool (optional)
         """
         try:
             # Log full result to file
@@ -4971,7 +4963,7 @@ class ToolExecutor:
                             print_debug(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
                         elif isinstance(tool_result_content, dict):
                             # For dict results, format as text without truncation
-                            formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=params)
+                            formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=tool_params)
                             print_debug(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
                         else:
                             print_debug(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
