@@ -119,7 +119,7 @@ class FastMcpWrapper:
         """Get default workspace directory for MCP servers"""
         try:
             current_dir = os.getcwd()
-            print_current(f"🔍 Current working directory: {current_dir}")
+            #print_current(f"🔍 Current working directory: {current_dir}")
 
             # Strategy 1: Check if we're currently in an output_xxx/workspace directory
             dir_name = os.path.basename(current_dir)

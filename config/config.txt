@@ -21,16 +21,16 @@ max_tokens=16384
 # max_tokens=32768
 
 # Openrouter
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=qwen/qwen3-coder
-# max_tokens=32768
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=qwen/qwen3-30b-a3b-instruct-2507
+max_tokens=32768
 
 # Zhipu API configuration 
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.5
-# max_tokens=16384
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.5
+max_tokens=16384
 
 # Bailian API configuration 
 # api_key=your key
@@ -219,7 +219,7 @@ auto_fix_interactive_commands=True
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=True
+multi_agent=False
 
 # Round Synchronization Barrier (experimental)
 # When enabled, all agents will execute in lockstep windows.
@@ -255,3 +255,26 @@ emoji_disabled=False
 # Default: True (fallback enabled)
 # Set to False to disable PDF fallback document generation
 pdf_fallback_enabled=False
+
+# Message Format Configuration
+# Controls how conversation history is organized for LLM API calls
+# aggregated: Single user message with history context (current default, better cache performance)
+# interleave: Alternating assistant/user/tool messages (standard API format, better tool state tracking)
+# Default: aggregated (current behavior)
+# Set to interleave to use alternating message format
+message_organization=interleave
+
+# Message History Optimization Configuration
+# Controls whether to enable message history optimization for better performance
+# When enabled, applies various optimizations like image data compression, format standardization
+# Default: True (enabled)
+# Set to False to disable message optimization
+enable_message_optimization=True
+
+# Maximum Interleave Messages Configuration
+# Maximum number of messages to keep in interleave mode history
+# Older messages beyond this limit will be trimmed to manage context length
+# Only applies when message_organization=interleave
+# Default: 50
+# Adjust based on your model's context window and performance needs
+max_interleave_messages=50

@@ -108,7 +108,7 @@ class FileSystemTools:
                 
                 # Safety check to avoid infinite loop
                 if snapshot_id > 999:
-                    print_current(f"⚠️ Too many snapshots for file {target_file}, skipping snapshot creation")
+                    print_debug(f"⚠️ Too many snapshots for file {target_file}, skipping snapshot creation")
                     return False
             
             # Create the snapshot by copying the file
@@ -123,12 +123,11 @@ class FileSystemTools:
             else:
                 # Otherwise, use original logic
                 relative_snapshot_path = os.path.relpath(snapshot_path, self.workspace_root)
-            print_current(f"📸 Created file snapshot: {relative_snapshot_path}")
             
             return True
             
         except Exception as e:
-            print_current(f"⚠️ Failed to create snapshot for {target_file}: {e}")
+            print_debug(f"⚠️ Failed to create snapshot for {target_file}: {e}")
             return False
 
     def read_file(self, target_file: str, should_read_entire_file: bool = False, 
@@ -139,20 +138,18 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
-        
-        #print_current(f"🎯 Requested to read file: {target_file}")
-        #print_current(f"📂 Current working directory: {self.workspace_root}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+    
         
         file_path = self._resolve_path(target_file)
         
         if not os.path.exists(file_path):
-            print_current(f"❌ File does not exist: {file_path}")
+            print_debug(f"❌ File does not exist: {file_path}")
             try:
                 current_dir_files = os.listdir(self.workspace_root)
-                print_current(f"📁 Files in current directory: {current_dir_files}")
+                print_debug(f"📁 Files in current directory: {current_dir_files}")
             except Exception as e:
-                print_current(f"⚠️ Cannot list current directory: {e}")
+                print_debug(f"⚠️ Cannot list current directory: {e}")
             
             return {
                 'status': 'failed',
@@ -164,7 +161,7 @@ class FileSystemTools:
             }
         
         if not os.path.isfile(file_path):
-            print_current(f"❌ Path is not a file: {file_path}")
+            print_debug(f"❌ Path is not a file: {file_path}")
             return {
                 'status': 'failed',
                 'file': target_file,
@@ -197,7 +194,7 @@ class FileSystemTools:
                     content_lines = all_lines[:max_entire_lines]
                     content = ''.join(content_lines)
                     after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
-                    print_current(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
+                    print_debug(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
                     return {
                         'status': 'success',
                         'file': target_file,
@@ -220,7 +217,7 @@ class FileSystemTools:
                 if end_idx - start_idx > 250:
                     end_idx = start_idx + 250
                 
-                print_current(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
+                print_debug(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
                 
                 content_lines = all_lines[start_idx:end_idx]
                 content = ''.join(content_lines)
@@ -240,7 +237,7 @@ class FileSystemTools:
                     'resolved_path': file_path
                 }
         except UnicodeDecodeError as e:
-            print_current(f"❌ File encoding error: {e}")
+            print_debug(f"❌ File encoding error: {e}")
             return {
                 'status': 'failed',
                 'file': target_file,
@@ -248,7 +245,7 @@ class FileSystemTools:
                 'resolved_path': file_path
             }
         except Exception as e:
-            print_current(f"❌ Error occurred while reading file: {e}")
+            print_debug(f"❌ Error occurred while reading file: {e}")
             return {
                 'status': 'failed',
                 'file': target_file,
@@ -262,7 +259,7 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         dir_path = self._resolve_path(relative_workspace_path)
         
@@ -306,18 +303,18 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         # Intelligent query optimization for LLM-generated complex queries
         optimized_result, should_split = self._optimize_query_for_performance(query)
         
         if should_split:
-            print_current(f"🔧 Complex query detected, optimizing for better performance...")
+            print_debug(f"🔧 Complex query detected, optimizing for better performance...")
             # Type assertion: we know optimized_result is a list when should_split is True
             query_groups = optimized_result if isinstance(optimized_result, list) else [str(optimized_result)]
             return self._execute_split_search(query_groups, include_pattern or "", exclude_pattern or "", case_sensitive, max_results)
         else:
-            print_current(f"Searching for: {optimized_result}")
+            print_debug(f"Searching for: {optimized_result}")
             # Type assertion: we know optimized_result is a string when should_split is False
             query_str = str(optimized_result) if not isinstance(optimized_result, list) else optimized_result[0]
             return self._execute_single_search(query_str, include_pattern or "", exclude_pattern or "", case_sensitive, max_results)
@@ -344,7 +341,7 @@ class FileSystemTools:
         """
         # Check for dummy placeholder file created by hallucination detection
         if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
-            print_current(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
+            print_debug(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
             return {
                 'status': 'failed',
                 'file': target_file,
@@ -364,7 +361,7 @@ class FileSystemTools:
         
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         file_path = self._resolve_path(target_file)
         file_exists = os.path.exists(file_path)
@@ -434,23 +431,23 @@ class FileSystemTools:
                     if preprocessed_content != content_to_preprocess:
                         with open(file_path, 'w', encoding='utf-8') as f:
                             f.write(preprocessed_content)
-                        print_current(f"📝 Applied bullet formatting preprocessing to markdown file")
+                        print_debug(f"📝 Applied bullet formatting preprocessing to markdown file")
                 except Exception as e:
-                    print_current(f"⚠️ Error during bullet formatting preprocessing: {e}")
+                    print_debug(f"⚠️ Error during bullet formatting preprocessing: {e}")
             
             # Process Mermaid charts if this is a markdown file
             mermaid_result = None
             if target_file.lower().endswith('.md') and MERMAID_PROCESSOR_AVAILABLE:
                 try:
                     if mermaid_processor.has_mermaid_charts(file_path):
-                        print_current(f"🎨 Detected Mermaid charts in markdown file, processing...")
+                        print_debug(f"🎨 Detected Mermaid charts in markdown file, processing...")
                         mermaid_result = mermaid_processor.process_markdown_file(file_path)
                         if mermaid_result['status'] == 'success':
-                            print_current(f"✅ Mermaid processing completed: {mermaid_result['message']}")
+                            print_debug(f"✅ Mermaid processing completed: {mermaid_result['message']}")
                         else:
-                            print_current(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
+                            print_debug(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
                 except Exception as e:
-                    print_current(f"⚠️ Error during Mermaid processing: {e}")
+                    print_debug(f"⚠️ Error during Mermaid processing: {e}")
                     mermaid_result = {
                         'status': 'failed',
                         'error': str(e),
@@ -488,7 +485,7 @@ class FileSystemTools:
                     if conversion_result:
                         result['conversion'] = conversion_result
                 except Exception as e:
-                    print_current(f"⚠️ Error during markdown conversion: {e}")
+                    print_debug(f"⚠️ Error during markdown conversion: {e}")
                     result['conversion'] = {
                         'status': 'failed',
                         'error': str(e),
@@ -528,13 +525,13 @@ class FileSystemTools:
         start_marker_pattern = r'^```[^\n]*\n'
         if re.match(start_marker_pattern, code_content):
             has_start_marker = True
-            print_current(f"🧹 Found markdown code block start marker")
+            print_debug(f"🧹 Found markdown code block start marker")
         
         # Check for end marker (```) at the end
         end_marker_pattern = r'\n```\s*$'
         if re.search(end_marker_pattern, code_content):
             has_end_marker = True
-            print_current(f"🧹 Found markdown code block end marker")
+            print_debug(f"🧹 Found markdown code block end marker")
         
         # If no markers found, return original content to preserve exact formatting
         if not has_start_marker and not has_end_marker:
@@ -546,14 +543,14 @@ class FileSystemTools:
         if has_start_marker:
             # Remove start marker (```[language]\n)
             cleaned_content = re.sub(start_marker_pattern, '', cleaned_content)
-            print_current(f"🧹 Removed markdown code block start marker")
+            print_debug(f"🧹 Removed markdown code block start marker")
         
         if has_end_marker:
             # Remove end marker (\n```)
             cleaned_content = re.sub(end_marker_pattern, '', cleaned_content)
-            print_current(f"🧹 Removed markdown code block end marker")
+            print_debug(f"🧹 Removed markdown code block end marker")
         
-        print_current(f"✅ Cleaned markdown markers while preserving formatting")
+        print_debug(f"✅ Cleaned markdown markers while preserving formatting")
         return cleaned_content
 
     def _fix_html_entities(self, code_content: str) -> str:
@@ -594,9 +591,9 @@ class FileSystemTools:
             
             # If there are other entities not in our common list, mention them generically
             if corrections:
-                print_current(f"🔧 Auto-corrected HTML entities: {', '.join(corrections)}")
+                print_debug(f"🔧 Auto-corrected HTML entities: {', '.join(corrections)}")
             else:
-                print_current(f"🔧 Auto-corrected HTML entities (various types found)")
+                print_debug(f"🔧 Auto-corrected HTML entities (various types found)")
         
         return code_content
 
@@ -626,7 +623,7 @@ class FileSystemTools:
             return code_edit
         else:
             # Compatibility mode: default to lines_replace
-            print_current(f"⚠️ Unknown edit_mode '{edit_mode}', defaulting to lines_replace")
+            print_debug(f"⚠️ Unknown edit_mode '{edit_mode}', defaulting to lines_replace")
             return self._process_precise_code_edit(original_content, code_edit, target_file, old_code)
 
     def _replace_lines(self, content: str, new_content: str, start_line_one_indexed: int, end_line_one_indexed_inclusive: int) -> str:
@@ -660,7 +657,7 @@ class FileSystemTools:
         if start_idx > end_idx:
             raise ValueError(f"start_line_one_indexed ({start_line_one_indexed}) must be <= end_line_one_indexed_inclusive ({end_line_one_indexed_inclusive})")
         
-        print_current(f"🔧 Replacing lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} ({end_idx - start_idx + 1} lines) with {len(new_lines)} new lines")
+        print_debug(f"🔧 Replacing lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} ({end_idx - start_idx + 1} lines) with {len(new_lines)} new lines")
         
         # Replace the specified lines
         result = lines[:start_idx] + new_lines + lines[end_idx + 1:]
@@ -693,7 +690,7 @@ class FileSystemTools:
         if insert_idx > len(lines):
             raise ValueError(f"insert_position {insert_position} exceeds file length + 1 ({len(lines) + 1})")
         
-        print_current(f"📍 Inserting {len(new_lines)} lines at position {insert_position}")
+        print_debug(f"📍 Inserting {len(new_lines)} lines at position {insert_position}")
         
         # Insert the new lines
         result = lines[:insert_idx] + new_lines + lines[insert_idx:]
@@ -714,7 +711,7 @@ class FileSystemTools:
         clean_content = new_content.strip()
         
         if not content:
-            print_current("📝 Creating new file with append content")
+            print_debug("📝 Creating new file with append content")
             return clean_content
         
         # Ensure there's a newline before appending if the file doesn't end with one
@@ -723,7 +720,7 @@ class FileSystemTools:
         else:
             result = content + clean_content
         
-        print_current(f"➕ Appending {len(clean_content.split(chr(10)))} lines to end of file")
+        print_debug(f"➕ Appending {len(clean_content.split(chr(10)))} lines to end of file")
         return result
 
     def _process_precise_code_edit(self, original_content: str, code_edit: str, target_file: str, old_code: Optional[str] = None) -> str:
@@ -760,9 +757,9 @@ class FileSystemTools:
         cleaned_code_edit = self._fix_html_entities(cleaned_code_edit)
         cleaned_code_edit = self._process_markdown_content(cleaned_code_edit, target_file)
         
-        print_current(f"🎯 Starting precise code replacement")
-        print_current(f"📝 Looking for old code snippet ({len(cleaned_old_code)} chars)")
-        print_current(f"🔄 Will replace with new code snippet ({len(cleaned_code_edit)} chars)")
+        print_debug(f"🎯 Starting precise code replacement")
+        print_debug(f"📝 Looking for old code snippet ({len(cleaned_old_code)} chars)")
+        print_debug(f"🔄 Will replace with new code snippet ({len(cleaned_code_edit)} chars)")
         
         # Apply direct string replacement
         return self._apply_precise_replacement(original_content, cleaned_old_code, cleaned_code_edit)
@@ -819,8 +816,8 @@ class FileSystemTools:
         # Perform the replacement
         new_content = original_content.replace(old_code, new_code, 1)
         
-        print_current(f"✅ Successfully replaced code snippet (direct replacement)")
-        print_current(f"📊 Content size: {len(original_content)} → {len(new_content)} chars")
+        print_debug(f"✅ Successfully replaced code snippet (direct replacement)")
+        print_debug(f"📊 Content size: {len(original_content)} → {len(new_content)} chars")
         
         return new_content
     
@@ -831,9 +828,9 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
-        print_current(f"Searching for file: {query}")
+        print_debug(f"Searching for file: {query}")
         
         results = []
         max_results = 10
@@ -868,7 +865,7 @@ class FileSystemTools:
         """
         # Ignore additional parameters
         if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         file_path = self._resolve_path(target_file)
         
@@ -935,7 +932,7 @@ class FileSystemTools:
         
         # If query has too many OR operations, suggest splitting
         if or_count >= 8:  # Threshold for complex queries
-            print_current(f"⚠️ Complex query detected with {or_count + 1} terms")
+            print_debug(f"⚠️ Complex query detected with {or_count + 1} terms")
             # Split query into logical groups
             terms = query.split('|')
             
@@ -990,7 +987,7 @@ class FileSystemTools:
             exclude_pattern = f"{exclude_pattern}|output_*/*|__pycache__/*|*.egg-info/*"
         
         for i, group_query in enumerate(query_groups):
-            print_current(f"🔍 Executing search group {i+1}/{len(query_groups)}: {group_query}")
+            print_debug(f"🔍 Executing search group {i+1}/{len(query_groups)}: {group_query}")
             
             result = self._execute_single_search(group_query, include_pattern, exclude_pattern, case_sensitive, max_results)
             
@@ -1000,7 +997,7 @@ class FileSystemTools:
                 
                 # Limit total results to prevent overwhelming output
                 if max_results is not None and len(all_results) >= max_results:
-                    print_current(f"⚠️ Reached result limit ({max_results}), stopping further searches")
+                    print_debug(f"⚠️ Reached result limit ({max_results}), stopping further searches")
                     break
         
         # Deduplicate results based on file and line number
@@ -1111,7 +1108,7 @@ class FileSystemTools:
             cmd.append(self.workspace_root)
             
             # Execute grep
-            print_current(f"🔍 Executing system grep: {' '.join(cmd)} (target: {self.workspace_root})")
+            print_debug(f"🔍 Executing system grep: {' '.join(cmd)} (target: {self.workspace_root})")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode in [0, 1]:  # 0=found, 1=not found (both OK)
@@ -1202,7 +1199,7 @@ class FileSystemTools:
             # If regex is invalid, escape special characters and search as literal string
             query = re.escape(query)
             use_regex = True
-            print_current(f"⚠️ Invalid regex pattern, searching as literal string: {query}")
+            print_debug(f"⚠️ Invalid regex pattern, searching as literal string: {query}")
         
         # Enable followlinks=True to traverse symbolic links
         for root, _, files in os.walk(self.workspace_root, followlinks=True):
@@ -1354,7 +1351,7 @@ class FileSystemTools:
             output_path = self._resolve_path(output_file)
             output_path_obj = Path(output_path)
             
-            print_current(f"🔄 Merging {len(resolved_files)} files into: {output_file}")
+            print_debug(f"🔄 Merging {len(resolved_files)} files into: {output_file}")
             
             # 使用 cat 命令合并文件
             try:
@@ -1374,7 +1371,7 @@ class FileSystemTools:
                 file_size = output_path_obj.stat().st_size
                 relative_output_path = str(output_path_obj.relative_to(self.workspace_root))
                 
-                print_current(f"✅ Successfully merged files into: {output_file} ({file_size / 1024:.1f} KB)")
+                print_debug(f"✅ Successfully merged files into: {output_file} ({file_size / 1024:.1f} KB)")
                 
                 result_data = {
                     'status': 'success',
@@ -1388,17 +1385,17 @@ class FileSystemTools:
                 
                 # 如果输出文件是 markdown 文件，自动转换为 Word 和 PDF
                 if output_file.lower().endswith('.md'):
-                    print_current(f"📄 Detected Markdown file, converting to Word and PDF formats...")
+                    print_debug(f"📄 Detected Markdown file, converting to Word and PDF formats...")
                     try:
                         conversion_result = self._convert_markdown_to_formats(output_path, relative_output_path)
                         result_data['format_conversions'] = conversion_result
-                        print_current(f"✅ Format conversion completed for: {output_file}")
+                        print_debug(f"✅ Format conversion completed for: {output_file}")
                     except Exception as e:
                         result_data['format_conversions'] = {
                             'status': 'failed',
                             'error': f'Format conversion failed: {str(e)}'
                         }
-                        print_current(f"❌ Format conversion failed for {output_file}: {str(e)}")
+                        print_debug(f"❌ Format conversion failed for {output_file}: {str(e)}")
                 
                 return result_data
                 
@@ -1463,7 +1460,7 @@ class FileSystemTools:
         failed_files = []
         skipped_files = []
         
-        print_current(f"📁 Starting document parsing in folder: {resolved_folder}")
+        print_debug(f"📁 Starting document parsing in folder: {resolved_folder}")
         
         # Recursively walk through all files
         for root, dirs, files in os.walk(resolved_folder):
@@ -1494,7 +1491,7 @@ class FileSystemTools:
                         })
                         continue
                 
-                print_current(f"🔄 Converting: {rel_path}")
+                print_debug(f"🔄 Converting: {rel_path}")
                 
                 try:
                     # Convert document to markdown
@@ -1513,30 +1510,30 @@ class FileSystemTools:
                             'size': len(markdown_content)
                         })
                         
-                        print_current(f"✅ Converted: {rel_path} → {os.path.basename(md_path)}")
+                        print_debug(f"✅ Converted: {rel_path} → {os.path.basename(md_path)}")
                     else:
                         failed_files.append({
                             'file': rel_path,
                             'error': 'No content returned from markitdown conversion'
                         })
-                        print_current(f"❌ Failed to convert: {rel_path} - No content returned")
+                        print_debug(f"❌ Failed to convert: {rel_path} - No content returned")
                         
                 except Exception as e:
                     failed_files.append({
                         'file': rel_path,
                         'error': str(e)
                     })
-                    print_current(f"❌ Failed to convert: {rel_path} - {str(e)}")
+                    print_debug(f"❌ Failed to convert: {rel_path} - {str(e)}")
         
         # Summary
         total_processed = len(processed_files)
         total_failed = len(failed_files)
         total_skipped = len(skipped_files)
         
-        print_current(f"📊 Conversion complete:")
-        print_current(f"   ✅ Processed: {total_processed} files")
-        print_current(f"   ❌ Failed: {total_failed} files")
-        print_current(f"   ⏭️ Skipped: {total_skipped} files")
+        print_debug(f"📊 Conversion complete:")
+        print_debug(f"   ✅ Processed: {total_processed} files")
+        print_debug(f"   ❌ Failed: {total_failed} files")
+        print_debug(f"   ⏭️ Skipped: {total_skipped} files")
         
         return {
             'status': 'success',
@@ -1657,7 +1654,7 @@ class FileSystemTools:
             }
             
             # Convert to Word document
-            #print_current(f"📄 Converting Markdown to Word document: {word_file.name}")
+            print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
             try:
                 # Use pandoc to convert to Word
                 cmd = [
@@ -1679,29 +1676,29 @@ class FileSystemTools:
                         'size': file_size,
                         'size_kb': f"{file_size / 1024:.1f} KB"
                     }
-                    print_current(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
+                    print_debug(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
                 else:
                     conversion_results['conversions']['word'] = {
                         'status': 'failed',
                         'error': 'Word file not generated'
                     }
-                    print_current(f"❌ Word document conversion failed: File not generated")
+                    print_debug(f"❌ Word document conversion failed: File not generated")
                     
             except subprocess.CalledProcessError as e:
                 conversion_results['conversions']['word'] = {
                     'status': 'failed',
                     'error': f'pandoc conversion failed: {e.stderr}'
                 }
-                print_current(f"❌ Word document conversion failed: {e.stderr}")
+                print_debug(f"❌ Word document conversion failed: {e.stderr}")
             except Exception as e:
                 conversion_results['conversions']['word'] = {
                     'status': 'failed',
                     'error': f'Conversion exception: {str(e)}'
                 }
-                print_current(f"❌ Word document conversion exception: {str(e)}")
+                print_debug(f"❌ Word document conversion exception: {str(e)}")
             
             # Convert to PDF document
-            #sprint_current(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
+            print_debug(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
             try:
                 # Use trans_md_to_pdf.py script to convert to PDF
                 trans_script = Path(__file__).parent.parent / "utils" / "trans_md_to_pdf.py"
@@ -1728,26 +1725,26 @@ class FileSystemTools:
                         
                         # Check if there were warnings during conversion
                         if result.returncode != 0:
-                            print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
-                            print_current(f"⚠️  Note: Conversion completed with warnings (non-critical)")
+                            print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                            print_debug(f"⚠️  Note: Conversion completed with warnings (non-critical)")
                             if result.stderr:
-                                print_current(f"   Warning details: {result.stderr[:200]}...")  # Show first 200 chars
+                                print_debug(f"   Warning details: {result.stderr[:200]}...")  # Show first 200 chars
                         else:
-                            print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                            print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
                     else:
                         # If trans_md_to_pdf.py fails
-                        print_current(f"⚠️ trans_md_to_pdf.py conversion failed...")
+                        print_debug(f"⚠️ trans_md_to_pdf.py conversion failed...")
                         error_msg = result.stderr if result.stderr else result.stdout
-                        print_current(f"   Error message: {error_msg}")
+                        print_debug(f"   Error message: {error_msg}")
                         
                         # Analyze error for common issues
                         if error_msg:
                             if "Cannot load file" in error_msg or "Invalid" in error_msg:
-                                print_current("🔍 Detected image format compatibility issues")
-                                print_current("💡 Suggestion: Consider converting WebP/TIFF images to PNG/JPEG")
+                                print_debug("🔍 Detected image format compatibility issues")
+                                print_debug("💡 Suggestion: Consider converting WebP/TIFF images to PNG/JPEG")
                             elif "Cannot determine size" in error_msg or "BoundingBox" in error_msg:
-                                print_current("🔍 Detected image size/boundary issues")  
-                                print_current("💡 Suggestion: Image preprocessing may help resolve this")
+                                print_debug("🔍 Detected image size/boundary issues")  
+                                print_debug("💡 Suggestion: Image preprocessing may help resolve this")
                         
                         # Use pandoc directly for conversion with fallback engine
                         try:
@@ -1755,7 +1752,7 @@ class FileSystemTools:
                             engine_name, engine_option = self._check_pdf_engine_availability()
                             if not engine_name:
                                 # No PDF engines available - skip PDF conversion
-                                print_current(f"⚠️ No PDF engines available, skipping PDF conversion")
+                                print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
                                 conversion_results['conversions']['pdf'] = {
                                     'status': 'failed',
                                     'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
@@ -1796,7 +1793,7 @@ class FileSystemTools:
                                     '-V', 'graphics=true',
                                 ])
                             
-                            print_current(f"Using fallback PDF engine: {engine_name}")
+                            print_debug(f"Using fallback PDF engine: {engine_name}")
                             
                             direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
                             
@@ -1809,28 +1806,28 @@ class FileSystemTools:
                                     'size_kb': f"{file_size / 1024:.1f} KB",
                                     'method': 'direct_pandoc'
                                 }
-                                print_current(f"✅ PDF document conversion successful (Direct pandoc): {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                                print_debug(f"✅ PDF document conversion successful (Direct pandoc): {pdf_file.name} ({file_size / 1024:.1f} KB)")
                             else:
                                 conversion_results['conversions']['pdf'] = {
                                     'status': 'failed',
                                     'error': f'Direct pandoc conversion also failed: {direct_result.stderr if direct_result.stderr else "Unknown error"}'
                                 }
-                                print_current(f"❌ PDF document conversion failed (Direct pandoc): {direct_result.stderr if direct_result.stderr else 'Unknown error'}")
+                                print_debug(f"❌ PDF document conversion failed (Direct pandoc): {direct_result.stderr if direct_result.stderr else 'Unknown error'}")
                         except Exception as e:
                             conversion_results['conversions']['pdf'] = {
                                 'status': 'failed',
                                 'error': f'Direct pandoc conversion exception: {str(e)}'
                             }
-                            print_current(f"❌ PDF document conversion exception (Direct pandoc): {str(e)}")
+                            print_debug(f"❌ PDF document conversion exception (Direct pandoc): {str(e)}")
                 else:
                     # If trans_md_to_pdf.py doesn't exist
-                    print_current(f"⚠️ trans_md_to_pdf.py script doesn't exist")
+                    print_debug(f"⚠️ trans_md_to_pdf.py script doesn't exist")
                     
                     # Check available PDF engines
                     engine_name, engine_option = self._check_pdf_engine_availability()
                     if not engine_name:
                         # No PDF engines available - skip PDF conversion
-                        print_current(f"⚠️ No PDF engines available, skipping PDF conversion")
+                        print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
                         conversion_results['conversions']['pdf'] = {
                             'status': 'failed',
                             'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
@@ -1871,7 +1868,7 @@ class FileSystemTools:
                             '-V', 'graphics=true',
                         ])
                     
-                    print_current(f"Using fallback PDF engine: {engine_name}")
+                    print_debug(f"Using fallback PDF engine: {engine_name}")
                     
                     # Execute command in markdown file directory
                     result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
@@ -1884,26 +1881,26 @@ class FileSystemTools:
                             'size': file_size,
                             'size_kb': f"{file_size / 1024:.1f} KB"
                         }
-                        print_current(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                        print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
                     else:
                         conversion_results['conversions']['pdf'] = {
                             'status': 'failed',
                             'error': 'PDF file not generated'
                         }
-                        print_current(f"❌ PDF document conversion failed: File not generated")
+                        print_debug(f"❌ PDF document conversion failed: File not generated")
                         
             except subprocess.CalledProcessError as e:
                 conversion_results['conversions']['pdf'] = {
                     'status': 'failed',
                     'error': f'PDF conversion failed: {e.stderr}'
                 }
-                print_current(f"❌ PDF document conversion failed: {e.stderr}")
+                print_debug(f"❌ PDF document conversion failed: {e.stderr}")
             except Exception as e:
                 conversion_results['conversions']['pdf'] = {
                     'status': 'failed',
                     'error': f'PDF conversion exception: {str(e)}'
                 }
-                print_current(f"❌ PDF document conversion exception: {str(e)}")
+                print_debug(f"❌ PDF document conversion exception: {str(e)}")
             
             # Check conversion results
             successful_conversions = sum(1 for conv in conversion_results['conversions'].values() 
@@ -1917,7 +1914,7 @@ class FileSystemTools:
             return conversion_results
             
         except Exception as e:
-            print_current(f"❌ Error occurred during Markdown conversion: {str(e)}")
+            print_debug(f"❌ Error occurred during Markdown conversion: {str(e)}")
             return {
                 'status': 'failed',
                 'markdown_file': target_file,

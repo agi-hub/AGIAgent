@@ -65,6 +65,18 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     exit 0
 fi
 
+# remove files
+print_info "Remove files"
+rm -rf user_*
+rm -rf long_term_memory
+rm -rf guest
+rm *.log
+rm -rf log
+rm test*
+rm *.out
+rm -rf workspace
+
+
 # Clean API keys from config/config.txt
 print_info "Cleaning API keys from config/config.txt..."
 if [ -f "config/config.txt" ]; then
