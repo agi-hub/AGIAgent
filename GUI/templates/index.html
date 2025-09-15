@@ -3386,11 +3386,6 @@
                 let modeInfo = '';
                 if (planMode) {
                     modeInfo = I18N.plan_mode_suffix;
-                    addMessage(`${message}${modeInfo}`, 'user');
-                    addMessage(I18N.plan_mode_info, 'info');
-                } else {
-                    addMessage(message, 'user');
-                    addMessage(I18N.direct_mode_info, 'info');
                 }
 
                 // Get GUI configuration options
@@ -4200,6 +4195,7 @@
                 'json': 'fas fa-code',
                 'txt': 'fas fa-file-alt',
                 'log': 'fas fa-file-alt',
+                'out': 'fas fa-file-alt',
                 'yaml': 'fas fa-code',
                 'yml': 'fas fa-code',
                 'png': 'fas fa-image',
@@ -4630,13 +4626,55 @@
             console.log('  设置的全局变量window.currentActualFilePath:', window.currentActualFilePath);
             
             if (type === 'html') {
-                // 处理转义字符，然后转义引号
-                const processedContent = processFileContent(content).replace(/"/g, '&quot;');
+                // 处理转义字符
+                let processedContent = processFileContent(content);
+                
+                // 处理HTML中的相对路径图片
+                const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath;
+                if (originalFilePath) {
+                    // 获取HTML文件的目录路径
+                    const currentDir = originalFilePath.substring(0, originalFilePath.lastIndexOf('/'));
+                    
+                    // 处理img标签中的src属性
+                    processedContent = processedContent.replace(/<img([^>]+)src\s*=\s*["']([^"']+)["']([^>]*>)/gi, function(match, beforeSrc, src, afterSrc) {
+                        // 只处理相对路径的图片
+                        if (!src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/api/') && !src.startsWith('/')) {
+                            let imagePath;
+                            if (src.startsWith('./')) {
+                                imagePath = `${currentDir}/${src.substring(2)}`;
+                            } else if (src.startsWith('../')) {
+                                const pathParts = currentDir.split('/');
+                                let relativeParts = src.split('/');
+                                for (let part of relativeParts) {
+                                    if (part === '..') {
+                                        pathParts.pop();
+                                    } else if (part !== '.' && part !== '') {
+                                        pathParts.push(part);
+                                    }
+                                }
+                                imagePath = pathParts.join('/');
+                            } else {
+                                // 普通相对路径，直接拼接
+                                imagePath = `${currentDir}/${src}`;
+                            }
+                            
+                            // 添加API key参数
+                            const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                            const newSrc = `/api/file/${imagePath}${apiKeyParam}`;
+                            console.log('HTML image converted:', src, 'to:', newSrc);
+                            return `<img${beforeSrc}src="${newSrc}"${afterSrc}`;
+                        }
+                        return match;
+                    });
+                }
+                
+                // 转义引号用于srcdoc
+                const escapedContent = processedContent.replace(/"/g, '&quot;');
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: HTML
                     </div>
-                    <iframe srcdoc="${processedContent}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
+                    <iframe srcdoc="${escapedContent}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
                 `;
             } else if (type === 'markdown') {
                 // 处理转义字符
@@ -4964,7 +5002,7 @@
                         <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
                             ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${language.toUpperCase()}
                         </div>
-                        <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: normal;">${processedContent}</div>
+                        <div style="background: #1e1e1e; color: #ffffff; padding: 20px; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-height: calc(90vh - 160px); border: 1px solid #404040; font-weight: normal;">${processedContent}</div>
                     `;
                 } else {
                     // 使用Prism.js进行语法高亮
@@ -5957,7 +5995,7 @@
                     mermaid.initialize({ 
                         startOnLoad: false,
                         theme: 'default',
-                        fontFamily: 'Microsoft YaHei, SimHei, SimSun, Arial, sans-serif'
+                        fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
                     });
                     doRenderMermaidChart();
                 };

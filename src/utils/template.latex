@@ -10,8 +10,10 @@
 \usepackage{lastpage}
 \usepackage{xcolor}
 \usepackage{fancyvrb}
+\usepackage{fvextra}
 \usepackage{framed}
 \usepackage{listings}
+\usepackage{seqsplit}
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{array}
@@ -45,7 +47,9 @@
 % 定义代码块环境
 \DefineVerbatimEnvironment{Highlighting}{Verbatim}{
   commandchars=\\\{\},
-  fontsize=\footnotesize
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true
 }
 
 % 定义带背景的代码块
@@ -97,6 +101,16 @@
 % 设置代码背景色
 \definecolor{shadecolor}{RGB}{248,248,248}
 
+% 为超长代码行定义特殊处理
+\newcommand{\longcode}[1]{\seqsplit{#1}}
+
+% 重新定义Verbatim环境以更好地处理长行
+\RecustomVerbatimEnvironment{Verbatim}{Verbatim}{
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true
+}
+
 % listings设置（备用）
 \lstset{
   backgroundcolor=\color{codebg},
@@ -105,7 +119,8 @@
   keywordstyle=\color{codekeyword},
   stringstyle=\color{codestring},
   breaklines=true,
-  breakatwhitespace=true,
+  breakatwhitespace=false,
+  postbreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\color{red}\hookrightarrow}},
   frame=single,
   framesep=3pt,
   framexleftmargin=3pt,
@@ -118,7 +133,9 @@
   framexleftmargin=17pt,
   framexrightmargin=5pt,
   framexbottommargin=4pt,
-  rulecolor=\color{gray!30}
+  rulecolor=\color{gray!30},
+  columns=flexible,
+  keepspaces=true
 }
 
 % 链接设置

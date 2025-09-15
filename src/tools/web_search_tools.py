@@ -2750,7 +2750,9 @@ Please create a detailed, structured analysis that preserves important informati
         FILTERED_IMAGE_HASHES = [
             "f7581bb6ed68eec740feb1e9931f22d6",  
             "923e31f20669ef6cc6b86c48cdcad1f0",  
-            "901093ca6d9ffbb484f2e92abbf83fba"  
+            "901093ca6d9ffbb484f2e92abbf83fba",
+            "5b2e0a4206c7b08e609d5d705d22b16e",  # Linear_Attention_Models_applic_20250915_114527_01.webp
+            "7b4d6f66b4a09740307aef24d246554a"   # Linear_Attention_Models_applic_20250915_114527_02.webp
         ]
         # Ignore extra parameters
         if kwargs:

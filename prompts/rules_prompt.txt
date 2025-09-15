@@ -48,7 +48,7 @@ For Report Generation Tasks:
 5. Output format: Generate reports in Markdown format. For comprehensive reports, use multiple `.md` files with descriptive names (e.g., `01-executive-summary.md`). Use proper markdown syntax with clear heading hierarchy, tables, and code blocks.
 6. Do not edit a document (fully replace) more than twice.  
 7. When you create or edit a markdown document, the system will automatically generate both Word (.docx) and PDF (.pdf) versions of the document, maintaining the same base filename (excluding extensions) for enhanced accessibility and sharing. 
-8. Include Mermaid diagrams to visualize complex concepts and relationships:
+8. Include Mermaid diagrams in markdown document to visualize complex concepts and relationships:
    - Each major section should include at least ONE relevant Mermaid diagram
    - Place diagrams immediately after introducing complex concepts
    - Use proper Mermaid syntax, and do add a diagram caption in the comment format after the diagram, for example: 
@@ -60,9 +60,10 @@ For Report Generation Tasks:
 
    Rich mermaid chart types are encouraged. Don't use TD type or TB type, and using LR instead. 
    Use style notation to draw colorful and beautiful diagram, limit to at most three colors. (Eg. 'style A fill:#ff9999,stroke:#333,stroke-width:2px'). 
-   You should also search for relevant images from web to supplement the report.
-9. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
-10. Citation and References: Mark information sources in the form of literature citations, using academic citation format. 
+9. You should also search for relevant images from web to supplement the report.
+   For data analysis, you should firstly write and run analysis codes to generate figures and then add to the report. Tables are needed to inteprete data. 
+10. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
+11. Citation and References: Mark information sources in the form of literature citations, using academic citation format. 
 </reports>
 
 <image_processing>

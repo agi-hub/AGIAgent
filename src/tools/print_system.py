@@ -21,7 +21,7 @@ limitations under the License.
 AGIAgent Print System
 ----------------------------------
 Features:
-1. print_current   Write to <agent_id>.out according to agent_id, manager/None → terminal.
+1. print_current   Write to <agent_id>.out according to agent_id, manager/None → terminal + manager.out.
 2. print_debug     Write to <agent_id>.log according to agent_id; manager/None → manager.log.
 3. print_system    Write to agia.log.
 4. streaming_context   For streaming writes (no automatic newline).
@@ -135,6 +135,8 @@ def print_current(*args: object, **kwargs) -> None:  # noqa: D401
         # Handle line breaks when outputting to terminal
         processed_message = _process_newlines_for_terminal(message)
         builtins.print(processed_message, **print_kwargs)
+        # Also write to manager.out file
+        _write_to_file("manager.out", message, newline=(end_char != ''))
     else:
         _write_to_file(f"{current_id}.out", message, newline=(end_char != ''))
 
@@ -191,6 +193,8 @@ class _StreamWriter:
             # Handle line breaks when outputting to terminal
             processed_for_terminal = _process_newlines_for_terminal(processed)
             builtins.print(processed_for_terminal, end='', flush=True)
+            # Also write to manager.out file
+            _write_to_file("manager.out", processed, newline=False)
         else:
             _write_to_file(f"{self.agent_id}.out", processed, newline=False)
         self.buffer.append(processed)

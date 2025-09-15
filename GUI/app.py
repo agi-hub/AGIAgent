@@ -489,7 +489,7 @@ I18N_TEXTS = {
         'dimensions': '尺寸',
         'total_rows': '总行数',
         'columns': '列数',
-        'preview': '显示图表',
+        'preview': '预览',
         'office_preview_title': 'Office文档预览',
         'office_download_instruction': 'Office文档需要下载到本地查看：',
         'download_file': '下载文件',

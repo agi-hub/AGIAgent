@@ -1429,7 +1429,7 @@ class ToolExecutor:
             #    print_current(content)
             
             # Calculate and display token and character statistics
-            self._display_llm_statistics(messages, content, tool_calls)
+            #self._display_llm_statistics(messages, content, tool_calls)
             
             # Store current messages for next round cache analysis
             self.previous_messages = messages.copy()
@@ -4007,9 +4007,25 @@ class ToolExecutor:
                                                 if event_index in tool_call_buffers:
                                                     partial_json = getattr(delta, 'partial_json', '')
                                                     tool_call_buffers[event_index]["input_json"] += partial_json
-                                                    # Simplified display: only show parameter content, no complex chunk handling
-                                                    if partial_json:
-                                                        printer.write(partial_json)
+                                                    
+                                                    # Special handling for edit_file tool - only show target_file
+                                                    tool_name = tool_call_buffers[event_index]["name"]
+                                                    if tool_name == "edit_file":
+                                                        # Try to extract and show only target_file parameter
+                                                        try:
+                                                            # Build up the JSON and try to parse it
+                                                            current_json = tool_call_buffers[event_index]["input_json"]
+                                                            parsed_params = json.loads(current_json)
+                                                            if "target_file" in parsed_params and not hasattr(tool_call_buffers[event_index], "target_file_shown"):
+                                                                printer.write(f'{{"target_file":"{parsed_params["target_file"]}"}}')
+                                                                tool_call_buffers[event_index]["target_file_shown"] = True
+                                                        except json.JSONDecodeError:
+                                                            # JSON not complete yet, continue building
+                                                            pass
+                                                    else:
+                                                        # For other tools, show full parameters as before
+                                                        if partial_json:
+                                                            printer.write(partial_json)
 
                                     # Handle content block stop
                                     elif event_type == "content_block_stop":
@@ -4024,7 +4040,6 @@ class ToolExecutor:
                                                     "name": buffer["name"],
                                                     "input": parsed_input
                                                 })
-                                                printer.write(f"\n✅ Tool parameter parsing complete\n")
                                             except json.JSONDecodeError:
                                                 print_error(f"Failed to parse tool input JSON: {buffer['input_json']}")
 
