@@ -119,7 +119,7 @@ class FastMcpWrapper:
         """Get default workspace directory for MCP servers"""
         try:
             current_dir = os.getcwd()
-            #print_current(f"🔍 Current working directory: {current_dir}")
+            print_current(f"🔍 Current working directory: {current_dir}")
 
             # Strategy 1: Check if we're currently in an output_xxx/workspace directory
             dir_name = os.path.basename(current_dir)
@@ -521,17 +521,27 @@ class FastMcpWrapper:
             
             all_servers = config.get("mcpServers", {})
             
-            # Filter servers - only handle NPX/NPM format servers with commands
+            # Filter servers - handle both command-based and HTTP-based servers
             self.servers = {}
             for server_name, server_config in all_servers.items():
-                # Skip SSE servers
+                # Skip SSE servers (handled by mcp_client)
                 if server_config.get("url") and "sse" in server_config.get("url", "").lower():
                     # print_current(f"⏭️  Skipping SSE server {server_name}")
                     continue
-                
-                # Only handle servers with command field
+
+                # Handle servers with command field (NPX/NPM format)
                 if server_config.get("command"):
                     self.servers[server_name] = server_config
+                    print_current(f"📋 Loading command-based server: {server_name}")
+
+                # Handle HTTP servers (streamable HTTP protocol)
+                elif server_config.get("url"):
+                    self.servers[server_name] = server_config
+                    print_current(f"🌐 Loading HTTP server: {server_name} -> {server_config.get('url')}")
+
+                # Skip servers without command or url
+                else:
+                    print_current(f"⏭️  Skipping server {server_name} (no command or url)")
             
             # Set default values
             for server_name, server_config in self.servers.items():
@@ -614,23 +624,36 @@ class FastMcpWrapper:
         try:
             server_config = self.servers[server_name]
             command = server_config.get("command")
+            url = server_config.get("url")
             args = server_config.get("args", [])
-            
-            if not command:
+
+            # Check if this is an HTTP server
+            is_http_server = bool(url and not command)
+
+            if not command and not url:
                 return {}
-            
-            # print_current(f"🔍 Discovering tools from {server_name}")
-            
+
+            # print_current(f"🔍 Discovering tools from {server_name} ({'HTTP' if is_http_server else 'Command'})")
+
             # Create temporary FastMCP client to query the server
             from fastmcp import Client
             from fastmcp.mcp_config import MCPConfig
-            
-            # Create MCP configuration with environment variables and workspace directory
-            server_config_for_fastmcp = {
-                "command": command,
-                "args": args,
-                "transport": "stdio"
-            }
+
+            if is_http_server:
+                # For HTTP servers, use URL directly as transport
+                transport = url
+                server_config_for_fastmcp = {
+                    "url": url,
+                    "headers": server_config.get("headers", {}),
+                    "transport": "http"
+                }
+            else:
+                # For command-based servers, use stdio transport
+                server_config_for_fastmcp = {
+                    "command": command,
+                    "args": args,
+                    "transport": "stdio"
+                }
 
             # Add workspace directory (cwd - current working directory for subprocess)
             if self._workspace_dir and os.path.exists(self._workspace_dir):
@@ -659,20 +682,32 @@ class FastMcpWrapper:
                 if server_name_lower in env_var.lower():
                     auto_env_vars[env_var] = os.environ[env_var]
 
-            # Merge config env vars with auto-detected vars
-            if env_vars or auto_env_vars:
-                final_env_vars = {**auto_env_vars, **env_vars}
-                server_config_for_fastmcp["env"] = final_env_vars
-            
-            mcp_config = MCPConfig(
-                mcpServers={
-                    server_name: server_config_for_fastmcp
-                }
-            )
-            
+            # For HTTP servers, we don't need MCPConfig, just use URL directly
+            if is_http_server:
+                transport = url
+                # For HTTP servers, we can pass headers directly to the Client
+                client_kwargs = {}
+                if server_config.get("headers"):
+                    print_current(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
+                    # TODO: Find alternative way to pass headers to HTTP requests
+            else:
+                # For command-based servers, create MCPConfig
+                # Merge config env vars with auto-detected vars
+                if env_vars or auto_env_vars:
+                    final_env_vars = {**auto_env_vars, **env_vars}
+                    server_config_for_fastmcp["env"] = final_env_vars
+
+                mcp_config = MCPConfig(
+                    mcpServers={
+                        server_name: server_config_for_fastmcp
+                    }
+                )
+                transport = mcp_config
+                client_kwargs = {}
+
             # Query tools using temporary client with timeout
             from contextlib import redirect_stderr
-            
+
             stderr_buffer = io.StringIO()
 
             try:
@@ -686,33 +721,35 @@ class FastMcpWrapper:
 
                     try:
                         # Add timeout to prevent hanging (Python 3.10 compatible)
-                        async with Client(mcp_config) as client:
+                        async with Client(transport, **client_kwargs) as client:
                             
                             # Track subprocess for tool discovery (temporary client)
-                            try:
-                                if hasattr(client, '_process') and client._process:
-                                    temp_process_info = {
-                                        'pid': client._process.pid,
-                                        'command': command,
-                                        'args': args,
-                                        'server_name': f"{server_name}_discovery",
-                                        'temporary': True
-                                    }
-                                    self._track_subprocess(f"{server_name}_discovery", temp_process_info)
-                                elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
-                                    proc = client._transport._proc
-                                    if proc:
+                            # Only track subprocesses for command-based servers
+                            if not is_http_server:
+                                try:
+                                    if hasattr(client, '_process') and client._process:
                                         temp_process_info = {
-                                            'pid': proc.pid,
+                                            'pid': client._process.pid,
                                             'command': command,
                                             'args': args,
                                             'server_name': f"{server_name}_discovery",
                                             'temporary': True
                                         }
                                         self._track_subprocess(f"{server_name}_discovery", temp_process_info)
-                            except Exception as track_error:
-                                # Silently ignore tracking errors for discovery
-                                pass
+                                    elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
+                                        proc = client._transport._proc
+                                        if proc:
+                                            temp_process_info = {
+                                                'pid': proc.pid,
+                                                'command': command,
+                                                'args': args,
+                                                'server_name': f"{server_name}_discovery",
+                                                'temporary': True
+                                            }
+                                            self._track_subprocess(f"{server_name}_discovery", temp_process_info)
+                                except Exception as track_error:
+                                    # Silently ignore tracking errors for discovery
+                                    pass
 
                             # Use asyncio.wait_for for Python 3.10 compatibility
                             tools = await asyncio.wait_for(client.list_tools(), timeout=10)
@@ -786,67 +823,83 @@ class FastMcpWrapper:
         try:
             server_config = self.servers[server_name]
             command = server_config.get("command")
+            url = server_config.get("url")
             args = server_config.get("args", [])
-            
-            if not command:
-                return {"status": "failed", "error": f"No command configured for server {server_name}"}
-            
+
+            # Check if this is an HTTP server
+            is_http_server = bool(url and not command)
+
+            if not command and not url:
+                return {"status": "failed", "error": f"No command or URL configured for server {server_name}"}
+
             # Check if we have a persistent client for this server
-            need_new_client = (server_name not in self._persistent_clients or 
+            need_new_client = (server_name not in self._persistent_clients or
                              not self._persistent_clients[server_name].get('entered', False))
-            
+
             if need_new_client:
                 # Create new persistent FastMCP client
                 from fastmcp import Client
                 from fastmcp.mcp_config import MCPConfig
-                
-                # Create MCP configuration with environment variables and workspace directory
-                server_config_for_fastmcp = {
-                    "command": command,
-                    "args": args,
-                    "transport": "stdio"
-                }
 
-                # Add workspace directory (cwd - current working directory for subprocess)
-                if self._workspace_dir and os.path.exists(self._workspace_dir):
-                    server_config_for_fastmcp["cwd"] = self._workspace_dir
-
-                # Add environment variables if they exist
-                env_vars = server_config.get("env", {})
-
-                # Auto-detect relevant environment variables
-                # Look for all environment variables that contain API_KEY, TOKEN, SECRET, or KEY
-                auto_env_vars = {}
-                server_name_lower = server_name.lower()
-
-                # Look for common API-related environment variables
-                api_related_patterns = ['API_KEY', 'TOKEN', 'SECRET', 'KEY']
-
-                for env_var in os.environ:
-                    env_var_upper = env_var.upper()
-                    # If environment variable contains any of the API-related patterns
-                    for pattern in api_related_patterns:
-                        if pattern in env_var_upper:
-                            auto_env_vars[env_var] = os.environ[env_var]
-                            break
-
-                    # Also include environment variables that contain the server name
-                    if server_name_lower in env_var.lower():
-                        auto_env_vars[env_var] = os.environ[env_var]
-
-                # Merge config env vars with auto-detected vars
-                if env_vars or auto_env_vars:
-                    final_env_vars = {**auto_env_vars, **env_vars}
-                    server_config_for_fastmcp["env"] = final_env_vars
-                
-                mcp_config = MCPConfig(
-                    mcpServers={
-                        server_name: server_config_for_fastmcp
+                if is_http_server:
+                    # For HTTP servers, use URL directly as transport
+                    transport = url
+                    client_kwargs = {}
+                    # Note: FastMCP Client doesn't support headers parameter directly
+                    # Headers will be handled by the underlying HTTP client if needed
+                    if server_config.get("headers"):
+                        print_current(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
+                        # TODO: Find alternative way to pass headers to HTTP requests
+                else:
+                    # For command-based servers, create MCPConfig
+                    server_config_for_fastmcp = {
+                        "command": command,
+                        "args": args,
+                        "transport": "stdio"
                     }
-                )
-                
+
+                    # Add workspace directory (cwd - current working directory for subprocess)
+                    if self._workspace_dir and os.path.exists(self._workspace_dir):
+                        server_config_for_fastmcp["cwd"] = self._workspace_dir
+
+                    # Add environment variables if they exist
+                    env_vars = server_config.get("env", {})
+
+                    # Auto-detect relevant environment variables
+                    # Look for all environment variables that contain API_KEY, TOKEN, SECRET, or KEY
+                    auto_env_vars = {}
+                    server_name_lower = server_name.lower()
+
+                    # Look for common API-related environment variables
+                    api_related_patterns = ['API_KEY', 'TOKEN', 'SECRET', 'KEY']
+
+                    for env_var in os.environ:
+                        env_var_upper = env_var.upper()
+                        # If environment variable contains any of the API-related patterns
+                        for pattern in api_related_patterns:
+                            if pattern in env_var_upper:
+                                auto_env_vars[env_var] = os.environ[env_var]
+                                break
+
+                        # Also include environment variables that contain the server name
+                        if server_name_lower in env_var.lower():
+                            auto_env_vars[env_var] = os.environ[env_var]
+
+                    # Merge config env vars with auto-detected vars
+                    if env_vars or auto_env_vars:
+                        final_env_vars = {**auto_env_vars, **env_vars}
+                        server_config_for_fastmcp["env"] = final_env_vars
+
+                    mcp_config = MCPConfig(
+                        mcpServers={
+                            server_name: server_config_for_fastmcp
+                        }
+                    )
+                    transport = mcp_config
+                    client_kwargs = {}
+
                 # Create and initialize persistent client
-                client = Client(mcp_config)
+                client = Client(transport, **client_kwargs)
                 try:
                     await client.__aenter__()
                     self._persistent_clients[server_name] = {
@@ -854,32 +907,33 @@ class FastMcpWrapper:
                         'entered': True
                     }
 
-                    # Track subprocess information for cleanup
-                    try:
-                        # Try to get process information from the client
-                        # Note: This is implementation-dependent and may need adjustment based on FastMCP internals
-                        if hasattr(client, '_process') and client._process:
-                            process_info = {
-                                'pid': client._process.pid,
-                                'command': command,
-                                'args': args,
-                                'server_name': server_name
-                            }
-                            self._track_subprocess(server_name, process_info)
-                        elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
-                            # Alternative way to get process info
-                            proc = client._transport._proc
-                            if proc:
+                    # Track subprocess information for cleanup (only for command-based servers)
+                    if not is_http_server:
+                        try:
+                            # Try to get process information from the client
+                            # Note: This is implementation-dependent and may need adjustment based on FastMCP internals
+                            if hasattr(client, '_process') and client._process:
                                 process_info = {
-                                    'pid': proc.pid,
+                                    'pid': client._process.pid,
                                     'command': command,
                                     'args': args,
                                     'server_name': server_name
                                 }
                                 self._track_subprocess(server_name, process_info)
-                    except Exception as track_error:
-                        # print_current(f"⚠️ Could not track subprocess for {server_name}: {track_error}")
-                        pass
+                            elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
+                                # Alternative way to get process info
+                                proc = client._transport._proc
+                                if proc:
+                                    process_info = {
+                                        'pid': proc.pid,
+                                        'command': command,
+                                        'args': args,
+                                        'server_name': server_name
+                                    }
+                                    self._track_subprocess(server_name, process_info)
+                        except Exception as track_error:
+                            # print_current(f"⚠️ Could not track subprocess for {server_name}: {track_error}")
+                            pass
 
                     # print_current(f"🔗 Created and connected persistent MCP client for server: {server_name}")
                 except Exception as e:
