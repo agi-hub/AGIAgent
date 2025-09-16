@@ -18,7 +18,7 @@ if [[ ! -f "monitor.py" ]]; then
 fi
 
 # 检查GUI/app.py是否存在
-if [[ ! -f "GUI/app.py" ]]; then
+if [[ ! -f "../app.py" ]]; then
     echo "错误: 未找到 GUI/app.py 文件"
     exit 1
 fi
