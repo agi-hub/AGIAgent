@@ -33,6 +33,7 @@ import json
 import psutil
 from collections import defaultdict
 from threading import Lock, Semaphore
+import argparse
 
 
 # Determine template and static directories FIRST - always relative to this app.py file
@@ -47,6 +48,7 @@ from src.config_loader import get_language, get_gui_default_data_directory
 from auth_manager import AuthenticationManager
 
 # Import Mermaid processor
+
 try:
     from src.tools.mermaid_processor import mermaid_processor
     MERMAID_PROCESSOR_AVAILABLE = True
@@ -267,7 +269,6 @@ I18N_TEXTS = {
         'page_title': f'{APP_NAME}',
         'app_title': f'{APP_NAME}',
         'app_subtitle': '',
-        'chat_title': '执行日志',
         'connected': f'已连接到 {APP_NAME}',
         
         # Button text
@@ -544,7 +545,6 @@ I18N_TEXTS = {
         'page_title': f'{APP_NAME}',
         'app_title': f'{APP_NAME}', 
         'app_subtitle': '',
-        'chat_title': 'Execution Log',
         'connected': f'Connected to {APP_NAME}',
         
         # Button text
@@ -863,8 +863,12 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                 # 直接使用workspace根目录下的文件
                 routine_file = os.path.join(os.getcwd(), routine_file)
             else:
-                # 使用routine文件夹下的文件
-                routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+                # 根据语言配置选择routine文件夹
+                current_lang = get_language()
+                if current_lang == 'zh':
+                    routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
+                else:
+                    routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
             
             if not os.path.exists(routine_file):
                 output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
@@ -1481,8 +1485,20 @@ class UserSession:
         if user_info and user_info.get("is_guest", False):
             # Guest user gets a special directory
             self.user_dir_name = "guest"
+        elif user_info and user_info.get("name"):
+            # Use username as directory name, sanitize for filesystem safety
+            import re
+            username = user_info.get("name")
+            # Remove or replace characters that are not safe for directory names
+            safe_username = re.sub(r'[<>:"/\\|?*]', '_', username)
+            # Remove leading/trailing spaces and dots
+            safe_username = safe_username.strip(' .')
+            # Ensure it's not empty after sanitization
+            if not safe_username:
+                safe_username = "user"
+            self.user_dir_name = safe_username
         elif api_key:
-            # Use API key hash as directory name for security
+            # Fallback: Use API key hash as directory name for security
             import hashlib
             api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
             self.user_dir_name = f"user_{api_key_hash}"
@@ -1829,6 +1845,17 @@ def get_file_content(file_path):
                 'type': 'office',
                 'file_path': file_path,
                 'file_ext': ext,
+                'size': gui_instance.format_size(file_size)
+            })
+        elif ext == '.tex':
+            # LaTeX file - treat as code file
+            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            return jsonify({
+                'success': True, 
+                'content': content, 
+                'type': 'code',
+                'language': 'latex',
                 'size': gui_instance.format_size(file_size)
             })
         elif ext in ['.py', '.js', '.jsx', '.ts', '.tsx', '.css', '.json', '.txt', '.log', '.yaml', '.yml', 
@@ -2198,13 +2225,114 @@ def download_file(file_path):
 
 # Cloud upload functionality has been removed for offline deployment
 
+def convert_markdown_to_latex_only(full_path, file_path, user_base_dir):
+    """Convert Markdown to LaTeX only"""
+    import subprocess
+    from pathlib import Path
+    
+    try:
+        md_path = Path(full_path)
+        base_name = md_path.stem
+        output_dir = md_path.parent
+        latex_file = output_dir / f"{base_name}.tex"
+        
+        # Use trans_md_to_pdf.py script to convert to LaTeX
+        trans_script = Path(__file__).parent.parent / "src" / "utils" / "trans_md_to_pdf.py"
+        
+        if trans_script.exists():
+            cmd = [
+                'python3',
+                str(trans_script),
+                md_path.name,  # Use filename instead of full path
+                latex_file.name,  # Use filename instead of full path
+                '--latex'  # Add LaTeX flag
+            ]
+            
+            # Execute command in markdown file directory
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+            
+            if latex_file.exists():
+                file_size = latex_file.stat().st_size
+                return {
+                    'status': 'success',
+                    'markdown_file': file_path,
+                    'conversions': {
+                        'latex': {
+                            'status': 'success',
+                            'file': str(latex_file.relative_to(user_base_dir)),
+                            'size': file_size,
+                            'size_kb': f"{file_size / 1024:.1f} KB"
+                        }
+                    }
+                }
+            else:
+                # Try direct pandoc conversion as fallback
+                cmd = [
+                    'pandoc',
+                    md_path.name,
+                    '-o', latex_file.name,
+                    '--to', 'latex'
+                ]
+                
+                # Add common options for LaTeX
+                cmd.extend([
+                    '-V', 'fontsize=12pt',
+                    '-V', 'geometry:margin=2.5cm',
+                    '-V', 'geometry:a4paper',
+                    '-V', 'linestretch=2.0',
+                    '--highlight-style=tango',
+                    '-V', 'colorlinks=true',
+                    '-V', 'linkcolor=blue',
+                    '-V', 'urlcolor=blue',
+                    '--toc',
+                    '--wrap=preserve'
+                ])
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+                
+                if latex_file.exists():
+                    file_size = latex_file.stat().st_size
+                    return {
+                        'status': 'success',
+                        'markdown_file': file_path,
+                        'conversions': {
+                            'latex': {
+                                'status': 'success',
+                                'file': str(latex_file.relative_to(user_base_dir)),
+                                'size': file_size,
+                                'size_kb': f"{file_size / 1024:.1f} KB",
+                                'method': 'direct_pandoc'
+                            }
+                        }
+                    }
+                else:
+                    return {
+                        'status': 'failed',
+                        'markdown_file': file_path,
+                        'error': f'LaTeX conversion failed: {result.stderr if result.stderr else "Unknown error"}'
+                    }
+        else:
+            return {
+                'status': 'failed',
+                'markdown_file': file_path,
+                'error': 'trans_md_to_pdf.py script not found'
+            }
+            
+    except Exception as e:
+        return {
+            'status': 'failed',
+            'markdown_file': file_path,
+            'error': f'LaTeX conversion exception: {str(e)}'
+        }
+
+
 @app.route('/api/convert-markdown', methods=['POST'])
 def convert_markdown():
     """Convert Markdown files to Word and PDF formats"""
     try:
         data = request.get_json()
         file_path = data.get('file_path')
-        format_type = data.get('format', 'both')  # 'word', 'pdf', or 'both'
+        format_type = data.get('format', 'both')  # 'word', 'pdf', 'latex', or 'both'
         
         # Get API key from query parameters or headers
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
@@ -2252,7 +2380,11 @@ def convert_markdown():
         print(f"  user_base_dir: {user_base_dir}")
         print(f"  workspace_root: {tools.workspace_root}")
         
-        conversion_result = tools._convert_markdown_to_formats(full_path, file_path)
+        # Handle LaTeX conversion separately if requested
+        if format_type == 'latex':
+            conversion_result = convert_markdown_to_latex_only(full_path, file_path, user_base_dir)
+        else:
+            conversion_result = tools._convert_markdown_to_formats(full_path, file_path, format_type)
         
         print(f"  Conversion result: {conversion_result}")
         
@@ -3170,18 +3302,20 @@ def delete_file():
         if not real_file_path.startswith(real_user_dir):
             return jsonify({'success': False, 'error': 'Access denied: Invalid file path'})
         
-        # Check if file exists
+        # Check if path exists
         if not os.path.exists(full_file_path):
-            return jsonify({'success': False, 'error': f'File not found: {file_path}'})
+            return jsonify({'success': False, 'error': f'Path not found: {file_path}'})
         
-        # Check if it's actually a file (not a directory)
-        if not os.path.isfile(full_file_path):
-            return jsonify({'success': False, 'error': f'Path is not a file: {file_path}'})
-        
-        print(f"Deleting file: {full_file_path}")
-        
-        # Delete the file
-        os.remove(full_file_path)
+        if os.path.isfile(full_file_path):
+            print(f"Deleting file: {full_file_path}")
+            # Delete the file
+            os.remove(full_file_path)
+        elif os.path.isdir(full_file_path):
+            print(f"Deleting folder: {full_file_path}")
+            # Delete the folder and all its contents
+            shutil.rmtree(full_file_path)
+        else:
+            return jsonify({'success': False, 'error': f'Path is neither a file nor a directory: {file_path}'})
         
         print(f"Successfully deleted file: {file_path}")
         
@@ -3204,8 +3338,14 @@ def get_routine_files():
         routine_files = []
         workspace_dir = os.getcwd()
         
+        # 根据语言配置选择routine文件夹
+        current_lang = get_language()
+        if current_lang == 'zh':
+            routine_dir = os.path.join(workspace_dir, 'routine_zh')
+        else:
+            routine_dir = os.path.join(workspace_dir, 'routine')
+        
         # 1. 添加routine文件夹下的文件
-        routine_dir = os.path.join(workspace_dir, 'routine')
         if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
             for filename in os.listdir(routine_dir):
                 if os.path.isfile(os.path.join(routine_dir, filename)):
@@ -3516,6 +3656,15 @@ def generate_custom_mcp_config(selected_servers, out_dir):
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5004))
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='AGIAgent GUI Server')
+    parser.add_argument('--port', '-p', type=int, default=5004, 
+                       help='指定服务器启动端口 (默认: 5004)')
+    args = parser.parse_args()
+    
+    # 优先使用命令行参数，其次使用环境变量，最后使用默认值
+    port = args.port if args.port else int(os.environ.get('PORT', 5004))
+    
+    print(f"启动AGIAgent GUI服务器，端口: {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
 

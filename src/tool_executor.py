@@ -332,6 +332,17 @@ class ToolExecutor:
         else:
             self.conversation_summarizer = None
         
+        # Initialize simple history compressor when summary_history=False
+        if not self.summary_history:
+            try:
+                from tools.simple_history_compressor import SimpleHistoryCompressor
+                self.simple_compressor = SimpleHistoryCompressor()
+            except ImportError as e:
+                print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
+                self.simple_compressor = None
+        else:
+            self.simple_compressor = None
+        
         
         # Helper function for disabled multi-agent tools
         def _multi_agent_disabled_error(*args, **kwargs):
@@ -2572,7 +2583,7 @@ class ToolExecutor:
                     'error': error_msg,
                     'parameters': params
                 }
-                print_current(f"❌ Tool execution failed: {error_result}")
+                print_debug(f"❌ Tool execution failed: {error_result}")
                 return error_result
             except Exception as e:
                 # General exception handling
@@ -2582,7 +2593,7 @@ class ToolExecutor:
                     'error': f"Execution failed: {str(e)}",
                     'parameters': params
                 }
-                print_current(f"❌ Tool execution failed: {error_result}")
+                print_debug(f"❌ Tool execution failed: {error_result}")
                 return error_result
         else:
             # Unknown tool - provide list of available tools with brief usage info
@@ -2614,7 +2625,7 @@ class ToolExecutor:
                 'available_tools': available_tools_list,
                 'available_tools_help': f"Available tools:\n{available_tools_help}\n\nUse tool_help('<tool_name>') to get detailed usage for any specific tool."
             }
-            print_current(f"❌ Tool execution failed: {error_result}")
+            print_debug(f"❌ Tool execution failed: {error_result}")
             return error_result
     
     def _format_dict_as_text(self, data: Dict[str, Any], for_terminal_display: bool = False, tool_name: str = None, tool_params: Dict[str, Any] = None) -> str:
@@ -3238,20 +3249,20 @@ class ToolExecutor:
             # Show only first 3 results with very brief info
             for i, result in enumerate(results[:3], 1):
                 if isinstance(result, dict):
-                    title = result.get('title', 'No Title')[:80]  # Limit title length
-                    if len(result.get('title', '')) > 80:
+                    title = result.get('title', 'No Title')[:200]  # Limit title length
+                    if len(result.get('title', '')) > 200:
                         title += "..."
                     
                     # Show brief snippet or content summary
                     content_preview = ""
                     if result.get('snippet'):
-                        content_preview = result['snippet'][:100].replace('\n', ' ').strip()
+                        content_preview = result['snippet'][:200].replace('\n', ' ').strip()
                     elif result.get('content_summary'):
-                        content_preview = result['content_summary'][:100].replace('\n', ' ').strip()
+                        content_preview = result['content_summary'][:200].replace('\n', ' ').strip()
                     elif result.get('content'):
-                        content_preview = result['content'][:100].replace('\n', ' ').strip()
+                        content_preview = result['content'][:200].replace('\n', ' ').strip()
                     
-                    if content_preview and len(content_preview) >= 100:
+                    if content_preview and len(content_preview) >= 200:
                         content_preview += "..."
                     
                     lines.append(f"  {i}. {title}")
@@ -3259,11 +3270,11 @@ class ToolExecutor:
                         lines.append(f"     {content_preview}")
             
             if total_results > 3:
-                lines.append(f"  ... and {total_results - 3} more results")
+                lines.append(f"...")
             
             # Add metadata briefly
-            if data.get('content_fetched'):
-                lines.append(f"📄 Content fetched: {data['content_fetched']}")
+            #if data.get('content_fetched'):
+            #    lines.append(f"📄 Content fetched: {data['content_fetched']}")
         
         # For other tools or unrecognized search results, fall back to original formatting
         else:
@@ -3929,6 +3940,8 @@ class ToolExecutor:
             # Prepare messages for Claude - user_message can be string or content array
             claude_messages = [{"role": "user", "content": user_message}]
         
+
+        
         # Retry logic for retryable errors
         max_retries = 3
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
@@ -3940,6 +3953,9 @@ class ToolExecutor:
                     tool_call_buffers = {}  # Track partial tool calls
 
                     with streaming_context(show_start_message=True) as printer:
+                        #print an emoji to indicate llm start saying something
+                        printer.write(f"💬 ")
+                        
                         hallucination_detected = False
 
                         with self.client.messages.stream(
@@ -4041,7 +4057,7 @@ class ToolExecutor:
                                                     "input": parsed_input
                                                 })
                                             except json.JSONDecodeError:
-                                                print_error(f"Failed to parse tool input JSON: {buffer['input_json']}")
+                                                print_error(f"Failed to parse tool input JSON {buffer['input_json']}")
 
                                             del tool_call_buffers[event_index]
 
@@ -4953,25 +4969,25 @@ class ToolExecutor:
             # For certain tools, show important parameters in terminal
             if tool_name == 'run_terminal_cmd':
                 command = params.get('command', 'unknown command')
-                print_current(f"🚀 Command execution started, real-time output as follows:")
+                print_debug(f"🚀 Command execution started, real-time output as follows:")
                 print_debug(f"   Working directory: {os.getcwd()}")
                 
             elif tool_name == 'read_file':
                 target_file = params.get('target_file', 'unknown file')
-                print_current(f"🎯 Requested to read file: {target_file}")
+                print_debug(f"🎯 Requested to read file: {target_file}")
                 
             elif tool_name == 'edit_file':
                 target_file = params.get('target_file', 'unknown file')
                 edit_mode = params.get('edit_mode', 'unknown mode')
-                print_current(f"📝 Editing file: {target_file} (mode: {edit_mode})")
+                print_debug(f"📝 Editing file: {target_file} (mode: {edit_mode})")
                 
             elif tool_name == 'web_search':
                 search_term = params.get('search_term', 'unknown query')
-                print_current(f"🔍 Starting web search: {search_term}")
+                print_debug(f"🔍 Starting web search: {search_term}")
                 
             elif tool_name == 'workspace_search':
                 query = params.get('query', 'unknown query')
-                print_current(f"🔍 Searching workspace: {query}")
+                print_debug(f"🔍 Searching workspace: {query}")
             
         except Exception as e:
             print_error(f"⚠️ Error showing tool execution progress: {e}")

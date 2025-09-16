@@ -433,7 +433,7 @@ class MultiRoundTaskExecutor:
             pass
         
         while task_round <= max_rounds and not task_completed:
-            print_current(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
+            print_debug(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
 
             # Barrier check before executing this round
             # Changed to: When There is at Least One Started and Unfinished Non-manager Agent
@@ -650,6 +650,24 @@ class MultiRoundTaskExecutor:
                             # Keep recent history only as fallback
                             history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
                             print_current(f"📋 Using recent history subset: {len(history_for_llm)} records")
+                else:
+                    # When summary_history=False, use simple compression instead
+                    # Apply the same logic as AI summarization: only compress older records, keep recent 2 rounds intact
+                    if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor and \
+                       len(history_for_llm) > 2:
+                        try:
+                            # Split history same way as AI summarization: compress older records, keep recent 2 rounds
+                            records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
+                            recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
+                            
+                            if records_to_compress:
+                                #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records, keeping {len(recent_records_to_keep)} recent records intact")
+                                compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress)
+                                # Combine compressed older records with uncompressed recent records
+                                history_for_llm = compressed_older_records + recent_records_to_keep
+                            # If no older records to compress, keep all records as-is
+                        except Exception as e:
+                            print_debug(f"⚠️ Simple history compression failed: {e}")
                 
                 # 🔧 Ensure correct agent_id is set in agent context before executing subtask
                 current_agent_id = get_current_agent_id()

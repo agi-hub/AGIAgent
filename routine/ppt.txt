@@ -1,1 +1,1 @@
-使用HTML格式设计幻灯片，类似于Powerpoint格式，要求图文并茂，请限制每页的尺寸，图像可位于左半页或右半页或全页。可采用表格、示意图等多种表现形态，要求简洁、大方、有格调。
+Design slides using HTML format, similar to PowerPoint format. Require rich graphics and limit the size of each page. Images can be located on the left half, right half, or full page. Various presentation forms such as tables and diagrams can be used. Require simplicity, elegance, and style.
