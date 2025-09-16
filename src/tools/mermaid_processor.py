@@ -438,7 +438,7 @@ class MermaidProcessor:
             
             # Auto-fix incomplete Mermaid blocks
             if incomplete_matches:
-                print_current(f"🔧 Found {len(incomplete_matches)} incomplete Mermaid block(s), auto-fixing...")
+                print_debug(f"🔧 Found {len(incomplete_matches)} incomplete Mermaid block(s), auto-fixing...")
                 content_backup = content
                 
                 # Process incomplete matches from end to beginning to avoid position shifts
@@ -453,13 +453,13 @@ class MermaidProcessor:
                         replacement = f"```mermaid\n{code}\n```"
                         content = content[:start_pos] + replacement + content[end_pos:]
                         content_modified = True
-                        print_current(f"✅ Auto-fixed incomplete Mermaid block")
+                        print_debug(f"✅ Auto-fixed incomplete Mermaid block")
                 
                 # Write the corrected content back to file if modifications were made
                 if content_modified:
                     with open(md_file_path, 'w', encoding='utf-8') as f:
                         f.write(content)
-                    print_current(f"📝 Auto-corrected {len(incomplete_matches)} incomplete Mermaid block(s) in file")
+                    print_debug(f"📝 Auto-corrected {len(incomplete_matches)} incomplete Mermaid block(s) in file")
             
             # Now extract all Mermaid code blocks with optional following caption from the (potentially corrected) content
             # Match: ```mermaid\n{code}\n``` followed by optional whitespace and comment
@@ -467,7 +467,7 @@ class MermaidProcessor:
             matches = list(pattern.finditer(content))
             
             if not matches:
-                print_current("📝 No Mermaid charts found")
+                print_debug("📝 No Mermaid charts found")
                 return {
                     'status': 'success',
                     'file': md_file_path,
@@ -477,7 +477,7 @@ class MermaidProcessor:
                     'auto_fixed': len(incomplete_matches) if incomplete_matches else 0
                 }
             
-            print_current(f"📊 Found {len(matches)} Mermaid chart(s)")
+            print_debug(f"📊 Found {len(matches)} Mermaid chart(s)")
             
             processed_count = 0
             
@@ -511,7 +511,7 @@ class MermaidProcessor:
                         with open(mermaid_code_path, 'w', encoding='utf-8') as f:
                             f.write(code)
                     except Exception as e:
-                        print_current(f"❌ Failed to save Mermaid code: {e}")
+                        print_debug(f"❌ Failed to save Mermaid code: {e}")
                     
                     # Add to batch processing tasks
                     mermaid_tasks.append((code, svg_path, png_path))
@@ -532,7 +532,7 @@ class MermaidProcessor:
                     })
                     
                 except Exception as e:
-                    print_current(f"❌ Error preparing Mermaid chart: {e}")
+                    print_debug(f"❌ Error preparing Mermaid chart: {e}")
             
             # Batch generate all images using a single browser instance
             if mermaid_tasks:
@@ -547,7 +547,7 @@ class MermaidProcessor:
                     if svg_success:
                         is_error_svg = _is_error_svg(chart_data['svg_path'])
                         if is_error_svg:
-                            print_current(f"❌ Generated SVG contains errors, treating as failed")
+                            print_debug(f"❌ Generated SVG contains errors, treating as failed")
                             svg_success = False
                             png_success = False
                     
@@ -592,13 +592,13 @@ class MermaidProcessor:
                         content = content[:start_pos] + replacement + content[end_pos:]
                         
                         #if svg_success and png_success:
-                        #    print_current(f"✅ Successfully generated: {chart_data['svg_name']} and {chart_data['png_name']}")
+                        #    print_debug(f"✅ Successfully generated: {chart_data['svg_name']} and {chart_data['png_name']}")
                         #elif svg_success:
-                        #    print_current(f"✅ Successfully generated: {chart_data['svg_name']}")
+                        #    print_debug(f"✅ Successfully generated: {chart_data['svg_name']}")
                         processed_count += 1
                     else:
                         # Mermaid compilation failed, replace with error comment
-                        print_current(f"❌ Mermaid compilation failed, replacing with error comment")
+                        print_debug(f"❌ Mermaid compilation failed, replacing with error comment")
                         
                         # Extract caption for error message
                         def extract_caption_from_comment_for_error(content: str) -> Optional[str]:
@@ -624,14 +624,14 @@ class MermaidProcessor:
                         content = content[:start_pos] + error_replacement + content[end_pos:]
                         
                 except Exception as e:
-                    print_current(f"❌ Error processing Mermaid chart result: {e}")
+                    print_debug(f"❌ Error processing Mermaid chart result: {e}")
             
             # Write updated file
             with open(md_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            print_current(f"✅ Processing complete. Modified file saved to: {md_path}")
-            print_current(f"📁 Generated images saved in: {img_dir}")
+            #print_debug(f"✅ Processing complete. Modified file saved to: {md_path}")
+            #print_debug(f"📁 Generated images saved in: {img_dir}")
             
             return {
                 'status': 'success',
@@ -643,7 +643,7 @@ class MermaidProcessor:
             }
             
         except Exception as e:
-            print_current(f"❌ Error processing markdown file: {e}")
+            print_debug(f"❌ Error processing markdown file: {e}")
             return {
                 'status': 'failed',
                 'file': md_file_path,
@@ -1185,7 +1185,7 @@ class MermaidProcessor:
             Dictionary with processing results
         """
         try:
-            print_current(f"📂 Scanning directory: {directory_path}")
+            print_debug(f"📂 Scanning directory: {directory_path}")
             
             # Find markdown files in root directory only (not recursive)
             markdown_files = []
@@ -1195,7 +1195,7 @@ class MermaidProcessor:
                     if os.path.isfile(file_path) and file.endswith('.md'):
                         markdown_files.append(file_path)
             except Exception as e:
-                print_current(f"❌ Failed to scan directory: {e}")
+                print_debug(f"❌ Failed to scan directory: {e}")
                 return {
                     'status': 'failed',
                     'error': str(e),
@@ -1203,7 +1203,7 @@ class MermaidProcessor:
                 }
             
             if not markdown_files:
-                print_current("❌ No markdown files found")
+                print_debug("❌ No markdown files found")
                 return {
                     'status': 'success',
                     'files_found': 0,
@@ -1211,9 +1211,9 @@ class MermaidProcessor:
                     'message': 'No markdown files found'
                 }
             
-            print_current(f"📄 Found {len(markdown_files)} markdown file(s):")
+            print_debug(f"📄 Found {len(markdown_files)} markdown file(s):")
             for file in markdown_files:
-                print_current(f"   - {file}")
+                print_debug(f"   - {file}")
             
             # Process each markdown file
             processed_count = 0
@@ -1221,7 +1221,7 @@ class MermaidProcessor:
             total_processed_charts = 0
             
             for markdown_file in markdown_files:
-                print_current(f"\n🔧 Processing file: {markdown_file}")
+                print_debug(f"\n🔧 Processing file: {markdown_file}")
                 try:
                     result = self.process_markdown_file(markdown_file)
                     if result['status'] == 'success':
@@ -1229,11 +1229,11 @@ class MermaidProcessor:
                         total_charts += result['charts_found']
                         total_processed_charts += result['charts_processed']
                 except Exception as e:
-                    print_current(f"❌ Failed to process file: {markdown_file}, error: {e}")
+                    print_debug(f"❌ Failed to process file: {markdown_file}, error: {e}")
             
-            print_current(f"\n✅ Mermaid processing complete! Successfully processed {processed_count}/{len(markdown_files)} files")
-            print_current(f"📊 Total charts processed: {total_processed_charts}/{total_charts}")
-            print_current(f"📁 Images saved in images directories alongside markdown files")
+            print_debug(f"\n✅ Mermaid processing complete! Successfully processed {processed_count}/{len(markdown_files)} files")
+            print_debug(f"📊 Total charts processed: {total_processed_charts}/{total_charts}")
+            print_debug(f"📁 Images saved in images directories alongside markdown files")
             
             return {
                 'status': 'success',
@@ -1245,7 +1245,7 @@ class MermaidProcessor:
             }
             
         except Exception as e:
-            print_current(f"❌ Error during directory processing: {e}")
+            print_debug(f"❌ Error during directory processing: {e}")
             return {
                 'status': 'failed',
                 'error': str(e),

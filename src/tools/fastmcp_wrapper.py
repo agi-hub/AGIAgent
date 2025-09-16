@@ -49,7 +49,7 @@ if sys.version_info >= (3, 8):
 
 # Handle import based on context
 try:
-    from .print_system import print_current
+    from .print_system import print_current, print_debug
     from .mcp_server_manager import get_mcp_server_manager, mcp_operation_context
 except ImportError:
     # For standalone testing
@@ -532,16 +532,16 @@ class FastMcpWrapper:
                 # Handle servers with command field (NPX/NPM format)
                 if server_config.get("command"):
                     self.servers[server_name] = server_config
-                    print_current(f"📋 Loading command-based server: {server_name}")
+                    print_debug(f"📋 Loading command-based server: {server_name}")
 
                 # Handle HTTP servers (streamable HTTP protocol)
                 elif server_config.get("url"):
                     self.servers[server_name] = server_config
-                    print_current(f"🌐 Loading HTTP server: {server_name} -> {server_config.get('url')}")
+                    print_debug(f"🌐 Loading HTTP server: {server_name} -> {server_config.get('url')}")
 
                 # Skip servers without command or url
                 else:
-                    print_current(f"⏭️  Skipping server {server_name} (no command or url)")
+                    print_debug(f"⏭️  Skipping server {server_name} (no command or url)")
             
             # Set default values
             for server_name, server_config in self.servers.items():
@@ -688,7 +688,7 @@ class FastMcpWrapper:
                 # For HTTP servers, we can pass headers directly to the Client
                 client_kwargs = {}
                 if server_config.get("headers"):
-                    print_current(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
+                    print_debug(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
                     # TODO: Find alternative way to pass headers to HTTP requests
             else:
                 # For command-based servers, create MCPConfig
@@ -848,7 +848,7 @@ class FastMcpWrapper:
                     # Note: FastMCP Client doesn't support headers parameter directly
                     # Headers will be handled by the underlying HTTP client if needed
                     if server_config.get("headers"):
-                        print_current(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
+                        print_debug(f"⚠️ Headers configuration found for {server_name} but FastMCP Client doesn't support direct headers parameter")
                         # TODO: Find alternative way to pass headers to HTTP requests
                 else:
                     # For command-based servers, create MCPConfig

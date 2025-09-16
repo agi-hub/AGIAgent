@@ -537,8 +537,8 @@ class MermaidProcessor:
             with open(md_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            print_current(f"✅ Processing complete. Modified file saved to: {md_path}")
-            print_current(f"📁 Generated images saved in: {img_dir}")
+            #print_current(f"✅ Processing complete. Modified file saved to: {md_path}")
+            #print_current(f"📁 Generated images saved in: {img_dir}")
             
             return {
                 'status': 'success',

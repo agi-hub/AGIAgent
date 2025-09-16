@@ -1624,13 +1624,14 @@ class FileSystemTools:
             # wkhtmltopdf and weasyprint don't use LaTeX, return minimal options
             return []
 
-    def _convert_markdown_to_formats(self, file_path: str, target_file: str) -> Dict[str, Any]:
+    def _convert_markdown_to_formats(self, file_path: str, target_file: str, format_type: str = 'both') -> Dict[str, Any]:
         """
         Convert Markdown files to Word and PDF formats
         
         Args:
             file_path: Absolute path of Markdown file
             target_file: Relative path of Markdown file
+            format_type: Format to convert ('word', 'pdf', or 'both')
             
         Returns:
             Dictionary containing conversion results
@@ -1654,253 +1655,255 @@ class FileSystemTools:
             }
             
             # Convert to Word document
-            print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
-            try:
-                # Use pandoc to convert to Word
-                cmd = [
-                    'pandoc',
-                    md_path.name,  # Use filename instead of full path
-                    '-o', word_file.name,  # Use filename instead of full path
-                    '--from', 'markdown',
-                    '--to', 'docx'
-                ]
-                
-                # Execute command in markdown file directory
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
-                
-                if word_file.exists():
-                    file_size = word_file.stat().st_size
-                    conversion_results['conversions']['word'] = {
-                        'status': 'success',
-                        'file': str(word_file.relative_to(self.workspace_root)),
-                        'size': file_size,
-                        'size_kb': f"{file_size / 1024:.1f} KB"
-                    }
-                    print_debug(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
-                else:
-                    conversion_results['conversions']['word'] = {
-                        'status': 'failed',
-                        'error': 'Word file not generated'
-                    }
-                    print_debug(f"❌ Word document conversion failed: File not generated")
-                    
-            except subprocess.CalledProcessError as e:
-                conversion_results['conversions']['word'] = {
-                    'status': 'failed',
-                    'error': f'pandoc conversion failed: {e.stderr}'
-                }
-                print_debug(f"❌ Word document conversion failed: {e.stderr}")
-            except Exception as e:
-                conversion_results['conversions']['word'] = {
-                    'status': 'failed',
-                    'error': f'Conversion exception: {str(e)}'
-                }
-                print_debug(f"❌ Word document conversion exception: {str(e)}")
-            
-            # Convert to PDF document
-            print_debug(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
-            try:
-                # Use trans_md_to_pdf.py script to convert to PDF
-                trans_script = Path(__file__).parent.parent / "utils" / "trans_md_to_pdf.py"
-                
-                if trans_script.exists():
-                    cmd = [
-                        'python3',
-                        str(trans_script),
-                        md_path.name,  # Use filename instead of full path
-                        pdf_file.name  # Use filename instead of full path
-                    ]
-                    
-                    # Execute command in markdown file directory
-                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
-                    
-                    if pdf_file.exists():  # Check file existence only, ignore warnings in returncode
-                        file_size = pdf_file.stat().st_size
-                        conversion_results['conversions']['pdf'] = {
-                            'status': 'success',
-                            'file': str(pdf_file.relative_to(self.workspace_root)),
-                            'size': file_size,
-                            'size_kb': f"{file_size / 1024:.1f} KB"
-                        }
-                        
-                        # Check if there were warnings during conversion
-                        if result.returncode != 0:
-                            print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
-                            print_debug(f"⚠️  Note: Conversion completed with warnings (non-critical)")
-                            if result.stderr:
-                                print_debug(f"   Warning details: {result.stderr[:200]}...")  # Show first 200 chars
-                        else:
-                            print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
-                    else:
-                        # If trans_md_to_pdf.py fails
-                        print_debug(f"⚠️ trans_md_to_pdf.py conversion failed...")
-                        error_msg = result.stderr if result.stderr else result.stdout
-                        print_debug(f"   Error message: {error_msg}")
-                        
-                        # Analyze error for common issues
-                        if error_msg:
-                            if "Cannot load file" in error_msg or "Invalid" in error_msg:
-                                print_debug("🔍 Detected image format compatibility issues")
-                                print_debug("💡 Suggestion: Consider converting WebP/TIFF images to PNG/JPEG")
-                            elif "Cannot determine size" in error_msg or "BoundingBox" in error_msg:
-                                print_debug("🔍 Detected image size/boundary issues")  
-                                print_debug("💡 Suggestion: Image preprocessing may help resolve this")
-                        
-                        # Use pandoc directly for conversion with fallback engine
-                        try:
-                            # Check available PDF engines
-                            engine_name, engine_option = self._check_pdf_engine_availability()
-                            if not engine_name:
-                                # No PDF engines available - skip PDF conversion
-                                print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
-                                conversion_results['conversions']['pdf'] = {
-                                    'status': 'failed',
-                                    'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
-                                    'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
-                                }
-                                return conversion_results
-                            
-                            # Get engine-specific options
-                            engine_options = self._get_engine_specific_options(engine_name)
-                            
-                            direct_cmd = [
-                                'pandoc',
-                                md_path.name,
-                                '-o', pdf_file.name,
-                                engine_option,  # Use the selected engine
-                            ]
-                            
-                            # Add engine-specific options
-                            direct_cmd.extend(engine_options)
-                            
-                            # Add common options
-                            direct_cmd.extend([
-                                '-V', 'fontsize=12pt',
-                                '-V', 'geometry:margin=2.5cm',
-                                '-V', 'geometry:a4paper',
-                                '-V', 'linestretch=1.5',
-                                '--highlight-style=tango',
-                                '-V', 'colorlinks=true',
-                                '-V', 'linkcolor=blue',
-                                '-V', 'urlcolor=blue',
-                                '--toc',
-                                '--wrap=preserve'
-                            ])
-                            
-                            # Add LaTeX-specific options only for LaTeX engines
-                            if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
-                                direct_cmd.extend([
-                                    '-V', 'graphics=true',
-                                ])
-                            
-                            print_debug(f"Using fallback PDF engine: {engine_name}")
-                            
-                            direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
-                            
-                            if direct_result.returncode == 0 and pdf_file.exists():
-                                file_size = pdf_file.stat().st_size
-                                conversion_results['conversions']['pdf'] = {
-                                    'status': 'success',
-                                    'file': str(pdf_file.relative_to(self.workspace_root)),
-                                    'size': file_size,
-                                    'size_kb': f"{file_size / 1024:.1f} KB",
-                                    'method': 'direct_pandoc'
-                                }
-                                print_debug(f"✅ PDF document conversion successful (Direct pandoc): {pdf_file.name} ({file_size / 1024:.1f} KB)")
-                            else:
-                                conversion_results['conversions']['pdf'] = {
-                                    'status': 'failed',
-                                    'error': f'Direct pandoc conversion also failed: {direct_result.stderr if direct_result.stderr else "Unknown error"}'
-                                }
-                                print_debug(f"❌ PDF document conversion failed (Direct pandoc): {direct_result.stderr if direct_result.stderr else 'Unknown error'}")
-                        except Exception as e:
-                            conversion_results['conversions']['pdf'] = {
-                                'status': 'failed',
-                                'error': f'Direct pandoc conversion exception: {str(e)}'
-                            }
-                            print_debug(f"❌ PDF document conversion exception (Direct pandoc): {str(e)}")
-                else:
-                    # If trans_md_to_pdf.py doesn't exist
-                    print_debug(f"⚠️ trans_md_to_pdf.py script doesn't exist")
-                    
-                    # Check available PDF engines
-                    engine_name, engine_option = self._check_pdf_engine_availability()
-                    if not engine_name:
-                        # No PDF engines available - skip PDF conversion
-                        print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
-                        conversion_results['conversions']['pdf'] = {
-                            'status': 'failed',
-                            'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
-                            'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
-                        }
-                        return conversion_results
-                    
-                    # Get engine-specific options
-                    engine_options = self._get_engine_specific_options(engine_name)
-                    
+            if format_type in ['word', 'both']:
+                print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
+                try:
+                    # Use pandoc to convert to Word
                     cmd = [
                         'pandoc',
                         md_path.name,  # Use filename instead of full path
-                        '-o', pdf_file.name,  # Use filename instead of full path
-                        engine_option,  # Use the selected engine
+                        '-o', word_file.name,  # Use filename instead of full path
+                        '--from', 'markdown',
+                        '--to', 'docx'
                     ]
-                    
-                    # Add engine-specific options
-                    cmd.extend(engine_options)
-                    
-                    # Add common options
-                    cmd.extend([
-                        '-V', 'fontsize=12pt',
-                        '-V', 'geometry:margin=2.5cm',
-                        '-V', 'geometry:a4paper',
-                        '-V', 'linestretch=1.5',
-                        '--highlight-style=tango',
-                        '-V', 'colorlinks=true',
-                        '-V', 'linkcolor=blue',
-                        '-V', 'urlcolor=blue',
-                        '--toc',
-                        '--wrap=preserve'
-                    ])
-                    
-                    # Add LaTeX-specific options only for LaTeX engines
-                    if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
-                        cmd.extend([
-                            '-V', 'graphics=true',
-                        ])
-                    
-                    print_debug(f"Using fallback PDF engine: {engine_name}")
                     
                     # Execute command in markdown file directory
                     result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
                     
-                    if pdf_file.exists():
-                        file_size = pdf_file.stat().st_size
-                        conversion_results['conversions']['pdf'] = {
+                    if word_file.exists():
+                        file_size = word_file.stat().st_size
+                        conversion_results['conversions']['word'] = {
                             'status': 'success',
-                            'file': str(pdf_file.relative_to(self.workspace_root)),
+                            'file': str(word_file.relative_to(self.workspace_root)),
                             'size': file_size,
                             'size_kb': f"{file_size / 1024:.1f} KB"
                         }
-                        print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                        print_debug(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
                     else:
-                        conversion_results['conversions']['pdf'] = {
+                        conversion_results['conversions']['word'] = {
                             'status': 'failed',
-                            'error': 'PDF file not generated'
+                            'error': 'Word file not generated'
                         }
-                        print_debug(f"❌ PDF document conversion failed: File not generated")
+                        print_debug(f"❌ Word document conversion failed: File not generated")
                         
-            except subprocess.CalledProcessError as e:
-                conversion_results['conversions']['pdf'] = {
-                    'status': 'failed',
-                    'error': f'PDF conversion failed: {e.stderr}'
-                }
-                print_debug(f"❌ PDF document conversion failed: {e.stderr}")
-            except Exception as e:
-                conversion_results['conversions']['pdf'] = {
-                    'status': 'failed',
-                    'error': f'PDF conversion exception: {str(e)}'
-                }
-                print_debug(f"❌ PDF document conversion exception: {str(e)}")
+                except subprocess.CalledProcessError as e:
+                    conversion_results['conversions']['word'] = {
+                        'status': 'failed',
+                        'error': f'pandoc conversion failed: {e.stderr}'
+                    }
+                    print_debug(f"❌ Word document conversion failed: {e.stderr}")
+                except Exception as e:
+                    conversion_results['conversions']['word'] = {
+                        'status': 'failed',
+                        'error': f'Conversion exception: {str(e)}'
+                    }
+                    print_debug(f"❌ Word document conversion exception: {str(e)}")
+            
+            # Convert to PDF document
+            if format_type in ['pdf', 'both']:
+                print_debug(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
+                try:
+                    # Use trans_md_to_pdf.py script to convert to PDF
+                    trans_script = Path(__file__).parent.parent / "utils" / "trans_md_to_pdf.py"
+                    
+                    if trans_script.exists():
+                        cmd = [
+                            'python3',
+                            str(trans_script),
+                            md_path.name,  # Use filename instead of full path
+                            pdf_file.name  # Use filename instead of full path
+                        ]
+                        
+                        # Execute command in markdown file directory
+                        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+                        
+                        if pdf_file.exists():  # Check file existence only, ignore warnings in returncode
+                            file_size = pdf_file.stat().st_size
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'success',
+                                'file': str(pdf_file.relative_to(self.workspace_root)),
+                                'size': file_size,
+                                'size_kb': f"{file_size / 1024:.1f} KB"
+                            }
+                            
+                            # Check if there were warnings during conversion
+                            if result.returncode != 0:
+                                print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                                print_debug(f"⚠️  Note: Conversion completed with warnings (non-critical)")
+                                if result.stderr:
+                                    print_debug(f"   Warning details: {result.stderr[:200]}...")  # Show first 200 chars
+                            else:
+                                print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                        else:
+                            # If trans_md_to_pdf.py fails
+                            print_debug(f"⚠️ trans_md_to_pdf.py conversion failed...")
+                            error_msg = result.stderr if result.stderr else result.stdout
+                            print_debug(f"   Error message: {error_msg}")
+                            
+                            # Analyze error for common issues
+                            if error_msg:
+                                if "Cannot load file" in error_msg or "Invalid" in error_msg:
+                                    print_debug("🔍 Detected image format compatibility issues")
+                                    print_debug("💡 Suggestion: Consider converting WebP/TIFF images to PNG/JPEG")
+                                elif "Cannot determine size" in error_msg or "BoundingBox" in error_msg:
+                                    print_debug("🔍 Detected image size/boundary issues")  
+                                    print_debug("💡 Suggestion: Image preprocessing may help resolve this")
+                            
+                            # Use pandoc directly for conversion with fallback engine
+                            try:
+                                # Check available PDF engines
+                                engine_name, engine_option = self._check_pdf_engine_availability()
+                                if not engine_name:
+                                    # No PDF engines available - skip PDF conversion
+                                    print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'failed',
+                                        'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
+                                        'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
+                                    }
+                                    return conversion_results
+                                
+                                # Get engine-specific options
+                                engine_options = self._get_engine_specific_options(engine_name)
+                                
+                                direct_cmd = [
+                                    'pandoc',
+                                    md_path.name,
+                                    '-o', pdf_file.name,
+                                    engine_option,  # Use the selected engine
+                                ]
+                                
+                                # Add engine-specific options
+                                direct_cmd.extend(engine_options)
+                                
+                                # Add common options
+                                direct_cmd.extend([
+                                    '-V', 'fontsize=12pt',
+                                    '-V', 'geometry:margin=2.5cm',
+                                    '-V', 'geometry:a4paper',
+                                    '-V', 'linestretch=1.5',
+                                    '--highlight-style=tango',
+                                    '-V', 'colorlinks=true',
+                                    '-V', 'linkcolor=blue',
+                                    '-V', 'urlcolor=blue',
+                                    '--toc',
+                                    '--wrap=preserve'
+                                ])
+                                
+                                # Add LaTeX-specific options only for LaTeX engines
+                                if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
+                                    direct_cmd.extend([
+                                        '-V', 'graphics=true',
+                                    ])
+                                
+                                print_debug(f"Using fallback PDF engine: {engine_name}")
+                                
+                                direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
+                                
+                                if direct_result.returncode == 0 and pdf_file.exists():
+                                    file_size = pdf_file.stat().st_size
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'success',
+                                        'file': str(pdf_file.relative_to(self.workspace_root)),
+                                        'size': file_size,
+                                        'size_kb': f"{file_size / 1024:.1f} KB",
+                                        'method': 'direct_pandoc'
+                                    }
+                                    print_debug(f"✅ PDF document conversion successful (Direct pandoc): {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                                else:
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'failed',
+                                        'error': f'Direct pandoc conversion also failed: {direct_result.stderr if direct_result.stderr else "Unknown error"}'
+                                    }
+                                    print_debug(f"❌ PDF document conversion failed (Direct pandoc): {direct_result.stderr if direct_result.stderr else 'Unknown error'}")
+                            except Exception as e:
+                                conversion_results['conversions']['pdf'] = {
+                                    'status': 'failed',
+                                    'error': f'Direct pandoc conversion exception: {str(e)}'
+                                }
+                                print_debug(f"❌ PDF document conversion exception (Direct pandoc): {str(e)}")
+                    else:
+                        # If trans_md_to_pdf.py doesn't exist
+                        print_debug(f"⚠️ trans_md_to_pdf.py script doesn't exist")
+                        
+                        # Check available PDF engines
+                        engine_name, engine_option = self._check_pdf_engine_availability()
+                        if not engine_name:
+                            # No PDF engines available - skip PDF conversion
+                            print_debug(f"⚠️ No PDF engines available, skipping PDF conversion")
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'failed',
+                                'error': 'No PDF engines available (xelatex, lualatex, pdflatex, wkhtmltopdf, weasyprint)',
+                                'message': 'PDF conversion skipped due to missing LaTeX/PDF engines. Please install at least one PDF engine.'
+                            }
+                            return conversion_results
+                        
+                        # Get engine-specific options
+                        engine_options = self._get_engine_specific_options(engine_name)
+                        
+                        cmd = [
+                            'pandoc',
+                            md_path.name,  # Use filename instead of full path
+                            '-o', pdf_file.name,  # Use filename instead of full path
+                            engine_option,  # Use the selected engine
+                        ]
+                        
+                        # Add engine-specific options
+                        cmd.extend(engine_options)
+                        
+                        # Add common options
+                        cmd.extend([
+                            '-V', 'fontsize=12pt',
+                            '-V', 'geometry:margin=2.5cm',
+                            '-V', 'geometry:a4paper',
+                            '-V', 'linestretch=1.5',
+                            '--highlight-style=tango',
+                            '-V', 'colorlinks=true',
+                            '-V', 'linkcolor=blue',
+                            '-V', 'urlcolor=blue',
+                            '--toc',
+                            '--wrap=preserve'
+                        ])
+                        
+                        # Add LaTeX-specific options only for LaTeX engines
+                        if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
+                            cmd.extend([
+                                '-V', 'graphics=true',
+                            ])
+                        
+                        print_debug(f"Using fallback PDF engine: {engine_name}")
+                        
+                        # Execute command in markdown file directory
+                        result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
+                        
+                        if pdf_file.exists():
+                            file_size = pdf_file.stat().st_size
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'success',
+                                'file': str(pdf_file.relative_to(self.workspace_root)),
+                                'size': file_size,
+                                'size_kb': f"{file_size / 1024:.1f} KB"
+                            }
+                            print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
+                        else:
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'failed',
+                                'error': 'PDF file not generated'
+                            }
+                            print_debug(f"❌ PDF document conversion failed: File not generated")
+                            
+                except subprocess.CalledProcessError as e:
+                    conversion_results['conversions']['pdf'] = {
+                        'status': 'failed',
+                        'error': f'PDF conversion failed: {e.stderr}'
+                    }
+                    print_debug(f"❌ PDF document conversion failed: {e.stderr}")
+                except Exception as e:
+                    conversion_results['conversions']['pdf'] = {
+                        'status': 'failed',
+                        'error': f'PDF conversion exception: {str(e)}'
+                    }
+                    print_debug(f"❌ PDF document conversion exception: {str(e)}")
             
             # Check conversion results
             successful_conversions = sum(1 for conv in conversion_results['conversions'].values() 

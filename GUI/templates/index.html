@@ -311,12 +311,12 @@
         }
 
         .connect-btn.disconnect {
-            background: #dc3545;
+            background: #6c757d;
             color: white;
         }
 
         .connect-btn.disconnect:hover {
-            background: #c82333;
+            background: #5a6268;
         }
 
         .connect-btn:disabled {
@@ -339,31 +339,6 @@
             gap: 6px;
         }
 
-        .user-status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #6c757d;
-        }
-
-        .user-status-indicator.connected {
-            background: #28a745;
-            animation: pulse-green 2s infinite;
-        }
-
-        .user-status-indicator.connected.guest {
-            background: #ff5722;
-            animation: pulse-red 2s infinite;
-        }
-
-        .user-status-indicator.connecting {
-            background: #ffc107;
-            animation: pulse-orange 1s infinite;
-        }
-
-        .user-status-indicator.error {
-            background: #dc3545;
-        }
 
         .container {
             display: flex;
@@ -457,73 +432,9 @@
             position: relative;
         }
 
-        .chat-header {
-            background: #007acc;
-            color: white;
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #3e3e42;
-        }
 
-        .chat-header h3 {
-            font-size: 0.95em;
-            font-weight: 400;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
 
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #4CAF50;
-            animation: pulse 2s infinite;
-        }
 
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        @keyframes pulse-green {
-            0% {
-                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
-            }
-        }
-
-        @keyframes pulse-red {
-            0% {
-                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(255, 87, 34, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(255, 87, 34, 0);
-            }
-        }
-
-        @keyframes pulse-orange {
-            0% {
-                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
-            }
-        }
 
         .chat-messages {
             flex: 1;
@@ -639,12 +550,37 @@
             font-family: inherit;
             background: #1e1e1e;
             color: #cccccc;
+            overflow-y: auto;
+        }
+
+        /* 自定义滚动条样式 */
+        #userInput::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #userInput::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #userInput::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        #userInput::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 只在内容超出时显示滚动条 */
+        #userInput:not(:focus) {
+            overflow-y: hidden;
         }
 
         #userInput:focus {
             outline: none;
             border-color: #007acc;
             box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+            overflow-y: auto;
         }
 
         #userInput::placeholder {
@@ -652,7 +588,7 @@
         }
 
         .send-button {
-            background: #007acc;
+            background: rgba(74, 144, 226, 0.8);
             color: white;
             border: none;
             border-radius: 6px;
@@ -667,7 +603,7 @@
         }
 
         .send-button:hover {
-            background: #005a9e;
+            background: rgba(53, 122, 189, 0.9);
             transform: translateY(-1px);
         }
 
@@ -677,10 +613,6 @@
             transform: none;
         }
 
-        /* Specific button hover effects */
-        #planButton:hover:not(:disabled) {
-            background: #f57c00;
-        }
 
         #clearChatButton:hover:not(:disabled) {
             background: #5a6268;
@@ -747,7 +679,6 @@
         .directory-item:hover {
             background: #2d2d30;
             border-color: #569cd6;
-            transform: translateY(-1px);
         }
 
         .directory-item.expanded {
@@ -976,7 +907,8 @@
             margin-left: 8px;
         }
 
-        .file-item-container:hover .delete-file-btn {
+        .file-item-container:hover .delete-file-btn,
+        .file-item.directory:hover .delete-file-btn {
             opacity: 1;
         }
 
@@ -1168,14 +1100,6 @@
                 min-height: 300px; /* 设置最小高度确保有足够的显示空间 */
             }
             
-            .chat-header {
-                padding: 8px 12px;
-                flex-shrink: 0;
-            }
-            
-            .chat-header h3 {
-                font-size: 0.85em;
-            }
             
             .chat-messages {
                 padding: 10px;
@@ -1283,16 +1207,6 @@
                 font-size: 0.8em;
             }
             
-            /* GitHub button mobile optimization */
-            .github-link-container {
-                bottom: 10px !important;
-                right: 10px !important;
-            }
-            
-            .github-link-container a {
-                font-size: 0.8em !important;
-                padding: 6px 8px !important;
-            }
         }
         
         /* Smaller mobile devices */
@@ -1388,20 +1302,6 @@
                 font-size: 0.75em;
             }
             
-            /* GitHub button small mobile optimization */
-            .github-link-container {
-                bottom: 8px !important;
-                right: 8px !important;
-            }
-            
-            .github-link-container a {
-                font-size: 0.75em !important;
-                padding: 4px 6px !important;
-            }
-            
-            .github-link-container a span {
-                display: none; /* 小屏幕只显示图标 */
-            }
             
             /* Modal optimization for mobile */
             .modal-content {
@@ -2236,6 +2136,16 @@
             </div>
         </div>
         <div class="user-auth-right">
+            <!-- Routine file selection (moved to top, left of model selection) -->
+            <div class="api-key-group">
+                <label for="routineSelect">
+                    <i class="fas fa-file-text"></i>
+                    {{ i18n.get('routine_file', '指导文件' if lang == 'zh' else 'Routine File') }}
+                </label>
+                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 180px;">
+                    <option value="">{{ i18n.get('no_routine', '无' if lang == 'zh' else 'None') }}</option>
+                </select>
+            </div>
             <div class="api-key-group">
                 <label for="modelSelect">
                     <i class="fas fa-brain"></i>
@@ -2267,10 +2177,7 @@
                 <span>{{ i18n.connect_btn }}</span>
             </button>
             <div class="user-info">
-                <div class="user-status">
-                    <div class="user-status-indicator" id="userStatusIndicator"></div>
-                    <span id="userStatusText">{{ i18n.user_disconnected }}</span>
-                </div>
+                <span id="userStatusText">{{ i18n.user_disconnected }}</span>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
         </div>
@@ -2284,13 +2191,6 @@
             </div>
 
             <div class="chat-container">
-                <div class="chat-header">
-                    <h3>
-                        <i class="fas fa-comments"></i>
-                        {{ i18n.chat_title }}
-                    </h3>
-                    <div class="status-indicator" id="statusIndicator"></div>
-                </div>
                 <div class="chat-messages scrollbar-custom" id="chatMessages">
                     <div class="message system">
                         <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
@@ -2325,19 +2225,16 @@
                         <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
                             <i class="fas fa-paper-plane"></i>
                         </button>
-                        <button class="send-button" id="planButton" style="background-color: #ff9800;" title="{{ i18n.plan_tooltip }}">
-                            <i class="fas fa-list-ul"></i>
-                        </button>
-                        <button class="send-button" id="newTaskButton" style="background-color: #4caf50;" title="{{ i18n.new_tooltip }}">
+                        <button class="send-button" id="newTaskButton" style="background-color: rgba(82, 196, 26, 0.8);" title="{{ i18n.new_tooltip }}">
                             <i class="fas fa-plus"></i>
                         </button>
-                        <button class="send-button" id="configToggleBtn" style="background-color: #3e3e42;" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
+                        <button class="send-button" id="configToggleBtn" style="background-color: rgba(255, 140, 0, 0.8);" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
                             <i class="fas fa-cog" id="configToggleIcon"></i>
                         </button>
                         <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
                             <i class="fas fa-stop"></i>
                         </button>
-                        <button class="send-button" id="clearChatButton" style="background-color: #6c757d;" title="{{ i18n.clear_chat_tooltip }}">
+                        <button class="send-button" id="clearChatButton" style="background-color: rgba(114, 46, 209, 0.8);" title="{{ i18n.clear_chat_tooltip }}">
                             <i class="fas fa-broom"></i>
                         </button>
                     </div>
@@ -2370,6 +2267,10 @@
                             <input type="checkbox" id="enableJieba" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
                         </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enablePlanMode" style="margin: 0;">
+                            <span>{{ i18n.get('enable_plan_mode', '计划模式' if lang == 'zh' else 'Plan Mode') }}</span>
+                        </label>
                     </div>
 
                     <!-- MCP Server Selection (moved below all config options) -->
@@ -2389,36 +2290,9 @@
                     </div>
                 </div>
                 
-                <!-- Routine file selection (moved from config panel) -->
-                <div style="margin-top: 10px; padding: 10px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
-                    <label for="routineSelect" style="color: #cccccc; white-space: nowrap; display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-file-text"></i>
-                        {{ i18n.get('routine_file', '指导文件' if lang == 'zh' else 'Routine File') }}:
-                    </label>
-                    <select id="routineSelect" style="flex: 1; padding: 6px 10px; border: 1px solid #3e3e42; border-radius: 4px; background: #1e1e1e; color: #cccccc; font-size: 0.9em; min-width: 150px;">
-                        <option value="">{{ i18n.get('no_routine', '无' if lang == 'zh' else 'None') }}</option>
-                    </select>
-                </div>
                 
-                <div id="taskModeInfo" style="margin-top: 10px; font-size: 0.9em; color: #666; text-align: center;">
-                    <!-- Task mode information will be displayed here -->
-                </div>
             </div>
             
-            <!-- GitHub Link - moved to bottom right corner -->
-            <div class="github-link-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-                <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer" 
-                   style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; 
-                          background: #333; color: #fff; text-decoration: none; border-radius: 6px; 
-                          font-size: 0.9em; border: 1px solid #555; transition: all 0.3s ease;
-                          box-shadow: 0 2px 4px rgba(0,0,0,0.3);"
-                   onmouseover="this.style.background='#444'; this.style.borderColor='#777'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.4)'"
-                   onmouseout="this.style.background='#333'; this.style.borderColor='#555'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.3)'"
-                   title="访问AGIAgent项目主页">
-                    <i class="fab fa-github" style="font-size: 1.1em;"></i>
-                    <span>{{ 'GitHub' if lang == 'en' else 'GitHub' }}</span>
-                </a>
-            </div>
         </div>
 
         <div class="resizer" id="resizer"></div>
@@ -2512,6 +2386,38 @@
                             {{ i18n.get('delete_confirm', '删除' if lang == 'zh' else 'Delete') }}
                         </button>
                         <button id="cancelDeleteFile" class="btn btn-secondary" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                            {{ i18n.get('cancel', '取消' if lang == 'zh' else 'Cancel') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Folder Confirmation Modal -->
+    <div id="deleteFolderModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 400px; height: auto;">
+            <div class="modal-header">
+                <h3>{{ i18n.get('delete_folder_title', '删除文件夹' if lang == 'zh' else 'Delete Folder') }}</h3>
+                <span class="close" id="deleteFolderClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="padding: 20px; text-align: center;">
+                    <div style="font-size: 48px; color: #ff6b6b; margin-bottom: 20px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <p style="font-size: 18px; margin-bottom: 10px; color: #ffffff;">
+                        {{ i18n.get('delete_folder_confirm', '确定要删除这个文件夹吗？' if lang == 'zh' else 'Are you sure you want to delete this folder?') }}
+                    </p>
+                    <p id="deleteFolderName" style="font-weight: bold; color: #666; margin-bottom: 30px; word-break: break-all;"></p>
+                    <p style="color: #ff6b6b; font-size: 14px; margin-bottom: 30px;">
+                        {{ i18n.get('delete_folder_warning', '此操作将删除文件夹及其所有内容，无法撤销！' if lang == 'zh' else 'This action will delete the folder and all its contents, and cannot be undone!') }}
+                    </p>
+                    <div style="display: flex; gap: 15px; justify-content: center;">
+                        <button id="confirmDeleteFolder" class="btn btn-danger" style="background: #ff6b6b; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                            {{ i18n.get('delete_confirm', '删除' if lang == 'zh' else 'Delete') }}
+                        </button>
+                        <button id="cancelDeleteFolder" class="btn btn-secondary" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
                             {{ i18n.get('cancel', '取消' if lang == 'zh' else 'Cancel') }}
                         </button>
                     </div>
@@ -2642,19 +2548,16 @@
         const chatMessages = document.getElementById('chatMessages');
         const userInput = document.getElementById('userInput');
         const sendButton = document.getElementById('sendButton');
-        const planButton = document.getElementById('planButton');
 
         const newTaskButton = document.getElementById('newTaskButton');
         const stopButton = document.getElementById('stopButton');
         const clearChatButton = document.getElementById('clearChatButton');
-        const statusIndicator = document.getElementById('statusIndicator');
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
         
         // User authentication elements
         const apiKeyInput = document.getElementById('apiKeyInput');
         const connectBtn = document.getElementById('connectBtn');
-        const userStatusIndicator = document.getElementById('userStatusIndicator');
         const userStatusText = document.getElementById('userStatusText');
         const userIdentity = document.getElementById('userIdentity');
         
@@ -2664,6 +2567,7 @@
         let taskMode = 'new'; // 'new', 'continue', 'selected' - 默认为新建模式
         let expandedDirectories = new Set();
         let collapsedSubDirectories = new Set(); // Save collapsed subdirectory state
+        let expandedSubDirectories = new Set(); // Save expanded subdirectory state
         let isUserScrolling = false; // Whether user is manually scrolling
         let autoScrollEnabled = true; // Whether auto-scroll is enabled
         let refreshTimeout = null; // Debounce timer
@@ -2688,13 +2592,9 @@
                 'error': 'error'
             };
             
-            let className = 'user-status-indicator ' + (statusClasses[status] || '');
             if (status === 'connected' && isGuest) {
-                className += ' guest';
                 message = I18N.temporary_connection || '临时连接';
             }
-            
-            userStatusIndicator.className = className;
             userStatusText.textContent = message;
             userIdentity.textContent = identity;
             
@@ -2728,7 +2628,6 @@
             // 允许用户在任务执行过程中输入新的需求，但不允许执行
             userInput.disabled = !enabled;
             sendButton.disabled = !enabled || isTaskRunning;
-            planButton.disabled = !enabled || isTaskRunning;
             newTaskButton.disabled = !enabled || isTaskRunning;
             
             // Enable/disable directory operations
@@ -2795,7 +2694,6 @@
             directoryList.innerHTML = '';
             selectedDirectory = null;
             taskMode = 'new';
-            updateTaskModeInfo();
             
             // 停止文件监测
             stopFileMonitoring();
@@ -2828,8 +2726,6 @@
                 const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
                 updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(I18N.connected, 'system');
-                updateStatus('connected');
-                updateTaskModeInfo(); // Initialize task mode info display
 
                 // Save API key to localStorage for session restoration
                 try {
@@ -2869,7 +2765,6 @@
             socket.on('disconnect', function(reason) {
                 updateUserStatus('disconnected', I18N.user_disconnected);
                 addMessage(`🔌 ${I18N.disconnected} (${reason})`, 'warning');
-                updateStatus('disconnected');
                 
                                  // If task is running, give special prompt
                 if (isTaskRunning) {
@@ -2935,7 +2830,6 @@
                         expandedDirectories.add(data.output_dir);
                     }
                 }
-                updateTaskModeInfo();
                 
                 // Refresh directory list with longer delay to ensure files are generated
                 setTimeout(() => {
@@ -2953,7 +2847,6 @@
                     resizeTextarea();
                 }
                 // Keep current task mode
-                updateTaskModeInfo();
                 // Refresh directories after stopping task
                 setTimeout(refreshDirectories, 1000);
             });
@@ -2973,7 +2866,6 @@
                 selectedDirectory = data.dir_name;
                 if (selectedDirectory) {
                     taskMode = 'selected';
-                    updateTaskModeInfo();
                     refreshDirectories();
                     // 启动文件监测
                     startFileMonitoring();
@@ -2988,12 +2880,22 @@
                     selectedDirectory = data.dir_name;
                     taskMode = 'selected';
                     addMessage(data.message, 'success');
-                    updateTaskModeInfo();
                     refreshDirectories();
                     // 启动文件监测
                     startFileMonitoring();
+                    
+                    // 如果有待发送的消息，自动发送
+                    if (pendingUserInput) {
+                        userInput.value = pendingUserInput;
+                        // 延迟一点时间确保目录创建完成
+                        setTimeout(() => {
+                            sendMessage(false);
+                        }, 500);
+                        pendingUserInput = null; // 清空待发送消息
+                    }
                 } else {
                     addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
+                    pendingUserInput = null; // 清空待发送消息
                 }
             });
 
@@ -3296,19 +3198,6 @@
 
 
 
-        // Status update
-        function updateStatus(status) {
-            const indicator = statusIndicator;
-            indicator.className = 'status-indicator';
-            
-            if (status === 'connected') {
-                indicator.style.background = '#4CAF50';
-            } else if (status === 'running') {
-                indicator.style.background = '#007acc';
-            } else if (status === 'disconnected') {
-                indicator.style.background = '#F44336';
-            }
-        }
 
         function setTaskRunning(running) {
             isTaskRunning = running;
@@ -3317,18 +3206,14 @@
             
             if (running) {
                 sendButton.style.display = 'none';
-                planButton.style.display = 'none';
                 newTaskButton.style.display = 'none';
                 stopButton.style.display = 'flex';
-                updateStatus('running');
                 // 更新输入框提示文本
                 userInput.placeholder = I18N.running_input_placeholder || 'Task is running. You can type a new request (will execute after current task)...';
             } else {
                 sendButton.style.display = 'flex';
-                planButton.style.display = 'flex';
                 newTaskButton.style.display = 'flex';
                 stopButton.style.display = 'none';
-                updateStatus('connected');
                 // 恢复原始提示文本
                 userInput.placeholder = '{{ i18n.input_placeholder }}';
             }
@@ -3348,9 +3233,12 @@
                 return;
             }
 
-            // In new mode, prompt user to create or select directory first
+            // In new mode, automatically create new directory first
             if (taskMode === 'new') {
-                addMessage(I18N.create_or_select_directory, 'error');
+                addMessage('正在自动创建新工作目录...', 'info');
+                createNewDirectory();
+                // Store the message to be sent after directory creation
+                pendingUserInput = message;
                 return;
             }
 
@@ -3649,9 +3537,6 @@
                 selectedItem.classList.add('selected');
             }
             
-            // Update task mode information
-            updateTaskModeInfo();
-            
             // 启动文件监测
             startFileMonitoring();
             
@@ -3659,33 +3544,38 @@
         }
 
         function selectAndToggleDirectory(dirName) {
-            // 先选择目录
+            // 只选择目录，不自动展开
             selectDirectory(dirName);
-            
-            // 然后切换展开状态
-            toggleDirectory(dirName, null);
         }
 
-        function updateTaskModeInfo() {
-            const taskModeInfo = document.getElementById('taskModeInfo');
-            let baseInfo = '';
+        /**
+         * 处理目录项的点击事件
+         * @param {Event} event - 点击事件对象
+         * @param {string} dirName - 目录名称
+         */
+        function handleDirectoryItemClick(event, dirName) {
+            console.log(`[DEBUG] 🎯 Click detected on directory item: ${dirName}`);
+            console.log(`[CLICK DEBUG] 点击目标: ${event.target.tagName}.${event.target.className} 坐标:(${event.clientX},${event.clientY})`);
+            console.log(`[CLICK DEBUG] 目录项: ${dirName}`);
             
-            if (taskMode === 'selected' && selectedDirectory) {
-                baseInfo = `<i class="fas fa-info-circle"></i> ${I18N.selected_dir_info}: <strong>${selectedDirectory}</strong>`;
-                taskModeInfo.style.color = '#569cd6';
-            } else if (taskMode === 'continue') {
-                baseInfo = `<i class="fas fa-info-circle"></i> ${I18N.continue_mode_info}`;
-                taskModeInfo.style.color = '#9cdcfe';
-            } else if (taskMode === 'new') {
-                baseInfo = `<i class="fas fa-plus-circle"></i> ${I18N.new_mode_info}`;
-                taskModeInfo.style.color = '#4CAF50';
-            } else {
-                baseInfo = `<i class="fas fa-plus-circle"></i> ${I18N.create_or_select_directory}`;
-                taskModeInfo.style.color = '#9cdcfe';
+            // 检查点击目标是否是按钮或操作区域
+            const clickedElement = event.target;
+            const isButton = clickedElement.closest('.action-btn');
+            const isFileTree = clickedElement.closest('.file-tree');
+            
+            // 如果点击的是按钮或文件树，不处理目录选择
+            if (isButton || isFileTree) {
+                console.log(`[DEBUG] ❌ Click on button or file tree, ignoring directory selection`);
+                return;
             }
             
-            taskModeInfo.innerHTML = baseInfo;
+            console.log(`[DEBUG] ✅ Valid directory selection click detected`);
+            console.log(`[DEBUG] 🎯 selectAndToggleDirectory called for: ${dirName}`);
+            
+            // 调用原有的选择目录函数
+            selectAndToggleDirectory(dirName);
         }
+
 
         function resizeTextarea() {
             userInput.style.height = 'auto';
@@ -3712,7 +3602,6 @@
 
         sendButton.addEventListener('click', () => sendMessage(false));
 
-        planButton.addEventListener('click', () => sendMessage(true));
 
         newTaskButton.addEventListener('click', createNewDirectory);
 
@@ -4050,7 +3939,7 @@
                 
                 if (isSelectedByFrontend || isSelectedByBackend) {
                     classes.push('selected');
-                    statusText += '<span style="font-size: 0.8em; margin-left: 8px;">(' + I18N.selected + ')</span>';
+                    // 去除"已选择"状态标签，只保留视觉高亮效果
                 }
                 
                 if (dir.is_last && !dir.is_current && !isSelectedByFrontend && !isSelectedByBackend) {
@@ -4065,9 +3954,9 @@
                 }
                 
                 return `
-                    <div class="${classes.join(' ')}" data-dir="${dir.name}">
+                    <div class="${classes.join(' ')}" data-dir="${dir.name}" onclick="handleDirectoryItemClick(event, '${dir.name}')">
                         <div class="directory-header">
-                            <div class="directory-name" onclick="selectAndToggleDirectory('${dir.name}')">
+                            <div class="directory-name">
                                 <i class="fas fa-folder"></i>
                                 ${dir.name}
                                 ${statusText}
@@ -4090,9 +3979,8 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="directory-info" onclick="selectAndToggleDirectory('${dir.name}')">
+                        <div class="directory-info">
                             <div><i class="fas fa-clock"></i> ${dir.modified_time}</div>
-                            <div><i class="fas fa-hdd"></i> ${dir.size}</div>
                         </div>
                         <div class="file-tree ${isExpanded ? 'show' : ''}" id="tree-${dir.name}">
                             ${renderFileTree(dir.files, dir.name)}
@@ -4106,7 +3994,6 @@
             return files.map(file => {
                 const icon = file.type === 'directory' ? 'fas fa-folder' : getFileIcon(file.name);
                 const className = file.type === 'directory' ? 'file-item directory' : 'file-item';
-                const sizeInfo = file.size ? ` (${file.size})` : '';
                 const isPreviewable = file.type === 'file' && isFilePreviewable(file.name);
                 const previewClass = isPreviewable ? ' previewable' : '';
                 
@@ -4132,35 +4019,104 @@
                 // 为子文件夹生成唯一ID
                 const subDirId = `${dirName}-${file.name}`;
                 const hasChildren = file.children && file.children.length > 0;
-                // 子文件夹默认展开，只有在collapsedSubDirectories中的才收起
-                const isSubDirExpanded = !collapsedSubDirectories.has(subDirId);
+                // 子文件夹默认收起，只有在expandedSubDirectories中的才展开
+                const isSubDirExpanded = expandedSubDirectories && expandedSubDirectories.has(subDirId);
                 
                 let html = '';
                 
                 if (file.type === 'directory' && hasChildren) {
-                    // 子文件夹：带展开/收起功能
-                    html = `
-                        <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
-                                 onclick="toggleSubDirectory('${subDirId}', event)">
-                                <i class="${icon}"></i>
-                                ${file.name}${sizeInfo}
+                    // 检查是否是不应该自动展开的目录（但仍然可以手动展开）
+                    const shouldNotAutoExpand = ['code_index', 'logs', 'web_search_result', 'web_search_results'].includes(file.name.toLowerCase());
+                    
+                    // 检查是否是workspace目录，如果是则自动展开
+                    const isWorkspace = file.name.toLowerCase() === 'workspace';
+                    const shouldAutoExpand = isWorkspace;
+                    
+                    if (shouldNotAutoExpand) {
+                        // 对于不应该自动展开的目录，显示展开按钮和删除按钮，但默认收起
+                        html = `
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
+                                     onclick="toggleSubDirectory('${subDirId}', event)">
+                                    <i class="${icon}"></i>
+                                    ${file.name}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                        <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 18px;"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
-                                    style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px; margin-right: 10px;">
-                                <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 18px;"></i>
-                            </button>
-                        </div>
-                        <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
-                            ${renderFileTree(file.children, dirName, indent + 1)}
-                        </div>
-                    `;
+                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
+                                ${renderFileTree(file.children, dirName, indent + 1)}
+                            </div>
+                        `;
+                    } else if (shouldAutoExpand) {
+                        // workspace目录：自动展开显示内容，但不展开子文件夹
+                        html = `
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                    <i class="${icon}"></i>
+                                    ${file.name}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                        <i class="fas fa-chevron-up" style="font-size: 18px;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sub-file-tree show" id="subtree-${subDirId}">
+                                ${renderFileTree(file.children, dirName, indent + 1)}
+                            </div>
+                        `;
+                        // 将workspace目录标记为已展开
+                        if (!expandedSubDirectories) {
+                            expandedSubDirectories = new Set();
+                        }
+                        expandedSubDirectories.add(subDirId);
+                    } else {
+                        // 其他子文件夹：带展开/收起功能
+                        html = `
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
+                                     onclick="toggleSubDirectory('${subDirId}', event)">
+                                    <i class="${icon}"></i>
+                                    ${file.name}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                        <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 18px;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
+                                ${renderFileTree(file.children, dirName, indent + 1)}
+                            </div>
+                        `;
+                    }
                 } else if (file.type === 'directory') {
                     // 空文件夹
                     html = `
-                        <div class="${className}" style="margin-left: ${indent * 12}px">
-                            <i class="${icon}"></i>
-                            ${file.name}${sizeInfo}
+                        <div class="${className}" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                <i class="${icon}"></i>
+                                ${file.name}
+                            </div>
+                            <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     `;
                 } else {
@@ -4170,7 +4126,7 @@
                             <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px;" 
                                  ${isPreviewable ? `onclick="previewFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')"` : ''}>
                                 <i class="${icon}"></i>
-                                ${file.name}${sizeInfo}
+                                ${file.name}
                             </div>
                             <button class="delete-file-btn" onclick="showDeleteFileModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件 | Delete file">
                                 <i class="fas fa-trash"></i>
@@ -4205,7 +4161,8 @@
                 'svg': 'fas fa-image',
                 'bmp': 'fas fa-image',
                 'webp': 'fas fa-image',
-                'ico': 'fas fa-image'
+                'ico': 'fas fa-image',
+                'tex': 'fas fa-file-code'
             };
             return iconMap[ext] || 'fas fa-file';
         }
@@ -4218,7 +4175,7 @@
                     'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl',
                     'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg',
                     'conf', 'toml', 'mmd', 'out', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
-                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico'].includes(ext);
+                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico', 'tex'].includes(ext);
         }
 
         function toggleDirectory(dirName, event) {
@@ -4325,7 +4282,7 @@
             if (isCurrentlyExpanded) {
                 // 收起子文件夹
                 subTree.classList.remove('show');
-                collapsedSubDirectories.add(subDirId);
+                expandedSubDirectories.delete(subDirId);
                 if (icon) {
                     icon.className = 'fas fa-chevron-down';
                 }
@@ -4333,7 +4290,7 @@
             } else {
                 // 展开子文件夹
                 subTree.classList.add('show');
-                collapsedSubDirectories.delete(subDirId);
+                expandedSubDirectories.add(subDirId);
                 if (icon) {
                     icon.className = 'fas fa-chevron-up';
                 }
@@ -4341,7 +4298,7 @@
             }
             
             console.log(`✅ Sub-directory toggle complete. Classes: ${subTree.className}`);
-            console.log(`✅ Collapsed sub-dirs: [${Array.from(collapsedSubDirectories).join(', ')}]`);
+            console.log(`✅ Expanded sub-dirs: [${Array.from(expandedSubDirectories).join(', ')}]`);
             return false;
         }
 
@@ -4432,11 +4389,16 @@
                             collapsedSubDirectories.delete(subDirId);
                         }
                     });
+                    // 清理展开的子目录状态
+                    Array.from(expandedSubDirectories).forEach(subDirId => {
+                        if (subDirId.startsWith(dirName + '-')) {
+                            expandedSubDirectories.delete(subDirId);
+                        }
+                    });
                     // 如果删除的是当前选择的目录，清理状态
                     if (selectedDirectory === dirName) {
                         selectedDirectory = null;
                         taskMode = 'new';
-                        updateTaskModeInfo();
                         // 停止文件监测
                         stopFileMonitoring();
                     }
@@ -4839,6 +4801,9 @@
                             </button>
                             <button id="convertPdfBtn" onclick="convertMarkdownToPdf()" style="background: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 70px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="转换为PDF文档">
                                 <i class="fas fa-file-pdf" style="margin-right: 5px;"></i> PDF
+                            </button>
+                            <button id="convertLatexBtn" onclick="convertMarkdownToLatex()" style="background: #7b1fa2; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 80px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="生成LaTeX源文件">
+                                <i class="fas fa-file-code" style="margin-right: 5px;"></i> LaTeX
                             </button>
                             <button id="markdownToggleBtn" onclick="toggleMarkdownMode()" style="background: #569cd6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 110px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;">
                                 <i class="fas fa-eye" style="margin-right: 5px;"></i> ${I18N.source_mode || 'Source Mode'}
@@ -5982,6 +5947,7 @@
             }
         }
         
+        
         function renderMermaidChart() {
             const container = document.getElementById('mermaid-chart-container');
             if (!container || !window.currentMermaidContent) return;
@@ -6197,7 +6163,6 @@
                     // 更新前端状态
                     if (selectedDirectory === currentRenamingDir) {
                         selectedDirectory = data.new_name;
-                        updateTaskModeInfo();
                     }
                     
                     // 刷新目录列表
@@ -6302,7 +6267,6 @@
                 }
             }
             
-            updateTaskModeInfo();
             initResizer();
             
             // 设置GUI配置选项的默认值
@@ -6348,12 +6312,12 @@
                 
                 if (isConfigVisible) {
                     configContainer.style.display = 'block';
-                    toggleBtn.style.backgroundColor = '#569cd6';
+                    toggleBtn.style.backgroundColor = 'rgba(255, 165, 0, 0.9)';
                     toggleBtn.title = I18N.hide_config_options || '隐藏配置选项';
                     toggleIcon.style.transform = 'rotate(180deg)';
                 } else {
                     configContainer.style.display = 'none';
-                    toggleBtn.style.backgroundColor = '#3e3e42';
+                    toggleBtn.style.backgroundColor = 'rgba(255, 140, 0, 0.8)';
                     toggleBtn.title = I18N.show_config_options || '显示配置选项';
                     toggleIcon.style.transform = 'rotate(0deg)';
                 }
@@ -6634,6 +6598,79 @@
                 if (pdfBtn) {
                     pdfBtn.disabled = false;
                     pdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> PDF';
+                }
+            });
+        }
+
+        function convertMarkdownToLatex() {
+            // 检查guest用户权限
+            if (isGuest) {
+                alert(I18N.guest_cannot_convert);
+                return;
+            }
+            
+            if (!currentFilePath) {
+                alert('无法获取当前文件路径');
+                return;
+            }
+            
+            const latexBtn = document.getElementById('convertLatexBtn');
+            if (latexBtn) {
+                latexBtn.disabled = true;
+                latexBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
+            }
+            
+            const headers = {};
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+            }
+            
+            fetch('/api/convert-markdown', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers
+                },
+                body: JSON.stringify({
+                    file_path: currentFilePath,
+                    format: 'latex'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const latexConversion = data.conversions?.latex;
+                    if (latexConversion && latexConversion.status === 'success') {
+                        // 转换成功，自动下载文件
+                        const fileName = latexConversion.file;
+                        const downloadUrl = `/api/download-file/${fileName}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}`;
+                        
+                        // 创建隐藏的下载链接并触发下载
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = downloadUrl;
+                        downloadLink.download = fileName.split('/').pop(); // 获取文件名
+                        downloadLink.style.display = 'none';
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                        
+                        // 显示成功消息
+                        addMessage(`✅ LaTeX源文件生成成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${latexConversion.size_kb}KB`, 'success');
+                    } else {
+                        alert(`❌ LaTeX源文件生成失败: ${latexConversion?.error || '未知错误'}`);
+                    }
+                } else {
+                    alert(`❌ 生成失败: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('生成错误:', error);
+                alert(`❌ 生成过程中发生错误: ${error.message}`);
+            })
+            .finally(() => {
+                if (latexBtn) {
+                    latexBtn.disabled = false;
+                    latexBtn.innerHTML = '<i class="fas fa-file-code"></i> LaTeX';
                 }
             });
         }
@@ -7014,6 +7051,17 @@
             document.getElementById('deleteFileModal').style.display = 'block';
         }
 
+        // 删除文件夹功能
+        let currentDeleteFolderPath = '';
+        let currentDeleteFolderName = '';
+
+        function showDeleteFolderModal(folderPath, folderName) {
+            currentDeleteFolderPath = folderPath;
+            currentDeleteFolderName = folderName;
+            document.getElementById('deleteFolderName').textContent = folderName;
+            document.getElementById('deleteFolderModal').style.display = 'block';
+        }
+
         // 关闭删除文件模态框
         document.getElementById('deleteFileClose').onclick = function() {
             document.getElementById('deleteFileModal').style.display = 'none';
@@ -7058,6 +7106,53 @@
             })
             .catch(error => {
                 addMessage(' Network error while deleting file', 'error');
+            });
+        }
+
+        // 关闭删除文件夹模态框
+        document.getElementById('deleteFolderClose').onclick = function() {
+            document.getElementById('deleteFolderModal').style.display = 'none';
+        }
+
+        // 取消删除文件夹
+        document.getElementById('cancelDeleteFolder').onclick = function() {
+            document.getElementById('deleteFolderModal').style.display = 'none';
+        }
+
+        // 确认删除文件夹
+        document.getElementById('confirmDeleteFolder').onclick = function() {
+            // 立即关闭对话框
+            document.getElementById('deleteFolderModal').style.display = 'none';
+            // 执行删除操作
+            deleteFolder(currentDeleteFolderPath, currentDeleteFolderName);
+        }
+
+        function deleteFolder(folderPath, folderName) {
+            const requestData = {
+                file_path: folderPath,
+                api_key: currentUser
+            };
+
+            fetch('/api/delete-file', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': currentUser
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addMessage(data.message || `Folder "${folderName}" deleted successfully`, 'success');
+                    
+                    refreshDirectories();
+                } else {
+                    addMessage(data.error || 'Failed to delete folder', 'error');
+                }
+            })
+            .catch(error => {
+                addMessage('Network error while deleting folder', 'error');
             });
         }
 
@@ -7218,7 +7313,6 @@
 
         // 页面加载完成后的初始化
         document.addEventListener('DOMContentLoaded', function() {
-            updateTaskModeInfo(); // 确保任务模式信息正确显示
             updateAutoScrollIndicator(); // 初始化自动滚动状态指示器
         });
 

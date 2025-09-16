@@ -58,7 +58,7 @@ For Report Generation Tasks:
    ```
    <!-- the_example_diagram_caption -->
 
-   Rich mermaid chart types are encouraged. Don't use TD type or TB type, and using LR instead. 
+   Rich mermaid chart types are encouraged (such as Flowcharts, Class, Quadrant, Radar, Sankey, Timeline). Don't use TD type or TB type, and using LR instead. 
    Use style notation to draw colorful and beautiful diagram, limit to at most three colors. (Eg. 'style A fill:#ff9999,stroke:#333,stroke-width:2px'). 
 9. You should also search for relevant images from web to supplement the report.
    For data analysis, you should firstly write and run analysis codes to generate figures and then add to the report. Tables are needed to inteprete data. 

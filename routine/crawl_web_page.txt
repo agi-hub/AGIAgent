@@ -1,1 +1,1 @@
-根据用户的提示词需求，将所需爬取的关键词进行适当的近义词变换，对于每一次变换通过搜索网页获得尽可能多的相关信息，总结成文档。每次更换提示词后就以追加的形式写入文档。
+Based on the user's prompt requirements, appropriately transform the keywords that need to be crawled into synonyms. For each transformation, obtain as much relevant information as possible through web search and summarize it into a document. After each prompt change, append to the document in writing form.

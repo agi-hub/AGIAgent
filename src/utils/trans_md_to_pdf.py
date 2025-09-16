@@ -186,6 +186,152 @@ def get_engine_specific_options(engine_name):
         return []
 
 
+def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, template_path=None):
+    """Execute pandoc conversion to LaTeX format"""
+    import tempfile
+    
+    # Preprocess images and create emoji-free markdown
+    temp_files = []
+    actual_input_file = input_file
+    
+    try:
+        # Step 1: Preprocess images for LaTeX compatibility
+        import sys
+        from pathlib import Path
+        
+        # Add the project root to path for absolute imports
+        script_dir = Path(__file__).parent.parent.parent
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        
+        from src.utils.image_preprocessor import create_preprocessed_markdown
+        
+        print("🖼️ Preprocessing images for LaTeX compatibility...")
+        preprocessed_file, image_temp_files = create_preprocessed_markdown(Path(input_file))
+        
+        if preprocessed_file and preprocessed_file != Path(input_file):
+            actual_input_file = str(preprocessed_file)
+            temp_files.extend(image_temp_files)
+            print(f"✅ Image preprocessing completed: {len(image_temp_files)} files processed")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Image preprocessing failed: {e}")
+        print("📝 Continuing with original file...")
+    
+    # Step 2: Create emoji-free version if needed
+    try:
+        temp_md_file = create_emoji_free_markdown(actual_input_file)
+        if temp_md_file:
+            actual_input_file = temp_md_file
+            temp_files.append(temp_md_file)
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
+    
+    # Create temporary LaTeX header file
+    latex_header = """
+\\usepackage{float}
+\\floatplacement{figure}{H}
+\\usepackage{xeCJK}
+\\setCJKmainfont{Noto Serif CJK SC}
+\\setCJKsansfont{Noto Sans CJK SC}
+\\setCJKmonofont{Noto Sans Mono CJK SC}
+"""
+    header_file = None
+    
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.tex', delete=False) as f:
+            f.write(latex_header)
+            header_file = f.name
+    except Exception as e:
+        print(f"Warning: Cannot create LaTeX header file: {e}")
+    
+    # Build pandoc command for LaTeX output
+    cmd = [
+        'pandoc',
+        actual_input_file,
+        '-o', output_file,
+        '--to', 'latex',  # 指定输出为LaTeX格式
+    ]
+    
+    # Add common options
+    cmd.extend([
+        '-V', 'fontsize=12pt',
+        '-V', 'geometry:margin=2.5cm',
+        '-V', 'geometry:a4paper',
+        '-V', 'linestretch=2.0',
+        '--highlight-style=tango',
+        '-V', 'colorlinks=true',
+        '-V', 'linkcolor=blue',
+        '-V', 'urlcolor=blue',
+        '--toc',
+        '--wrap=preserve',
+        '--quiet'  # Reduce warning output
+    ])
+    
+    # Add LaTeX header file
+    if header_file:
+        cmd.extend(['-H', header_file])
+    
+    # Add filter options
+    if filter_path and os.path.isfile(filter_path):
+        cmd.extend(['--filter', filter_path])
+    
+    # Add template options
+    if template_path and os.path.isfile(template_path):
+        cmd.extend(['--template', template_path])
+    
+    # Execute conversion
+    print(f"Converting to LaTeX: {input_file} -> {output_file}")
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Check if LaTeX file was generated
+        if os.path.isfile(output_file):
+            if result.returncode != 0:
+                print(f"⚠️ Warnings during conversion")
+                if result.stderr:
+                    print(f"Warning information: {result.stderr}")
+            return True, result.stdout
+        else:
+            print(f"❌ LaTeX conversion failed: {result.stderr}")
+            return False, result.stderr
+                
+    except Exception as e:
+        return False, str(e)
+    finally:
+        # Clean up temporary LaTeX header file
+        if header_file and os.path.exists(header_file):
+            try:
+                os.remove(header_file)
+            except Exception as e:
+                pass
+        
+        # Clean up all temporary files
+        try:
+            import sys
+            from pathlib import Path
+            
+            # Add the project root to path for absolute imports
+            script_dir = Path(__file__).parent.parent.parent
+            if str(script_dir) not in sys.path:
+                sys.path.insert(0, str(script_dir))
+                
+            from src.utils.image_preprocessor import cleanup_temp_files
+            cleanup_temp_files(temp_files)
+            if temp_files:
+                print(f"🗑️ Cleaned up {len(temp_files)} temporary files")
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to clean up temporary files: {e}")
+            # Fallback manual cleanup
+            for temp_file in temp_files:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+
+
 def run_pandoc_conversion(input_file, output_file, filter_path=None, template_path=None):
     """Execute pandoc conversion with fallback PDF engines"""
     import tempfile
@@ -382,19 +528,22 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(
-        description='Convert Markdown files to PDF',
+        description='Convert Markdown files to PDF or LaTeX',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
   %(prog)s document.md output.pdf
   %(prog)s -i document.md -o output.pdf
+  %(prog)s -i document.md -o output.tex --latex
+  %(prog)s document.md output.tex --latex
         """
     )
     
     parser.add_argument('input_file', nargs='?', help='Input Markdown file')
-    parser.add_argument('output_file', nargs='?', help='Output PDF file')
+    parser.add_argument('output_file', nargs='?', help='Output PDF or LaTeX file')
     parser.add_argument('-i', '--input', help='Input Markdown file')
-    parser.add_argument('-o', '--output', help='Output PDF file')
+    parser.add_argument('-o', '--output', help='Output PDF or LaTeX file')
+    parser.add_argument('--latex', action='store_true', help='Generate LaTeX source file instead of PDF')
     
     args = parser.parse_args()
     
@@ -404,8 +553,9 @@ Example:
     
     # Check parameters
     if not input_file or not output_file:
-        print("Usage: python trans_md_to_pdf.py <input.md> <output.pdf>")
+        print("Usage: python trans_md_to_pdf.py <input.md> <output.pdf|output.tex> [--latex]")
         print("Example: python trans_md_to_pdf.py document.md output.pdf")
+        print("Example: python trans_md_to_pdf.py document.md output.tex --latex")
         sys.exit(1)
     
     # Check if input file exists
@@ -421,22 +571,34 @@ Example:
     # Set template path
     template_path = script_dir / "template.latex"
     
-    # Execute conversion
-    success, output = run_pandoc_conversion(
-        input_file, 
-        output_file, 
-        str(filter_path) if filter_path.exists() else None,
-        str(template_path) if template_path.exists() else None
-    )
+    # Execute conversion based on output format
+    if args.latex or output_file.lower().endswith('.tex'):
+        # Generate LaTeX source file
+        success, output = run_pandoc_latex_conversion(
+            input_file, 
+            output_file, 
+            str(filter_path) if filter_path.exists() else None,
+            str(template_path) if template_path.exists() else None
+        )
+    else:
+        # Generate PDF file
+        success, output = run_pandoc_conversion(
+            input_file, 
+            output_file, 
+            str(filter_path) if filter_path.exists() else None,
+            str(template_path) if template_path.exists() else None
+        )
     
     # Check conversion result
     if success and os.path.isfile(output_file):
-        print(f"✓ Conversion successful: {output_file}")
+        output_type = "LaTeX" if (args.latex or output_file.lower().endswith('.tex')) else "PDF"
+        print(f"✓ {output_type} conversion successful: {output_file}")
         # Display file size
         file_size = os.path.getsize(output_file)
         print(f"File size: {file_size / 1024:.1f} KB")
     else:
-        print("✗ Conversion failed")
+        output_type = "LaTeX" if (args.latex or output_file.lower().endswith('.tex')) else "PDF"
+        print(f"✗ {output_type} conversion failed")
         if output:
             print(f"Error information: {output}")
         sys.exit(1)

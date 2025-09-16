@@ -1323,8 +1323,8 @@ Please create a detailed, structured analysis that preserves important informati
                 file_notice_parts.append(f"📁 {files_str} saved to folder: {self.web_result_dir}/")
                 file_notice_parts.append("💡 You can use workspace_search or grep_search tools to search within these files")
                 
-                print_current(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
-                print_current(f"💡 You can use workspace_search or grep_search tools to search within these files")
+                #print_current(f"\n📁 {files_str} saved to folder: {self.web_result_dir}/")
+                #print_current(f"💡 You can use workspace_search or grep_search tools to search within these files")
             
             # Always add notice about original content access
             if summary:
