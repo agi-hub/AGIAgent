@@ -70,7 +70,7 @@ class SVGProcessor:
     
     def has_svg_blocks(self, markdown_file: str) -> bool:
         """
-        Check if a markdown file contains SVG code blocks
+        Check if a markdown file contains SVG code blocks (including malformed ones)
         
         Args:
             markdown_file: Path to the markdown file
@@ -82,11 +82,20 @@ class SVGProcessor:
             with open(markdown_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Pattern to match ```svg code blocks
-            svg_pattern = r'```svg\s*\n(.*?)\n```'
-            matches = re.findall(svg_pattern, content, re.DOTALL | re.IGNORECASE)
+            # Pattern to match standard ```svg code blocks
+            standard_pattern = r'```svg\s*\n(.*?)\n```'
+            standard_matches = re.findall(standard_pattern, content, re.DOTALL | re.IGNORECASE)
             
-            return len(matches) > 0
+            # Pattern to match malformed ```svg code blocks (missing closing ```)
+            malformed_pattern = r'```svg\s*\n(.*?</svg>)(?!\s*\n```)'
+            malformed_matches = re.findall(malformed_pattern, content, re.DOTALL | re.IGNORECASE)
+            
+            total_matches = len(standard_matches) + len(malformed_matches)
+            
+            if total_matches > 0:
+                print_debug(f"📊 Found {len(standard_matches)} standard + {len(malformed_matches)} malformed SVG blocks")
+            
+            return total_matches > 0
             
         except Exception as e:
             print_debug(f"❌ Error checking SVG blocks in {markdown_file}: {e}")
