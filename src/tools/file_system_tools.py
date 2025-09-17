@@ -35,6 +35,14 @@ except ImportError:
     print_debug("⚠️ Mermaid processor not available")
     MERMAID_PROCESSOR_AVAILABLE = False
 
+# Import SVG processor for handling SVG code blocks in markdown files
+try:
+    from .svg_processor import svg_processor
+    SVG_PROCESSOR_AVAILABLE = True
+except ImportError:
+    print_debug("⚠️ SVG processor not available")
+    SVG_PROCESSOR_AVAILABLE = False
+
 
 class FileSystemTools:
     def __init__(self, workspace_root: Optional[str] = None):
@@ -43,6 +51,10 @@ class FileSystemTools:
         self.last_edit = None
         self.snapshot_dir = "file_snapshot"
         self._check_system_grep_available()
+        
+        # Update SVG processor workspace root if available
+        if SVG_PROCESSOR_AVAILABLE:
+            svg_processor.set_workspace_root(self.workspace_root)
     
     def _check_system_grep_available(self):
         """Check if system grep command is available"""
@@ -454,6 +466,25 @@ class FileSystemTools:
                         'message': f'Mermaid processing error: {e}'
                     }
             
+            # Process SVG code blocks if this is a markdown file
+            svg_result = None
+            if target_file.lower().endswith('.md') and SVG_PROCESSOR_AVAILABLE:
+                try:
+                    if svg_processor.has_svg_blocks(file_path):
+                        print_debug(f"🎨 Detected SVG code blocks in markdown file, processing...")
+                        svg_result = svg_processor.process_markdown_file(file_path)
+                        if svg_result['status'] == 'success':
+                            print_debug(f"✅ SVG processing completed: {svg_result['message']}")
+                        else:
+                            print_debug(f"⚠️ SVG processing failed: {svg_result.get('message', 'Unknown error')}")
+                except Exception as e:
+                    print_debug(f"⚠️ Error during SVG processing: {e}")
+                    svg_result = {
+                        'status': 'failed',
+                        'error': str(e),
+                        'message': f'SVG processing error: {e}'
+                    }
+            
             # Determine action and status
             if not file_exists:
                 action = 'created'
@@ -476,6 +507,10 @@ class FileSystemTools:
             # Add Mermaid processing result if applicable
             if mermaid_result is not None:
                 result['mermaid_processing'] = mermaid_result
+            
+            # Add SVG processing result if applicable
+            if svg_result is not None:
+                result['svg_processing'] = svg_result
             
             # Convert markdown to Word and PDF if this is a markdown file
             conversion_result = None

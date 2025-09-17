@@ -71,7 +71,7 @@ When writing IEEE Transactions-style journal papers, please strictly follow the 
 - High-quality figures with IEEE standard formatting (300+ DPI)
 - Clear, descriptive captions with detailed explanations
 - Tables with proper statistical measures (mean, std, p-values)
-- Use mermaid for system architecture diagrams and flowcharts
+- Use SVG/mermaid for system architecture diagrams and flowcharts
 - Include ablation study results and sensitivity analysis plots
 
 ## IEEE Transactions Research Support Requirements

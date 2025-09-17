@@ -50,13 +50,14 @@ show_usage() {
     echo "  $0"
     echo ""
     echo "This script will:"
-    echo "  1. Clean all __pycache__ directories"
-    echo "  2. Remove all .pyc and .pyo files"
-    echo "  3. Clean API keys from config/config.txt"
-    echo "  4. Remove build and agia.egg-info directories"
-    echo "  5. Remove .agia_last_output.json file"
-    echo "  6. Remove hidden files (starting with .) except important ones"
-    echo "  7. Remove other temporary files"
+    echo "  1. Remove user files and directories (user_*, long_term_memory, guest, etc.)"
+    echo "  2. Clean all __pycache__ directories"
+    echo "  3. Remove all .pyc and .pyo files"
+    echo "  4. Clean API keys from config/config.txt"
+    echo "  5. Remove build and agia.egg-info directories"
+    echo "  6. Remove .agia_last_output.json file"
+    echo "  7. Remove hidden files (starting with .) except important ones"
+    echo "  8. Remove other temporary files"
 }
 
 # Check parameters
@@ -66,15 +67,74 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 fi
 
 # remove files
-print_info "Remove files"
-rm -rf user_*
-rm -rf long_term_memory
-rm -rf guest
-rm *.log
-rm -rf log
-rm test*
-rm *.out
-rm -rf workspace
+print_info "Remove files and directories..."
+
+# Remove user_* directories/files if they exist
+if ls user_* 1> /dev/null 2>&1; then
+    rm -rf user_*
+    print_success "Removed user_* files/directories"
+else
+    print_info "No user_* files/directories found"
+fi
+
+# Remove long_term_memory directory if it exists
+if [ -d "long_term_memory" ]; then
+    rm -rf long_term_memory
+    print_success "Removed long_term_memory directory"
+else
+    print_info "No long_term_memory directory found"
+fi
+
+# Remove guest directory if it exists
+if [ -d "guest" ]; then
+    rm -rf guest
+    print_success "Removed guest directory"
+else
+    print_info "No guest directory found"
+fi
+
+# Remove .log files if they exist
+if ls *.log 1> /dev/null 2>&1; then
+    LOG_COUNT=$(ls *.log 2>/dev/null | wc -l)
+    rm *.log
+    print_success "Removed $LOG_COUNT .log files"
+else
+    print_info "No .log files found"
+fi
+
+# Remove log directory if it exists
+if [ -d "log" ]; then
+    rm -rf log
+    print_success "Removed log directory"
+else
+    print_info "No log directory found"
+fi
+
+# Remove test* files if they exist
+if ls test* 1> /dev/null 2>&1; then
+    TEST_COUNT=$(ls test* 2>/dev/null | wc -l)
+    rm test*
+    print_success "Removed $TEST_COUNT test* files"
+else
+    print_info "No test* files found"
+fi
+
+# Remove .out files if they exist
+if ls *.out 1> /dev/null 2>&1; then
+    OUT_COUNT=$(ls *.out 2>/dev/null | wc -l)
+    rm *.out
+    print_success "Removed $OUT_COUNT .out files"
+else
+    print_info "No .out files found"
+fi
+
+# Remove workspace directory if it exists
+if [ -d "workspace" ]; then
+    rm -rf workspace
+    print_success "Removed workspace directory"
+else
+    print_info "No workspace directory found"
+fi
 
 
 # Clean API keys from config/config.txt
