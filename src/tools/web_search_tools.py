@@ -2971,6 +2971,7 @@ Please create a detailed, structured analysis that preserves important informati
                             # Save multiple valid images (max 20)
                             max_images = min(20, len(valid_images))
                             saved_images = []
+                            saved_count = 0  # 添加实际保存的图片计数器
                             
                             print_current(f"📥 Downloading {max_images} images...")
                             
@@ -3076,22 +3077,43 @@ Please create a detailed, structured analysis that preserves important informati
                                                 img_buffer.seek(0)
                                                 img = Image.open(img_buffer)
                                                 
+                                                # 增加实际保存的图片计数器
+                                                saved_count += 1
+                                                
                                                 # Generate filename (including sequence number)
                                                 safe_query = re.sub(r'[^\w\s-]', '', query)[:30]
                                                 safe_query = re.sub(r'[-\s]+', '_', safe_query)
                                                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                                                 
-                                                # Determine file extension
-                                                format_ext = img.format.lower() if img.format else 'jpg'
-                                                if format_ext == 'jpeg':
-                                                    format_ext = 'jpg'
+                                                # 统一转换为JPG格式以确保一致性
+                                                # 原始格式信息仍保留在返回数据中
+                                                original_format = img.format.lower() if img.format else 'unknown'
                                                 
-                                                filename = f"{safe_query}_{timestamp}_{i+1:02d}.{format_ext}"
+                                                # 统一使用jpg扩展名
+                                                filename = f"{safe_query}_{timestamp}_{saved_count:02d}.jpg"
                                                 filepath = os.path.join(images_dir, filename)
                                                 
-                                                # Save image file
-                                                with open(filepath, 'wb') as f:
-                                                    f.write(image_data)
+                                                # 如果原图不是JPG格式，则转换为JPG保存
+                                                if original_format not in ['jpg', 'jpeg']:
+                                                    # 转换为RGB模式（JPG不支持透明度）
+                                                    if img.mode in ('RGBA', 'LA', 'P'):
+                                                        # 创建白色背景
+                                                        background = Image.new('RGB', img.size, (255, 255, 255))
+                                                        if img.mode == 'P':
+                                                            img = img.convert('RGBA')
+                                                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                                                        img = background
+                                                    elif img.mode != 'RGB':
+                                                        img = img.convert('RGB')
+                                                    
+                                                    # 保存为JPG格式
+                                                    img.save(filepath, 'JPEG', quality=95, optimize=True)
+                                                    print_debug(f"💾 Converted {original_format.upper()} to JPG and saved")
+                                                else:
+                                                    # 原本就是JPG，直接保存原始数据
+                                                    with open(filepath, 'wb') as f:
+                                                        f.write(image_data)
+                                                    print_debug(f"💾 Saved original JPG format")
                                                 
                                                 # Get relative path (relative to workspace_root)
                                                 relative_path = os.path.relpath(filepath, self.workspace_root or os.getcwd())
@@ -3103,17 +3125,19 @@ Please create a detailed, structured analysis that preserves important informati
                                                     'is_original_image': image_url != thumbnail_url,  # 标记是否为原图
                                                     'local_image_path': filepath,
                                                     'relative_image_path': relative_path,
-                                                    'image_format': img.format.lower() if img.format else 'unknown',
+                                                    'original_format': original_format,  # 原始图片格式
+                                                    'saved_format': 'jpg',  # 统一保存为JPG格式
+                                                    'image_format': 'jpg',  # 向后兼容，统一为jpg
                                                     'image_size_bytes': len(image_data),
                                                     'image_dimensions': f"{img.width}x{img.height}",
                                                     'alt_text': selected_image['alt'],
                                                     'width': img.width,
                                                     'height': img.height,
                                                     'filename': filename,
-                                                    'index': i + 1
+                                                    'index': saved_count  # 使用saved_count确保索引连续
                                                 })
                                                 
-                                                print_debug(f"✅ Image {i+1} saved: {relative_path} ({img.width}x{img.height}, {len(image_data)} bytes)")
+                                                print_debug(f"✅ Image {saved_count} saved: {relative_path} ({img.width}x{img.height}, {len(image_data)} bytes)")
                                                 
                                         except Exception as e:
                                             print_debug(f"⚠️ Image {i+1} validation or save failed: {e}")
