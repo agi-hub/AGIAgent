@@ -65,7 +65,7 @@ When writing CVPR-style conference papers, please strictly follow the following 
 - High-impact figures with clear visualizations (300+ DPI)
 - Concise captions that highlight key insights
 - Tables with performance metrics and statistical significance
-- Use mermaid for network architectures and method pipelines
+- Use SVG/mermaid for network architectures and method pipelines
 - Include qualitative results and failure case analysis
 
 ## CVPR Research Support Requirements
