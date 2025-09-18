@@ -270,15 +270,28 @@ class SVGProcessor:
     def _convert_with_inkscape(self, svg_path: Path, png_path: Path) -> bool:
         """Convert SVG to PNG using Inkscape"""
         try:
-            cmd = [
+            # Try new format first (Inkscape 1.0+)
+            cmd_new = [
                 'inkscape',
                 '--export-type=png',
-                '--export-dpi=300',  # High DPI for better quality
+                '--export-dpi=300',
                 f'--export-filename={png_path}',
                 str(svg_path)
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd_new, capture_output=True, text=True, timeout=30)
+            
+            # If new format fails, try old format (Inkscape 0.92)
+            if result.returncode != 0 and 'Invalid option --export-type' in result.stderr:
+                print_debug(f"🔄 Trying old Inkscape format...")
+                cmd_old = [
+                    'inkscape',
+                    f'--export-png={png_path}',
+                    '--export-dpi=300',
+                    str(svg_path)
+                ]
+                
+                result = subprocess.run(cmd_old, capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0 and png_path.exists():
                 print_debug(f"✅ Converted SVG to PNG using Inkscape: {png_path}")
@@ -406,7 +419,7 @@ class SVGProcessor:
     
     def update_markdown_content(self, content: str, processing_results: List[Dict[str, Any]]) -> str:
         """
-        Update markdown content by replacing SVG code blocks with image links
+        Update markdown content by replacing SVG code blocks with image links or fallback comments
         
         Args:
             content: Original markdown content
@@ -418,33 +431,43 @@ class SVGProcessor:
         updated_content = content
         
         # Check if any blocks were corrected and use the corrected content as base
-        corrected_blocks = [r for r in processing_results if r['status'] == 'success' and r['block'].get('is_corrected', False)]
+        corrected_blocks = [r for r in processing_results if r['block'].get('is_corrected', False)]
         if corrected_blocks:
             # Use the corrected content from the first corrected block as our base
             updated_content = corrected_blocks[0]['block']['corrected_content']
             print_debug("📝 Using error-corrected content as base for updates")
         
-        # Sort results by start position in reverse order to avoid position shifts
-        successful_results = [r for r in processing_results if r['status'] == 'success']
-        successful_results.sort(key=lambda x: x['block']['start_pos'], reverse=True)
+        # Sort ALL results by start position in reverse order to avoid position shifts
+        all_results = processing_results
+        all_results.sort(key=lambda x: x['block']['start_pos'], reverse=True)
         
-        for result in successful_results:
+        for result in all_results:
             block = result['block']
-            png_file = result['png_file']
             svg_id = result['id']
+            full_block = block['full_block']
             
-            # Create image markdown with alt text
-            alt_text = f"SVG图表 {svg_id}"
-            image_markdown = f"![{alt_text}]({png_file})"
-            
-            # Use image markdown directly without comment
-            replacement = image_markdown
+            if result['status'] == 'success':
+                # Successful PNG conversion - use PNG image
+                png_file = result['png_file']
+                alt_text = f"SVG图表 {svg_id}"
+                replacement = f"![{alt_text}]({png_file})"
+                print_debug(f"🔄 Replaced SVG block {svg_id} with PNG image link")
+                
+            elif result.get('svg_file'):
+                # PNG conversion failed but SVG file exists - use SVG image directly
+                svg_file = result['svg_file']
+                alt_text = f"SVG图表 {svg_id}"
+                replacement = f"![{alt_text}]({svg_file})"
+                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (PNG conversion failed)")
+                
+            else:
+                # Complete failure - use error comment
+                error = result.get('error', 'Unknown error')
+                replacement = f"<!-- SVG processing failed: {error} -->"
+                print_debug(f"🔄 Replaced SVG block {svg_id} with error comment")
             
             # Replace the original SVG code block
-            full_block = block['full_block']
             updated_content = updated_content.replace(full_block, replacement, 1)
-            
-            print_debug(f"🔄 Replaced SVG block {svg_id} with image link")
         
         return updated_content
     
