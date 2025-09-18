@@ -1659,6 +1659,154 @@ class FileSystemTools:
             # wkhtmltopdf and weasyprint don't use LaTeX, return minimal options
             return []
 
+    def process_markdown_diagrams(self, markdown_file: str) -> Dict[str, Any]:
+        """
+        Process a markdown file to convert Mermaid charts and SVG code blocks to images
+        
+        Args:
+            markdown_file: Path to the markdown file (relative or absolute)
+            
+        Returns:
+            Dictionary containing processing results for both Mermaid and SVG
+        """
+        try:
+            file_path = self._resolve_path(markdown_file)
+            
+            if not os.path.exists(file_path):
+                return {
+                    'status': 'failed',
+                    'file': markdown_file,
+                    'error': f'Markdown file not found: {file_path}',
+                    'resolved_path': file_path
+                }
+            
+            if not file_path.lower().endswith('.md'):
+                return {
+                    'status': 'failed',
+                    'file': markdown_file,
+                    'error': 'File is not a markdown file (.md extension required)',
+                    'resolved_path': file_path
+                }
+            
+            print_debug(f"🎨 Processing markdown diagrams in: {markdown_file}")
+            
+            processing_results = {
+                'status': 'success',
+                'file': markdown_file,
+                'resolved_path': file_path,
+                'mermaid_processing': None,
+                'svg_processing': None,
+                'summary': {}
+            }
+            
+            # Process Mermaid charts
+            if MERMAID_PROCESSOR_AVAILABLE:
+                try:
+                    if mermaid_processor.has_mermaid_charts(file_path):
+                        print_debug(f"🎨 Detected Mermaid charts, processing...")
+                        mermaid_result = mermaid_processor.process_markdown_file(file_path)
+                        processing_results['mermaid_processing'] = mermaid_result
+                        
+                        if mermaid_result['status'] == 'success':
+                            print_debug(f"✅ Mermaid processing completed: {mermaid_result.get('message', '')}")
+                        else:
+                            print_debug(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
+                    else:
+                        processing_results['mermaid_processing'] = {
+                            'status': 'success',
+                            'message': 'No Mermaid charts found',
+                            'charts_found': 0
+                        }
+                        print_debug(f"ℹ️ No Mermaid charts found in file")
+                        
+                except Exception as e:
+                    print_debug(f"⚠️ Error during Mermaid processing: {e}")
+                    processing_results['mermaid_processing'] = {
+                        'status': 'failed',
+                        'error': str(e),
+                        'message': f'Mermaid processing error: {e}'
+                    }
+            else:
+                processing_results['mermaid_processing'] = {
+                    'status': 'skipped',
+                    'message': 'Mermaid processor not available'
+                }
+                print_debug(f"⚠️ Mermaid processor not available")
+            
+            # Process SVG code blocks
+            if SVG_PROCESSOR_AVAILABLE:
+                try:
+                    if svg_processor.has_svg_blocks(file_path):
+                        print_debug(f"🎨 Detected SVG code blocks, processing...")
+                        svg_result = svg_processor.process_markdown_file(file_path)
+                        processing_results['svg_processing'] = svg_result
+                        
+                        if svg_result['status'] == 'success':
+                            print_debug(f"✅ SVG processing completed: {svg_result.get('message', '')}")
+                        else:
+                            print_debug(f"⚠️ SVG processing failed: {svg_result.get('message', 'Unknown error')}")
+                    else:
+                        processing_results['svg_processing'] = {
+                            'status': 'success',
+                            'message': 'No SVG code blocks found',
+                            'svg_blocks_found': 0
+                        }
+                        print_debug(f"ℹ️ No SVG code blocks found in file")
+                        
+                except Exception as e:
+                    print_debug(f"⚠️ Error during SVG processing: {e}")
+                    processing_results['svg_processing'] = {
+                        'status': 'failed',
+                        'error': str(e),
+                        'message': f'SVG processing error: {e}'
+                    }
+            else:
+                processing_results['svg_processing'] = {
+                    'status': 'skipped',
+                    'message': 'SVG processor not available'
+                }
+                print_debug(f"⚠️ SVG processor not available")
+            
+            # Generate summary
+            mermaid_charts = 0
+            svg_blocks = 0
+            mermaid_success = 0
+            svg_success = 0
+            
+            if processing_results['mermaid_processing'] and processing_results['mermaid_processing'].get('status') == 'success':
+                mermaid_charts = processing_results['mermaid_processing'].get('charts_found', 0)
+                mermaid_success = processing_results['mermaid_processing'].get('successful_conversions', 0)
+            
+            if processing_results['svg_processing'] and processing_results['svg_processing'].get('status') == 'success':
+                svg_blocks = processing_results['svg_processing'].get('svg_blocks_found', 0)
+                svg_success = processing_results['svg_processing'].get('successful_conversions', 0)
+            
+            processing_results['summary'] = {
+                'total_diagrams_found': mermaid_charts + svg_blocks,
+                'total_successful_conversions': mermaid_success + svg_success,
+                'mermaid_charts_found': mermaid_charts,
+                'mermaid_successful': mermaid_success,
+                'svg_blocks_found': svg_blocks,
+                'svg_successful': svg_success
+            }
+            
+            print_debug(f"📊 Processing summary:")
+            print_debug(f"   🎯 Total diagrams found: {mermaid_charts + svg_blocks}")
+            print_debug(f"   ✅ Successful conversions: {mermaid_success + svg_success}")
+            print_debug(f"   📈 Mermaid: {mermaid_success}/{mermaid_charts}")
+            print_debug(f"   🎨 SVG: {svg_success}/{svg_blocks}")
+            
+            return processing_results
+            
+        except Exception as e:
+            print_debug(f"❌ Error processing markdown diagrams: {e}")
+            return {
+                'status': 'failed',
+                'file': markdown_file,
+                'error': str(e),
+                'message': f'Diagram processing error: {e}'
+            }
+
     def _convert_markdown_to_formats(self, file_path: str, target_file: str, format_type: str = 'both') -> Dict[str, Any]:
         """
         Convert Markdown files to Word and PDF formats
