@@ -3829,12 +3829,12 @@ def generate_custom_mcp_config(selected_servers, out_dir):
 if __name__ == '__main__':
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='AGIAgent GUI Server')
-    parser.add_argument('--port', '-p', type=int, default=5004, 
-                       help='指定服务器启动端口 (默认: 5004)')
+    parser.add_argument('--port', '-p', type=int, default=5002, 
+                       help='指定服务器启动端口 (默认: 5002)')
     args = parser.parse_args()
     
     # 优先使用命令行参数，其次使用环境变量，最后使用默认值
-    port = args.port if args.port else int(os.environ.get('PORT', 5004))
+    port = args.port if args.port else int(os.environ.get('PORT', 5002))
     
     print(f"启动AGIAgent GUI服务器，端口: {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
