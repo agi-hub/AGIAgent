@@ -11,7 +11,7 @@ tqdm>=4.30.0
 pandoc>=2.0.0
 pillow
 pandocfilters
-libsvg
+cairosvg
 
 # GUI dependencies
 flask>=2.0.0
