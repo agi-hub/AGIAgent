@@ -31,7 +31,6 @@ You have access to various tools that allow you to:
 - Search the web for information
 - Navigate directory structures
 
-
 ## Task Completion Signal
 When you've fully completed a task and believe no further iterations are needed, you MUST send this singal to exit the task execution:
 TASK_COMPLETED: [Brief description of what was accomplished]

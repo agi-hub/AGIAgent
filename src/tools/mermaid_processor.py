@@ -18,6 +18,43 @@ import hashlib
 import urllib.request
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+# 导入ForeignObject转换工具
+try:
+    from src.utils.foreign_object_converter import convert_mermaid_foreign_objects, has_foreign_objects
+    FOREIGN_OBJECT_CONVERTER_AVAILABLE = True
+except ImportError:
+    try:
+        from ..utils.foreign_object_converter import convert_mermaid_foreign_objects, has_foreign_objects
+        FOREIGN_OBJECT_CONVERTER_AVAILABLE = True
+    except ImportError:
+        FOREIGN_OBJECT_CONVERTER_AVAILABLE = False
+        print("⚠️ ForeignObject converter not available")
+
+# 导入PNG裁剪工具
+try:
+    from src.utils.png_cropper import PNGCropper
+    PNG_CROPPER_AVAILABLE = True
+except ImportError:
+    try:
+        from ..utils.png_cropper import PNGCropper
+        PNG_CROPPER_AVAILABLE = True
+    except ImportError:
+        PNG_CROPPER_AVAILABLE = False
+        print("⚠️ PNG cropper not available")
+
+# 导入HSL颜色转换工具
+try:
+    from src.utils.hsl_color_converter import convert_svg_hsl_colors_optimized
+    HSL_CONVERTER_AVAILABLE = True
+except ImportError:
+    try:
+        from ..utils.hsl_color_converter import convert_svg_hsl_colors_optimized
+        HSL_CONVERTER_AVAILABLE = True
+    except ImportError:
+        HSL_CONVERTER_AVAILABLE = False
+        print("⚠️ HSL color converter not available")
+
 from .print_system import print_current, print_system, print_debug
 
 # Import the enhanced SVG to PNG converter
@@ -224,6 +261,12 @@ class MermaidProcessor:
         self.preferred_method = PREFERRED_METHOD
         self.mermaid_available = (PLAYWRIGHT_AVAILABLE)
         
+        # 初始化PNG裁剪器
+        if PNG_CROPPER_AVAILABLE:
+            self.png_cropper = PNGCropper()
+        else:
+            self.png_cropper = None
+        
         # Initialize SVG to PNG converter
         if SVG_TO_PNG_AVAILABLE:
             self.svg_to_png_converter = EnhancedSVGToPNGConverter()
@@ -262,8 +305,12 @@ class MermaidProcessor:
                         '--max_old_space_size=4096'
                     ]
                 )
-                self._page = self._browser.new_page()
-                self._page.set_viewport_size({"width": 1200, "height": 800})
+                # 创建高分辨率页面上下文
+                self._context = self._browser.new_context(
+                    device_scale_factor=2.0,  # 2倍像素密度
+                    viewport={"width": 1200, "height": 800}
+                )
+                self._page = self._context.new_page()
                 
                 # 设置页面优化选项
                 self._page.set_extra_http_headers({
@@ -573,8 +620,8 @@ class MermaidProcessor:
                             # For named files, use the filename as title
                             alt_text = chart_data['base_filename'].replace('_', ' ').title()
                         
-                        # Use PNG for display in markdown if available, otherwise use SVG
-                        display_path = chart_data['rel_png_path'] if png_success else chart_data['rel_svg_path']
+                        # Use SVG for display in markdown if available, otherwise use PNG
+                        display_path = chart_data['rel_svg_path'] if svg_success else chart_data['rel_png_path']
                         format_info = ""
                         if svg_success and png_success:
                             format_info = f"<!-- Available formats: PNG={chart_data['rel_png_path']}, SVG={chart_data['rel_svg_path']} -->\n"
@@ -793,8 +840,12 @@ class MermaidProcessor:
                         '--max_old_space_size=4096'
                     ]
                 )
-                page = browser.new_page()
-                page.set_viewport_size({"width": 1200, "height": 800})
+                # 创建高分辨率页面上下文
+                context = browser.new_context(
+                    device_scale_factor=2.0,  # 2倍像素密度
+                    viewport={"width": 1200, "height": 800}
+                )
+                page = context.new_page()
                 
                 # Create temporary HTML file with all charts
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as temp_file:
@@ -835,8 +886,30 @@ class MermaidProcessor:
                                     # Fix XML issues: convert <br> to <br/> for proper XML formatting
                                     svg_content = svg_content.replace('<br>', '<br/>')
                                     
-                                    # Add XML declaration and save SVG
+                                    # Add XML declaration
                                     full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n{svg_content}'
+                                    
+                                    # 转换HSL颜色为标准RGB颜色（如果可用）
+                                    if HSL_CONVERTER_AVAILABLE:
+                                        try:
+                                            converted_svg = convert_svg_hsl_colors_optimized(full_svg)
+                                            if converted_svg != full_svg:
+                                                print_debug(f"🎨 Converted HSL colors to RGB for better compatibility")
+                                                full_svg = converted_svg
+                                        except Exception as e:
+                                            print_debug(f"⚠️ HSL color conversion failed: {e}")
+                                    
+                                    # 转换foreignObject为原生SVG text元素（如果可用）
+                                    if FOREIGN_OBJECT_CONVERTER_AVAILABLE and has_foreign_objects(full_svg):
+                                        try:
+                                            converted_svg = convert_mermaid_foreign_objects(full_svg)
+                                            if converted_svg != full_svg:
+                                                print_debug(f"🔧 Converted foreignObject elements to native SVG text for better PDF compatibility")
+                                                full_svg = converted_svg
+                                        except Exception as e:
+                                            print_debug(f"⚠️ ForeignObject conversion failed: {e}")
+                                    
+                                    # Save SVG
                                     with open(svg_path, 'w', encoding='utf-8') as f:
                                         f.write(full_svg)
                                     svg_success = True
@@ -851,6 +924,14 @@ class MermaidProcessor:
                                             path=str(png_path),
                                             omit_background=True
                                         )
+                                        
+                                        # 自动裁剪PNG图片，去除空白区域
+                                        if self.png_cropper:
+                                            try:
+                                                self.png_cropper.crop_png(png_path, padding=15, verbose=False)
+                                            except Exception:
+                                                pass  # 静默处理裁剪错误
+                                        
                                         png_success = True
                                 except Exception as e:
                                     print(f"⚠️ PNG screenshot failed for chart {i+1}: {e}")
@@ -1011,8 +1092,12 @@ class MermaidProcessor:
                             '--max_old_space_size=4096'
                         ]
                     )
-                    page = browser.new_page()
-                    page.set_viewport_size({"width": 800, "height": 600})
+                    # 创建高分辨率页面上下文
+                    context = browser.new_context(
+                        device_scale_factor=2.0,  # 2倍像素密度
+                        viewport={"width": 800, "height": 600}
+                    )
+                    page = context.new_page()
                     
                     print(f"🔧 Loading HTML file...")
                     # Load HTML file with optimized settings
@@ -1048,8 +1133,30 @@ class MermaidProcessor:
                             # Fix XML issues: convert <br> to <br/> for proper XML formatting
                             svg_content = svg_content.replace('<br>', '<br/>')
                             
-                            # Add XML declaration and save SVG
+                            # Add XML declaration
                             full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n{svg_content}'
+                            
+                            # 转换HSL颜色为标准RGB颜色（如果可用）
+                            if HSL_CONVERTER_AVAILABLE:
+                                try:
+                                    converted_svg = convert_svg_hsl_colors_optimized(full_svg)
+                                    if converted_svg != full_svg:
+                                        print_debug(f"🎨 Converted HSL colors to RGB for better compatibility")
+                                        full_svg = converted_svg
+                                except Exception as e:
+                                    print_debug(f"⚠️ HSL color conversion failed: {e}")
+                            
+                            # 转换foreignObject为原生SVG text元素（如果可用）
+                            if FOREIGN_OBJECT_CONVERTER_AVAILABLE and has_foreign_objects(full_svg):
+                                try:
+                                    converted_svg = convert_mermaid_foreign_objects(full_svg)
+                                    if converted_svg != full_svg:
+                                        print_debug(f"🔧 Converted foreignObject elements to native SVG text for better PDF compatibility")
+                                        full_svg = converted_svg
+                                except Exception as e:
+                                    print_debug(f"⚠️ ForeignObject conversion failed: {e}")
+                            
+                            # Save SVG
                             with open(svg_path, 'w', encoding='utf-8') as f:
                                 f.write(full_svg)
                             print(f"✅ SVG content saved to {svg_path}")
@@ -1074,6 +1181,14 @@ class MermaidProcessor:
                                     omit_background=True
                                 )
                                 print(f"✅ PNG screenshot saved to {png_path}")
+                                
+                                # 自动裁剪PNG图片，去除空白区域
+                                if self.png_cropper:
+                                    try:
+                                        self.png_cropper.crop_png(png_path, padding=15, verbose=False)
+                                    except Exception:
+                                        pass  # 静默处理裁剪错误
+                                
                                 png_success = True
                             else:
                                 print(f"❌ No mermaid element found for PNG screenshot")

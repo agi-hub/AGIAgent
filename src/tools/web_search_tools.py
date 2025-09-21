@@ -946,17 +946,6 @@ Please create a detailed, structured analysis that preserves important informati
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
                         print_debug("🔍 Google search engine added as primary option (connectivity confirmed)")
-                        
-                        # Add backup Google search with different approach
-                        search_engines.append({
-                            'name': 'Google_Backup',
-                            'url': 'https://www.google.com/search?q={}&num=20&hl=en&lr=lang_en&cr=countryUS&safe=off&tbs=lr:lang_1en',
-                            'result_selector': 'h3, .LC20lb, .DKV0Md, [data-ved] h3, .yuRUbf h3',
-                            'container_selector': '.g, .tF2Cxc, [data-ved], .yuRUbf',
-                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf', '[data-sncf]'],
-                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
-                        })
-                        print_debug("🔍 Google backup search engine added")
                     else:
                         print_debug("⚠️ Google connectivity test failed, will use alternative search engines")
                     
@@ -1006,8 +995,8 @@ Please create a detailed, structured analysis that preserves important informati
                             if engine['name'].startswith('Google'):
                                 current_time = time.time()
                                 time_since_last_request = current_time - self._last_google_request
-                                if time_since_last_request < 3:  # Wait at least 3 seconds between Google requests
-                                    wait_time = 3 - time_since_last_request
+                                if time_since_last_request < 5:  # Wait at least 5 seconds between Google requests
+                                    wait_time = 5 - time_since_last_request
                                     self._verbose_print(f"⏱️ Rate limiting: waiting {wait_time:.1f} seconds before Google request")
                                     time.sleep(wait_time)
                                 self._last_google_request = time.time()
@@ -1151,8 +1140,8 @@ Please create a detailed, structured analysis that preserves important informati
                             # Close the shared page since parallel processing will create its own browsers
                             page = None
                             
-                            # Use parallel content fetching with 8 concurrent workers for better performance
-                            self._fetch_webpage_content_parallel(results[:max_content_results], max_workers=8)
+                            # Use parallel content fetching with 2 concurrent workers to avoid anti-bot detection
+                            self._fetch_webpage_content_parallel(results[:max_content_results], max_workers=2)
                             
                         except Exception as e:
                             print_current(f"⚠️ Parallel content fetching failed: {e}")
@@ -1677,13 +1666,13 @@ Please create a detailed, structured analysis that preserves important informati
                 # print_current(f"❌ Error processing result {i+1}: {e}")  # Commented out to reduce terminal noise
                 result['content'] = f"Processing error: {str(e)}"
 
-    def _fetch_webpage_content_parallel(self, results: List[Dict], max_workers: int = 8) -> None:
+    def _fetch_webpage_content_parallel(self, results: List[Dict], max_workers: int = 2) -> None:
         """
         Fetch webpage content for multiple results in parallel using ThreadPoolExecutor
-        
+
         Args:
             results: List of search results to fetch content for
-            max_workers: Maximum number of concurrent workers (default: 4)
+            max_workers: Maximum number of concurrent workers (default: 2)
         """
         if not results:
             return
