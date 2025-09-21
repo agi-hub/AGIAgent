@@ -11,6 +11,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
+import sys
+
+# 添加src目录到路径中，以便导入裁剪工具
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.png_cropper import PNGCropper
 
 class EnhancedSVGToPNGConverter:
     def __init__(self):
@@ -24,6 +29,7 @@ class EnhancedSVGToPNGConverter:
             "Microsoft YaHei",
             "Source Han Sans CN"
         ]
+        self.cropper = PNGCropper()
         
     def get_available_chinese_font(self) -> Optional[str]:
         """Get available Chinese fonts in the system"""
@@ -112,10 +118,12 @@ class EnhancedSVGToPNGConverter:
             
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                
-                # Set viewport
-                page.set_viewport_size({"width": 1800, "height": 800})
+                # 创建高分辨率页面上下文
+                context = browser.new_context(
+                    device_scale_factor=2.0,  # 2倍像素密度
+                    viewport={"width": 1800, "height": 800}
+                )
+                page = context.new_page()
                 
                 # Load HTML content
                 page.set_content(html_content)
@@ -123,14 +131,25 @@ class EnhancedSVGToPNGConverter:
                 # Wait for font loading
                 page.wait_for_timeout(2000)
                 
-                # Screenshot
+                # Screenshot with high quality settings
                 svg_element = page.locator("svg")
-                svg_element.screenshot(path=str(png_path), type='png')
+                svg_element.screenshot(
+                    path=str(png_path), 
+                    type='png',
+                    omit_background=False  # 保留背景以获得更好的渲染
+                )
                 
                 browser.close()
             
             if png_path.exists() and png_path.stat().st_size > 0:
                 print(f"✅ Playwright conversion successful")
+                
+                # 自动裁剪PNG图片，去除空白区域
+                try:
+                    self.cropper.crop_png(png_path, padding=15, verbose=False)
+                except Exception:
+                    pass  # 静默处理裁剪错误
+                
                 return True
             else:
                 print(f"❌ Playwright conversion failed: File not generated")

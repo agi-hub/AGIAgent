@@ -1,5 +1,5 @@
--- Word文档图片大小限制过滤器
--- 用于限制Word文档中图片的最大高度，避免图片过高，同时保持长宽比
+-- Word文档图片大小限制过滤器（pandoc 2.5兼容版本）
+-- 基于pandoc 2.5的具体实现方式
 
 function Image(el)
   -- 只对docx格式进行处理
@@ -7,53 +7,71 @@ function Image(el)
     return el
   end
   
-  -- 获取图片的原始属性
-  local attr = el.attr
-  local width = attr.attributes.width
-  local height = attr.attributes.height
+  -- 设置最大尺寸限制（使用英寸单位，pandoc 2.5对此支持更好）
+  local max_height_in = "9.4in"  -- 约24cm
+  local max_width_in = "6.3in"   -- 约16cm
   
-  -- 设置最大尺寸限制
-  local max_height = "24cm"  -- 约等于A4页面全页高度（减去边距）
-  local max_width = "16cm"   -- 约等于A4页面宽度减去边距
+  -- 检查是否需要限制
+  local orig_width = el.attr.attributes.width
+  local orig_height = el.attr.attributes.height
   
-  -- 检查是否需要限制高度
-  local need_height_limit = false
+  local need_limit = false
   
-  if height and not height:match("%%") then
-    -- 如果高度超过最大值，需要限制
-    local height_num = height:match("([%d%.]+)")
-    local height_unit = height:match("[%a%%]+")
-    
-    if height_num and height_unit then
+  if not orig_height and not orig_width then
+    need_limit = true
+  elseif orig_height then
+    -- 检查现有高度
+    local height_num = orig_height:match("([%d%.]+)")
+    if height_num then
       height_num = tonumber(height_num)
-      -- 检查是否超过限制
-      if (height_unit == "cm" and height_num > 24) or
-         (height_unit == "px" and height_num > 900) or
-         (height_unit == "in" and height_num > 9.4) then
-        need_height_limit = true
+      local height_unit = orig_height:match("[%a%%]+") or "px"
+      
+      -- 转换为英寸进行比较
+      local height_in_inches = height_num
+      if height_unit == "cm" then
+        height_in_inches = height_num / 2.54
+      elseif height_unit == "px" then
+        height_in_inches = height_num / 96
+      elseif height_unit == "pt" then
+        height_in_inches = height_num / 72
+      end
+      
+      if height_in_inches > 9.4 then
+        need_limit = true
       end
     end
   end
   
-  -- 应用尺寸限制，优先保持长宽比
-  if not height and not width then
-    -- 没有设置任何尺寸，使用最大高度约束，保持长宽比
-    attr.attributes.style = "max-height: " .. max_height .. "; max-width: " .. max_width .. "; height: auto; width: auto;"
-  elseif need_height_limit then
-    -- 需要限制高度，移除原有尺寸设置，使用CSS样式保持长宽比
-    attr.attributes.height = nil
-    attr.attributes.width = nil
-    attr.attributes.style = "max-height: " .. max_height .. "; max-width: " .. max_width .. "; height: auto; width: auto;"
-  elseif not height then
-    -- 只设置了宽度，添加最大高度约束
-    attr.attributes.style = (attr.attributes.style or "") .. "; max-height: " .. max_height .. ";"
-  elseif not width then
-    -- 只设置了高度，添加最大宽度约束
-    attr.attributes.style = (attr.attributes.style or "") .. "; max-width: " .. max_width .. ";"
+  if need_limit then
+    -- 创建新的属性表，确保兼容性
+    local new_attributes = {}
+    
+    -- 复制原有属性，排除尺寸相关的
+    for k, v in pairs(el.attr.attributes) do
+      if k ~= "width" and k ~= "height" and k ~= "style" then
+        new_attributes[k] = v
+      end
+    end
+    
+    -- 设置新的尺寸（使用英寸单位）
+    new_attributes.height = max_height_in
+    -- 不设置宽度，让Word自动保持长宽比
+    
+    -- 对于pandoc 2.5，还可以尝试设置额外的属性
+    local new_classes = {}
+    for _, class in ipairs(el.attr.classes) do
+      table.insert(new_classes, class)
+    end
+    table.insert(new_classes, "size-limited")
+    
+    -- 创建新的Attr对象
+    local new_attr = pandoc.Attr(el.attr.identifier or "", new_classes, new_attributes)
+    
+    -- 返回新的图片元素
+    return pandoc.Image(el.caption, el.src, el.title, new_attr)
   end
   
-  -- 返回修改后的图片元素
-  return pandoc.Image(el.caption, el.src, el.title, attr)
+  return el
 end
 
 return {{Image = Image}}

@@ -447,11 +447,11 @@ class SVGProcessor:
             full_block = block['full_block']
             
             if result['status'] == 'success':
-                # Successful PNG conversion - use PNG image
-                png_file = result['png_file']
+                # Successful SVG processing - use SVG image
+                svg_file = result.get('svg_file', result['png_file'].replace('.png', '.svg'))
                 alt_text = f"SVG图表 {svg_id}"
-                replacement = f"![{alt_text}]({png_file})"
-                print_debug(f"🔄 Replaced SVG block {svg_id} with PNG image link")
+                replacement = f"![{alt_text}]({svg_file})"
+                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link")
                 
             elif result.get('svg_file'):
                 # PNG conversion failed but SVG file exists - use SVG image directly

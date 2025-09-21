@@ -17,6 +17,31 @@ import base64
 import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+# 导入ForeignObject转换工具
+try:
+    from src.utils.foreign_object_converter import convert_mermaid_foreign_objects, has_foreign_objects
+    FOREIGN_OBJECT_CONVERTER_AVAILABLE = True
+except ImportError:
+    try:
+        from ..utils.foreign_object_converter import convert_mermaid_foreign_objects, has_foreign_objects
+        FOREIGN_OBJECT_CONVERTER_AVAILABLE = True
+    except ImportError:
+        FOREIGN_OBJECT_CONVERTER_AVAILABLE = False
+        print("⚠️ ForeignObject converter not available")
+
+# 导入HSL颜色转换工具
+try:
+    from src.utils.hsl_color_converter import convert_svg_hsl_colors_optimized
+    HSL_CONVERTER_AVAILABLE = True
+except ImportError:
+    try:
+        from ..utils.hsl_color_converter import convert_svg_hsl_colors_optimized
+        HSL_CONVERTER_AVAILABLE = True
+    except ImportError:
+        HSL_CONVERTER_AVAILABLE = False
+        print("⚠️ HSL color converter not available")
+
 from .print_system import print_current, print_system, print_debug
 
 # Import the enhanced SVG to PNG converter
@@ -473,8 +498,8 @@ class MermaidProcessor:
                             # For named files, use the filename as title
                             alt_text = base_filename.replace('_', ' ').title()
                         
-                        # Use PNG for display in markdown if available, otherwise use SVG
-                        display_path = rel_png_path if png_success else rel_svg_path
+                        # Use SVG for display in markdown if available, otherwise use PNG
+                        display_path = rel_svg_path if svg_success else rel_png_path
                         format_info = ""
                         if svg_success and png_success:
                             format_info = f"<!-- Available formats: PNG={rel_png_path}, SVG={rel_svg_path} -->\n"
@@ -713,10 +738,12 @@ class MermaidProcessor:
             
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                
-                # Set viewport
-                page.set_viewport_size({"width": 1200, "height": 800})
+                # 创建高分辨率页面上下文
+                context = browser.new_context(
+                    device_scale_factor=2.0,  # 2倍像素密度
+                    viewport={"width": 1200, "height": 800}
+                )
+                page = context.new_page()
                 
                 # Load HTML content
                 page.set_content(html_content)
@@ -729,6 +756,28 @@ class MermaidProcessor:
                 if svg_content:
                     # Get the complete SVG element with proper XML declaration
                     full_svg = f'<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg">{svg_content}</svg>'
+                    
+                    # 转换HSL颜色为标准RGB颜色（如果可用）
+                    if HSL_CONVERTER_AVAILABLE:
+                        try:
+                            converted_svg = convert_svg_hsl_colors_optimized(full_svg)
+                            if converted_svg != full_svg:
+                                print_debug(f"🎨 Converted HSL colors to RGB for better compatibility")
+                                full_svg = converted_svg
+                        except Exception as e:
+                            print_debug(f"⚠️ HSL color conversion failed: {e}")
+                    
+                    # 转换foreignObject为原生SVG text元素（如果可用）
+                    if FOREIGN_OBJECT_CONVERTER_AVAILABLE and has_foreign_objects(full_svg):
+                        try:
+                            converted_svg = convert_mermaid_foreign_objects(full_svg)
+                            if converted_svg != full_svg:
+                                print_debug(f"🔧 Converted foreignObject elements to native SVG text for better PDF compatibility")
+                                full_svg = converted_svg
+                        except Exception as e:
+                            print_debug(f"⚠️ ForeignObject conversion failed: {e}")
+                    
+                    # Save SVG
                     with open(output_path, 'w', encoding='utf-8') as f:
                         f.write(full_svg)
                 else:

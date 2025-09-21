@@ -56,6 +56,21 @@ except ImportError:
     print("⚠️ Mermaid processor not available")
     MERMAID_PROCESSOR_AVAILABLE = False
 
+# Import SVG optimizers
+try:
+    from src.utils.advanced_svg_optimizer import AdvancedSVGOptimizer, OptimizationLevel
+    SVG_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    print("⚠️ Advanced SVG optimizer not available")
+    SVG_OPTIMIZER_AVAILABLE = False
+
+try:
+    from src.utils.llm_svg_optimizer import create_llm_optimizer_from_env
+    LLM_SVG_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    print("⚠️ LLM SVG optimizer not available")
+    LLM_SVG_OPTIMIZER_AVAILABLE = False
+
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
 current_dir_name = os.path.basename(current_dir)
@@ -2045,7 +2060,7 @@ def get_file_content(file_path):
                         mimetype=mime_type,
                         headers={
                             'Content-Length': len(image_data),
-                            'Cache-Control': 'public, max-age=3600'  # Cache for 1 hour
+                            'Cache-Control': 'no-cache, no-store, must-revalidate'  # Disable caching for immediate updates
                         }
                     )
                 else:
@@ -2501,10 +2516,15 @@ def convert_mermaid_to_images():
         # Generate base filename from original file (without extension)
         base_name = os.path.splitext(os.path.basename(full_path))[0]
         file_dir = os.path.dirname(full_path)
-        
-        # Create images directory if it doesn't exist
-        images_dir = os.path.join(file_dir, 'images')
-        os.makedirs(images_dir, exist_ok=True)
+
+        # Check if we're already in an images directory
+        # If so, use the current directory to avoid nested images folders
+        if os.path.basename(file_dir).lower() == 'images':
+            images_dir = file_dir
+        else:
+            # Create images directory if it doesn't exist
+            images_dir = os.path.join(file_dir, 'images')
+            os.makedirs(images_dir, exist_ok=True)
         
         # Generate output paths
         svg_path = os.path.join(images_dir, f"{base_name}.svg")
@@ -3454,6 +3474,37 @@ def validate_config():
             'error': f'Configuration validation failed: {str(e)}'
         })
 
+@app.route('/api/save-file', methods=['POST'])
+def save_file():
+    """Save file content back to disk (universal file save endpoint)."""
+    try:
+        data = request.get_json() or {}
+        rel_path = data.get('file_path')
+        content = data.get('content', '')
+        if not rel_path:
+            return jsonify({'success': False, 'error': 'File path is required'})
+
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+
+        full_path = os.path.join(user_base_dir, rel_path)
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+
+        # Ensure parent dir exists
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        # Save content
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'success': True, 'path': rel_path})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/save-markdown', methods=['POST'])
 def save_markdown():
     """Save modified Markdown content back to disk."""
@@ -3532,7 +3583,6 @@ def render_markdown():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-
 @app.route('/api/gui-configs', methods=['GET'])
 def get_gui_configs():
     """Get available GUI model configurations"""
@@ -3575,6 +3625,127 @@ def get_gui_configs():
         return jsonify({
             'success': False,
             'error': str(e)
+        })
+
+
+@app.route('/api/optimize-svg', methods=['POST'])
+def optimize_svg():
+    """Optimize SVG file using either traditional or LLM-based optimization"""
+    try:
+        data = request.get_json() or {}
+        file_path = data.get('file_path')
+        use_llm = data.get('use_llm', False)
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+
+        if not file_path:
+            return jsonify({'success': False, 'error': 'File path is required'})
+
+        # Validate file path and permissions
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+
+        full_path = os.path.join(user_base_dir, file_path)
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+
+        if not os.path.exists(full_path):
+            return jsonify({'success': False, 'error': 'File not found'})
+
+        # Check if it's an SVG file
+        if not full_path.lower().endswith('.svg'):
+            return jsonify({'success': False, 'error': 'File must be an SVG file'})
+
+        # Read original SVG content
+        with open(full_path, 'r', encoding='utf-8') as f:
+            original_content = f.read()
+
+        optimization_report = None
+        optimized_content = original_content
+
+        if use_llm and LLM_SVG_OPTIMIZER_AVAILABLE:
+            # Use LLM-based optimization
+            try:
+                optimizer = create_llm_optimizer_from_env()
+                optimized_content, report = optimizer.optimize_svg_with_llm(original_content)
+
+                optimization_report = {
+                    'method': 'LLM',
+                    'llm_provider': getattr(optimizer, 'provider', 'unknown'),
+                    'llm_model': getattr(optimizer, 'model', 'unknown'),
+                    'original_issues_count': len(report.get('original_issues', [])),
+                    'changes_made': report.get('changes_made', []),
+                    'issues_fixed': report.get('issues_fixed', [])
+                }
+            except Exception as llm_error:
+                print(f"LLM optimization failed, falling back to traditional: {str(llm_error)}")
+                use_llm = False
+
+        if not use_llm and SVG_OPTIMIZER_AVAILABLE:
+            # Use traditional optimization
+            try:
+                optimizer = AdvancedSVGOptimizer(OptimizationLevel.STANDARD)
+                optimized_content, report = optimizer.optimize_svg_with_report(original_content)
+
+                optimization_report = {
+                    'method': 'Traditional',
+                    'original_issues_count': len(report.original_issues),
+                    'fixed_issues_count': len(report.fixed_issues),
+                    'remaining_issues_count': len(report.remaining_issues)
+                }
+            except Exception as trad_error:
+                print(f"Traditional optimization failed: {str(trad_error)}")
+                return jsonify({'success': False, 'error': f'Optimization failed: {str(trad_error)}'})
+
+        # Create backup if content changed
+        if optimized_content != original_content:
+            backup_path = full_path + '.optimized_backup'
+            try:
+                with open(backup_path, 'w', encoding='utf-8') as f:
+                    f.write(original_content)
+                print(f"Created backup: {backup_path}")
+            except Exception as backup_error:
+                print(f"Warning: Failed to create backup: {str(backup_error)}")
+
+            # Save optimized content
+            with open(full_path, 'w', encoding='utf-8') as f:
+                f.write(optimized_content)
+
+        # Generate success message
+        if optimized_content != original_content:
+            message = f"SVG文件已成功优化！"
+            if optimization_report:
+                if use_llm and optimization_report.get('method') == 'LLM':
+                    message += f"\\n\\n🤖 AI优化完成"
+                    message += f"\\n• 使用模型: {optimization_report.get('llm_provider', 'unknown')} - {optimization_report.get('llm_model', 'unknown')}"
+                    message += f"\\n• 检测到问题: {optimization_report.get('original_issues_count', 0)}"
+                    if optimization_report.get('changes_made'):
+                        message += f"\\n• 主要改进: {len(optimization_report['changes_made'])} 项"
+                    if optimization_report.get('issues_fixed'):
+                        message += f"\\n• 修复问题: {len(optimization_report['issues_fixed'])} 个"
+                else:
+                    message += f"\\n\\n传统优化完成"
+                    message += f"\\n• 检测到问题: {optimization_report.get('original_issues_count', 0)}"
+                    message += f"\\n• 已修复问题: {optimization_report.get('fixed_issues_count', 0)}"
+                    message += f"\\n• 剩余问题: {optimization_report.get('remaining_issues_count', 0)}"
+        else:
+            message = "SVG文件已经是最佳状态，无需优化"
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'optimization_report': optimization_report,
+            'used_llm': use_llm
+        })
+
+    except Exception as e:
+        print(f"SVG optimization error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'SVG optimization failed: {str(e)}'
         })
 
 

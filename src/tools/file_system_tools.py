@@ -28,6 +28,95 @@ import subprocess
 from typing import List, Dict, Any, Optional, Tuple, Union
 
 # Import Mermaid processor for handling charts in markdown files
+
+def remove_emoji_from_text(text):
+    """
+    从文本中删除emoji字符
+    保留普通的中文、英文、数字和标点符号
+    """
+    if not text:
+        return text
+
+    # 使用正则表达式删除emoji
+    # 匹配各种emoji Unicode范围
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # 表情符号
+        "\U0001F300-\U0001F5FF"  # 杂项符号和象形文字
+        "\U0001F680-\U0001F6FF"  # 交通和地图符号
+        "\U0001F700-\U0001F77F"  # 炼金术符号
+        "\U0001F780-\U0001F7FF"  # 几何形状扩展
+        "\U0001F800-\U0001F8FF"  # 补充箭头-C
+        "\U0001F900-\U0001F9FF"  # 补充符号和象形文字
+        "\U0001FA00-\U0001FA6F"  # 棋牌符号
+        "\U0001FA70-\U0001FAFF"  # 符号和象形文字扩展-A
+        "\U00002600-\U000026FF"  # 杂项符号
+        "\U00002700-\U000027BF"  # 装饰符号
+        "\U0001F1E6-\U0001F1FF"  # 地区指示符号（国旗）
+        "\U00002B50-\U00002B55"  # 星星等
+        "\U0000FE00-\U0000FE0F"  # 变体选择器
+        "]+",
+        flags=re.UNICODE
+    )
+
+    # 删除emoji
+    text_without_emoji = emoji_pattern.sub('', text)
+
+    # 清理空格和换行符
+    text_without_emoji = re.sub(r'[ \t]+', ' ', text_without_emoji)  # 只合并空格和tab
+    text_without_emoji = re.sub(r' *\n *', '\n', text_without_emoji)  # 清理换行符前后的空格
+    text_without_emoji = re.sub(r'\n{3,}', '\n\n', text_without_emoji)  # 限制连续换行符数量
+
+    return text_without_emoji.strip()
+
+
+def create_emoji_free_markdown(input_file):
+    """
+    创建一个删除了emoji的临时markdown文件
+
+    Args:
+        input_file: 输入的markdown文件路径
+
+    Returns:
+        str: 临时文件路径，如果失败返回None
+    """
+    import tempfile
+
+    try:
+        # 读取原始markdown文件
+        with open(input_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # 删除emoji
+        cleaned_content = remove_emoji_from_text(content)
+
+        # 如果内容没有变化，就不需要创建临时文件
+        if cleaned_content == content:
+            print_debug("📝 No emoji found in markdown, using original file")
+            return None
+
+        # 在输入文件所在目录创建临时文件，这样pandoc可以找到它
+        input_dir = os.path.dirname(input_file)
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.md', prefix='emoji_free_', dir=input_dir)
+
+        try:
+            # 写入清理后的内容
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as temp_file:
+                temp_file.write(cleaned_content)
+
+            print_debug(f"📝 Created emoji-free temporary markdown: {temp_path}")
+            return temp_path
+
+        except Exception as e:
+            # 如果写入失败，关闭并删除临时文件
+            os.close(temp_fd)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise e
+
+    except Exception as e:
+        print_debug(f"❌ Error creating emoji-free markdown: {e}")
+        return None
 try:
     from .mermaid_processor import mermaid_processor
     MERMAID_PROCESSOR_AVAILABLE = True
@@ -1840,20 +1929,72 @@ class FileSystemTools:
             # Convert to Word document
             if format_type in ['word', 'both']:
                 print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
+                temp_files = []  # Track temporary files for cleanup
+
                 try:
-                    # Use pandoc to convert to Word
+                    # Step 1: Create emoji-free version if needed
+                    actual_input_file = md_path.name  # Default to original file
+                    try:
+                        temp_md_file = create_emoji_free_markdown(str(md_path))
+                        if temp_md_file:
+                            actual_input_file = os.path.basename(temp_md_file)  # Use filename for pandoc
+                            temp_files.append(temp_md_file)
+                    except Exception as e:
+                        print_debug(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
+
+                    # Use pandoc to convert to Word with multiple filters
+                    # Find the project root directory (where src/ folder exists)
+                    current_file = Path(__file__)
+                    project_root = current_file.parent.parent.parent  # Go up from src/tools/file_system_tools.py to project root
+                    svg_to_png_filter_path = project_root / 'src' / 'utils' / 'word_svg_to_png_filter.lua'
+                    image_filter_path = project_root / 'src' / 'utils' / 'word_image_filter.lua'
+                    title_color_filter_path = project_root / 'src' / 'utils' / 'word_title_color_filter.lua'
                     cmd = [
                         'pandoc',
-                        md_path.name,  # Use filename instead of full path
+                        actual_input_file,  # Use emoji-free file if available
                         '-o', word_file.name,  # Use filename instead of full path
                         '--from', 'markdown',
                         '--to', 'docx'
                     ]
                     
+                    # Add SVG to PNG filter if it exists
+                    if svg_to_png_filter_path.exists():
+                        cmd.extend(['--lua-filter', str(svg_to_png_filter_path)])
+                        print_debug(f"✅ Using SVG to PNG filter: {svg_to_png_filter_path}")
+                    else:
+                        print_debug(f"⚠️ SVG to PNG filter not found: {svg_to_png_filter_path}")
+                    
+                    # Add image size limit filter if it exists
+                    if image_filter_path.exists():
+                        cmd.extend(['--lua-filter', str(image_filter_path)])
+                        print_debug(f"✅ Using image size limit filter: {image_filter_path}")
+                    else:
+                        print_debug(f"⚠️ Image size limit filter not found: {image_filter_path}")
+                    
+                    # Add title color filter if it exists
+                    if title_color_filter_path.exists():
+                        cmd.extend(['--lua-filter', str(title_color_filter_path)])
+                        print_debug(f"✅ Using title color filter: {title_color_filter_path}")
+                    else:
+                        print_debug(f"⚠️ Title color filter not found: {title_color_filter_path}")
+                    
                     # Execute command in markdown file directory
                     result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
                     
                     if word_file.exists():
+                        # 后处理：修改Word文档中的标题颜色
+                        try:
+                            postprocessor_path = project_root / 'src' / 'utils' / 'word_style_postprocessor.py'
+                            if postprocessor_path.exists():
+                                import sys
+                                postprocess_cmd = [sys.executable, str(postprocessor_path), str(word_file)]
+                                subprocess.run(postprocess_cmd, check=True, capture_output=True, text=True)
+                                print_debug(f"✅ Word document post-processed for title colors: {word_file.name}")
+                            else:
+                                print_debug(f"⚠️ Word style postprocessor not found: {postprocessor_path}")
+                        except Exception as e:
+                            print_debug(f"⚠️ Word document post-processing failed: {str(e)}")
+                        
                         file_size = word_file.stat().st_size
                         conversion_results['conversions']['word'] = {
                             'status': 'success',
@@ -1881,6 +2022,15 @@ class FileSystemTools:
                         'error': f'Conversion exception: {str(e)}'
                     }
                     print_debug(f"❌ Word document conversion exception: {str(e)}")
+                finally:
+                    # Clean up temporary files
+                    for temp_file in temp_files:
+                        try:
+                            if os.path.exists(temp_file):
+                                os.remove(temp_file)
+                                print_debug(f"🧹 Cleaned up temporary file: {temp_file}")
+                        except Exception as e:
+                            print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
             
             # Convert to PDF document
             if format_type in ['pdf', 'both']:
