@@ -60,6 +60,7 @@ For Report Generation Tasks:
    Rich SVG diagrams or rich mermaid chart types are encouraged (such as Flowcharts, Class, Quadrant, Radar, Sankey, Timeline). Don't use TD type or TB type, and using LR instead. 
    Use style notation to draw colorful and beautiful diagram, limit to at most five colors. 
    For SVG diagram, avoid overlapped text box, avoid lines over text, draw larger text box to ensure text can be included, draw small arraw. Avoid using special svg flags in text such as >, <, &.
+   For SVG text, using font-family="Noto Sans CJK SC, Arial".
 9. You should also search for relevant images from web to supplement the report.
    For data analysis, you should firstly write and run analysis codes to generate figures and then add to the report. Tables are needed to inteprete data. 
 10. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
