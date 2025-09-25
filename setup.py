@@ -57,24 +57,31 @@ setup(
         "requests>=2.20.0",
         "openai>=1.0.0",
         "anthropic>=0.3.0",
-        
+
         # Basic scientific computing libraries
         "numpy>=1.18.0",
-        
+        "psutil",
+
         # Machine learning and text processing
         "scikit-learn>=0.22.0",
         "jieba>=0.35.0",  # Chinese text segmentation library
-        
+
         # Web automation
         "playwright>=1.20.0",
-        
+
         # Data processing and file operations
         "tqdm>=4.30.0",
         "pandoc>=2.0.0",
-        
+        "pillow",
+        "pandocfilters",
+        "cairosvg",
+
         #MCP
-        "cli-mcp>=0.1.0",
-        
+        "fastmcp",
+
+        # Document parsing
+        "markitdown",
+
         # GUI dependencies
         "flask>=2.0.0",
         "flask-socketio>=5.0.0",
