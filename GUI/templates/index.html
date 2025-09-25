@@ -2358,14 +2358,14 @@
                             <i class="fas fa-save"></i> {{ '保存' if lang == 'zh' else 'Save' }}
                         </button>
                         <button id="svgDeleteBtn" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
-                            <i class="fas fa-trash"></i> {{ '删除' if lang == 'zh' else 'Delete' }}
+                            <i class="fas fa-trash"></i> {{ '删除元素' if lang == 'zh' else 'Delete Element' }}
                         </button>
                         <button id="svgResetBtn" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 20px;">
                             <i class="fas fa-undo"></i> {{ '重置' if lang == 'zh' else 'Reset' }}
                         </button>
                         <div style="color: #9cdcfe; font-size: 14px; display: inline-block;">
                             <strong>{{ '使用说明:' if lang == 'zh' else 'Instructions:' }}</strong>
-                            <span style="margin-left: 10px;">🖱️ {{ '直接拖拽元素→移动位置（无需先选中）' if lang == 'zh' else 'Drag elements directly→move position (no pre-selection needed)' }}</span>
+                            <span style="margin-left: 10px;">🖱️ {{ '按下拖拽元素→移动位置，放开后选中高亮' if lang == 'zh' else 'Press and drag elements→move position, release to select/highlight' }}</span>
                             <span style="margin-left: 15px;">📦 {{ '圈选空白区域→选中多个元素' if lang == 'zh' else 'Drag-select empty area→select multiple elements' }}</span>
                             <span style="margin-left: 15px;">⌨️ Ctrl+{{ '点击' if lang == 'zh' else 'click' }}→{{ '多选元素' if lang == 'zh' else 'multi-select elements' }}</span>
                             <span style="margin-left: 15px;">📝 {{ '双击文字' if lang == 'zh' else 'Double-click text' }}→{{ '编辑内容' if lang == 'zh' else 'edit content' }}</span>
@@ -5713,14 +5713,24 @@
             const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
 
             const modal = document.getElementById('svgEditorModal');
+            const titleElement = document.getElementById('svgEditorTitle');
             const canvas = document.getElementById('svgCanvas');
             const saveBtn = document.getElementById('svgSaveBtn');
             const deleteBtn = document.getElementById('svgDeleteBtn');
             const resetBtn = document.getElementById('svgResetBtn');
             const closeBtn = document.getElementById('svgEditorClose');
+
+            // 更新标题显示文件名
+            const fileName = filePath.split('/').pop();
+            const editorTitle = I18N?.lang === 'zh' ? 'SVG编辑器' : 'SVG Editor';
+            titleElement.textContent = `${editorTitle} - ${fileName}`;
             
             // 保存文件路径用于后续保存
             window.currentSvgPath = filePath;
+
+            // 初始化修改跟踪
+            window.svgModified = false;
+            window.originalSvgContent = null;
             
             // 构建加载URL，包含API key
             const apiKeyInput = document.getElementById('apiKeyInput');
@@ -5761,7 +5771,9 @@
                         svgContent = rawContent;
                     }
 
+                    // 保存原始SVG内容用于修改检测
                     window.originalSvgContent = svgContent;
+                    window.svgModified = false;
                     loadSvgIntoEditor(svgContent, canvas);
                     modal.style.display = 'block';
                 })
@@ -5774,18 +5786,51 @@
             saveBtn.onclick = saveSvg;
             deleteBtn.onclick = deleteSelectedElements;
             resetBtn.onclick = resetSvg;
-            closeBtn.onclick = () => modal.style.display = 'none';
+            closeBtn.onclick = () => closeSvgEditor(modal);
             
             // 点击模态框外部关闭
             window.onclick = function(event) {
                 if (event.target === modal) {
-                    modal.style.display = 'none';
+                    closeSvgEditor(modal);
                 }
             };
         }
 
+        // 关闭SVG编辑器，检查修改状态
+        function closeSvgEditor(modal) {
+            if (window.svgModified) {
+                // 获取I18N对象用于国际化
+                const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+
+                const confirmSaveMsg = I18N?.lang === 'zh'
+                    ? 'SVG文件已被修改，是否保存更改？'
+                    : 'SVG file has been modified. Save changes?';
+
+                const saveMsg = I18N?.lang === 'zh' ? '保存' : 'Save';
+                const discardMsg = I18N?.lang === 'zh' ? '不保存' : 'Discard';
+                const cancelMsg = I18N?.lang === 'zh' ? '取消' : 'Cancel';
+
+                if (confirm(confirmSaveMsg)) {
+                    // 用户选择保存
+                    saveSvg(() => {
+                        modal.style.display = 'none';
+                    });
+                } else {
+                    // 用户选择不保存，直接关闭
+                    modal.style.display = 'none';
+                }
+                // 如果用户选择取消（取消按钮），不执行任何操作
+            } else {
+                // 没有修改，直接关闭
+                modal.style.display = 'none';
+            }
+        }
+
         // 将SVG加载到编辑器中
         function loadSvgIntoEditor(svgContent, canvas) {
+            // 移除命名空间前缀，避免解析问题
+            svgContent = svgContent.replace(/xmlns:ns\d+="[^"]*"/g, '');
+            svgContent = svgContent.replace(/ns\d+:/g, '');
             canvas.innerHTML = svgContent;
             
             // 获取SVG元素
@@ -5797,10 +5842,14 @@
                 return;
             }
             
-            // 设置SVG样式使其可编辑
+            // 设置SVG样式使其可编辑，防止文字选择
             svgElement.style.width = '100%';
             svgElement.style.height = '100%';
             svgElement.style.cursor = 'default';
+            svgElement.style.userSelect = 'none';
+            svgElement.style.webkitUserSelect = 'none';
+            svgElement.style.mozUserSelect = 'none';
+            svgElement.style.msUserSelect = 'none';
             
             // 为所有矩形框添加交互功能
             const rectangles = svgElement.querySelectorAll('rect');
@@ -5823,48 +5872,12 @@
             // 存储原始样式
             const originalStroke = rect.getAttribute('stroke') || 'black';
             const originalStrokeWidth = rect.getAttribute('stroke-width') || '1';
-            
+
             // 保存到数据属性
             rect.setAttribute('data-original-stroke', originalStroke);
             rect.setAttribute('data-original-stroke-width', originalStrokeWidth);
             rect.setAttribute('data-selected', 'false');
-            
-            // 点击选中/取消选中
-            rect.addEventListener('click', function(e) {
-                e.stopPropagation();
-                
-                const isCurrentlySelected = rect.getAttribute('data-selected') === 'true';
-                
-                // 清除其他矩形的选中状态
-                svgElement.querySelectorAll('rect').forEach(r => {
-                    if (r !== rect) {
-                        r.setAttribute('stroke', r.getAttribute('data-original-stroke') || 'black');
-                        r.setAttribute('stroke-width', r.getAttribute('data-original-stroke-width') || '1');
-                        r.setAttribute('data-selected', 'false');
-                        // 移除缩放控制点
-                        removeResizeHandle(r, svgElement);
-                    }
-                });
-                
-                // 切换当前矩形的选中状态
-                const newSelectedState = !isCurrentlySelected;
-                rect.setAttribute('data-selected', newSelectedState);
-                
-                if (newSelectedState) {
-                    // 高亮显示
-                    rect.setAttribute('stroke', '#007acc');
-                    rect.setAttribute('stroke-width', '3');
-                    // 添加缩放控制点
-                    addResizeHandle(rect, svgElement);
-                } else {
-                    // 恢复原始样式
-                    rect.setAttribute('stroke', originalStroke);
-                    rect.setAttribute('stroke-width', originalStrokeWidth);
-                    // 移除缩放控制点
-                    removeResizeHandle(rect, svgElement);
-                }
-            });
-            
+
             // 设置初始样式
             rect.style.cursor = 'pointer';
         }
@@ -5898,7 +5911,8 @@
             let selectionStartX, selectionStartY;
             const DRAG_THRESHOLD = 5; // 拖拽阈值，鼠标移动超过5px才开始拖拽
             let hasStartedDrag = false; // 标记是否已经开始拖拽
-            
+            let clickedElement = null; // 记录点击的元素，用于区分点击和拖拽
+
             // 添加鼠标按下事件监听器
             svgElement.addEventListener('mousedown', function(e) {
                 const target = e.target;
@@ -5917,29 +5931,47 @@
                     return;
                 }
 
-                // 如果点击的是空白区域，开始圈选
+                // 如果点击的是空白区域，先清除选中状态，然后开始圈选
                 if (target === svgElement || target.tagName === 'svg') {
+                    // 先清除所有选中状态
+                    clearAllSelections(svgElement);
+
+                    // 然后开始圈选
                     isSelecting = true;
                     selectionStartX = e.clientX;
                     selectionStartY = e.clientY;
-
-                    // 清除所有选中状态
-                    clearAllSelections(svgElement);
 
                     // 创建圈选框
                     selectionBox = createSelectionBox(svgElement, e.clientX, e.clientY);
                     e.preventDefault();
                     return;
                 }
-                
-                // 检查是否是矩形框或文字（准备拖拽，但不立即开始）
+
+                // 检查是否是可编辑元素，记录点击但不立即开始拖拽
                 if (target.tagName === 'rect' || target.tagName === 'text' || target.tagName === 'path' || target.tagName === 'line' || target.tagName === 'polygon' || target.tagName === 'circle' || target.tagName === 'ellipse') {
-                    // 记录点击的元素，但不立即选中，等待确认是点击还是拖拽
-                    draggedElement = target;
+                    // 检查是否是背景矩形（覆盖整个图的矩形），如果是就当作点击空白区域
+                    if (target.tagName === 'rect' && isBackgroundRect(target, svgElement)) {
+                        // 先清除所有选中状态
+                        clearAllSelections(svgElement);
+
+                        // 然后开始圈选
+                        isSelecting = true;
+                        selectionStartX = e.clientX;
+                        selectionStartY = e.clientY;
+
+                        // 创建圈选框
+                        selectionBox = createSelectionBox(svgElement, e.clientX, e.clientY);
+                        e.preventDefault();
+                        return;
+                    }
+
+                    // 记录点击的元素和位置，用于后续判断是点击还是拖拽
+                    clickedElement = target;
                     startX = e.clientX;
                     startY = e.clientY;
-                    hasStartedDrag = false; // 重置拖拽状态
-                    
+                    hasStartedDrag = false;
+
+                    // 记录元素初始位置
                     if (target.tagName === 'rect') {
                         elementStartX = parseFloat(target.getAttribute('x') || 0);
                         elementStartY = parseFloat(target.getAttribute('y') || 0);
@@ -5974,8 +6006,7 @@
                         elementStartX = parseFloat(target.getAttribute('cx') || 0);
                         elementStartY = parseFloat(target.getAttribute('cy') || 0);
                     }
-                    
-                    target.style.cursor = 'grabbing';
+
                     e.preventDefault();
                 }
             });
@@ -5987,31 +6018,34 @@
                     updateSelectionBox(selectionBox, selectionStartX, selectionStartY, e.clientX, e.clientY);
                     // 检查圈选范围内的元素
                     selectElementsInRange(svgElement, selectionStartX, selectionStartY, e.clientX, e.clientY);
-                } else if (draggedElement && !hasStartedDrag) {
-                    // 检查是否超过拖拽阈值
+                } else if (clickedElement && !isDragging) {
+                    // 检查是否应该开始拖拽
                     const deltaX = Math.abs(e.clientX - startX);
                     const deltaY = Math.abs(e.clientY - startY);
-
                     if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
-                        // 超过阈值，开始拖拽
+                        // 开始拖拽
+                        draggedElement = clickedElement;
                         isDragging = true;
                         hasStartedDrag = true;
 
-                        // 现在才进行元素选择（因为确认是拖拽而不是点击）
-                        if (e.ctrlKey || e.metaKey) {
-                            toggleElementSelection(draggedElement, svgElement);
+                        // 检查是否已经有多个元素被选中
+                        const currentlySelected = getSelectedElements(svgElement);
+
+                        if (currentlySelected.length > 1 && currentlySelected.includes(clickedElement)) {
+                            // 如果已经有多个元素被选中，且点击的元素也是其中之一，直接拖拽所有选中的元素
+                            draggedElements = currentlySelected;
                         } else {
-                            // 如果被拖拽的元素还没有被选中，则将其加入选中状态
-                            // 这样可以保持多选状态，同时允许从空白区域开始拖拽单个元素
-                            if (draggedElement.getAttribute('data-selected') !== 'true') {
+                            // 正常情况：选中当前元素并开始拖拽
+                            if (e.ctrlKey || e.metaKey) {
+                                toggleElementSelection(draggedElement, svgElement);
+                            } else {
                                 clearAllSelections(svgElement);
                                 selectElement(draggedElement, svgElement);
                             }
+                            draggedElements = getSelectedElements(svgElement);
                         }
 
-                        draggedElements = getSelectedElements(svgElement);
                         draggedElement.style.cursor = 'grabbing';
-
                         lastMouseX = e.clientX;
                         lastMouseY = e.clientY;
                     }
@@ -6039,41 +6073,44 @@
                     lastMouseY = e.clientY;
                     
                     // 拖拽所有选中的元素
-                    draggedElements.forEach(element => {
-                        moveElement(element, deltaX, deltaY, svgElement);
+                    draggedElements.forEach((element, index) => {
+                        const result = moveElement(element, deltaX, deltaY, svgElement);
+                        // 如果moveElement返回了新的元素（克隆的），更新数组中的引用
+                        if (result && result !== element) {
+                            draggedElements[index] = result;
+                        }
                     });
                 }
             });
             
             // 添加鼠标释放事件监听器
-            svgElement.addEventListener('mouseup', function() {
+            svgElement.addEventListener('mouseup', function(e) {
                 if (isSelecting && selectionBox) {
                     // 结束圈选
                     isSelecting = false;
                     selectionBox.remove();
                     selectionBox = null;
                 } else if (isDragging && draggedElements.length > 0) {
-                    // 结束拖拽
+                    // 结束拖拽，元素保持选中状态（高亮）
                     isDragging = false;
                     hasStartedDrag = false;
                     draggedElements.forEach(element => {
                         element.style.cursor = 'pointer';
                     });
-                    draggedElement = null;
-                    draggedElements = [];
-                } else if (draggedElement && !hasStartedDrag) {
-                    // 如果只是点击（没有开始拖拽），执行点击选中逻辑
+                    // 不清除draggedElement和draggedElements，保持选中状态
+                } else if (clickedElement && !hasStartedDrag) {
+                    // 处理点击选中操作
                     if (e.ctrlKey || e.metaKey) {
-                        toggleElementSelection(draggedElement, svgElement);
+                        toggleElementSelection(clickedElement, svgElement);
                     } else {
-                        // 单选模式，清除其他选中
                         clearAllSelections(svgElement);
-                        selectElement(draggedElement, svgElement);
+                        selectElement(clickedElement, svgElement);
                     }
-
-                    draggedElement = null;
-                    draggedElements = [];
                 }
+
+                // 重置点击状态
+                clickedElement = null;
+                hasStartedDrag = false;
             });
             
             // 添加鼠标离开事件监听器，确保在鼠标离开SVG区域时停止拖拽
@@ -6083,19 +6120,58 @@
                     selectionBox.remove();
                     selectionBox = null;
                 } else if (isDragging && draggedElements.length > 0) {
+                    // 结束拖拽，元素保持选中状态（高亮）
                     isDragging = false;
                     hasStartedDrag = false;
                     draggedElements.forEach(element => {
                         element.style.cursor = 'pointer';
                     });
-                    draggedElement = null;
-                    draggedElements = [];
-                } else if (draggedElement && !hasStartedDrag) {
-                    // 如果鼠标离开时还没有开始拖拽，重置状态（不执行点击选中）
-                    draggedElement = null;
-                    draggedElements = [];
+                    // 不清除draggedElement和draggedElements，保持选中状态
+                }
+
+                // 重置点击状态
+                clickedElement = null;
+                hasStartedDrag = false;
+            });
+
+            // 添加点击事件监听器，点击空白区域清除选中状态
+            svgElement.addEventListener('click', function(e) {
+                const target = e.target;
+                // 如果点击的是SVG元素本身或背景矩形，清除所有选中状态
+                if (target === svgElement || target.tagName === 'svg' ||
+                    (target.tagName === 'rect' && isBackgroundRect(target, svgElement))) {
+                    clearAllSelections(svgElement);
+                    e.preventDefault();
                 }
             });
+        }
+
+        // 检测是否是背景矩形（覆盖整个图的矩形）
+        function isBackgroundRect(rect, svgElement) {
+            const svgRect = svgElement.getBoundingClientRect();
+            const rectRect = rect.getBoundingClientRect();
+
+            // 计算覆盖比例
+            const coverageWidth = rectRect.width / svgRect.width;
+            const coverageHeight = rectRect.height / svgRect.height;
+
+            // 如果矩形覆盖了大部分SVG区域（比如超过80%），认为是背景矩形
+            const coverageThreshold = 0.8;
+            if (coverageWidth > coverageThreshold && coverageHeight > coverageThreshold) {
+                // 进一步检查是否是透明或无填充的背景
+                const fill = rect.getAttribute('fill');
+                const stroke = rect.getAttribute('stroke');
+                const opacity = rect.getAttribute('opacity') || rect.style.opacity;
+
+                // 如果是透明、无填充或白色填充，可能是背景
+                if (fill === 'none' || fill === 'transparent' || fill === '#ffffff' || fill === 'white' ||
+                    opacity === '0' || opacity === '0.0' ||
+                    (stroke === 'none' && (fill === 'none' || fill === 'transparent'))) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // 清除所有选中状态
@@ -6176,103 +6252,323 @@
 
         // 移动元素
         function moveElement(element, deltaX, deltaY, svgElement) {
+            // 标记SVG已被修改
+            window.svgModified = true;
+
             const svgViewBox = svgElement.viewBox.baseVal;
             const svgWidth = parseFloat(svgElement.getAttribute('width') || svgViewBox.width || 400);
             const svgHeight = parseFloat(svgElement.getAttribute('height') || svgViewBox.height || 300);
+
+            // 辅助函数：计算父元素的transform偏移
+            function getParentTransformOffset(element) {
+                let parentTransformX = 0;
+                let parentTransformY = 0;
+                let parent = element.parentElement;
+
+                // 累积父元素的transform
+                while (parent && parent !== svgElement) {
+                    const transform = parent.getAttribute('transform');
+                    if (transform) {
+                        const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                        if (translateMatch) {
+                            parentTransformX += parseFloat(translateMatch[1]) || 0;
+                            parentTransformY += parseFloat(translateMatch[2]) || 0;
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+
+                return { parentTransformX, parentTransformY };
+            }
+
+            // 辅助函数：处理元素从父组中移出到根层级
+            function moveElementToRoot(element, targetGlobalX, targetGlobalY) {
+                const originalParent = element.parentElement;
+                if (originalParent !== svgElement) {
+                    // 克隆所有样式和属性
+                    const clonedElement = element.cloneNode(true);
+
+                    // 设置新的全局坐标
+                    clonedElement.setAttribute('x', targetGlobalX);
+                    clonedElement.setAttribute('y', targetGlobalY);
+                    clonedElement.setAttribute('cx', targetGlobalX);
+                    clonedElement.setAttribute('cy', targetGlobalY);
+                    clonedElement.setAttribute('x1', targetGlobalX);
+                    clonedElement.setAttribute('y1', targetGlobalY);
+                    clonedElement.setAttribute('x2', targetGlobalX);
+                    clonedElement.setAttribute('y2', targetGlobalY);
+
+                    // 处理points属性（polygon, polyline）
+                    if (clonedElement.hasAttribute('points')) {
+                        const points = clonedElement.getAttribute('points');
+                        const coords = points.split(/[\s,]+/).map(Number);
+                        const newCoords = coords.map((coord, index) => {
+                            if (index % 2 === 0) { // x坐标
+                                return coord + targetGlobalX - parseFloat(element.getAttribute('x') || 0);
+                            } else { // y坐标
+                                return coord + targetGlobalY - parseFloat(element.getAttribute('y') || 0);
+                            }
+                        });
+                        clonedElement.setAttribute('points', newCoords.join(','));
+                    }
+
+                    // 将克隆的元素添加到SVG根层级
+                    svgElement.appendChild(clonedElement);
+
+                    // 移除原来的元素
+                    originalParent.removeChild(element);
+
+                    // 返回克隆元素
+                    return clonedElement;
+                }
+                return element;
+            }
             
             if (element.tagName === 'rect') {
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
                 const currentX = parseFloat(element.getAttribute('x') || 0);
                 const currentY = parseFloat(element.getAttribute('y') || 0);
                 const width = parseFloat(element.getAttribute('width') || 0);
                 const height = parseFloat(element.getAttribute('height') || 0);
-                
-                let newX = currentX + deltaX;
-                let newY = currentY + deltaY;
-                
-                // 边界检查
-                newX = Math.max(0, Math.min(newX, svgWidth - width));
-                newY = Math.max(0, Math.min(newY, svgHeight - height));
-                
-                element.setAttribute('x', newX);
-                element.setAttribute('y', newY);
-                updateResizeHandle(element, svgElement);
-                
+
+                // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                if (parentTransformX !== 0 || parentTransformY !== 0) {
+                    // 计算元素在SVG全局坐标系中的实际位置
+                    const globalX = currentX + parentTransformX;
+                    const globalY = currentY + parentTransformY;
+
+                    // 计算移动后的全局位置
+                    let targetGlobalX = globalX + deltaX;
+                    let targetGlobalY = globalY + deltaY;
+
+                    // 边界检查
+                    targetGlobalX = Math.max(0, Math.min(targetGlobalX, svgWidth - width));
+                    targetGlobalY = Math.max(0, Math.min(targetGlobalY, svgHeight - height));
+
+                    // 将元素移出父组，放到SVG根层级
+                    const resultElement = moveElementToRoot(element, targetGlobalX, targetGlobalY);
+                    updateResizeHandle(resultElement, svgElement);
+                    return resultElement;
+                } else {
+                    // 没有父transform，正常处理
+                    let newX = currentX + deltaX;
+                    let newY = currentY + deltaY;
+
+                    // 边界检查
+                    newX = Math.max(0, Math.min(newX, svgWidth - width));
+                    newY = Math.max(0, Math.min(newY, svgHeight - height));
+
+                    element.setAttribute('x', newX);
+                    element.setAttribute('y', newY);
+                    updateResizeHandle(element, svgElement);
+                }
+
             } else if (element.tagName === 'text') {
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
                 const currentX = parseFloat(element.getAttribute('x') || 0);
                 const currentY = parseFloat(element.getAttribute('y') || 0);
-                
-                let newX = currentX + deltaX;
-                let newY = currentY + deltaY;
-                
-                // 边界检查（文本没有固定尺寸，简单检查）
-                newX = Math.max(0, Math.min(newX, svgWidth));
-                newY = Math.max(0, Math.min(newY, svgHeight));
-                
-                element.setAttribute('x', newX);
-                element.setAttribute('y', newY);
-                
+
+                // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                if (parentTransformX !== 0 || parentTransformY !== 0) {
+                    // 计算文本在SVG全局坐标系中的实际位置
+                    const globalX = currentX + parentTransformX;
+                    const globalY = currentY + parentTransformY;
+
+                    // 计算移动后的全局位置
+                    let targetGlobalX = globalX + deltaX;
+                    let targetGlobalY = globalY + deltaY;
+
+                    // 边界检查（文本没有固定尺寸，简单检查）
+                    targetGlobalX = Math.max(0, Math.min(targetGlobalX, svgWidth));
+                    targetGlobalY = Math.max(0, Math.min(targetGlobalY, svgHeight));
+
+                    // 将元素移出父组，放到SVG根层级
+                    const resultElement = moveElementToRoot(element, targetGlobalX, targetGlobalY);
+                    return resultElement;
+                } else {
+                    // 没有父transform，正常处理
+                    let newX = currentX + deltaX;
+                    let newY = currentY + deltaY;
+
+                    // 边界检查（文本没有固定尺寸，简单检查）
+                    newX = Math.max(0, Math.min(newX, svgWidth));
+                    newY = Math.max(0, Math.min(newY, svgHeight));
+
+                    element.setAttribute('x', newX);
+                    element.setAttribute('y', newY);
+                }
+
             } else if (element.tagName === 'path') {
-                // 对于路径，使用变换矩阵
-                const transform = element.getAttribute('transform') || '';
-                const matrix = parseTransform(transform);
-                const newTranslateX = (matrix.translateX || 0) + deltaX;
-                const newTranslateY = (matrix.translateY || 0) + deltaY;
-                
-                element.setAttribute('transform', `translate(${newTranslateX},${newTranslateY})`);
-                
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
+
+                // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                if (parentTransformX !== 0 || parentTransformY !== 0) {
+                    // 计算移动后的全局位置
+                    let targetGlobalX = parentTransformX + deltaX;
+                    let targetGlobalY = parentTransformY + deltaY;
+
+                    // 边界检查（path没有固定尺寸，简单检查）
+                    targetGlobalX = Math.max(0, Math.min(targetGlobalX, svgWidth));
+                    targetGlobalY = Math.max(0, Math.min(targetGlobalY, svgHeight));
+
+                    // 将元素移出父组，放到SVG根层级
+                    const resultElement = moveElementToRoot(element, targetGlobalX, targetGlobalY);
+                    // 为path元素设置transform
+                    resultElement.setAttribute('transform', `translate(${targetGlobalX},${targetGlobalY})`);
+                    return resultElement;
+                } else {
+                    // 对于路径，使用变换矩阵
+                    const transform = element.getAttribute('transform') || '';
+                    const matrix = parseTransform(transform);
+                    const newTranslateX = (matrix.translateX || 0) + deltaX;
+                    const newTranslateY = (matrix.translateY || 0) + deltaY;
+
+                    element.setAttribute('transform', `translate(${newTranslateX},${newTranslateY})`);
+                }
+
             } else if (element.tagName === 'line') {
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
                 const x1 = parseFloat(element.getAttribute('x1') || 0);
                 const y1 = parseFloat(element.getAttribute('y1') || 0);
                 const x2 = parseFloat(element.getAttribute('x2') || 0);
                 const y2 = parseFloat(element.getAttribute('y2') || 0);
-                
-                let newX1 = x1 + deltaX;
-                let newY1 = y1 + deltaY;
-                let newX2 = x2 + deltaX;
-                let newY2 = y2 + deltaY;
-                
-                // 边界检查
-                newX1 = Math.max(0, Math.min(newX1, svgWidth));
-                newY1 = Math.max(0, Math.min(newY1, svgHeight));
-                newX2 = Math.max(0, Math.min(newX2, svgWidth));
-                newY2 = Math.max(0, Math.min(newY2, svgHeight));
-                
-                element.setAttribute('x1', newX1);
-                element.setAttribute('y1', newY1);
-                element.setAttribute('x2', newX2);
-                element.setAttribute('y2', newY2);
-                
-            } else if (element.tagName === 'polygon' || element.tagName === 'polyline') {
-                const points = element.getAttribute('points');
-                if (points) {
-                    const coords = points.split(/[\s,]+/).map(Number);
-                    const newCoords = coords.map((coord, index) => {
-                        if (index % 2 === 0) { // x坐标
-                            return Math.max(0, Math.min(coord + deltaX, svgWidth));
-                        } else { // y坐标
-                            return Math.max(0, Math.min(coord + deltaY, svgHeight));
-                        }
-                    });
-                    element.setAttribute('points', newCoords.join(','));
+
+                // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                if (parentTransformX !== 0 || parentTransformY !== 0) {
+                    // 计算元素在SVG全局坐标系中的实际位置
+                    const globalX1 = x1 + parentTransformX;
+                    const globalY1 = y1 + parentTransformY;
+                    const globalX2 = x2 + parentTransformX;
+                    const globalY2 = y2 + parentTransformY;
+
+                    // 计算移动后的全局位置
+                    let targetGlobalX1 = globalX1 + deltaX;
+                    let targetGlobalY1 = globalY1 + deltaY;
+                    let targetGlobalX2 = globalX2 + deltaX;
+                    let targetGlobalY2 = globalY2 + deltaY;
+
+                    // 边界检查
+                    targetGlobalX1 = Math.max(0, Math.min(targetGlobalX1, svgWidth));
+                    targetGlobalY1 = Math.max(0, Math.min(targetGlobalY1, svgHeight));
+                    targetGlobalX2 = Math.max(0, Math.min(targetGlobalX2, svgWidth));
+                    targetGlobalY2 = Math.max(0, Math.min(targetGlobalY2, svgHeight));
+
+                    // 将元素移出父组，放到SVG根层级
+                    const resultElement = moveElementToRoot(element, targetGlobalX1, targetGlobalY1);
+                    resultElement.setAttribute('x1', targetGlobalX1);
+                    resultElement.setAttribute('y1', targetGlobalY1);
+                    resultElement.setAttribute('x2', targetGlobalX2);
+                    resultElement.setAttribute('y2', targetGlobalY2);
+                    return resultElement;
+                } else {
+                    // 没有父transform，正常处理
+                    let newX1 = x1 + deltaX;
+                    let newY1 = y1 + deltaY;
+                    let newX2 = x2 + deltaX;
+                    let newY2 = y2 + deltaY;
+
+                    // 边界检查
+                    newX1 = Math.max(0, Math.min(newX1, svgWidth));
+                    newY1 = Math.max(0, Math.min(newY1, svgHeight));
+                    newX2 = Math.max(0, Math.min(newX2, svgWidth));
+                    newY2 = Math.max(0, Math.min(newY2, svgHeight));
+
+                    element.setAttribute('x1', newX1);
+                    element.setAttribute('y1', newY1);
+                    element.setAttribute('x2', newX2);
+                    element.setAttribute('y2', newY2);
                 }
-                
+
+            } else if (element.tagName === 'polygon' || element.tagName === 'polyline') {
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
+                const points = element.getAttribute('points');
+
+                if (points) {
+                    // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                    if (parentTransformX !== 0 || parentTransformY !== 0) {
+                        const coords = points.split(/[\s,]+/).map(Number);
+                        // 计算第一个点的全局坐标作为基准点
+                        const baseX = coords[0] + parentTransformX;
+                        const baseY = coords[1] + parentTransformY;
+
+                        // 计算移动后的基准点位置
+                        let targetBaseX = baseX + deltaX;
+                        let targetBaseY = baseY + deltaY;
+
+                        // 边界检查（简单检查基准点）
+                        targetBaseX = Math.max(0, Math.min(targetBaseX, svgWidth));
+                        targetBaseY = Math.max(0, Math.min(targetBaseY, svgHeight));
+
+                        // 将元素移出父组，放到SVG根层级
+                        const resultElement = moveElementToRoot(element, targetBaseX, targetBaseY);
+
+                        // 重新计算所有点的坐标
+                        const offsetX = targetBaseX - baseX;
+                        const offsetY = targetBaseY - baseY;
+                        const newCoords = coords.map((coord, index) => {
+                            if (index % 2 === 0) { // x坐标
+                                return coord + offsetX;
+                            } else { // y坐标
+                                return coord + offsetY;
+                            }
+                        });
+                        resultElement.setAttribute('points', newCoords.join(','));
+                        return resultElement;
+                    } else {
+                        // 没有父transform，正常处理
+                        const coords = points.split(/[\s,]+/).map(Number);
+                        const newCoords = coords.map((coord, index) => {
+                            if (index % 2 === 0) { // x坐标
+                                return Math.max(0, Math.min(coord + deltaX, svgWidth));
+                            } else { // y坐标
+                                return Math.max(0, Math.min(coord + deltaY, svgHeight));
+                            }
+                        });
+                        element.setAttribute('points', newCoords.join(','));
+                    }
+                }
+
             } else if (element.tagName === 'circle' || element.tagName === 'ellipse') {
+                const { parentTransformX, parentTransformY } = getParentTransformOffset(element);
                 const cx = parseFloat(element.getAttribute('cx') || 0);
                 const cy = parseFloat(element.getAttribute('cy') || 0);
                 const r = parseFloat(element.getAttribute('r') || 0);
                 const rx = parseFloat(element.getAttribute('rx') || 0);
                 const ry = parseFloat(element.getAttribute('ry') || 0);
-                
-                let newCx = cx + deltaX;
-                let newCy = cy + deltaY;
-                
-                // 边界检查
-                const radius = r || Math.max(rx, ry);
-                newCx = Math.max(radius, Math.min(newCx, svgWidth - radius));
-                newCy = Math.max(radius, Math.min(newCy, svgHeight - radius));
-                
-                element.setAttribute('cx', newCx);
-                element.setAttribute('cy', newCy);
+
+                // 如果有父transform，为了实现自由移动，需要将元素移出父组
+                if (parentTransformX !== 0 || parentTransformY !== 0) {
+                    // 计算元素在SVG全局坐标系中的实际位置
+                    const globalCx = cx + parentTransformX;
+                    const globalCy = cy + parentTransformY;
+
+                    // 计算移动后的全局位置
+                    let targetGlobalCx = globalCx + deltaX;
+                    let targetGlobalCy = globalCy + deltaY;
+
+                    // 边界检查
+                    const radius = r || Math.max(rx, ry);
+                    targetGlobalCx = Math.max(radius, Math.min(targetGlobalCx, svgWidth - radius));
+                    targetGlobalCy = Math.max(radius, Math.min(targetGlobalCy, svgHeight - radius));
+
+                    // 将元素移出父组，放到SVG根层级
+                    const resultElement = moveElementToRoot(element, targetGlobalCx, targetGlobalCy);
+                    resultElement.setAttribute('cx', targetGlobalCx);
+                    resultElement.setAttribute('cy', targetGlobalCy);
+                    return resultElement;
+                } else {
+                    // 没有父transform，正常处理
+                    let newCx = cx + deltaX;
+                    let newCy = cy + deltaY;
+
+                    // 边界检查
+                    const radius = r || Math.max(rx, ry);
+                    newCx = Math.max(radius, Math.min(newCx, svgWidth - radius));
+                    newCy = Math.max(radius, Math.min(newCy, svgHeight - radius));
+
+                    element.setAttribute('cx', newCx);
+                    element.setAttribute('cy', newCy);
+                }
             }
         }
 
@@ -6401,16 +6697,40 @@
                    elementY + elementHeight <= selectionRect.y + selectionRect.height;
         }
 
+        // 获取元素的实际坐标（考虑transform）
+        function getElementTransformedPosition(element) {
+            let x = parseFloat(element.getAttribute('x') || 0);
+            let y = parseFloat(element.getAttribute('y') || 0);
+
+            // 遍历父元素，累积transform
+            let parent = element.parentElement;
+            while (parent && parent !== element.ownerSVGElement) {
+                const transform = parent.getAttribute('transform');
+                if (transform) {
+                    // 处理translate变换
+                    const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                    if (translateMatch) {
+                        const tx = parseFloat(translateMatch[1]);
+                        const ty = parseFloat(translateMatch[2]);
+                        x += tx;
+                        y += ty;
+                    }
+                }
+                parent = parent.parentElement;
+            }
+
+            return { x, y };
+        }
+
         // 添加缩放控制点
         function addResizeHandle(rect, svgElement) {
             // 移除已存在的控制点
             removeResizeHandle(rect, svgElement);
-            
-            const x = parseFloat(rect.getAttribute('x') || 0);
-            const y = parseFloat(rect.getAttribute('y') || 0);
+
+            const { x, y } = getElementTransformedPosition(rect);
             const width = parseFloat(rect.getAttribute('width') || 0);
             const height = parseFloat(rect.getAttribute('height') || 0);
-            
+
             // 创建右下角缩放控制点
             const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             handle.setAttribute('cx', x + width);
@@ -6420,15 +6740,13 @@
             handle.setAttribute('stroke', '#ffffff');
             handle.setAttribute('stroke-width', '1');
             handle.setAttribute('class', 'resize-handle');
-            handle.setAttribute('data-parent-rect', rect.getAttribute('id') || 'rect-' + Date.now());
-            handle.style.cursor = 'nw-resize';
-            
+
             // 为矩形设置ID（如果没有的话）
             if (!rect.getAttribute('id')) {
                 rect.setAttribute('id', 'rect-' + Date.now());
             }
             handle.setAttribute('data-parent-rect', rect.getAttribute('id'));
-            
+
             // 插入到SVG中
             svgElement.appendChild(handle);
             
@@ -6441,8 +6759,9 @@
                 isResizing = true;
                 startMouseX = e.clientX;
                 startMouseY = e.clientY;
-                startRectX = parseFloat(rect.getAttribute('x') || 0);
-                startRectY = parseFloat(rect.getAttribute('y') || 0);
+                const { x: transformedX, y: transformedY } = getElementTransformedPosition(rect);
+                startRectX = transformedX;
+                startRectY = transformedY;
                 startRectWidth = parseFloat(rect.getAttribute('width') || 0);
                 startRectHeight = parseFloat(rect.getAttribute('height') || 0);
                 
@@ -6479,7 +6798,10 @@
                     // 更新矩形
                     rect.setAttribute('width', newWidth);
                     rect.setAttribute('height', newHeight);
-                    
+
+                    // 标记SVG已被修改
+                    window.svgModified = true;
+
                     // 更新控制点位置
                     handle.setAttribute('cx', startRectX + newWidth);
                     handle.setAttribute('cy', startRectY + newHeight);
@@ -6511,11 +6833,10 @@
             if (rectId) {
                 const handle = svgElement.querySelector(`[data-parent-rect="${rectId}"]`);
                 if (handle) {
-                    const x = parseFloat(rect.getAttribute('x') || 0);
-                    const y = parseFloat(rect.getAttribute('y') || 0);
+                    const { x, y } = getElementTransformedPosition(rect);
                     const width = parseFloat(rect.getAttribute('width') || 0);
                     const height = parseFloat(rect.getAttribute('height') || 0);
-                    
+
                     handle.setAttribute('cx', x + width);
                     handle.setAttribute('cy', y + height);
                 }
@@ -6535,45 +6856,6 @@
             textElement.setAttribute('data-original-stroke-width', originalStrokeWidth);
             textElement.setAttribute('data-selected', 'false');
             
-            // 单击选中/取消选中
-            textElement.addEventListener('click', function(e) {
-                e.stopPropagation();
-                
-                const isCurrentlySelected = textElement.getAttribute('data-selected') === 'true';
-                
-                // 清除其他文字和矩形的选中状态
-                svgElement.querySelectorAll('rect').forEach(r => {
-                    r.setAttribute('stroke', r.getAttribute('data-original-stroke') || 'black');
-                    r.setAttribute('stroke-width', r.getAttribute('data-original-stroke-width') || '1');
-                    r.setAttribute('data-selected', 'false');
-                    // 移除缩放控制点
-                    removeResizeHandle(r, svgElement);
-                });
-                svgElement.querySelectorAll('text').forEach(t => {
-                    if (t !== textElement) {
-                        t.setAttribute('fill', t.getAttribute('data-original-fill') || 'black');
-                        t.setAttribute('stroke', t.getAttribute('data-original-stroke') || 'none');
-                        t.setAttribute('stroke-width', t.getAttribute('data-original-stroke-width') || '0');
-                        t.setAttribute('data-selected', 'false');
-                    }
-                });
-                
-                // 切换当前文字的选中状态
-                const newSelectedState = !isCurrentlySelected;
-                textElement.setAttribute('data-selected', newSelectedState);
-                
-                if (newSelectedState) {
-                    // 高亮显示（蓝色边框）
-                    textElement.setAttribute('stroke', '#007acc');
-                    textElement.setAttribute('stroke-width', '1');
-                } else {
-                    // 恢复原始样式
-                    textElement.setAttribute('fill', originalFill);
-                    textElement.setAttribute('stroke', originalStroke);
-                    textElement.setAttribute('stroke-width', originalStrokeWidth);
-                }
-            });
-            
             // 双击编辑文本
             textElement.addEventListener('dblclick', function(e) {
                 e.stopPropagation();
@@ -6583,6 +6865,8 @@
                 
                 if (newText !== null && newText !== currentText) {
                     textElement.textContent = newText;
+                    // 标记SVG已被修改
+                    window.svgModified = true;
                 }
             });
             
@@ -6631,6 +6915,9 @@
 
         // 删除选中的元素
         function deleteSelectedElements() {
+            // 标记SVG已被修改
+            window.svgModified = true;
+
             // 获取I18N对象用于国际化
             const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
 
@@ -6676,7 +6963,7 @@
         }
 
         // 保存SVG
-        function saveSvg() {
+        function saveSvg(callback) {
             // 获取I18N对象用于国际化
             const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
 
@@ -6718,8 +7005,16 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    // 保存成功后重置修改状态
+                    window.svgModified = false;
+
                     const successMsg = I18N?.lang === 'zh' ? 'SVG文件保存成功' : 'SVG file saved successfully';
                     alert(successMsg);
+
+                    // 执行回调函数（如果提供）
+                    if (callback && typeof callback === 'function') {
+                        callback();
+                    }
 
                     // 调用刷新API强制刷新SVG缓存
                     fetch('/api/refresh-svg-cache', {
@@ -6775,6 +7070,8 @@
             if (confirm(confirmMsg)) {
                 const canvas = document.getElementById('svgCanvas');
                 loadSvgIntoEditor(window.originalSvgContent, canvas);
+                // 重置后SVG回到原始状态，清除修改标记
+                window.svgModified = false;
             }
         }
 

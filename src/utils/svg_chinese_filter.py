@@ -54,19 +54,48 @@ def convert_foreign_objects_to_text(svg_content):
 
 def add_chinese_font_support(svg_content):
     """Add Chinese font support for SVG"""
-    # Add CJK font styles
+    # Add CJK font styles with higher specificity
     cjk_style = '''<style type="text/css">
-svg, text, tspan { font-family: "Noto Sans CJK SC", "Noto Serif CJK SC", "WenQuanYi Micro Hei", "SimHei", "Microsoft YaHei", sans-serif; }
+svg, text, tspan, .taskText, .sectionTitle, .titleText {
+    font-family: "Noto Sans CJK SC", "Noto Serif CJK SC", "WenQuanYi Micro Hei", "SimHei", "Microsoft YaHei", sans-serif !important;
+}
+* {
+    font-family: "Noto Sans CJK SC", "Noto Serif CJK SC", "WenQuanYi Micro Hei", "SimHei", "Microsoft YaHei", sans-serif !important;
+}
 </style>'''
-    
+
     # Insert styles after <svg> tag
     def insert_style(match):
         return match.group(1) + cjk_style
-    
+
     result, num = re.subn(r'(<svg[^>]*>)', insert_style, svg_content, count=1, flags=re.IGNORECASE)
     if num == 0:
         result = cjk_style + svg_content
-    
+
+    # Also replace any inline font-family attributes
+    result = re.sub(
+        r'font-family="[^"]*"',
+        'font-family="Noto Sans CJK SC, WenQuanYi Micro Hei, SimHei, Microsoft YaHei, sans-serif"',
+        result,
+        flags=re.IGNORECASE
+    )
+
+    # For text elements without font-family, add it explicitly
+    # Only add to text elements that don't already have font-family
+    def add_font_to_text(match):
+        text_tag = match.group(1)
+        if 'font-family' not in text_tag:
+            return text_tag + ' font-family="Noto Sans CJK SC, WenQuanYi Micro Hei, SimHei, Microsoft YaHei, sans-serif"' + match.group(2)
+        else:
+            return match.group(0)
+
+    result = re.sub(
+        r'(<text[^>]*)(>)',
+        add_font_to_text,
+        result,
+        flags=re.IGNORECASE
+    )
+
     return result
 
 

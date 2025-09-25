@@ -6,7 +6,7 @@ LANG=zh
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.5
-max_tokens=16384
+max_tokens=65536
 
 # OpenAI API configuration 
 # api_key=your key
@@ -21,22 +21,16 @@ max_tokens=16384
 # max_tokens=32768
 
 # Openrouter
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=qwen/qwen3-30b-a3b-instruct-2507
-max_tokens=32768
+# api_key=your key
+# api_base=https://openrouter.ai/api/v1
+# model=qwen/qwen3-30b-a3b-instruct-2507
+# max_tokens=32768
 
 # Zhipu API configuration 
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.5
 max_tokens=16384
-
-
-api_key=your key
-api_base=https://api.openai-proxy.org/v1
-model=claude-sonnet-4-0
-max_tokens=32768
 
 # Bailian API configuration 
 # api_key=your key
@@ -151,7 +145,7 @@ web_content_truncation_length=20000
 # Controls whether to use AI to summarize conversation history to reduce context length
 # When enabled, conversation history is summarized using the large model when it exceeds trigger length
 # This replaces truncation with intelligent summarization to maintain important context
-summary_history=True
+summary_history=False
 
 # Maximum length for conversation history summary (in characters)
 # Used when summary_history=True to control the length of the generated summary
