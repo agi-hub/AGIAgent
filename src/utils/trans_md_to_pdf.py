@@ -388,6 +388,10 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
         latex_header = """
 \\usepackage{float}
 \\floatplacement{figure}{H}
+\\usepackage{xeCJK}
+\\setCJKmainfont{Noto Serif CJK SC}
+\\setCJKsansfont{Noto Sans CJK SC}
+\\setCJKmonofont{Noto Sans Mono CJK SC}
 """
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix='.tex', delete=False) as f:

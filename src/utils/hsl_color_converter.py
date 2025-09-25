@@ -228,45 +228,135 @@ def get_common_hsl_colors() -> dict:
 def convert_svg_hsl_colors_optimized(svg_content: str) -> str:
     """
     优化版本的HSL颜色转换，使用预定义映射提高性能
-    
+    支持XML属性和CSS样式两种形式的HSL颜色
+    特别处理思维导图的文本颜色问题
+
     Args:
         svg_content: SVG文件内容字符串
-    
+
     Returns:
         转换后的SVG内容字符串
     """
     common_colors = get_common_hsl_colors()
-    
-    # 匹配所有HSL颜色
-    hsl_pattern = r'(fill|stroke)=["\']hsl\([^"\']+\)["\']'
-    
-    def replace_hsl_optimized(match):
+
+    def get_hex_color(hsl_string: str) -> Optional[str]:
+        """获取HSL颜色的十六进制表示"""
+        # 首先尝试使用预定义映射
+        if hsl_string in common_colors:
+            return common_colors[hsl_string]
+        else:
+            # 如果没有预定义，则进行计算转换
+            return hsl_to_hex(hsl_string)
+
+    # 0. 特殊处理：为思维导图节点添加内联文本颜色
+    def fix_mindmap_text_colors(svg_content):
+        """为思维导图的text元素添加内联fill属性，避免CSS选择器问题"""
+        # 思维导图section到颜色的映射
+        section_colors = {
+            'section--1': '#ffffff',  # 白色
+            'section-0': 'black',     # 黑色
+            'section-1': 'black',     # 黑色
+            'section-2': '#ffffff',   # 白色
+            'section-3': 'black',     # 黑色
+            'section-4': 'black',     # 黑色
+            'section-5': 'black',     # 黑色
+            'section-6': 'black',     # 黑色
+            'section-7': 'black',     # 黑色
+            'section-8': 'black',     # 黑色
+            'section-9': 'black',     # 黑色
+            'section-10': 'black',    # 黑色
+        }
+
+        def add_inline_fill_to_match(match):
+            full_match = match.group(0)
+            classes_str = match.group(1).strip()
+            text_attrs = match.group(2)
+
+            # 解析类名
+            classes = classes_str.split()
+
+            # 找到匹配的section类
+            text_color = None
+            for cls in classes:
+                if cls in section_colors:
+                    text_color = section_colors[cls]
+                    break
+
+            if text_color and 'fill=' not in text_attrs:
+                # 在text标签中添加fill属性
+                if text_attrs.strip():
+                    new_attrs = text_attrs.rstrip() + f' fill="{text_color}"'
+                else:
+                    new_attrs = f' fill="{text_color}"'
+
+                return full_match.replace(text_attrs, new_attrs)
+
+            return full_match
+
+        # 匹配思维导图节点中的text元素
+        mindmap_pattern = r'<g class="mindmap-node ([^"]*?)".*?>.*?<text([^>]*?)>.*?</text>.*?</g>'
+        result = re.sub(mindmap_pattern, add_inline_fill_to_match, svg_content, flags=re.DOTALL)
+
+        return result
+
+    # 应用思维导图文本颜色修复
+    svg_content = fix_mindmap_text_colors(svg_content)
+
+    # 1. 匹配XML属性中的HSL颜色
+    hsl_attr_pattern = r'(fill|stroke)=["\']hsl\([^"\']+\)["\']'
+
+    def replace_hsl_attr(match):
         full_match = match.group(0)
         attribute = match.group(1)  # fill 或 stroke
-        
+
         # 提取HSL颜色字符串
         hsl_match = re.search(r'hsl\([^)]+\)', full_match)
         if hsl_match:
             hsl_string = hsl_match.group(0)
-            
-            # 首先尝试使用预定义映射
-            if hsl_string in common_colors:
-                hex_color = common_colors[hsl_string]
-            else:
-                # 如果没有预定义，则进行计算转换
-                hex_color = hsl_to_hex(hsl_string)
-            
+            hex_color = get_hex_color(hsl_string)
+
             if hex_color:
                 # 替换为十六进制颜色
                 quote_char = '"' if '"' in full_match else "'"
                 return f'{attribute}={quote_char}{hex_color}{quote_char}'
-        
+
         # 如果转换失败，返回原始内容
         return full_match
-    
-    # 执行替换
-    converted_content = re.sub(hsl_pattern, replace_hsl_optimized, svg_content)
-    
+
+    # 2. 匹配CSS样式中的HSL颜色
+    hsl_css_pattern = r'(fill|stroke):\s*hsl\([^;)]+\)'
+
+    def replace_hsl_css(match):
+        full_match = match.group(0)
+        attribute = match.group(1)  # fill 或 stroke
+
+        # 提取HSL颜色字符串
+        hsl_match = re.search(r'hsl\([^)]+\)', full_match)
+        if hsl_match:
+            hsl_string = hsl_match.group(0)
+            hex_color = get_hex_color(hsl_string)
+
+            if hex_color:
+                # 替换为十六进制颜色
+                return f'{attribute}:{hex_color}'
+
+        # 如果转换失败，返回原始内容
+        return full_match
+
+    # 3. 匹配任何位置的HSL颜色（通用模式）
+    hsl_general_pattern = r'hsl\([^)]+\)'
+
+    def replace_hsl_general(match):
+        hsl_string = match.group(0)
+        hex_color = get_hex_color(hsl_string)
+        return hex_color if hex_color else hsl_string
+
+    # 按顺序执行替换
+    converted_content = svg_content
+    converted_content = re.sub(hsl_attr_pattern, replace_hsl_attr, converted_content)
+    converted_content = re.sub(hsl_css_pattern, replace_hsl_css, converted_content)
+    converted_content = re.sub(hsl_general_pattern, replace_hsl_general, converted_content)
+
     return converted_content
 
 

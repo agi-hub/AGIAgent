@@ -170,43 +170,54 @@ class SVGProcessor:
     def _apply_svg_error_tolerance(self, content: str) -> str:
         """
         Apply error tolerance to fix malformed SVG code blocks
-        
-        This method looks for SVG blocks that start with ```svg but end with </svg>
-        without a proper ``` ending, and fixes them by adding the missing closing marker.
-        
+
+        This method looks for SVG blocks that start with ```svg but are malformed,
+        and fixes them by ensuring proper formatting. It handles cases where:
+        - SVG blocks end with </svg> without a proper closing ```
+        - AI adds extra ``` markers after </svg> that should be removed
+
         Args:
             content: Original markdown content
-            
+
         Returns:
             Corrected markdown content
         """
         corrected_content = content
         corrections_made = 0
-        
-        # Pattern to find ```svg blocks that might be malformed
-        # Look for ```svg followed by content ending with </svg> but no closing ```
-        malformed_pattern = r'```svg\s*\n(.*?</svg>)(?!\s*\n```)'
-        
-        def fix_malformed_block(match):
-            nonlocal corrections_made
-            svg_content = match.group(1)
-            
-            # Check if the next line after </svg> is NOT ```
-            full_match = match.group(0)
-            
-            # Add the missing closing ```
-            corrected_block = f"```svg\n{svg_content}\n```"
+
+        # Simple approach: replace malformed patterns with corrected versions
+        # Pattern 1: ```svg\n...<svg> (missing closing ```)
+        pattern1 = r'```svg\s*\n(.*?)</svg>(?![\s]*```)'
+        corrected_content = re.sub(
+            pattern1,
+            lambda m: f"```svg\n{m.group(1)}</svg>\n```",
+            corrected_content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        if re.search(pattern1, content, re.DOTALL | re.IGNORECASE):
             corrections_made += 1
-            
-            print_debug(f"🔧 Fixed malformed SVG block #{corrections_made}: added missing closing ```")
-            return corrected_block
-        
-        # Apply the fix
-        corrected_content = re.sub(malformed_pattern, fix_malformed_block, corrected_content, flags=re.DOTALL | re.IGNORECASE)
-        
+            print_debug(f"🔧 Fixed malformed SVG blocks with missing closing markers")
+
+        # Pattern 2: ```svg\n...<svg>\n``` followed by extra content before next ```
+        # This handles cases where AI adds extra ``` after the proper closing
+        # We need to be careful not to break standard blocks
+
+        # For now, let's implement a more targeted fix for the specific issue mentioned:
+        # If we find ```svg\n...<svg>\n```\n```, remove the extra trailing ```
+        extra_marker_pattern = r'(```svg\s*\n.*?</svg>\s*```\s*)\n```(?!\s*\n```)'
+        corrected_content = re.sub(
+            extra_marker_pattern,
+            r'\1',
+            corrected_content,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        if re.search(extra_marker_pattern, content, re.DOTALL | re.IGNORECASE):
+            corrections_made += 1
+            print_debug(f"🔧 Removed erroneous trailing ``` markers after SVG blocks")
+
         if corrections_made > 0:
             print_debug(f"✅ Applied {corrections_made} SVG error tolerance corrections")
-        
+
         return corrected_content
     
     def generate_svg_file(self, svg_code: str, output_dir: Path, svg_id: str) -> Optional[Path]:

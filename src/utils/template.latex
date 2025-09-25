@@ -17,6 +17,7 @@
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{xurl}
 
 % 页面设置
 \geometry{margin=2.5cm}
@@ -24,19 +25,26 @@
 % 字体设置
 \setCJKmainfont{Noto Serif CJK SC}
 
-% 图片设置 - 防止超出边界并控制合理大小
+% 图片设置 - 防止超出边界并控制合理大小，居中显示
 \usepackage{adjustbox}
-\setkeys{Gin}{width=0.8\linewidth,height=0.9\textheight,keepaspectratio}
+\setkeys{Gin}{width=\linewidth,height=0.9\textheight,keepaspectratio}
 
-% 重定义includegraphics以提供更好的默认大小控制
+% 重定义includegraphics以提供更好的默认大小控制和居中显示
 \let\originalincludegraphics\includegraphics
 \renewcommand{\includegraphics}[2][]{%
   \begingroup
-  \setkeys{Gin}{width=0.8\linewidth,height=0.9\textheight,keepaspectratio}%
+  \centering
+  \setkeys{Gin}{width=\linewidth,height=0.9\textheight,keepaspectratio}%
   \setkeys{Gin}{#1}%
   \originalincludegraphics{#2}%
   \endgroup
 }
+
+% 确保浮动图片也居中
+\usepackage{float}
+\let\originalfigure\figure
+\let\endoriginalfigure\endfigure
+\renewenvironment{figure}[1][]{\originalfigure[H]\centering}{\endoriginalfigure}
 
 % 代码高亮设置
 \definecolor{codebg}{RGB}{248,248,248}
@@ -138,8 +146,8 @@
   keepspaces=true
 }
 
-% 链接设置
-\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+% 链接设置 - 支持长URL换行
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,breaklinks=true}
 
 % 页眉页脚
 \pagestyle{fancy}
