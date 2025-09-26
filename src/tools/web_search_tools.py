@@ -2961,9 +2961,12 @@ Please create a detailed, structured analysis that preserves important informati
                             max_images = min(20, len(valid_images))
                             saved_images = []
                             saved_count = 0  # 添加实际保存的图片计数器
-                            
+
+                            # Generate unified timestamp for all images in this batch
+                            batch_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
                             print_current(f"📥 Downloading {max_images} images...")
-                            
+
                             for i, selected_image in enumerate(valid_images[:max_images]):
                                 # 优先使用原图URL，如果没有则使用缩略图URL
                                 image_url = selected_image.get('original_src', selected_image['src'])
@@ -3072,14 +3075,13 @@ Please create a detailed, structured analysis that preserves important informati
                                                 # Generate filename (including sequence number)
                                                 safe_query = re.sub(r'[^\w\s-]', '', query)[:30]
                                                 safe_query = re.sub(r'[-\s]+', '_', safe_query)
-                                                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                                                 
                                                 # 统一转换为JPG格式以确保一致性
                                                 # 原始格式信息仍保留在返回数据中
                                                 original_format = img.format.lower() if img.format else 'unknown'
                                                 
                                                 # 统一使用jpg扩展名
-                                                filename = f"{safe_query}_{timestamp}_{saved_count:02d}.jpg"
+                                                filename = f"{safe_query}_{batch_timestamp}_{saved_count:02d}.jpg"
                                                 filepath = os.path.join(images_dir, filename)
                                                 
                                                 # 如果原图不是JPG格式，则转换为JPG保存
