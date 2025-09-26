@@ -1790,8 +1790,11 @@ def _register_signal_handlers():
     signals_to_handle = [
         signal.SIGTERM,  # Termination signal
         signal.SIGINT,   # Interrupt (Ctrl+C)
-        signal.SIGHUP,   # Hangup
     ]
+
+    # SIGHUP is Unix-only, check if it exists before adding it
+    if hasattr(signal, 'SIGHUP'):
+        signals_to_handle.append(signal.SIGHUP)  # Hangup
 
     # Only register signals that are available on this platform
     for sig in signals_to_handle:
