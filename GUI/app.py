@@ -272,11 +272,11 @@ class ConcurrencyManager:
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
-                   ping_timeout=3600, ping_interval=60)  # 1小时超时，1分钟心跳
+                   ping_timeout=3600, ping_interval=60)  
 
-# 修复 werkzeug write() before start_response 错误
-#import logging
-#logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
+
+import logging
+logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
 
 I18N_TEXTS = {
     'zh': {
