@@ -1446,7 +1446,7 @@ class AGIAgentGUI:
             i += 1
         return f"{size_bytes:.1f} {size_names[i]}"
     
-    def get_directory_structure(self, directory, max_depth=3, current_depth=0, base_dir=None):
+    def get_directory_structure(self, directory, max_depth=10, current_depth=0, base_dir=None):
         """Get directory structure"""
         if current_depth > max_depth:
             return []
