@@ -7016,35 +7016,22 @@
                         callback();
                     }
 
-                    // 调用刷新API强制刷新SVG缓存
-                    fetch('/api/refresh-svg-cache', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({})
-                    }).then(() => {
-                        // 刷新markdown预览
-                        if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
-                            const fake = {
-                                path: window.currentOriginalFilePath || window.currentFilePath,
-                                name: (window.currentOriginalFilePath || window.currentFilePath || '').split('/').pop(),
-                                content: window.currentMarkdownContent.raw || window.currentMarkdownContent.processed
-                            };
-                            displayFileContent(fake, '');
+                    // 刷新markdown预览
+                    if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
+                        // 检查是否在markdown预览模式下（previewModal可见且包含markdownPreview）
+                        const previewModal = document.getElementById('previewModal');
+                        const markdownPreview = document.getElementById('markdownPreview');
+                        const markdownSource = document.getElementById('markdownSource');
+
+                        // 检查用户当前是否在查看预览模式（而不是源码模式）
+                        const isPreviewMode = markdownPreview && markdownPreview.style.display !== 'none';
+
+                        if (previewModal && previewModal.style.display !== 'none' && isPreviewMode) {
+                            updateMarkdownPreview(window.currentMarkdownContent.processed).catch(error => {
+                                console.error('刷新markdown预览失败:', error);
+                            });
                         }
-                    }).catch(error => {
-                        console.warn('刷新SVG缓存失败:', error);
-                        // 即使刷新失败也要继续刷新markdown预览
-                        if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
-                            const fake = {
-                                path: window.currentOriginalFilePath || window.currentFilePath,
-                                name: (window.currentOriginalFilePath || window.currentFilePath || '').split('/').pop(),
-                                content: window.currentMarkdownContent.raw || window.currentMarkdownContent.processed
-                            };
-                            displayFileContent(fake, '');
-                        }
-                    });
+                    }
                 } else {
                     const saveErrorMsg = I18N?.lang === 'zh'
                         ? `保存失败: ${data.error}`
@@ -7805,15 +7792,15 @@
                 // 自定义图像渲染，处理相对路径（复用现有逻辑）
                 renderer.image = function(href, title, text) {
                     let src = href;
-                    
+
                     // 使用原始文件路径进行图片路径计算（不包含用户目录前缀）
                     const originalFilePath = window.currentOriginalFilePath || currentFilePath;
-                    
+
                     // 只有在originalFilePath存在时才进行路径转换
                     if (originalFilePath && href && !href.startsWith('http') && !href.startsWith('data:') && !href.startsWith('/api/')) {
                         // 获取markdown文件的目录路径
                         const currentDir = originalFilePath.substring(0, originalFilePath.lastIndexOf('/'));
-                        
+
                         let imagePath;
                         if (href.startsWith('./')) {
                             imagePath = `${currentDir}/${href.substring(2)}`;
@@ -7832,10 +7819,17 @@
                             // 普通相对路径，直接拼接
                             imagePath = `${currentDir}/${href}`;
                         }
-                        
+
                         // Add API key parameter if available
                         const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
-                        src = `/api/file/${imagePath}${apiKeyParam}`;
+                        // 为SVG文件添加时间戳参数，避免缓存
+                        const isSvgFileForCache = imagePath && (
+                            imagePath.toLowerCase().endsWith('.svg') ||
+                            imagePath.includes('.svg') ||
+                            imagePath.toLowerCase().includes('svg_')
+                        );
+                        const cacheBustParam = isSvgFileForCache ? `&t=${Date.now()}` : '';
+                        src = `/api/file/${imagePath}${apiKeyParam}${cacheBustParam}`;
                         console.log('Markdown image converted:', href, 'to:', src);
                     }
                     

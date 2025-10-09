@@ -3444,10 +3444,11 @@ def validate_config():
         except (ValueError, TypeError):
             max_tokens = 8192
         
-        # 对于内置的GLM-4.5配置，进行额外的配置文件验证
-        if model_config.get('value') == 'glm-4.5':
+        # 对于配置中指定的模型，进行额外的配置文件验证
+        gui_config = get_gui_config()
+        config_model = gui_config.get('model', 'glm-4.5')
+        if model_config.get('value') == config_model:
             # 读取GUI配置并验证
-            gui_config = get_gui_config()
             is_valid, error_message = validate_gui_config(gui_config)
             
             if not is_valid:
@@ -3592,17 +3593,18 @@ def get_gui_configs():
         # 读取GUI配置
         gui_config = get_gui_config()
         
-        # 返回固定的两个选项：GLM-4.5 和自定义
+        # 返回固定的两个选项：从配置读取的模型 和自定义
         i18n = get_i18n_texts()
+        model_name = gui_config.get('model', 'glm-4.5')
         configs = [
             {
-                'value': 'glm-4.5',
-                'label': 'GLM-4.5',
+                'value': model_name,
+                'label': model_name,
                 'api_key': gui_config.get('api_key', ''),
                 'api_base': gui_config.get('api_base', ''),
                 'model': gui_config.get('model', ''),
                 'max_tokens': gui_config.get('max_tokens', 8192),
-                'display_name': 'GLM-4.5'
+                'display_name': model_name
             },
             {
                 'value': 'custom',
