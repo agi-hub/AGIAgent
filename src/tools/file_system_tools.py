@@ -1949,6 +1949,8 @@ class FileSystemTools:
                     svg_to_png_filter_path = project_root / 'src' / 'utils' / 'word_svg_to_png_filter.lua'
                     image_filter_path = project_root / 'src' / 'utils' / 'word_image_filter.lua'
                     title_color_filter_path = project_root / 'src' / 'utils' / 'word_title_color_filter.lua'
+                    reference_doc_path = project_root / 'src' / 'utils' / 'word_reference.docx'
+                    
                     cmd = [
                         'pandoc',
                         actual_input_file,  # Use emoji-free file if available
@@ -1956,6 +1958,13 @@ class FileSystemTools:
                         '--from', 'markdown',
                         '--to', 'docx'
                     ]
+                    
+                    # Add reference document if it exists
+                    if reference_doc_path.exists():
+                        cmd.extend(['--reference-doc', str(reference_doc_path)])
+                        print_debug(f"✅ Using Word reference template: {reference_doc_path}")
+                    else:
+                        print_debug(f"⚠️ Word reference template not found: {reference_doc_path}")
                     
                     # Add SVG to PNG filter if it exists
                     if svg_to_png_filter_path.exists():

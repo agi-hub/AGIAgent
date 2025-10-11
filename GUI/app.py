@@ -2942,10 +2942,20 @@ def handle_create_new_directory():
         # Set as currently selected directory
         user_session.selected_output_dir = new_dir_name
         
+        # Clear conversation history when creating new workspace
+        user_session.conversation_history.clear()
+        print(f"🧹 Cleared conversation history for user {session_id} when creating new workspace")
+        
         emit('directory_created', {
             'dir_name': new_dir_name,
             'success': True,
             'message': i18n['directory_created_with_workspace'].format(new_dir_name)
+        }, room=session_id)
+        
+        # Also emit chat_cleared event to update the frontend
+        emit('chat_cleared', {
+            'success': True,
+            'message': i18n['chat_cleared']
         }, room=session_id)
         
     except Exception as e:
