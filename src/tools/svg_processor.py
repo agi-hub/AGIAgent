@@ -52,10 +52,40 @@ class SVGProcessor:
     
     def _check_command_available(self, command: str) -> bool:
         """Check if a command is available in the system"""
+        import platform
         try:
-            result = subprocess.run([command, '--version'], 
-                                  capture_output=True, text=True, timeout=5)
-            return result.returncode == 0
+            # On Windows, try both with and without .exe extension
+            if platform.system().lower() == "windows":
+                # First try the command as-is
+                try:
+                    result = subprocess.run([command, '--version'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        return True
+                except:
+                    pass
+                
+                # Then try with .exe extension
+                try:
+                    result = subprocess.run([command + '.exe', '--version'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        return True
+                except:
+                    pass
+                
+                # Finally, use 'where' command to check if it exists in PATH
+                try:
+                    result = subprocess.run(['where', command], 
+                                          capture_output=True, text=True, timeout=5)
+                    return result.returncode == 0
+                except:
+                    return False
+            else:
+                # Unix-like systems
+                result = subprocess.run([command, '--version'], 
+                                      capture_output=True, text=True, timeout=5)
+                return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
             return False
     
@@ -262,28 +292,75 @@ class SVGProcessor:
         Returns:
             True if conversion successful, False otherwise
         """
+        import platform
+        
+        # On Windows, try enhanced SVG converter first if available
+        if platform.system().lower() == "windows":
+            try:
+                from .svg_to_png import EnhancedSVGToPNGConverter
+                converter = EnhancedSVGToPNGConverter()
+                success, message = converter.convert(svg_path, png_path)
+                if success:
+                    print_debug(f"✅ Enhanced SVG converter successful: {message}")
+                    return True
+                else:
+                    print_debug(f"⚠️ Enhanced SVG converter failed: {message}")
+            except Exception as e:
+                print_debug(f"⚠️ Enhanced SVG converter not available: {e}")
+        
         # Try Inkscape first (best quality)
         if self.inkscape_available:
-            return self._convert_with_inkscape(svg_path, png_path)
+            if self._convert_with_inkscape(svg_path, png_path):
+                return True
         
         # Try rsvg-convert
-        elif self.rsvg_convert_available:
-            return self._convert_with_rsvg(svg_path, png_path)
+        if self.rsvg_convert_available:
+            if self._convert_with_rsvg(svg_path, png_path):
+                return True
         
         # Try CairoSVG (Python package)
-        elif self.cairosvg_available:
-            return self._convert_with_cairosvg(svg_path, png_path)
+        if self.cairosvg_available:
+            if self._convert_with_cairosvg(svg_path, png_path):
+                return True
         
-        else:
-            print_debug("❌ No SVG conversion tools available")
-            return False
+        # Last resort: try Playwright-based conversion
+        try:
+            from .svg_to_png import EnhancedSVGToPNGConverter
+            converter = EnhancedSVGToPNGConverter()
+            success, message = converter.convert(svg_path, png_path)
+            if success:
+                print_debug(f"✅ Playwright fallback successful: {message}")
+                return True
+            else:
+                print_debug(f"❌ Playwright fallback failed: {message}")
+        except Exception as e:
+            print_debug(f"❌ Playwright fallback error: {e}")
+        
+        print_debug("❌ All SVG conversion methods failed")
+        return False
     
     def _convert_with_inkscape(self, svg_path: Path, png_path: Path) -> bool:
         """Convert SVG to PNG using Inkscape"""
+        import platform
         try:
+            # Determine Inkscape command based on platform
+            inkscape_cmd = 'inkscape'
+            if platform.system().lower() == "windows":
+                # On Windows, try different possible commands
+                possible_commands = ['inkscape', 'inkscape.exe']
+                for cmd in possible_commands:
+                    try:
+                        test_result = subprocess.run([cmd, '--version'], 
+                                                   capture_output=True, text=True, timeout=5)
+                        if test_result.returncode == 0:
+                            inkscape_cmd = cmd
+                            break
+                    except:
+                        continue
+            
             # Try new format first (Inkscape 1.0+)
             cmd_new = [
-                'inkscape',
+                inkscape_cmd,
                 '--export-type=png',
                 '--export-dpi=300',
                 f'--export-filename={png_path}',
@@ -293,10 +370,10 @@ class SVGProcessor:
             result = subprocess.run(cmd_new, capture_output=True, text=True, timeout=30)
             
             # If new format fails, try old format (Inkscape 0.92)
-            if result.returncode != 0 and 'Invalid option --export-type' in result.stderr:
+            if result.returncode != 0:
                 print_debug(f"🔄 Trying old Inkscape format...")
                 cmd_old = [
-                    'inkscape',
+                    inkscape_cmd,
                     f'--export-png={png_path}',
                     '--export-dpi=300',
                     str(svg_path)
@@ -342,15 +419,38 @@ class SVGProcessor:
     
     def _convert_with_cairosvg(self, svg_path: Path, png_path: Path) -> bool:
         """Convert SVG to PNG using CairoSVG Python package"""
+        import platform
         try:
             import cairosvg
             
-            # Convert with high DPI for better quality
-            cairosvg.svg2png(
-                url=str(svg_path),
-                write_to=str(png_path),
-                dpi=300
-            )
+            # On Windows, try to handle common CairoSVG issues
+            if platform.system().lower() == "windows":
+                try:
+                    # Read SVG content and preprocess if needed
+                    with open(svg_path, 'r', encoding='utf-8') as f:
+                        svg_content = f.read()
+                    
+                    # Convert with high DPI for better quality
+                    cairosvg.svg2png(
+                        bytestring=svg_content.encode('utf-8'),
+                        write_to=str(png_path),
+                        dpi=300
+                    )
+                except Exception as e:
+                    # Fallback to file-based conversion
+                    print_debug(f"⚠️ CairoSVG bytestring conversion failed, trying file-based: {e}")
+                    cairosvg.svg2png(
+                        url=str(svg_path),
+                        write_to=str(png_path),
+                        dpi=300
+                    )
+            else:
+                # Unix-like systems - use standard approach
+                cairosvg.svg2png(
+                    url=str(svg_path),
+                    write_to=str(png_path),
+                    dpi=300
+                )
             
             if png_path.exists():
                 print_debug(f"✅ Converted SVG to PNG using CairoSVG: {png_path}")

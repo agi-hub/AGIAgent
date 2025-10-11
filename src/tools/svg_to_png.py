@@ -34,23 +34,49 @@ class EnhancedSVGToPNGConverter:
     def get_available_chinese_font(self) -> Optional[str]:
         """Get available Chinese fonts in the system"""
         try:
+            # 在Windows系统中，优先使用系统自带的中文字体
+            if os.name == 'nt':  # Windows系统
+                windows_fonts = [
+                    "Microsoft YaHei",
+                    "SimHei", 
+                    "SimSun",
+                    "KaiTi",
+                    "FangSong"
+                ]
+                # 直接返回第一个Windows字体，因为这些字体在Windows中通常都可用
+                return windows_fonts[0]
+            
+            # Linux/Unix系统使用fc-list命令
             result = subprocess.run(['fc-list', ':lang=zh'], 
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
             available_fonts = result.stdout
+            
+            if not available_fonts:
+                # 如果fc-list没有返回结果，尝试不带参数的fc-list
+                result = subprocess.run(['fc-list'], 
+                                      capture_output=True, text=True, encoding='utf-8', errors='ignore')
+                available_fonts = result.stdout
             
             for font in self.chinese_fonts:
                 if font in available_fonts:
                     return font
             
             # If preset font not found
-            lines = available_fonts.strip().split('\n')
+            lines = available_fonts.strip().split('\n') if available_fonts else []
             if lines and lines[0]:
                 # Format is usually: /path/to/font.ttf: Font Name:style=Style
-                font_info = lines[0].split(':')[1].strip()
-                return font_info
+                parts = lines[0].split(':')
+                if len(parts) > 1:
+                    font_info = parts[1].strip()
+                    return font_info
                 
         except Exception as e:
             print(f"Check Chinese font failed: {e}")
+            # 如果所有方法都失败，返回一个通用的fallback字体
+            if os.name == 'nt':  # Windows
+                return "Microsoft YaHei"
+            else:  # Linux/Unix
+                return "DejaVu Sans"
         
         return None
     
@@ -133,11 +159,19 @@ class EnhancedSVGToPNGConverter:
                 
                 # Screenshot with high quality settings
                 svg_element = page.locator("svg")
-                svg_element.screenshot(
-                    path=str(png_path), 
-                    type='png',
-                    omit_background=False  # 保留背景以获得更好的渲染
-                )
+                if svg_element.count() > 0:
+                    svg_element.screenshot(
+                        path=str(png_path), 
+                        type='png',
+                        omit_background=False  # 保留背景以获得更好的渲染
+                    )
+                else:
+                    # Fallback: screenshot the entire page if SVG element not found
+                    page.screenshot(
+                        path=str(png_path),
+                        type='png',
+                        full_page=True
+                    )
                 
                 browser.close()
             
