@@ -11,6 +11,14 @@
       <img src="md/images/AGIAgent.png" alt="AGI Agent" width="800"/>
 </div>
 
+## 🚀 最新动态
+
+2025/10/12 AGIAgent富图像文档撰写功能介绍已发布，详见 [colourfuldoc/ColourfulDoc_zh.md](colourfuldoc/ColourfulDoc_zh.md) 和 [colourfuldoc/ColourfulDoc.md](colourfuldoc/ColourfulDoc.md)（英文版）。
+
+2025/10/10 Windows安装包（在线/离线版本）已准备就绪！请查看[发布页面](https://github.com/agi-hub/AGIAgent/releases/)。
+
+2025/9/15 在线网站（中文版）已上线。访问 <https://agiagentonline.com>，无需APIKey即可登录，您可以找到许多示例。项目介绍主页：<https://agiagentonline.com/intro>（中文版）已可用。
+
 ## ✨ 核心特性
 
 ### 🤖 自主多智能体协作
