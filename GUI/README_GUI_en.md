@@ -3,6 +3,8 @@
 Graphical user interface for AGI Agent, providing intuitive and convenient task execution and file management functions.
 
 ## 🚀 Quick Start
+### please add your LLM API in config/config.txt
+Edit the '# GUI API configuration' part and '# Language setting' part.
 
 ### Launch GUI, execute in the project root directory:
 ```bash
@@ -36,7 +38,7 @@ AGI Agent GUI uses API Key authentication:
 The system comes with the following test accounts:
 - **username**: `agiagenttest`，**API Key**: `agiatest`
 - **username**: `guest`，**API Key**: ``（no content） 
-Guest account is for preview (not editable and not able to run new task)
+Guest account is for preview (not editable and not able to run new task).
 > ⚠️ **Security Notice**: In production environments, please modify or delete default accounts promptly and create dedicated secure accounts.
 
 ### Creating New Accounts
