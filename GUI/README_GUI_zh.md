@@ -9,7 +9,7 @@ AGI Agent 的图形用户界面，提供直观便捷的任务执行和文件管�
 python GUI/app.py
 ```
 
-启动后访问：`http://localhost:5001`
+启动后访问：`http://localhost:5002`
 
 ## 界面示例
 <div align="center">
@@ -35,9 +35,9 @@ AGI Agent GUI 采用 API Key 认证方式：
 
 ### 默认账户
 系统预置了以下测试账户：
-- **用户名**: `testuser`，**API Key**: `testuser123`（普通用户权限）
-- **用户名**: `admin`，**API Key**: `admin123`（管理员权限）
-
+- **用户名**: `agiagenttest`，**API Key**（请你输入这个登录）: `agiatest`
+- **用户名**: `guest`，**API Key**（请你输入这个登录）: ``（无内容）
+注：guest用户无法修改内容，也无法启动新的任务，仅供预览。
 > ⚠️ **安全提醒**: 生产环境中请及时修改或删除默认账户，创建专属的安全账户。
 
 ### 创建新账户
@@ -60,11 +60,6 @@ cd GUI
 # 创建普通用户
 python create_user.py -u alice -k alice123 -d "Alice用户"
 
-# 创建管理员用户
-python create_user.py -u admin2 -k admin456 -p read write execute admin
-
-# 创建临时用户（30天后过期）
-python create_user.py -u temp -k temp123 -e 30
 ```
 
 #### 方法三：查看现有用户

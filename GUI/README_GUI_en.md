@@ -9,7 +9,7 @@ Graphical user interface for AGI Agent, providing intuitive and convenient task 
 python GUI/app.py
 ```
 
-After startup, visit: `http://localhost:5001`
+After startup, visit: `http://localhost:5002`
 
 ## Interface Example
 <div align="center">
@@ -32,11 +32,11 @@ AGI Agent GUI uses API Key authentication:
 2. Enter a valid API Key to log in and use the system
 3. API Key remains valid during the browser session, requires re-entry after closing browser
 
-### Default Accounts
+### Default Account
 The system comes with the following test accounts:
-- **Username**: `testuser`, **API Key**: `testuser123` (Regular user permissions)
-- **Username**: `admin`, **API Key**: `admin123` (Administrator permissions)
-
+- **username**: `agiagenttest`，**API Key**: `agiatest`
+- **username**: `guest`，**API Key**: ``（no content） 
+Guest account is for preview (not editable and not able to run new task)
 > ⚠️ **Security Notice**: In production environments, please modify or delete default accounts promptly and create dedicated secure accounts.
 
 ### Creating New Accounts
