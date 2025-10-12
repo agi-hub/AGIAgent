@@ -3,6 +3,8 @@
 AGI Agent 的图形用户界面，提供直观便捷的任务执行和文件管理功能。
 
 ## 🚀 快速开始
+### 请先在 config/config.txt 文件中填写你的大语言模型（LLM）API
+编辑文件中的" # GUI API configuration "部分。
 
 ### 启动GUI, 在工程根目录下执行:
 ```bash

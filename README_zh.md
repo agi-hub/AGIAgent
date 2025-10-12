@@ -19,7 +19,7 @@
 
 2025/9/15 在线网站（中文版）已上线。访问 <https://agiagentonline.com>，无需APIKey即可登录，您可以找到许多示例。项目介绍主页：<https://agiagentonline.com/intro>（中文版）已可用。
 
-2025/7/21 AGIAgent 用户界面（GUI）已上线， 可支持远程/单机，具备Markdown/PDF/源代码预览、SVG图片编辑和Mermaid流程图编辑能力。详情请参见 <GUI/README_GUI_zh.md> （同款GUI已部署在 <https://agiagentonline.com> 上）。
+2025/7/21 AGIAgent 用户界面（GUI）已上线， 可支持远程/单机，具备Markdown/PDF/源代码预览、SVG图片编辑和Mermaid流程图编辑能力。详情请参见 [GUI/README_GUI_zh.md](GUI/README_GUI_zh.md) （同款GUI已部署在 <https://agiagentonline.com> 上）。
 
 
 ## ✨ 核心特性
