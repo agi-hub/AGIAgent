@@ -13,11 +13,6 @@ python GUI/app.py
 
 After startup, visit: `http://localhost:5002`
 
-## Interface Example
-<div align="center">
-      <img src="../fig/AGIAgent_GUI.png" alt="AGI Agent GUI"/>
-</div>
-
 ## Usage
 
 You can create a new workspace or select an existing one, upload data files that need to be processed through the workspace upload button, write your requirements, and click the execute button to run. The program will execute up to 50 iterations. After completion, you can view the generated files in the workspace and download the workspace by clicking the download button. During execution and after completion, you can preview the files that have been generated.
