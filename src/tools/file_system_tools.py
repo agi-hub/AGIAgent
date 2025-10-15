@@ -2050,7 +2050,7 @@ class FileSystemTools:
                     
                     if trans_script.exists():
                         cmd = [
-                            'python3',
+                            'python',
                             str(trans_script),
                             md_path.name,  # Use filename instead of full path
                             pdf_file.name  # Use filename instead of full path
