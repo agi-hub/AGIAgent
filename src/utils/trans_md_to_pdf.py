@@ -9,6 +9,15 @@ import tempfile
 import re
 from pathlib import Path
 
+# 设置控制台编码为UTF-8（Windows兼容性）
+try:
+    if sys.platform == 'win32':
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+except:
+    pass
+
 
 def remove_emoji_from_text(text):
     """
