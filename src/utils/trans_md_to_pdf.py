@@ -142,7 +142,13 @@ def check_pdf_engine_availability():
                     available_engines.append((engine_name, engine_option))
             elif engine_name == 'wkhtmltopdf':
                 # Check if wkhtmltopdf is available
-                result = subprocess.run(['wkhtmltopdf', '--version'], 
+                result = subprocess.run(['wkhtmltopdf', '--version'],
+                                     capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
+                if result.returncode == 0:
+                    available_engines.append((engine_name, engine_option))
+            elif engine_name == 'weasyprint':
+                # Check if weasyprint is available
+                result = subprocess.run(['weasyprint', '--version'],
                                      capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                 if result.returncode == 0:
                     available_engines.append((engine_name, engine_option))
@@ -173,17 +179,10 @@ def get_engine_specific_options(engine_name):
             '-V', 'CJKmainfont=Noto Serif CJK SC',
             '-V', 'CJKsansfont=Noto Sans CJK SC',
             '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
-            '-V', 'mainfont=DejaVu Serif',
-            '-V', 'sansfont=DejaVu Sans',
-            '-V', 'monofont=DejaVu Sans Mono',
         ]
     elif engine_name == 'pdflatex':
         # pdfLaTeX doesn't support CJK fonts natively, use basic fonts
-        return [
-            '-V', 'mainfont=DejaVu Serif',
-            '-V', 'sansfont=DejaVu Sans',
-            '-V', 'monofont=DejaVu Sans Mono',
-        ]
+        return []
     else:
         # wkhtmltopdf and weasyprint don't use LaTeX, return minimal options
         return []
@@ -262,7 +261,7 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=2.0',
-        '--highlight-style=tango',
+        '--syntax-highlighting=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
@@ -277,7 +276,9 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
     
     # Add filter options
     if filter_path and os.path.isfile(filter_path):
-        cmd.extend(['--filter', filter_path])
+        # Use full Python path to avoid "python not found" error
+        python_executable = sys.executable
+        cmd.extend(['--filter', f'{python_executable} {filter_path}'])
     
     # Add template options
     if template_path and os.path.isfile(template_path):
@@ -421,7 +422,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=2.0',
-        '--highlight-style=tango',
+        '--syntax-highlighting=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
@@ -442,7 +443,9 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     
     # Add filter options (only for LaTeX engines)
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and filter_path and os.path.isfile(filter_path):
-        cmd.extend(['--filter', filter_path])
+        # Use full Python path to avoid "python not found" error
+        python_executable = sys.executable
+        cmd.extend(['--filter', f'{python_executable} {filter_path}'])
     
     # Add template options (only for LaTeX engines)
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and template_path and os.path.isfile(template_path):

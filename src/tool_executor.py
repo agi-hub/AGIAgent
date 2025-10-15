@@ -3952,6 +3952,9 @@ class ToolExecutor:
                     tool_calls = []
                     tool_call_buffers = {}  # Track partial tool calls
 
+                    # Reset tool calling shown flag for new streaming session
+                    self._tool_calling_shown = False
+
                     with streaming_context(show_start_message=True) as printer:
                         #print an emoji to indicate llm start saying something
                         printer.write(f"💬 ")
@@ -3988,6 +3991,18 @@ class ToolExecutor:
                                                 if cache_creation_tokens > 0 or cache_read_tokens > 0:
                                                     print_debug(f"\n📊  Token Usage - Input: {input_tokens}, Output: {output_tokens} Cache Usage - Creation: {cache_creation_tokens}, Read: {cache_read_tokens}")
 
+                                    elif event_type == "message_stop":
+                                        # Message completed, check if there are pending tool calls
+                                        # If we have tool call buffers but haven't shown the calling message yet,
+                                        # it means the tool calls are about to start
+                                        if tool_call_buffers and not hasattr(self, '_tool_calling_shown'):
+                                            # Find the first tool in buffers and show calling message
+                                            first_tool_index = next(iter(tool_call_buffers.keys()))
+                                            if first_tool_index in tool_call_buffers:
+                                                first_tool_name = tool_call_buffers[first_tool_index]["name"]
+                                                printer.write(f"\n\n🔧 Calling tool: {first_tool_name}\n")
+                                                self._tool_calling_shown = True
+
                                     # Handle content block start
                                     elif event_type == "content_block_start":
                                         content_block = getattr(event, 'content_block', None)
@@ -3995,7 +4010,10 @@ class ToolExecutor:
                                             if content_block.type == "tool_use":
                                                 # Tool call started
                                                 tool_name = getattr(content_block, 'name', 'Unknown Tool')
-                                                printer.write(f"\n\n🔧 Calling tool: {tool_name}\n")
+                                                # Only show calling message if not already shown in message_stop
+                                                if not hasattr(self, '_tool_calling_shown'):
+                                                    printer.write(f"\n\n🔧 Calling tool: {tool_name}\n")
+                                                    self._tool_calling_shown = True
                                                 tool_call_buffers[getattr(event, 'index', 0)] = {
                                                     "id": getattr(content_block, 'id', ''),
                                                     "name": tool_name,
@@ -4023,7 +4041,11 @@ class ToolExecutor:
                                                 if event_index in tool_call_buffers:
                                                     partial_json = getattr(delta, 'partial_json', '')
                                                     tool_call_buffers[event_index]["input_json"] += partial_json
-                                                    
+
+                                                    # Check if this is the first input_json_delta for this tool call
+                                                    if not hasattr(tool_call_buffers[event_index], "input_started"):
+                                                        tool_call_buffers[event_index]["input_started"] = True
+
                                                     # Special handling for edit_file tool - only show target_file
                                                     tool_name = tool_call_buffers[event_index]["name"]
                                                     if tool_name == "edit_file":
@@ -4033,7 +4055,7 @@ class ToolExecutor:
                                                             current_json = tool_call_buffers[event_index]["input_json"]
                                                             parsed_params = json.loads(current_json)
                                                             if "target_file" in parsed_params and not hasattr(tool_call_buffers[event_index], "target_file_shown"):
-                                                                printer.write(f'{{"target_file":"{parsed_params["target_file"]}"}}')
+                                                                printer.write(f'\n{{"target_file":"{parsed_params["target_file"]}"}}')
                                                                 tool_call_buffers[event_index]["target_file_shown"] = True
                                                         except json.JSONDecodeError:
                                                             # JSON not complete yet, continue building
@@ -4051,6 +4073,8 @@ class ToolExecutor:
                                             buffer = tool_call_buffers[event_index]
                                             try:
                                                 parsed_input = json.loads(buffer["input_json"])
+                                                tool_name = buffer["name"]
+
                                                 tool_calls.append({
                                                     "id": buffer["id"],
                                                     "name": buffer["name"],
@@ -4101,9 +4125,11 @@ class ToolExecutor:
                     if tool_calls:
                         for tool_call_data in tool_calls:
                             try:
+                                tool_name = tool_call_data['name']
+
                                 # Convert to standard format
                                 standard_tool_call = {
-                                    "name": tool_call_data['name'],
+                                    "name": tool_name,
                                     "arguments": tool_call_data['input']
                                 }
 
@@ -4114,7 +4140,7 @@ class ToolExecutor:
                                     self._streaming_tool_results = []
 
                                 self._streaming_tool_results.append({
-                                    'tool_name': tool_call_data['name'],
+                                    'tool_name': tool_name,
                                     'tool_params': tool_call_data['input'],
                                     'tool_result': tool_result
                                 })
@@ -4122,7 +4148,7 @@ class ToolExecutor:
                                 self._tools_executed_in_stream = True
 
                             except Exception as e:
-                                print_error(f"❌ Tool execution failed: {str(e)}")
+                                print_error(f"❌ Tool {tool_name} execution failed: {str(e)}")
 
                         print_debug("✅ All tool executions completed")
                     

@@ -2256,7 +2256,7 @@ def convert_markdown_to_latex_only(full_path, file_path, user_base_dir):
         
         if trans_script.exists():
             cmd = [
-                'python3',
+                sys.executable,  # Use current Python executable instead of hardcoded 'python3'
                 str(trans_script),
                 md_path.name,  # Use filename instead of full path
                 latex_file.name,  # Use filename instead of full path
@@ -2815,7 +2815,7 @@ def handle_execute_task(data):
         user_session.current_process.start()
 
         # 立即发送任务启动反馈消息到聊天框
-        emit('output', {'message': '🚀 任务已启动，正在处理中...', 'type': 'info'}, room=session_id)
+        emit('output', {'message': i18n['task_starting'], 'type': 'info'}, room=session_id)
 
         # Get current performance metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
