@@ -61,14 +61,14 @@ try:
     from src.utils.advanced_svg_optimizer import AdvancedSVGOptimizer, OptimizationLevel
     SVG_OPTIMIZER_AVAILABLE = True
 except ImportError:
-    print("⚠️ Advanced SVG optimizer not available")
+    #print("⚠️ Advanced SVG optimizer not available")
     SVG_OPTIMIZER_AVAILABLE = False
 
 try:
     from src.utils.llm_svg_optimizer import create_llm_optimizer_from_env
     LLM_SVG_OPTIMIZER_AVAILABLE = True
 except ImportError:
-    print("⚠️ LLM SVG optimizer not available")
+    #print("⚠️ LLM SVG optimizer not available")
     LLM_SVG_OPTIMIZER_AVAILABLE = False
 
 # Check current directory, switch to parent directory if in GUI directory
@@ -2264,7 +2264,7 @@ def convert_markdown_to_latex_only(full_path, file_path, user_base_dir):
             ]
             
             # Execute command in markdown file directory
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
             
             if latex_file.exists():
                 file_size = latex_file.stat().st_size
@@ -2303,7 +2303,7 @@ def convert_markdown_to_latex_only(full_path, file_path, user_base_dir):
                     '--wrap=preserve'
                 ])
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
                 
                 if latex_file.exists():
                     file_size = latex_file.stat().st_size
@@ -2813,7 +2813,10 @@ def handle_execute_task(data):
         )
         user_session.current_process.daemon = True
         user_session.current_process.start()
-        
+
+        # 立即发送任务启动反馈消息到聊天框
+        emit('output', {'message': '🚀 任务已启动，正在处理中...', 'type': 'info'}, room=session_id)
+
         # Get current performance metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
         print(f"🚀 Task started for user {session_id}")

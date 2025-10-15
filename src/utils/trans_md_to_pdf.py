@@ -137,19 +137,13 @@ def check_pdf_engine_availability():
             if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
                 # Check if LaTeX engine is available
                 result = subprocess.run([engine_name, '--version'], 
-                                     capture_output=True, text=True, timeout=5)
+                                     capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                 if result.returncode == 0:
                     available_engines.append((engine_name, engine_option))
             elif engine_name == 'wkhtmltopdf':
                 # Check if wkhtmltopdf is available
                 result = subprocess.run(['wkhtmltopdf', '--version'], 
-                                     capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    available_engines.append((engine_name, engine_option))
-            elif engine_name == 'weasyprint':
-                # Check if weasyprint is available
-                result = subprocess.run(['weasyprint', '--version'], 
-                                     capture_output=True, text=True, timeout=5)
+                                     capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                 if result.returncode == 0:
                     available_engines.append((engine_name, engine_option))
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
@@ -293,7 +287,7 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
     print(f"Converting to LaTeX: {input_file} -> {output_file}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
         
         # Check if LaTeX file was generated
         if os.path.isfile(output_file):
@@ -459,7 +453,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     print(f"Using PDF engine: {engine_name}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
         
         # Check if PDF file was generated
         if os.path.isfile(output_file):
@@ -470,35 +464,9 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
                     print(f"Warning information: {result.stderr}")
             return True, result.stdout
         else:
-            # No PDF file generated - try fallback strategies
-            print(f"❌ Primary conversion failed: {result.stderr}")
-            print(f"🔄 Attempting fallback conversion strategies...")
-            
-            try:
-                import sys
-                from pathlib import Path
-                
-                # Add the project root to path for absolute imports
-                script_dir = Path(__file__).parent.parent.parent
-                if str(script_dir) not in sys.path:
-                    sys.path.insert(0, str(script_dir))
-                    
-                from src.utils.fallback_converter import apply_fallback_strategies
-                
-                fallback_success, fallback_msg, fallback_info = apply_fallback_strategies(
-                    actual_input_file, output_file
-                )
-                
-                if fallback_success:
-                    print(f"✅ Fallback conversion successful: {fallback_msg}")
-                    return True, fallback_msg
-                else:
-                    print(f"❌ All fallback strategies failed: {fallback_msg}")
-                    return False, f"Primary conversion failed: {result.stderr}. Fallback strategies also failed: {fallback_msg}"
-                    
-            except Exception as fallback_error:
-                print(f"❌ Fallback conversion error: {fallback_error}")
-                return False, f"Primary conversion failed: {result.stderr}. Fallback error: {str(fallback_error)}"
+            # No PDF file generated
+            print(f"❌ PDF conversion failed: {result.stderr}")
+            return False, result.stderr
                 
     except Exception as e:
         return False, str(e)

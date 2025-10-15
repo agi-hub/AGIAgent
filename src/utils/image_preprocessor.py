@@ -84,7 +84,7 @@ def preprocess_images_for_pdf(markdown_content: str, markdown_dir: Path) -> Tupl
                         # 继续使用原始文件
 
                 # 进行图像格式转换
-                converted_path = convert_image_for_pdf(processed_image_path, markdown_dir)
+                converted_path = convert_image_for_pdf(processed_image_path, markdown_dir, temp_files)
                 if converted_path:
                     temp_files.append(str(converted_path))
 
@@ -146,21 +146,25 @@ def needs_conversion(image_path: Path) -> bool:
         return True
 
 
-def convert_image_for_pdf(image_path: Path, output_dir: Path) -> Optional[Path]:
+def convert_image_for_pdf(image_path: Path, output_dir: Path, temp_files: List[str] = None) -> Optional[Path]:
     """
     将图像转换为PDF兼容格式
 
     Args:
         image_path: 源图像路径
         output_dir: 输出目录
+        temp_files: 临时文件列表，用于记录需要清理的文件
 
     Returns:
         Optional[Path]: 转换后的图像路径，失败返回None
     """
+    if temp_files is None:
+        temp_files = []
+
     try:
         # 特殊处理SVG文件
         if image_path.suffix.lower() == '.svg':
-            return convert_svg_for_pdf(image_path, output_dir)
+            return convert_svg_for_pdf(image_path, output_dir, temp_files)
 
         from PIL import Image
 
@@ -206,17 +210,21 @@ def convert_image_for_pdf(image_path: Path, output_dir: Path) -> Optional[Path]:
         return None
 
 
-def convert_svg_for_pdf(svg_path: Path, output_dir: Path) -> Optional[Path]:
+def convert_svg_for_pdf(svg_path: Path, output_dir: Path, temp_files: List[str] = None) -> Optional[Path]:
     """
     专门处理SVG到PDF的转换
 
     Args:
         svg_path: SVG文件路径
         output_dir: 输出目录
+        temp_files: 临时文件列表，用于记录需要清理的文件
 
     Returns:
         Optional[Path]: 转换后的PDF文件路径，失败返回None
     """
+    if temp_files is None:
+        temp_files = []
+
     try:
         import subprocess
         import xml.etree.ElementTree as ET
@@ -252,9 +260,14 @@ def convert_svg_for_pdf(svg_path: Path, output_dir: Path) -> Optional[Path]:
                         # 添加viewBox属性
                         root.set('viewBox', f'0 0 {width_val} {height_val}')
 
-                        # 保存修复后的SVG
-                        fixed_svg_path = output_dir / f"{base_name}_fixed.svg"
+                        # 创建临时文件来保存修复后的SVG
+                        import tempfile
+                        temp_fd, temp_svg_path = tempfile.mkstemp(suffix='_fixed.svg', prefix=f"{base_name}_", dir=None)
+                        os.close(temp_fd)  # 关闭文件描述符，我们只需要路径
+
+                        fixed_svg_path = Path(temp_svg_path)
                         tree.write(fixed_svg_path, encoding='utf-8', xml_declaration=True)
+                        temp_files.append(str(fixed_svg_path))  # 添加到临时文件列表
                         print(f"📝 Fixed SVG viewBox: {fixed_svg_path}")
 
         except Exception as e:
@@ -284,7 +297,7 @@ def convert_svg_for_pdf(svg_path: Path, output_dir: Path) -> Optional[Path]:
             # 回退到直接使用cairosvg（不处理中文）
             result = subprocess.run([
                 'cairosvg', str(fixed_svg_path), '-o', str(output_path)
-            ], capture_output=True, text=True, timeout=30)
+            ], capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
 
             if result.returncode == 0 and output_path.exists():
                 print(f"✅ SVG converted to PDF (fallback): {output_path}")

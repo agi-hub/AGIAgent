@@ -462,7 +462,7 @@ class SensorDataCollector:
                         '--skip', '5',  # Skip first 5 frames to ensure camera stability
                         output_file
                     ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=15)
                     
                     if result.returncode == 0 and os.path.exists(output_file):
                         capture_success = True
@@ -497,7 +497,7 @@ class SensorDataCollector:
                             output_file
                         ]
                     
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=15)
                     
                     if result.returncode == 0 and os.path.exists(output_file):
                         capture_success = True
@@ -510,7 +510,7 @@ class SensorDataCollector:
             if not capture_success and os.uname().sysname == 'Darwin':
                 try:
                     # First get available camera device list
-                    list_result = subprocess.run(['imagesnap', '-l'], capture_output=True, text=True, timeout=5)
+                    list_result = subprocess.run(['imagesnap', '-l'], capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     available_cameras = []
                     
                     if list_result.returncode == 0:
@@ -543,7 +543,7 @@ class SensorDataCollector:
                         # No camera list found
                         cmd = ['imagesnap', output_file]
                     
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=10)
                     
                     if result.returncode == 0 and os.path.exists(output_file):
                         capture_success = True
@@ -656,7 +656,7 @@ class SensorDataCollector:
                         output_file
                     ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=duration + 15)
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=duration + 15)
                 
                 if result.returncode == 0 and os.path.exists(output_file):
                     file_size = os.path.getsize(output_file)
@@ -709,7 +709,7 @@ class SensorDataCollector:
                         '-d', str(duration),
                         output_file
                     ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=duration + 5)
+                    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=duration + 5)
                     if result.returncode == 0 and os.path.exists(output_file):
                         capture_success = True
                         print_current(f"🎤 Audio captured using arecord")
@@ -729,7 +729,7 @@ class SensorDataCollector:
                         '-y',
                         output_file
                     ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=duration + 5)
+                    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=duration + 5)
                     if result.returncode == 0 and os.path.exists(output_file):
                         capture_success = True
                         print_current(f"🎤 Audio captured using ffmpeg")

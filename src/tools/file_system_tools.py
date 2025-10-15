@@ -1233,7 +1233,7 @@ class FileSystemTools:
             
             # Execute grep
             print_debug(f"🔍 Executing system grep: {' '.join(cmd)} (target: {self.workspace_root})")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
             
             if result.returncode in [0, 1]:  # 0=found, 1=not found (both OK)
                 lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
@@ -1481,7 +1481,7 @@ class FileSystemTools:
             try:
                 cmd = ['cat'] + resolved_files
                 with open(output_path, 'w', encoding='utf-8') as outfile:
-                    result = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=True)
+                    result = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', check=True)
                 
                 if not output_path_obj.exists():
                     return {
@@ -1691,19 +1691,19 @@ class FileSystemTools:
                 if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
                     # Check if LaTeX engine is available
                     result = subprocess.run([engine_name, '--version'], 
-                                         capture_output=True, text=True, timeout=5)
+                                         capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     if result.returncode == 0:
                         available_engines.append((engine_name, engine_option))
                 elif engine_name == 'wkhtmltopdf':
                     # Check if wkhtmltopdf is available
                     result = subprocess.run(['wkhtmltopdf', '--version'], 
-                                         capture_output=True, text=True, timeout=5)
+                                         capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     if result.returncode == 0:
                         available_engines.append((engine_name, engine_option))
                 elif engine_name == 'weasyprint':
                     # Check if weasyprint is available
                     result = subprocess.run(['weasyprint', '--version'], 
-                                         capture_output=True, text=True, timeout=5)
+                                         capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     if result.returncode == 0:
                         available_engines.append((engine_name, engine_option))
             except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
@@ -1988,7 +1988,7 @@ class FileSystemTools:
                         print_debug(f"⚠️ Title color filter not found: {title_color_filter_path}")
                     
                     # Execute command in markdown file directory
-                    result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
+                    result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
                     
                     if word_file.exists():
                         # 后处理：修改Word文档中的标题颜色
@@ -1997,7 +1997,7 @@ class FileSystemTools:
                             if postprocessor_path.exists():
                                 import sys
                                 postprocess_cmd = [sys.executable, str(postprocessor_path), str(word_file)]
-                                subprocess.run(postprocess_cmd, check=True, capture_output=True, text=True)
+                                subprocess.run(postprocess_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore')
                                 print_debug(f"✅ Word document post-processed for title colors: {word_file.name}")
                             else:
                                 print_debug(f"⚠️ Word style postprocessor not found: {postprocessor_path}")
@@ -2057,7 +2057,7 @@ class FileSystemTools:
                         ]
                         
                         # Execute command in markdown file directory
-                        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(output_dir))
+                        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
                         
                         if pdf_file.exists():  # Check file existence only, ignore warnings in returncode
                             file_size = pdf_file.stat().st_size
@@ -2140,7 +2140,7 @@ class FileSystemTools:
                                 
                                 print_debug(f"Using fallback PDF engine: {engine_name}")
                                 
-                                direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, cwd=str(output_dir))
+                                direct_result = subprocess.run(direct_cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
                                 
                                 if direct_result.returncode == 0 and pdf_file.exists():
                                     file_size = pdf_file.stat().st_size
@@ -2216,7 +2216,7 @@ class FileSystemTools:
                         print_debug(f"Using fallback PDF engine: {engine_name}")
                         
                         # Execute command in markdown file directory
-                        result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(output_dir))
+                        result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
                         
                         if pdf_file.exists():
                             file_size = pdf_file.stat().st_size

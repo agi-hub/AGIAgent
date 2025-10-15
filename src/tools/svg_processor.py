@@ -58,8 +58,8 @@ class SVGProcessor:
             if platform.system().lower() == "windows":
                 # First try the command as-is
                 try:
-                    result = subprocess.run([command, '--version'], 
-                                          capture_output=True, text=True, timeout=5)
+                    result = subprocess.run([command, '--version'],
+                                          capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     if result.returncode == 0:
                         return True
                 except:
@@ -67,8 +67,8 @@ class SVGProcessor:
                 
                 # Then try with .exe extension
                 try:
-                    result = subprocess.run([command + '.exe', '--version'], 
-                                          capture_output=True, text=True, timeout=5)
+                    result = subprocess.run([command + '.exe', '--version'],
+                                          capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                     if result.returncode == 0:
                         return True
                 except:
@@ -83,8 +83,8 @@ class SVGProcessor:
                     return False
             else:
                 # Unix-like systems
-                result = subprocess.run([command, '--version'], 
-                                      capture_output=True, text=True, timeout=5)
+                result = subprocess.run([command, '--version'],
+                                      capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                 return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
             return False
@@ -350,8 +350,8 @@ class SVGProcessor:
                 possible_commands = ['inkscape', 'inkscape.exe']
                 for cmd in possible_commands:
                     try:
-                        test_result = subprocess.run([cmd, '--version'], 
-                                                   capture_output=True, text=True, timeout=5)
+                        test_result = subprocess.run([cmd, '--version'],
+                                                   capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                         if test_result.returncode == 0:
                             inkscape_cmd = cmd
                             break
@@ -367,7 +367,7 @@ class SVGProcessor:
                 str(svg_path)
             ]
             
-            result = subprocess.run(cmd_new, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd_new, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
             
             # If new format fails, try old format (Inkscape 0.92)
             if result.returncode != 0:
@@ -379,7 +379,7 @@ class SVGProcessor:
                     str(svg_path)
                 ]
                 
-                result = subprocess.run(cmd_old, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd_old, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
             
             if result.returncode == 0 and png_path.exists():
                 print_debug(f"✅ Converted SVG to PNG using Inkscape: {png_path}")
@@ -404,7 +404,7 @@ class SVGProcessor:
                 str(svg_path)
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
             
             if result.returncode == 0 and png_path.exists():
                 print_debug(f"✅ Converted SVG to PNG using rsvg-convert: {png_path}")
