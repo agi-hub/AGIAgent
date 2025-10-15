@@ -39,9 +39,11 @@ def check_command_available(command: str) -> bool:
     try:
         # Use 'where' on Windows, 'which' on Unix-like systems
         check_cmd = "where" if platform.system().lower() == "windows" else "which"
-        result = subprocess.run([check_cmd, command], 
-                              capture_output=True, 
-                              text=True, 
+        result = subprocess.run([check_cmd, command],
+                              capture_output=True,
+                              text=True,
+                              encoding='utf-8',
+                              errors='ignore',
                               timeout=5)
         return result.returncode == 0
     except Exception:

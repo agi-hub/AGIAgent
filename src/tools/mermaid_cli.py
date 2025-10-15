@@ -63,7 +63,7 @@ except ImportError:
 def _check_mermaid_cli():
     """Check if mermaid-cli (mmdc) is available"""
     try:
-        result = subprocess.run(['mmdc', '--version'], 
+        result = subprocess.run(['mmdc', '--version'], encoding='utf-8', errors='ignore', 
                               capture_output=True, text=True, timeout=10)
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -664,7 +664,7 @@ class MermaidProcessor:
                 if not ('%%{init:' in mermaid_code and 'theme' in mermaid_code):
                     cmd.extend(['-t', 'default'])  # use default theme only if no custom theme
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
                 
                 # Check if command was successful and file was created
                 if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
@@ -839,7 +839,7 @@ class MermaidProcessor:
                 if not ('%%{init:' in mermaid_code and 'theme' in mermaid_code):
                     cmd.extend(['-t', 'neutral'])  # use neutral theme for fallback only if no custom theme
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
                 
                 # Check if command was successful and file was created
                 if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:

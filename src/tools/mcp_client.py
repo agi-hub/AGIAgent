@@ -571,7 +571,9 @@ class MCPClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
-                text=True
+                text=True,
+                encoding='utf-8',
+                errors='ignore'
             )
             
             # Send request and get response
