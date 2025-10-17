@@ -142,13 +142,7 @@ def check_pdf_engine_availability():
                     available_engines.append((engine_name, engine_option))
             elif engine_name == 'wkhtmltopdf':
                 # Check if wkhtmltopdf is available
-                result = subprocess.run(['wkhtmltopdf', '--version'],
-                                     capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
-                if result.returncode == 0:
-                    available_engines.append((engine_name, engine_option))
-            elif engine_name == 'weasyprint':
-                # Check if weasyprint is available
-                result = subprocess.run(['weasyprint', '--version'],
+                result = subprocess.run(['wkhtmltopdf', '--version'], 
                                      capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
                 if result.returncode == 0:
                     available_engines.append((engine_name, engine_option))

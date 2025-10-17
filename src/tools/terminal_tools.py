@@ -410,7 +410,7 @@ class TerminalTools:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    encoding='utf-8',
+                    errors='ignore',
                     cwd=self.workspace_root
                 )
                 return {
@@ -466,7 +466,7 @@ class TerminalTools:
                     stderr=subprocess.PIPE,
                     stdin=subprocess.PIPE,  # Enable stdin for interactive input
                     text=True,
-                    encoding='utf-8',
+                    errors='ignore',
                     bufsize=0,
                     universal_newlines=True,
                     cwd=self.workspace_root,
