@@ -98,7 +98,7 @@ def _write_to_file(file_path: str, content: str, newline: bool = True) -> None:
     if dir_name and not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
 
-    with open(final_path, 'a', encoding='utf-8', buffering=1) as fh:
+    with open(final_path, 'a', encoding='utf-8', errors='ignore', buffering=1) as fh:
         fh.write(content)
         if newline:
             fh.write('\n')
