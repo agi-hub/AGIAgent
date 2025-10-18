@@ -218,8 +218,7 @@ class TerminalTools:
             print_current("⏰ Command execution timed out")
         elif return_code == 0:
             print_current("✅ Command execution completed successfully")
-        else:
-            print_current(f"❌ Command execution failed, exit code: {return_code}")
+        # Removed the failure status print - no longer printing failure messages
 
         
         return '\n'.join(stdout_lines), '\n'.join(stderr_lines), return_code, timed_out
@@ -478,8 +477,14 @@ class TerminalTools:
                 )
                 
                 status = 'success'
-                if timed_out or return_code != 0:
+                if timed_out:
                     status = 'failed'
+                elif return_code != 0:
+                    # Special handling for 'which' command - exit code 1 means command not found, which is normal
+                    if command.strip().startswith('which ') and return_code == 1:
+                        status = 'success'  # which command returning 1 is normal when command not found
+                    else:
+                        status = 'failed'
                 
                 result = {
                     'status': status,
