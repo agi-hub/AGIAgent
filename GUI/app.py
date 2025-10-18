@@ -2814,8 +2814,6 @@ def handle_execute_task(data):
         user_session.current_process.daemon = True
         user_session.current_process.start()
 
-        # 立即发送任务启动反馈消息到聊天框
-        emit('output', {'message': i18n['task_starting'], 'type': 'info'}, room=session_id)
 
         # Get current performance metrics
         metrics = gui_instance.concurrency_manager.get_metrics()

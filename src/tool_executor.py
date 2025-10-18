@@ -5066,7 +5066,7 @@ class ToolExecutor:
                 # For file operations, only show if there's an error
                 elif 'status' in result and result.get('status') in ['error', 'failed']:
                     status = result.get('status', 'unknown')
-                    print_current(f"Status: {status}")
+                    print_debug(f"Status: {status}")
             
         except Exception as e:
             print_error(f"⚠️ Error streaming tool result: {e}")
