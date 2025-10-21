@@ -512,7 +512,7 @@ class FileSystemTools:
             
             # Process edit based on mode
             new_content = self._process_edit_by_mode(
-                original_content, cleaned_code_edit, edit_mode, target_file, old_code
+                original_content, code_edit, edit_mode, target_file, old_code
             )
             
             # Write the new content
@@ -885,8 +885,16 @@ class FileSystemTools:
         print_debug(f"📝 Looking for old code snippet ({len(cleaned_old_code)} chars)")
         print_debug(f"🔄 Will replace with new code snippet ({len(cleaned_code_edit)} chars)")
         
-        # Apply direct string replacement
-        return self._apply_precise_replacement(original_content, cleaned_old_code, cleaned_code_edit)
+        # Try direct string replacement first
+        try:
+            return self._apply_precise_replacement(original_content, cleaned_old_code, cleaned_code_edit)
+        except ValueError as e:
+            # If direct replacement fails due to whitespace differences, try normalized comparison
+            if "old_code was not found" in str(e):
+                print_debug("Direct replacement failed, trying normalized whitespace comparison...")
+                return self._apply_normalized_replacement(original_content, cleaned_old_code, cleaned_code_edit)
+            else:
+                raise
     
     def _apply_precise_replacement(self, original_content: str, old_code: str, new_code: str) -> str:
         """
@@ -925,6 +933,7 @@ class FileSystemTools:
         occurrence_count = original_content.count(old_code)
         
         if occurrence_count == 0:
+            print_current("no current code found to replace")
             raise ValueError(
                 f"EDIT REJECTED: The specified old_code was not found in the file. "
                 f"Please check that the code snippet matches exactly (including whitespace and indentation). "
@@ -944,7 +953,101 @@ class FileSystemTools:
         print_debug(f"📊 Content size: {len(original_content)} → {len(new_content)} chars")
         
         return new_content
-    
+
+    def _apply_normalized_replacement(self, original_content: str, old_code: str, new_code: str) -> str:
+        """
+        Apply replacement using normalized whitespace comparison.
+        This handles cases where old_code has different whitespace (spaces/tabs/newlines) than the file.
+
+        Args:
+            original_content: The original file content
+            old_code: The code snippet to find (may have whitespace differences)
+            new_code: The new code snippet to replace with
+
+        Returns:
+            The updated file content
+
+        Raises:
+            ValueError: If the normalized old_code is not found exactly once
+        """
+        def normalize_whitespace(text: str) -> str:
+            """Normalize whitespace while preserving structure"""
+            # Split into lines and strip each line, then rejoin
+            lines = text.split('\n')
+            normalized_lines = []
+            for line in lines:
+                # Strip leading/trailing whitespace but preserve indentation structure
+                stripped = line.rstrip()
+                if stripped:  # Only add non-empty lines
+                    normalized_lines.append(stripped)
+                elif normalized_lines:  # Add single empty lines between content
+                    if not normalized_lines[-1] == '':
+                        normalized_lines.append('')
+            return '\n'.join(normalized_lines).rstrip()
+
+        # Normalize both old_code and the search in original_content
+        normalized_old = normalize_whitespace(old_code)
+        normalized_content = normalize_whitespace(original_content)
+
+        print_debug(f"Normalized old_code ({len(normalized_old)} chars): {repr(normalized_old[:100])}...")
+
+        # Find the normalized old_code in normalized content
+        old_pos = normalized_content.find(normalized_old)
+        if old_pos == -1:
+            raise ValueError(
+                f"EDIT REJECTED: Even after normalizing whitespace, the old_code was not found in the file. "
+                f"This usually means the code structure is significantly different. "
+                f"Normalized old_code (first 200 chars): {repr(normalized_old[:200])}"
+            )
+
+        # Check if it appears multiple times
+        if normalized_content.count(normalized_old) > 1:
+            raise ValueError(
+                f"EDIT REJECTED: The normalized old_code appears multiple times in the file. "
+                f"Please make it more specific to match exactly one location."
+            )
+
+        # Now we need to find the corresponding position in the original content
+        # This is tricky because normalization changes positions
+        # We'll use a different approach: split both into lines and find matching line sequence
+
+        original_lines = original_content.split('\n')
+        old_lines = old_code.split('\n')
+
+        # Find the starting line in original content that matches our old_code
+        start_line = -1
+        for i in range(len(original_lines) - len(old_lines) + 1):
+            if self._lines_match(original_lines[i:i+len(old_lines)], old_lines):
+                start_line = i
+                break
+
+        if start_line == -1:
+            raise ValueError(
+                f"EDIT REJECTED: Could not find matching line sequence for old_code in original content."
+            )
+
+        # Find the end line
+        end_line = start_line + len(old_lines) - 1
+
+        # Perform the replacement
+        result_lines = original_lines[:start_line] + [new_code] + original_lines[end_line + 1:]
+        new_content = '\n'.join(result_lines)
+
+        print_debug(f"✅ Successfully replaced code snippet using normalized comparison")
+        print_debug(f"📊 Content size: {len(original_content)} → {len(new_content)} chars")
+
+        return new_content
+
+    def _lines_match(self, original_lines: list, old_lines: list) -> bool:
+        """Check if two line sequences match, allowing for whitespace differences"""
+        if len(original_lines) != len(old_lines):
+            return False
+
+        for orig, old in zip(original_lines, old_lines):
+            # Strip both lines and compare
+            if orig.rstrip() != old.rstrip():
+                return False
+        return True
 
     def file_search(self, query: str, **kwargs) -> Dict[str, Any]:
         """
