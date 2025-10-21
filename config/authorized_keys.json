@@ -2,7 +2,6 @@
   "keys": [
     {
       "name": "agiagenttest",
-      "description": "agiagenttest user",
       "sha256_hash": "134c753ae8604c0fda2a9517db30801412dabf361ba173922726576e7a94d7ad",
       "permissions": [
         "read",

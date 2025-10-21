@@ -1655,13 +1655,12 @@ def api_register():
 
         username = data.get('username', '').strip()
         phone_number = data.get('phone_number', '').strip()
-        description = data.get('description', '').strip()
 
         if not username or not phone_number:
             return jsonify({'success': False, 'error': '用户名和手机号为必填项'}), 400
 
         # Register user
-        result = gui_instance.auth_manager.register_user(username, phone_number, description)
+        result = gui_instance.auth_manager.register_user(username, phone_number)
 
         if result['success']:
             return jsonify({
