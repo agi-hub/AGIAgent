@@ -93,6 +93,371 @@ def is_claude_model(model: str) -> bool:
     return model.lower().startswith('claude')
 
 
+def is_complete_json(json_str: str) -> bool:
+    """
+    验证JSON字符串是否完整且格式正确
+    
+    Args:
+        json_str: 要验证的JSON字符串
+        
+    Returns:
+        True if JSON is complete and valid, False otherwise
+    """
+    if not json_str or not json_str.strip():
+        return False
+    
+    try:
+        json.loads(json_str)
+        return True
+    except json.JSONDecodeError as e:
+        # 检查是否是不完整的JSON（而非格式错误）
+        # 不完整的JSON通常在字符串末尾出现错误
+        error_pos = e.pos if hasattr(e, 'pos') else len(json_str)
+        # 如果错误在字符串末尾附近（最后10%），可能是不完整
+        if error_pos >= len(json_str) * 0.9:
+            print_debug(f"JSON可能不完整: {e.msg} at position {error_pos}/{len(json_str)}")
+        else:
+            print_debug(f"JSON格式错误: {e.msg} at position {error_pos}")
+        return False
+    except Exception as e:
+        print_debug(f"JSON验证失败: {str(e)}")
+        return False
+
+
+def validate_tool_call_json(json_str: str, tool_name: str = "") -> Tuple[bool, Optional[Dict], str]:
+    """
+    验证并解析工具调用的JSON参数，支持多种格式的自动修复
+    
+    Args:
+        json_str: JSON字符串
+        tool_name: 工具名称（用于日志）
+        
+    Returns:
+        (is_valid, parsed_data, error_message)
+    """
+    if not json_str:
+        return False, None, "Empty JSON string"
+    
+    # 首先尝试直接解析
+    try:
+        data = json.loads(json_str)
+        return True, data, ""
+    except json.JSONDecodeError as e:
+        # 尝试修复常见的JSON格式问题
+        fixed_json = _fix_common_json_issues(json_str, tool_name)
+        if fixed_json != json_str:
+            try:
+                data = json.loads(fixed_json)
+                print_debug(f"🔧 Fixed JSON format for {tool_name}")
+                return True, data, ""
+            except json.JSONDecodeError:
+                pass  # 继续使用原始错误信息
+        
+        error_msg = f"JSON解析失败"
+        if tool_name:
+            error_msg += f" (工具: {tool_name})"
+        error_msg += f": {e.msg} at line {e.lineno} column {e.colno}"
+        
+        # 提供更详细的错误上下文
+        lines = json_str.split('\n')
+        if 0 <= e.lineno - 1 < len(lines):
+            error_line = lines[e.lineno - 1]
+            error_msg += f"\n错误行: {error_line}"
+            if e.colno > 0:
+                error_msg += f"\n位置: {' ' * (e.colno - 1)}^"
+        
+        return False, None, error_msg
+    except Exception as e:
+        return False, None, f"未预期的错误: {str(e)}"
+
+
+def _fix_common_json_issues(json_str: str, tool_name: str) -> str:
+    """
+    修复常见的JSON格式问题
+    
+    Args:
+        json_str: 原始JSON字符串
+        tool_name: 工具名称
+        
+    Returns:
+        修复后的JSON字符串
+    """
+    # 优先处理XML格式混入JSON的问题
+    if '<arg_key>' in json_str and ('<arg_value>' in json_str or '</arg_value>' in json_str):
+        print_debug(f"🔧 Detected XML format mixed with JSON for {tool_name}, attempting conversion")
+        return _extract_key_value_pairs(json_str)
+    
+    # 尝试智能修复JSON格式
+    json_str = _smart_fix_json(json_str)
+    
+    # 修复缺少引号的问题
+    if 'query:' in json_str and not '"query"' in json_str:
+        json_str = re.sub(r'query:([^,}]+)', r'"query": "\1"', json_str)
+    
+    # 修复布尔值格式问题
+    json_str = re.sub(r':\s*True\b', ': true', json_str)
+    json_str = re.sub(r':\s*False\b', ': false', json_str)
+    json_str = re.sub(r':\s*None\b', ': null', json_str)
+    
+    # 修复缺少逗号的问题
+    json_str = re.sub(r'"\s*\n\s*"', '",\n"', json_str)
+    
+    return json_str
+
+
+def _smart_fix_json(json_str: str) -> str:
+    """
+    智能修复JSON格式问题
+    
+    Args:
+        json_str: 格式错误的JSON字符串
+        
+    Returns:
+        修复后的JSON字符串
+    """
+    # 处理重复的JSON对象
+    if json_str.count('{') > 1:
+        # 找到第一个完整的JSON对象
+        brace_count = 0
+        end_pos = 0
+        start_pos = json_str.find('{')
+        if start_pos != -1:
+            for i in range(start_pos, len(json_str)):
+                char = json_str[i]
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = i + 1
+                        break
+        
+        if end_pos > 0:
+            json_str = json_str[:end_pos]
+    
+    # 如果包含XML标签，尝试提取键值对
+    if '<arg_key>' in json_str and '<arg_value>' in json_str:
+        return _extract_key_value_pairs(json_str)
+    
+    # 修复常见的格式问题
+    # 修复缺少引号的键名
+    json_str = re.sub(r'(\w+):', r'"\1":', json_str)
+    
+    # 修复布尔值
+    json_str = re.sub(r':\s*True\b', ': true', json_str)
+    json_str = re.sub(r':\s*False\b', ': false', json_str)
+    json_str = re.sub(r':\s*None\b', ': null', json_str)
+    
+    return json_str
+
+
+def _extract_key_value_pairs(text: str) -> str:
+    """
+    从包含XML标签的文本中提取键值对并构建JSON
+    
+    Args:
+        text: 包含XML标签的文本
+        
+    Returns:
+        JSON格式的字符串
+    """
+    try:
+        # 处理混合格式：{"key:value</arg_value><arg_key>key:value</arg_value>...
+        # 首先尝试标准的XML格式
+        pattern1 = r'<arg_key>([^<]+)</arg_key><arg_value>([^<]*)</arg_value>'
+        pattern2 = r'<arg_key>([^<]+)</arg_key></arg_value>([^<]*)</arg_value>'
+        
+        matches1 = re.findall(pattern1, text)
+        matches2 = re.findall(pattern2, text)
+        
+        matches = matches1 if matches1 else matches2
+        
+        if not matches:
+            # 尝试更宽松的匹配模式
+            pattern3 = r'<arg_key>([^<]+)</arg_key>.*?</arg_value>([^<]*)</arg_value>'
+            matches = re.findall(pattern3, text)
+        
+        if not matches:
+            # 尝试解析混合格式：{"key:value</arg_value><arg_key>key:value</arg_value>
+            print_debug(f"🔧 Trying mixed format parsing...")
+            return _parse_mixed_format(text)
+        
+        # 构建JSON对象
+        json_parts = ['{']
+        for i, (key, value) in enumerate(matches):
+            # 处理值类型
+            if value.lower() in ['true', 'false']:
+                json_value = value.lower()
+            elif value.isdigit():
+                json_value = value
+            elif value == '':
+                json_value = '""'
+            else:
+                # 转义引号并添加引号
+                escaped_value = value.replace('"', '\\"')
+                json_value = f'"{escaped_value}"'
+            
+            json_parts.append(f'  "{key}": {json_value}')
+            if i < len(matches) - 1:
+                json_parts.append(',')
+        
+        json_parts.append('\n}')
+        return '\n'.join(json_parts)
+    
+    except Exception as e:
+        print_debug(f"⚠️ Failed to extract key-value pairs: {e}")
+        return text
+
+
+def _parse_mixed_format(text: str) -> str:
+    """
+    解析混合格式的文本：{"key:value</arg_value><arg_key>key:value</arg_value>
+    
+    Args:
+        text: 混合格式的文本
+        
+    Returns:
+        JSON格式的字符串
+    """
+    try:
+        # 分割文本：{"key:value</arg_value><arg_key>key:value</arg_value>
+        parts = text.split('</arg_value><arg_key>')
+        
+        key_value_pairs = []
+        for part in parts:
+            # 移除开头的 { 和 <arg_key>
+            part = part.replace('{', '').replace('<arg_key>', '')
+            # 移除结尾的 </arg_value>
+            part = part.replace('</arg_value>', '')
+            
+            # 按第一个冒号分割
+            if ':' in part:
+                key, value = part.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # 清理键名中的引号
+                if key.startswith('"') and key.endswith('"'):
+                    key = key[1:-1]
+                elif key.startswith('"'):
+                    key = key[1:]
+                
+                key_value_pairs.append((key, value))
+        
+        if not key_value_pairs:
+            print_debug(f"⚠️ No key-value pairs found in mixed format")
+            return text
+        
+        # 构建JSON对象
+        json_parts = ['{']
+        for i, (key, value) in enumerate(key_value_pairs):
+            # 处理值类型
+            if value.lower() in ['true', 'false']:
+                json_value = value.lower()
+            elif value.isdigit():
+                json_value = value
+            elif value == '':
+                json_value = '""'
+            else:
+                # 转义引号并添加引号
+                escaped_value = value.replace('"', '\\"')
+                json_value = f'"{escaped_value}"'
+            
+            json_parts.append(f'  "{key}": {json_value}')
+            if i < len(key_value_pairs) - 1:
+                json_parts.append(',')
+        
+        json_parts.append('\n}')
+        return '\n'.join(json_parts)
+    
+    except Exception as e:
+        print_debug(f"⚠️ Failed to parse mixed format: {e}")
+        return text
+
+
+def _convert_xml_to_json(xml_str: str) -> str:
+    """
+    将XML格式转换为JSON格式
+    
+    Args:
+        xml_str: XML格式的字符串
+        
+    Returns:
+        JSON格式的字符串
+    """
+    try:
+        # 提取所有的arg_key和arg_value对
+        pattern = r'<arg_key>([^<]+)</arg_key><arg_value>([^<]*)</arg_value>'
+        matches = re.findall(pattern, xml_str)
+        
+        if not matches:
+            return xml_str
+        
+        # 构建JSON对象
+        json_parts = ['{']
+        for i, (key, value) in enumerate(matches):
+            # 处理值类型
+            if value.lower() in ['true', 'false']:
+                json_value = value.lower()
+            elif value.isdigit():
+                json_value = value
+            elif value == '':
+                json_value = '""'
+            else:
+                # 转义引号并添加引号
+                escaped_value = value.replace('"', '\\"')
+                json_value = f'"{escaped_value}"'
+            
+            json_parts.append(f'  "{key}": {json_value}')
+            if i < len(matches) - 1:
+                json_parts.append(',')
+        
+        json_parts.append('\n}')
+        return '\n'.join(json_parts)
+    
+    except Exception as e:
+        print_debug(f"⚠️ Failed to convert XML to JSON: {e}")
+        return xml_str
+
+
+def _fix_malformed_json(json_str: str) -> str:
+    """
+    修复格式错误的JSON字符串
+    
+    Args:
+        json_str: 格式错误的JSON字符串
+        
+    Returns:
+        修复后的JSON字符串
+    """
+    # 处理重复的JSON对象
+    if json_str.count('{') > 1:
+        # 找到第一个完整的JSON对象
+        brace_count = 0
+        end_pos = 0
+        for i, char in enumerate(json_str):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_pos = i + 1
+                    break
+        
+        if end_pos > 0:
+            json_str = json_str[:end_pos]
+    
+    # 修复缺少引号的问题 - 只修复键名，不修复值
+    json_str = re.sub(r'(\w+):', r'"\1":', json_str)
+    
+    # 修复布尔值
+    json_str = re.sub(r':\s*True\b', ': true', json_str)
+    json_str = re.sub(r':\s*False\b', ': false', json_str)
+    json_str = re.sub(r':\s*None\b', ': null', json_str)
+    
+    return json_str
+
+
 def should_use_chat_based_tools(model: str) -> bool:
     """
     Determine if a model should use chat-based tool calling based on the configuration.
@@ -1413,6 +1778,12 @@ class ToolExecutor:
             # Execute LLM call with standard tools
             content, tool_calls = self._call_llm_with_standard_tools(messages, user_message, system_prompt)
             
+            # 显示LLM的message内容（在工具执行之前）
+            if content and not self.streaming:
+                print_current("")
+                print_current("💬 LLM Response:")
+                print_current(content)
+            
             
             # After vision analysis is complete, immediately optimize the history to remove any analyzed base64 image data
             print_debug(f"🔍 Checking optimization conditions: task_history={len(task_history) if task_history else 0}, history_optimizer={hasattr(self, 'history_optimizer') and self.history_optimizer is not None}")
@@ -1517,9 +1888,16 @@ class ToolExecutor:
                     # but skip actual execution since it was done during streaming
                     all_tool_results = getattr(self, '_streaming_tool_results', [])
                     successful_executions = len(all_tool_results)
+                    
+                    # Show tool call information
+                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                    if tool_calls_formatted:
+                        # Remove the "**Tool Calls:**" header since we already printed our own
+                        display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
+                        print_current(display_content)
                 else:
                     print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
-                    print_current("=" * 50)
+
                     
                     # Print tool calls for terminal display with better formatting
                     if tool_calls_formatted:
@@ -1527,8 +1905,8 @@ class ToolExecutor:
                         display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
                         print_current(display_content)
                     
-                    print_current("=" * 50)
-                    print_current("🚀 Starting tool execution...")
+                    #print_current("=" * 50)
+                    #print_current("🚀 Starting tool execution...")
                     
                     # Execute all tool calls and collect results
                     all_tool_results = []
@@ -3523,6 +3901,7 @@ class ToolExecutor:
                         for content_block in response.content:
                             if content_block.type == "text":
                                 content += content_block.text
+                        
                 else:
                     # Use OpenAI API for chat-based tool calling
                     api_messages = [
@@ -3660,7 +4039,7 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # Phase 1: LLM text streaming (with lock)
+                    # 简化的OpenAI流式处理逻辑 - 只处理message部分，工具调用从最终响应中读取
                     content = ""
                     tool_calls = []
                     
@@ -3677,125 +4056,101 @@ class ToolExecutor:
                             stream=True
                         )
 
-                        current_tool_call = None
-                        tool_calls_detected = False
-                        stream_complete = False
-
                         for chunk in response:
                             if chunk.choices and len(chunk.choices) > 0:
                                 delta = chunk.choices[0].delta
                                 
-                                # Handle content (streaming text output - keep in lock)
+                                # 只处理文本内容的流式输出
                                 if delta.content is not None:
-                                    # Check for hallucination pattern
+                                    # 检测幻觉模式
                                     if "**LLM Called Following Tools in this round" in delta.content:
                                         print_current("\n🚨 Hallucination Detected, stop chat")
-                                        # Set hallucination flag and break from streaming loop
                                         hallucination_detected = True
                                         break
 
                                     printer.write(delta.content)
                                     content += delta.content
-                                
-                                # Handle tool calls with streaming display
-                                if delta.tool_calls:
-                                    if not tool_calls_detected:
-                                        printer.write("\n")
-                                        tool_calls_detected = True
-                                    
-                                    for tool_call_delta in delta.tool_calls:
-                                        if tool_call_delta.index is not None:
-                                            # Ensure we have enough tool calls in our list
-                                            while len(tool_calls) <= tool_call_delta.index:
-                                                tool_calls.append({
-                                                    "id": "",
-                                                    "type": "function",
-                                                    "function": {"name": "", "arguments": ""},
-                                                    "_stream_shown_name": False,
-                                                    "_stream_complete": False,
-                                                    "_last_update_time": time.time(),
-                                                    "_args_chunks": 0
-                                                })
-                                            
-                                            current_tool_call = tool_calls[tool_call_delta.index]
-                                            current_tool_call["_last_update_time"] = time.time()
-                                            
-                                            if tool_call_delta.id:
-                                                current_tool_call["id"] = tool_call_delta.id
-
-                                            if tool_call_delta.function:
-                                                if tool_call_delta.function.name:
-                                                    current_tool_call["function"]["name"] = tool_call_delta.function.name
-                                                    # Show tool name when first detected
-                                                    if not current_tool_call.get("_stream_shown_name", False):
-                                                        current_tool_call["_stream_shown_name"] = True
-                                                
-                                                if tool_call_delta.function.arguments:
-                                                    current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
-                                                    current_tool_call["_args_chunks"] += 1
                             
-                            # Check if this is the last chunk (finish_reason is present)
+                            # 检查是否是最后一个chunk
                             if (chunk.choices and len(chunk.choices) > 0 and 
                                 chunk.choices[0].finish_reason is not None):
-                                stream_complete = True
                                 break
+                        
                         print_current("")
                         
-                        # Mark tool calls as complete and validate them
-                        for tool_call in tool_calls:
-                            if (tool_call["function"]["name"] and 
-                                tool_call["function"]["arguments"]):
-                                try:
-                                    # Validate JSON completeness
-                                    json.loads(tool_call["function"]["arguments"])
-                                    tool_call["_stream_complete"] = True
-                                except json.JSONDecodeError:
-                                    tool_call["_stream_complete"] = False
-                                    print_debug(f"⚠️ Tool call arguments incomplete: {tool_call['function']['name']}")
-                        
-                        executed_tool_calls = []
-                        
-                        # Execute complete tool calls
-                        for i, tool_call in enumerate(tool_calls):
-                            if (tool_call["function"]["name"] and 
-                                tool_call["function"]["arguments"] and
-                                tool_call.get("_stream_complete", False) and
-                                i not in executed_tool_calls):
-                                
-                                try:
-                                    parsed_args = json.loads(tool_call["function"]["arguments"])
-                                    
-                                    if tool_call.get("_stream_shown_name", True):
-                                        print_current(f"🎯 Tool {i + 1}: {tool_call['function']['name']}")
-                                    
-                                    # Execute tool immediately
-                                    self._execute_tool_immediately(tool_call, i + 1)
-                                    executed_tool_calls.append(i)
-                                    
-                                except json.JSONDecodeError as e:
-                                    # Arguments incomplete, show error if we were tracking this
-                                    if tool_call.get("_stream_shown_name", False):
-                                        print_error(f"Failed to parse tool arguments for {tool_call['function']['name']}: {str(e)}")
-                                    print_debug(f"Raw arguments: {tool_call['function']['arguments']}")
-                                    continue
-                        
-                        # Report on incomplete tool calls
-                        incomplete_calls = [tc for tc in tool_calls if not tc.get("_stream_complete", False) and tc["function"]["name"]]
-                        if incomplete_calls:
-                            print_current(f"⚠️ {len(incomplete_calls)} tool call(s) were incomplete and skipped")
-                            for tc in incomplete_calls:
-                                print_debug(f"Incomplete: {tc['function']['name']} - Args: {tc['function']['arguments'][:100]}...")
-                        
-                        if executed_tool_calls:
-                            print_debug("✅ All complete tools have been executed")
+                        # 如果检测到幻觉，提前返回
+                        if hallucination_detected:
+                            return content, []
                     
-                    # Clean up streaming metadata from tool_calls
-                    for tool_call in tool_calls:
-                        tool_call.pop("_stream_shown_name", None)
-                        tool_call.pop("_stream_args_started", None)
-                        tool_call.pop("_stream_complete", None)
-                        tool_call.pop("_last_update_time", None)
-                        tool_call.pop("_args_chunks", None)
+                    # 从最终响应中读取工具调用信息
+                    try:
+                        # 重新获取完整响应以获取工具调用
+                        final_response = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=api_messages,
+                            tools=tools,
+                            max_tokens=self._get_max_tokens_for_model(self.model),
+                            temperature=0.7,
+                            top_p=0.8
+                        )
+                        
+                        # 提取工具调用
+                        raw_tool_calls = final_response.choices[0].message.tool_calls or []
+                        for tool_call in raw_tool_calls:
+                            tool_calls.append({
+                                "id": tool_call.id,
+                                "type": tool_call.type,
+                                "function": {
+                                    "name": tool_call.function.name,
+                                    "arguments": tool_call.function.arguments
+                                }
+                            })
+                    except Exception as e:
+                        print_error(f"Failed to get tool calls from final response: {e}")
+                    
+                    # 执行工具调用
+                    if tool_calls:
+                        for i, tool_call in enumerate(tool_calls):
+                            try:
+                                tool_name = tool_call["function"]["name"]
+                                tool_params_str = tool_call["function"]["arguments"]
+                                
+                                # 使用增强的JSON验证和解析
+                                is_valid, tool_params, error_msg = validate_tool_call_json(tool_params_str, tool_name)
+                                
+                                if not is_valid:
+                                    print_error(f"❌ Tool {i + 1} ({tool_name}) JSON解析失败:")
+                                    print_error(f"   {error_msg}")
+                                    print_debug(f"   Raw arguments: {tool_params_str[:200]}...")
+                                    continue
+                                
+                                print_current(f"🎯 Tool {i + 1}: {tool_name}")
+                                
+                                # 转换为标准格式
+                                standard_tool_call = {
+                                    "name": tool_name,
+                                    "arguments": tool_params
+                                }
+                                
+                                tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
+                                
+                                # 存储结果
+                                if not hasattr(self, '_streaming_tool_results'):
+                                    self._streaming_tool_results = []
+                                
+                                self._streaming_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_params,
+                                    'tool_result': tool_result
+                                })
+                                
+                                self._tools_executed_in_stream = True
+                                
+                            except Exception as e:
+                                print_error(f"❌ Tool {i + 1} execution failed: {type(e).__name__}: {str(e)}")
+                                print_debug(f"   Tool: {tool_call.get('function', {}).get('name', 'unknown')}")
+                        
+                        print_debug("✅ All tool executions completed")
 
                     # If hallucination was detected, return early with empty tool calls
                     if hallucination_detected:
@@ -3947,19 +4302,22 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # Simplified streaming logic
+                    # 完善的流式处理逻辑 - 处理所有事件类型包括工具调用
                     content = ""
                     tool_calls = []
-                    tool_call_buffers = {}  # Track partial tool calls
-
-                    # Reset tool calling shown flag for new streaming session
-                    self._tool_calling_shown = False
+                    
+                    # 工具调用缓冲区 - 用于逐步构建工具调用JSON
+                    tool_call_buffers = {}  # {block_index: {"id": str, "name": str, "input_json": str}}
+                    current_block_index = None
+                    current_block_type = None
 
                     with streaming_context(show_start_message=True) as printer:
-                        #print an emoji to indicate llm start saying something
+                        # 显示LLM开始说话的emoji
                         printer.write(f"💬 ")
                         
                         hallucination_detected = False
+                        stream_error_occurred = False
+                        last_event_type = None
 
                         with self.client.messages.stream(
                             model=self.model,
@@ -3971,124 +4329,228 @@ class ToolExecutor:
                         ) as stream:
                             try:
                                 for event in stream:
-                                    event_type = getattr(event, 'type', None)
+                                    try:
+                                        event_type = getattr(event, 'type', None)
+                                        last_event_type = event_type
+                                        
+                                        print_debug(f"📩 Stream event: {event_type}")
+                                        
+                                        # 详细记录事件的原始数据用于调试
+                                        try:
+                                            # 尝试获取事件的所有属性
+                                            event_dict = {}
+                                            if hasattr(event, '__dict__'):
+                                                event_dict = event.__dict__
+                                            elif hasattr(event, 'model_dump'):
+                                                event_dict = event.model_dump()
+                                            print_debug(f"   Event details: {str(event_dict)[:500]}")
+                                        except:
+                                            pass
 
-                                    if event_type == "message_delta":
-                                        # Handle message-level delta updates (usage statistics, etc.)
-                                        delta = getattr(event, 'delta', None)
-                                        if delta:
-                                            # Extract usage information from message_delta
-                                            usage = getattr(delta, 'usage', None) or getattr(event, 'usage', None)
-                                            if usage:
-                                                # Token counts in message_delta are cumulative
-                                                input_tokens = getattr(usage, 'input_tokens', 0) or 0
-                                                output_tokens = getattr(usage, 'output_tokens', 0) or 0
-
-                                                # Check for additional usage fields
-                                                cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
-                                                cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
-
-                                                if cache_creation_tokens > 0 or cache_read_tokens > 0:
-                                                    print_debug(f"\n📊  Token Usage - Input: {input_tokens}, Output: {output_tokens} Cache Usage - Creation: {cache_creation_tokens}, Read: {cache_read_tokens}")
-
-                                    elif event_type == "message_stop":
-                                        # Message completed, check if there are pending tool calls
-                                        # If we have tool call buffers but haven't shown the calling message yet,
-                                        # it means the tool calls are about to start
-                                        if tool_call_buffers and not hasattr(self, '_tool_calling_shown'):
-                                            # Find the first tool in buffers and show calling message
-                                            first_tool_index = next(iter(tool_call_buffers.keys()))
-                                            if first_tool_index in tool_call_buffers:
-                                                first_tool_name = tool_call_buffers[first_tool_index]["name"]
-                                                printer.write(f"\n\n🔧 Calling tool: {first_tool_name}\n")
-                                                self._tool_calling_shown = True
-
-                                    # Handle content block start
-                                    elif event_type == "content_block_start":
-                                        content_block = getattr(event, 'content_block', None)
-                                        if content_block and hasattr(content_block, 'type'):
-                                            if content_block.type == "tool_use":
-                                                # Tool call started
-                                                tool_name = getattr(content_block, 'name', 'Unknown Tool')
-                                                # Only show calling message if not already shown in message_stop
-                                                if not hasattr(self, '_tool_calling_shown'):
-                                                    printer.write(f"\n\n🔧 Calling tool: {tool_name}\n")
-                                                    self._tool_calling_shown = True
-                                                tool_call_buffers[getattr(event, 'index', 0)] = {
-                                                    "id": getattr(content_block, 'id', ''),
-                                                    "name": tool_name,
-                                                    "input_json": ""
-                                                }
-
-                                    # Handle content block delta
-                                    elif event_type == "content_block_delta":
-                                        delta = getattr(event, 'delta', None)
-                                        if delta and hasattr(delta, 'type'):
-                                            if delta.type == "text_delta":
-                                                # Stream text content
-                                                text = getattr(delta, 'text', '')
-                                                # Detect hallucination mode
-                                                if "**LLM Called Following Tools in this round" in text:
-                                                    print_current("\n🚨 Hallucination detected, stopping conversation")
-                                                    hallucination_detected = True
-                                                    break
-                                                printer.write(text)
-                                                content += text
-
-                                            elif delta.type == "input_json_delta":
-                                                # Stream tool input JSON
-                                                event_index = getattr(event, 'index', 0)
-                                                if event_index in tool_call_buffers:
-                                                    partial_json = getattr(delta, 'partial_json', '')
-                                                    tool_call_buffers[event_index]["input_json"] += partial_json
-
-                                                    # Check if this is the first input_json_delta for this tool call
-                                                    if not hasattr(tool_call_buffers[event_index], "input_started"):
-                                                        tool_call_buffers[event_index]["input_started"] = True
-
-                                                    # Special handling for edit_file tool - only show target_file
-                                                    tool_name = tool_call_buffers[event_index]["name"]
-                                                    if tool_name == "edit_file":
-                                                        # Try to extract and show only target_file parameter
-                                                        try:
-                                                            # Build up the JSON and try to parse it
-                                                            current_json = tool_call_buffers[event_index]["input_json"]
-                                                            parsed_params = json.loads(current_json)
-                                                            if "target_file" in parsed_params and not hasattr(tool_call_buffers[event_index], "target_file_shown"):
-                                                                printer.write(f'\n{{"target_file":"{parsed_params["target_file"]}"}}')
-                                                                tool_call_buffers[event_index]["target_file_shown"] = True
-                                                        except json.JSONDecodeError:
-                                                            # JSON not complete yet, continue building
-                                                            pass
-                                                    else:
-                                                        # For other tools, show full parameters as before
-                                                        if partial_json:
-                                                            printer.write(partial_json)
-
-                                    # Handle content block stop
-                                    elif event_type == "content_block_stop":
-                                        event_index = getattr(event, 'index', 0)
-                                        if event_index in tool_call_buffers:
-                                            # Tool call finished, parse final JSON
-                                            buffer = tool_call_buffers[event_index]
+                                        # 处理内容块开始事件
+                                        if event_type == "content_block_start":
                                             try:
-                                                parsed_input = json.loads(buffer["input_json"])
-                                                tool_name = buffer["name"]
+                                                print_debug(f"   Processing content_block_start...")
+                                                
+                                                # 安全地获取index属性
+                                                try:
+                                                    block_index = getattr(event, 'index', None)
+                                                    print_debug(f"   block_index: {block_index}")
+                                                except Exception as idx_err:
+                                                    print_error(f"   Error getting index: {type(idx_err).__name__}: {str(idx_err)}")
+                                                    block_index = None
+                                                
+                                                # 安全地获取content_block属性
+                                                try:
+                                                    content_block = getattr(event, 'content_block', None)
+                                                    print_debug(f"   content_block type: {type(content_block)}")
+                                                    
+                                                    # 尝试序列化content_block以查看其内容
+                                                    if content_block:
+                                                        try:
+                                                            if hasattr(content_block, '__dict__'):
+                                                                print_debug(f"   content_block.__dict__: {str(content_block.__dict__)[:300]}")
+                                                            elif hasattr(content_block, 'model_dump'):
+                                                                print_debug(f"   content_block.model_dump(): {str(content_block.model_dump())[:300]}")
+                                                        except Exception as dump_err:
+                                                            print_debug(f"   Could not dump content_block: {str(dump_err)}")
+                                                except Exception as cb_err:
+                                                    print_error(f"   Error getting content_block: {type(cb_err).__name__}: {str(cb_err)}")
+                                                    import traceback
+                                                    print_debug(f"   Traceback: {traceback.format_exc()}")
+                                                    content_block = None
+                                                
+                                                if content_block:
+                                                    try:
+                                                        block_type = getattr(content_block, 'type', None)
+                                                        print_debug(f"   block_type: {block_type}")
+                                                        current_block_index = block_index
+                                                        current_block_type = block_type
+                                                        
+                                                        if block_type == "tool_use":
+                                                            # 开始一个新的工具调用
+                                                            tool_id = getattr(content_block, 'id', '')
+                                                            tool_name = getattr(content_block, 'name', '')
+                                                            
+                                                            tool_call_buffers[block_index] = {
+                                                                "id": tool_id,
+                                                                "name": tool_name,
+                                                                "input_json": ""
+                                                            }
+                                                            print_debug(f"🔧 Tool call started: {tool_name} (index: {block_index})")
+                                                    except Exception as type_err:
+                                                        print_error(f"   Error processing block_type: {type(type_err).__name__}: {str(type_err)}")
+                                            except Exception as e:
+                                                print_error(f"⚠️ Error processing content_block_start: {type(e).__name__}: {str(e)}")
+                                                import traceback
+                                                print_error(f"   Full traceback:\n{traceback.format_exc()}")
+                                                # 继续处理其他事件，不中断流
 
-                                                tool_calls.append({
-                                                    "id": buffer["id"],
-                                                    "name": buffer["name"],
-                                                    "input": parsed_input
-                                                })
-                                            except json.JSONDecodeError:
-                                                print_error(f"Failed to parse tool input JSON {buffer['input_json']}")
+                                        # 处理内容块增量事件
+                                        elif event_type == "content_block_delta":
+                                            try:
+                                                delta = getattr(event, 'delta', None)
+                                                block_index = getattr(event, 'index', None)
+                                                
+                                                if delta:
+                                                    delta_type = getattr(delta, 'type', None)
+                                                    
+                                                    if delta_type == "text_delta":
+                                                        # 文本内容流式输出
+                                                        text = getattr(delta, 'text', '')
+                                                        # 检测幻觉模式
+                                                        if "**LLM Called Following Tools in this round" in text:
+                                                            print_current("\n🚨 Hallucination detected, stopping conversation")
+                                                            hallucination_detected = True
+                                                            break
+                                                        printer.write(text)
+                                                        content += text
+                                                    
+                                                    elif delta_type == "input_json_delta":
+                                                        # 工具参数JSON增量 - 逐步累积
+                                                        partial_json = getattr(delta, 'partial_json', '')
+                                                        if block_index in tool_call_buffers and partial_json:
+                                                            current_json = tool_call_buffers[block_index]["input_json"]
+                                                            
+                                                            # 检查是否是完整JSON（有些API可能一次发送完整的）
+                                                            if is_complete_json(partial_json):
+                                                                # 如果已经有完整JSON，检查是否重复
+                                                                if current_json and is_complete_json(current_json):
+                                                                    print_debug(f"⚠️ Already have complete JSON, skipping duplicate")
+                                                                else:
+                                                                    # 替换
+                                                                    tool_call_buffers[block_index]["input_json"] = partial_json
+                                                                    print_debug(f"📝 Complete tool JSON received: {len(partial_json)} chars")
+                                                            else:
+                                                                # 增量追加
+                                                                tool_call_buffers[block_index]["input_json"] += partial_json
+                                                                print_debug(f"📝 Tool JSON delta: {len(partial_json)} chars (total: {len(tool_call_buffers[block_index]['input_json'])})")
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
+                                                # 继续处理其他事件
+                                        
+                                        # 处理智谱AI的非标准 input_json 事件
+                                        elif event_type == "input_json":
+                                            try:
+                                                # 智谱AI使用 input_json 而不是标准的 content_block_delta + input_json_delta
+                                                partial_json = getattr(event, 'partial_json', '')
+                                                # 智谱AI可能没有 index，需要使用最后一个工具调用
+                                                if tool_call_buffers and partial_json:
+                                                    last_index = max(tool_call_buffers.keys())
+                                                    current_json = tool_call_buffers[last_index]["input_json"]
+                                                    
+                                                    # 检查是否是完整的JSON（智谱AI可能一次发送完整的JSON）
+                                                    if is_complete_json(partial_json):
+                                                        # 如果已经有数据了，检查是否重复
+                                                        if current_json and is_complete_json(current_json):
+                                                            print_debug(f"⚠️ [Zhipu] Already have complete JSON, skipping duplicate")
+                                                        else:
+                                                            # 替换而不是追加
+                                                            tool_call_buffers[last_index]["input_json"] = partial_json
+                                                            print_debug(f"📝 [Zhipu] Complete tool JSON received: {len(partial_json)} chars")
+                                                    else:
+                                                        # 不完整，追加
+                                                        tool_call_buffers[last_index]["input_json"] += partial_json
+                                                        print_debug(f"📝 [Zhipu] Tool JSON delta: {len(partial_json)} chars (total: {len(tool_call_buffers[last_index]['input_json'])})")
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing input_json: {type(e).__name__}: {str(e)}")
+                                                # 继续处理其他事件
+                                        
+                                        # 处理智谱AI的非标准 text 事件（仅记录，不处理）
+                                        elif event_type == "text":
+                                            # 智谱AI会发送额外的 text 事件，包含当前的完整文本快照
+                                            # 我们已经通过 content_block_delta 处理了增量，所以这里只记录
+                                            print_debug(f"📩 [Zhipu] Received text snapshot event (ignored)")
 
-                                            del tool_call_buffers[event_index]
+                                        # 处理内容块结束事件
+                                        elif event_type == "content_block_stop":
+                                            try:
+                                                block_index = getattr(event, 'index', None)
+                                                
+                                                if block_index in tool_call_buffers:
+                                                    # 工具调用块结束，验证并保存
+                                                    buffer = tool_call_buffers[block_index]
+                                                    tool_name = buffer["name"]
+                                                    json_str = buffer["input_json"]
+                                                    
+                                                    print_debug(f"🔚 Tool call ended: {tool_name}")
+                                                    
+                                                    # 验证JSON完整性
+                                                    is_valid, parsed_input, error_msg = validate_tool_call_json(json_str, tool_name)
+                                                    
+                                                    if is_valid:
+                                                        tool_calls.append({
+                                                            "id": buffer["id"],
+                                                            "name": tool_name,
+                                                            "input": parsed_input
+                                                        })
+                                                        print_debug(f"✅ Tool call validated: {tool_name}")
+                                                    else:
+                                                        print_error(f"❌ Tool call JSON validation failed for {tool_name}:")
+                                                        print_error(f"   {error_msg}")
+                                                        print_debug(f"   Raw JSON ({len(json_str)} chars): {json_str[:200]}...")
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing content_block_stop: {type(e).__name__}: {str(e)}")
+
+                                        # 处理消息统计信息
+                                        elif event_type == "message_delta":
+                                            try:
+                                                delta = getattr(event, 'delta', None)
+                                                if delta:
+                                                    usage = getattr(delta, 'usage', None) or getattr(event, 'usage', None)
+                                                    if usage:
+                                                        input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                                                        output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                                                        cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                                                        cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+
+                                                        if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                                                            print_debug(f"\n📊 Token Usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing message_delta: {type(e).__name__}: {str(e)}")
+                                    
+                                    except Exception as event_error:
+                                        # 单个事件处理失败不应该中断整个流
+                                        print_debug(f"⚠️ Error processing event {last_event_type}: {type(event_error).__name__}: {str(event_error)}")
+                                        # 不使用 continue，让循环自然继续
 
                             except Exception as e:
-                                # Simplified fallback handling
-                                print_error(f"Streaming failed, falling back to text mode: {e}")
+                                # 增强的错误处理
+                                stream_error_occurred = True
+                                error_details = f"Streaming failed at event_type={last_event_type}: {type(e).__name__}: {str(e)}"
+                                print_error(error_details)
+                                print_debug(f"📊 Stream state: content_length={len(content)}, tool_buffers={len(tool_call_buffers)}")
+                                
+                                # 如果有部分工具调用数据，尝试保存
+                                if tool_call_buffers:
+                                    print_debug(f"🔧 Attempting to salvage {len(tool_call_buffers)} partial tool calls")
+                                    for idx, buffer in tool_call_buffers.items():
+                                        if buffer["input_json"]:
+                                            print_debug(f"   Tool {buffer['name']}: {len(buffer['input_json'])} chars buffered")
+                                
+                                # 尝试回退到text_stream
                                 try:
+                                    print_debug("🔄 Attempting fallback to text_stream...")
                                     for text in stream.text_stream:
                                         if "**LLM Called Following Tools in this round" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
@@ -4096,38 +4558,56 @@ class ToolExecutor:
                                             break
                                         printer.write(text)
                                         content += text
-                                except:
-                                    # If even text streaming fails, fully fall back to non-streaming
-                                    print_error("Text streaming also failed, falling back to non-streaming mode")
+                                except Exception as fallback_error:
+                                    print_error(f"Text streaming also failed: {fallback_error}")
                                     break
 
-                            # If hallucination detected, return early
+                            # 如果检测到幻觉，提前返回
                             if hallucination_detected:
                                 return content, []
 
                         print_current("")
 
-                        # Get final message, check if any tool calls were missed
-                        try:
-                            final_message = stream.get_final_message()
-                            if not tool_calls:
+                        # 如果流式处理中没有获取到完整的工具调用，尝试从final message获取
+                        if not tool_calls and not stream_error_occurred:
+                            try:
+                                print_debug("🔄 Attempting to get tool calls from final_message...")
+                                final_message = stream.get_final_message()
+                                
                                 for content_block in final_message.content:
                                     if content_block.type == "tool_use":
+                                        # 验证工具调用input
+                                        tool_input = content_block.input
+                                        tool_name = content_block.name
+                                        
+                                        # input应该已经是dict，但为安全起见检查
+                                        if isinstance(tool_input, str):
+                                            is_valid, parsed_input, error_msg = validate_tool_call_json(tool_input, tool_name)
+                                            if not is_valid:
+                                                print_error(f"❌ Final message tool call validation failed: {error_msg}")
+                                                continue
+                                            tool_input = parsed_input
+                                        
                                         tool_calls.append({
                                             "id": content_block.id,
-                                            "name": content_block.name,
-                                            "input": content_block.input
+                                            "name": tool_name,
+                                            "input": tool_input
                                         })
-                        except Exception as e:
-                            print_error(f"Failed to get final message: {e}")
+                                        print_debug(f"✅ Tool call from final_message: {tool_name}")
+                                
+                                if tool_calls:
+                                    print_debug(f"✅ Retrieved {len(tool_calls)} tool calls from final_message")
+                            except Exception as e:
+                                print_error(f"Failed to get final message: {type(e).__name__}: {str(e)}")
+                                print_debug(f"   This may indicate the stream was interrupted or incomplete")
 
-                    # Execute tool calls
+                    # 执行工具调用
                     if tool_calls:
                         for tool_call_data in tool_calls:
                             try:
                                 tool_name = tool_call_data['name']
 
-                                # Convert to standard format
+                                # 转换为标准格式
                                 standard_tool_call = {
                                     "name": tool_name,
                                     "arguments": tool_call_data['input']
@@ -4135,7 +4615,7 @@ class ToolExecutor:
 
                                 tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
 
-                                # Store result
+                                # 存储结果
                                 if not hasattr(self, '_streaming_tool_results'):
                                     self._streaming_tool_results = []
 
@@ -4325,13 +4805,45 @@ class ToolExecutor:
             if tool_params:
                 formatted_calls.append("Parameters:")
                 for key, value in tool_params.items():
-                    # Show complete tool calls without truncation for better debugging
-                    display_value = value
+                    # Special handling for edit_file tool's code parameters
+                    if tool_name == "edit_file" and key in ["old_code", "code_edit"]:
+                        display_value = self._truncate_code_parameter(str(value))
+                    else:
+                        # Show complete tool calls without truncation for better debugging
+                        display_value = value
                     formatted_calls.append(f"  - {key}: {display_value}")
             else:
                 formatted_calls.append("Parameters: None")
         
         return "\n".join(formatted_calls)
+
+    def _truncate_code_parameter(self, code_content: str, max_lines: int = 3) -> str:
+        """
+        Truncate code content to show only the first few lines with ellipsis.
+        
+        Args:
+            code_content: The code content to truncate
+            max_lines: Maximum number of lines to show (default: 3)
+            
+        Returns:
+            Truncated code content with ellipsis if needed
+        """
+        if not code_content:
+            return code_content
+            
+        lines = code_content.split('\n')
+        
+        if len(lines) <= max_lines:
+            return code_content
+        
+        # Show first max_lines lines
+        truncated_lines = lines[:max_lines]
+        result = '\n'.join(truncated_lines)
+        
+        # Add ellipsis to indicate truncation
+        result += '\n...'
+        
+        return result
 
     def _load_tool_definitions_from_file(self, json_file_path: str = None, force_reload: bool = False) -> Dict[str, Any]:
         """
