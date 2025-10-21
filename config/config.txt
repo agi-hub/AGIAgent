@@ -6,7 +6,7 @@ LANG=zh
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.5
-max_tokens=65536
+max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
@@ -16,7 +16,7 @@ max_tokens=65536
 
 # Anthropic models
 # api_key=your key
-# api_base=https://api.openai-proxy.org/v1
+# api_base=https://api.openai-proxy.org/anthropic
 # model=claude-sonnet-4-0
 # max_tokens=32768
 
@@ -27,10 +27,10 @@ max_tokens=65536
 # max_tokens=32768
 
 # Zhipu API configuration 
-api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.5
-max_tokens=16384
+# api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
+# api_base=https://open.bigmodel.cn/api/anthropic
+# model=glm-4.5
+# max_tokens=16384
 
 # Bailian API configuration 
 # api_key=your key

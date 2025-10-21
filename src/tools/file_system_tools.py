@@ -1777,6 +1777,257 @@ class FileSystemTools:
             'skipped_files': skipped_files
         }
 
+    def convert_docs_to_markdown(self, file_path: str) -> Dict[str, Any]:
+        """
+        Convert various document formats to Markdown using pandoc and pymupdf.
+
+        Supports: docx, xlsx, html, latex, reStructuredText, pptx, pdf
+        Uses pandoc for most formats and pymupdf (fitz) for PDF conversion.
+        Images are extracted and saved to doc_images folder.
+
+        Args:
+            file_path: Path to the document file to convert
+
+        Returns:
+            Dictionary with conversion results
+        """
+        try:
+            # Resolve the file path
+            resolved_file = self._resolve_path(file_path)
+
+            if not os.path.exists(resolved_file):
+                return {
+                    'status': 'failed',
+                    'error': f'File not found: {resolved_file}',
+                    'file': file_path
+                }
+
+            if not os.path.isfile(resolved_file):
+                return {
+                    'status': 'failed',
+                    'error': f'Path is not a file: {resolved_file}',
+                    'file': file_path
+                }
+
+            # Get file extension and base name
+            file_ext = os.path.splitext(resolved_file)[1].lower()
+            base_name = os.path.splitext(os.path.basename(resolved_file))[0]
+
+            # Define supported formats and their conversion methods
+            pandoc_formats = {
+                '.docx': 'docx',
+                '.html': 'html',
+                '.htm': 'html',
+                '.tex': 'latex',
+                '.rst': 'rst',
+                '.pptx': 'pptx'
+            }
+
+            # Generate output markdown path
+            output_dir = os.path.dirname(resolved_file)
+            md_filename = base_name + '.md'
+            md_path = os.path.join(output_dir, md_filename)
+
+            print_debug(f"🔄 Converting: {os.path.basename(resolved_file)}")
+
+            if file_ext in pandoc_formats:
+                # Use pandoc for conversion
+                success, error_msg = self._convert_with_pandoc(resolved_file, md_path, pandoc_formats[file_ext])
+
+            elif file_ext == '.xlsx':
+                # Use pandas for Excel to Markdown conversion
+                success, error_msg = self._convert_xlsx_with_pandas(resolved_file, md_path)
+
+            elif file_ext == '.pdf':
+                # Use pymupdf (fitz) for PDF conversion
+                success, error_msg = self._convert_pdf_with_fitz(resolved_file, md_path, output_dir)
+
+            else:
+                return {
+                    'status': 'failed',
+                    'error': f'Unsupported file format: {file_ext}',
+                    'supported_formats': list(pandoc_formats.keys()) + ['.xlsx', '.pdf'],
+                    'file': file_path
+                }
+
+            if success:
+                # Check if markdown file was created
+                if os.path.exists(md_path):
+                    file_size = os.path.getsize(md_path)
+                    print_debug(f"✅ Converted: {os.path.basename(resolved_file)} → {md_filename} ({file_size} bytes)")
+                    return {
+                        'status': 'success',
+                        'file': file_path,
+                        'output': os.path.relpath(md_path, self.workspace_root),
+                        'method': 'pandoc' if file_ext in pandoc_formats else 'pymupdf',
+                        'size': file_size
+                    }
+                else:
+                    return {
+                        'status': 'failed',
+                        'error': 'Output file was not created',
+                        'file': file_path
+                    }
+            else:
+                return {
+                    'status': 'failed',
+                    'error': error_msg,
+                    'file': file_path
+                }
+
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'error': f'Unexpected error: {str(e)}',
+                'file': file_path
+            }
+
+    def _convert_with_pandoc(self, input_file: str, output_file: str, format_type: str) -> Tuple[bool, str]:
+        """Convert document using pandoc"""
+        try:
+            # Create doc_images directory for extracted images
+            output_dir = os.path.dirname(output_file)
+            images_dir = os.path.join(output_dir, 'doc_images')
+            os.makedirs(images_dir, exist_ok=True)
+
+            # Build pandoc command
+            cmd = [
+                'pandoc',
+                input_file,
+                '-f', format_type,
+                '-t', 'markdown',
+                '-o', output_file,
+                '--extract-media=' + images_dir,
+                '--wrap=none'
+            ]
+
+            # Run pandoc conversion
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='ignore',
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                return True, None
+            else:
+                error_msg = result.stderr.strip() if result.stderr else 'Unknown pandoc error'
+                return False, f'pandoc conversion failed: {error_msg}'
+
+        except subprocess.TimeoutExpired:
+            return False, 'pandoc conversion timed out'
+        except Exception as e:
+            return False, f'pandoc conversion exception: {str(e)}'
+
+    def _convert_xlsx_with_pandas(self, input_file: str, output_file: str) -> Tuple[bool, str]:
+        """
+        Convert Excel file to Markdown using pandas
+
+        Args:
+            input_file: Path to the Excel file
+            output_file: Path for the output Markdown file
+
+        Returns:
+            Tuple of (success: bool, error_message: str)
+        """
+        try:
+            import pandas as pd
+
+            # Read Excel file (header=0 means first row is header)
+            df = pd.read_excel(
+                input_file,
+                sheet_name=0,  # Use first sheet by default
+                header=0,  # First row as header
+                engine="openpyxl"  # Explicitly specify engine for .xlsx
+            )
+
+            # Convert to Markdown table (index=False means don't show row indices)
+            md_table = df.to_markdown(index=False)
+
+            # Save as Markdown file
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(md_table)
+
+            return True, None
+
+        except ImportError:
+            return False, 'pandas or openpyxl not installed. Please install with: pip install pandas openpyxl'
+        except Exception as e:
+            return False, f'Excel to Markdown conversion failed: {str(e)}'
+
+    def _convert_pdf_with_fitz(self, input_file: str, output_file: str, output_dir: str) -> Tuple[bool, str]:
+        """Convert PDF to markdown using pymupdf (fitz)"""
+        try:
+            import fitz  # pymupdf
+
+            # Open PDF document
+            doc = fitz.open(input_file)
+
+            if doc.page_count == 0:
+                return False, 'PDF document is empty'
+
+            # Create doc_images directory for extracted images
+            images_dir = os.path.join(output_dir, 'doc_images')
+            os.makedirs(images_dir, exist_ok=True)
+
+            markdown_content = []
+            image_counter = 0
+
+            # Process each page
+            for page_num in range(doc.page_count):
+                page = doc.load_page(page_num)
+
+                # Extract text
+                text = page.get_text()
+
+                if text.strip():
+                    # Add page header
+                    if doc.page_count > 1:
+                        markdown_content.append(f"## Page {page_num + 1}\n")
+                    markdown_content.append(text.strip())
+                    markdown_content.append("\n---\n")
+
+                # Extract images
+                images = page.get_images(full=True)
+                for img_index, img in enumerate(images):
+                    try:
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
+
+                        # Generate unique image filename
+                        image_filename = f"pdf_image_{page_num + 1}_{img_index + 1}.{image_ext}"
+                        image_path = os.path.join(images_dir, image_filename)
+
+                        # Save image
+                        with open(image_path, "wb") as img_file:
+                            img_file.write(image_bytes)
+
+                        # Add image reference to markdown
+                        rel_image_path = os.path.join('doc_images', image_filename)
+                        markdown_content.append(f"![Extracted Image]({rel_image_path})\n\n")
+
+                    except Exception as img_error:
+                        print_debug(f"Warning: Failed to extract image {img_index} from page {page_num + 1}: {str(img_error)}")
+                        continue
+
+            doc.close()
+
+            # Write markdown content
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(markdown_content))
+
+            return True, None
+
+        except ImportError:
+            return False, 'pymupdf (fitz) library not available. Please install with: pip install pymupdf'
+        except Exception as e:
+            return False, f'PDF conversion exception: {str(e)}'
+
     def _check_pdf_engine_availability(self):
         """Check which PDF engines are available and return the best one"""
         engines = [

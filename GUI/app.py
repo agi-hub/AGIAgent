@@ -1638,6 +1638,45 @@ def index():
     mcp_servers = get_mcp_servers_config()
     return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers)
 
+@app.route('/register')
+def register():
+    """User registration page"""
+    i18n = get_i18n_texts()
+    current_lang = get_language()
+    return render_template('register.html', i18n=i18n, lang=current_lang)
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    """API endpoint for user registration"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': '无效的请求数据'}), 400
+
+        username = data.get('username', '').strip()
+        phone_number = data.get('phone_number', '').strip()
+        description = data.get('description', '').strip()
+
+        if not username or not phone_number:
+            return jsonify({'success': False, 'error': '用户名和手机号为必填项'}), 400
+
+        # Register user
+        result = gui_instance.auth_manager.register_user(username, phone_number, description)
+
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'api_key': result['api_key'],
+                'user_info': result['user_info'],
+                'message': '注册成功！请妥善保存您的API密钥。'
+            })
+        else:
+            return jsonify({'success': False, 'error': result['error']}), 400
+
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return jsonify({'success': False, 'error': '注册过程中发生错误'}), 500
+
 @app.route('/test_toggle_simple.html')
 def test_toggle_simple():
     """Expand/collapse functionality test page"""

@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '用户注册' if lang == 'zh' else 'User Registration' }} - {{ i18n.app_title.replace(' GUI', '') }}</title>
+    <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'SimSun', sans-serif;
+            background: #000000;
+            background-image:
+                radial-gradient(circle at 25% 25%, #001122 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, #001122 0%, transparent 50%),
+                linear-gradient(45deg, #000000 25%, transparent 25%),
+                linear-gradient(-45deg, #000000 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #000000 75%),
+                linear-gradient(-45deg, transparent 75%, #000000 75%);
+            background-size: 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #00ffff;
+        }
+
+        .register-container {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
+            border: 2px solid #004080;
+            border-radius: 0px;
+            box-shadow:
+                0 0 20px rgba(0, 64, 128, 0.3),
+                inset 0 0 20px rgba(0, 64, 128, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .logo-text-container {
+            position: relative;
+            display: inline-block;
+            width: 120px; /* 固定宽度 */
+            text-align: left;
+        }
+
+        .logo-text {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ffff;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+            text-transform: uppercase;
+            white-space: nowrap;
+            display: inline-block;
+            position: relative;
+        }
+
+        .logo-text::after {
+            content: '|';
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+            animation: blink 1s infinite;
+            position: absolute;
+            right: -8px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .title-section {
+            flex: 1;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0088ff;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 136, 255, 0.6);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            color: #0066cc;
+            font-size: 14px;
+            text-shadow: 0 0 5px rgba(0, 102, 204, 0.4);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            color: #0088ff;
+            margin-bottom: 8px;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #004080;
+            border-radius: 0px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            background: #000000;
+            color: #00ffff;
+            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #004080;
+            background: #001111;
+            box-shadow:
+                0 0 15px rgba(0, 64, 128, 0.5),
+                inset 0 0 15px rgba(0, 64, 128, 0.3);
+        }
+
+        .form-input.error {
+            border-color: #ff0040;
+            box-shadow: 0 0 10px rgba(255, 0, 64, 0.5);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #004080;
+            border-radius: 0px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            min-height: 80px;
+            resize: vertical;
+            transition: all 0.3s ease;
+            background: #000000;
+            color: #00ffff;
+            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #004080;
+            background: #001111;
+            box-shadow:
+                0 0 15px rgba(0, 64, 128, 0.5),
+                inset 0 0 15px rgba(0, 64, 128, 0.3);
+        }
+
+        .register-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #001122 0%, #002244 50%, #001122 100%);
+            color: #0088ff;
+            border: 2px solid #004080;
+            border-radius: 0px;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .register-btn:hover {
+            background: linear-gradient(135deg, #002244 0%, #004466 50%, #002244 100%);
+            box-shadow:
+                0 0 20px rgba(0, 64, 128, 0.6),
+                inset 0 0 10px rgba(0, 64, 128, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .register-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 10px;
+            color: #0088ff;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error-message {
+            color: #0088ff;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .success-message {
+            color: #0088ff;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .back-link a {
+            color: #0088ff;
+            text-decoration: none;
+            font-size: 14px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 1px solid #004080;
+            padding: 8px 16px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link a:hover {
+            background: rgba(0, 64, 128, 0.1);
+            box-shadow: 0 0 10px rgba(0, 64, 128, 0.5);
+            text-decoration: none;
+        }
+
+        .api-key-result {
+            background: linear-gradient(135deg, #001122 0%, #002244 100%);
+            border: 2px solid #004080;
+            border-radius: 0px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+            box-shadow:
+                0 0 20px rgba(0, 64, 128, 0.3),
+                inset 0 0 10px rgba(0, 64, 128, 0.1);
+        }
+
+        .api-key-result h3 {
+            color: #0088ff;
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 10px rgba(0, 136, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .api-key-display {
+            background: #000000;
+            border: 1px solid #004080;
+            padding: 12px;
+            border-radius: 0px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            font-size: 14px;
+            word-break: break-all;
+            margin: 10px 0;
+            color: #0088ff;
+            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+        }
+
+        .copy-btn {
+            background: linear-gradient(135deg, #001122 0%, #002244 100%);
+            color: #0088ff;
+            border: 2px solid #004080;
+            padding: 8px 16px;
+            border-radius: 0px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
+            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+        }
+
+        .copy-btn:hover {
+            background: linear-gradient(135deg, #002244 0%, #004466 100%);
+            box-shadow:
+                0 0 20px rgba(0, 64, 128, 0.6),
+                inset 0 0 10px rgba(0, 64, 128, 0.2);
+        }
+
+        /* Desktop styles - horizontal layout */
+        @media (min-width: 769px) {
+            body {
+                background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px, 30px 30px, 30px 30px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                max-width: 600px;
+                border: 3px solid #004080;
+                box-shadow:
+                    0 0 30px rgba(0, 64, 128, 0.4),
+                    inset 0 0 30px rgba(0, 64, 128, 0.15);
+            }
+
+            .logo-section {
+                justify-content: flex-start;
+                text-align: left;
+                gap: 30px;
+            }
+
+            .logo-container {
+                flex-shrink: 0;
+            }
+
+            .logo {
+                width: 100px;
+                height: 100px;
+                filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.8));
+            }
+
+            .logo-text-container {
+                width: 140px; /* 桌面端更大的固定宽度 */
+            }
+
+            .logo-text {
+                font-size: 18px;
+                font-weight: bold;
+                text-shadow: 0 0 15px rgba(0, 255, 255, 1);
+            }
+
+            .title-section {
+                text-align: left;
+            }
+
+            .title {
+                font-size: 28px;
+                margin-bottom: 12px;
+                text-shadow: 0 0 20px rgba(0, 136, 255, 0.8);
+            }
+
+            .subtitle {
+                font-size: 16px;
+                text-shadow: 0 0 10px rgba(0, 102, 204, 0.6);
+            }
+        }
+
+        /* Tablet styles */
+        @media (max-width: 768px) and (min-width: 481px) {
+            body {
+                background-size: 25px 25px, 25px 25px, 25px 25px, 25px 25px, 25px 25px, 25px 25px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                max-width: 500px;
+                padding: 35px;
+            }
+
+            .logo-section {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .logo {
+                width: 90px;
+                height: 90px;
+                filter: drop-shadow(0 0 12px rgba(0, 255, 255, 0.6));
+            }
+
+            .logo-text-container {
+                width: 130px; /* 平板端中等宽度 */
+            }
+
+            .logo-text {
+                font-size: 17px;
+                text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
+            }
+
+            .title {
+                font-size: 26px;
+                text-shadow: 0 0 18px rgba(0, 136, 255, 0.7);
+            }
+        }
+
+        /* Mobile styles - vertical layout */
+        @media (max-width: 480px) {
+            body {
+                background-size: 15px 15px, 15px 15px, 15px 15px, 15px 15px, 15px 15px, 15px 15px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                padding: 30px 20px;
+                margin: 10px;
+                max-width: 100%;
+            }
+
+            .logo-section {
+                flex-direction: column;
+                gap: 15px;
+                margin-bottom: 25px;
+            }
+
+            .logo-container {
+                gap: 10px;
+            }
+
+            .logo {
+                width: 120px;
+                height: 120px;
+                filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.7));
+            }
+
+            .logo-text-container {
+                width: 150px; /* 移动端最大宽度适应屏幕 */
+            }
+
+            .logo-text {
+                font-size: 18px;
+                font-weight: bold;
+                text-shadow: 0 0 12px rgba(0, 255, 255, 0.9);
+            }
+
+            .title-section {
+                text-align: center;
+            }
+
+            .title {
+                font-size: 22px;
+                margin-bottom: 10px;
+                text-shadow: 0 0 15px rgba(0, 136, 255, 0.7);
+            }
+
+            .subtitle {
+                font-size: 15px;
+                text-shadow: 0 0 8px rgba(0, 102, 204, 0.5);
+            }
+        }
+    </style>
+</head>
+<body>
+        <div class="register-container">
+            <div class="logo-section">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="AGI Agent Logo" class="logo">
+                    <div class="logo-text-container">
+                        <span class="logo-text" id="typewriter-text"></span>
+                    </div>
+                </div>
+                <div class="title-section">
+                    <h1 class="title">{{ '用户注册' if lang == 'zh' else 'User Registration' }}</h1>
+                    <p class="subtitle">{{ '注册账号并获取您的API密钥' if lang == 'zh' else 'Register an account and get your API key' }}</p>
+                </div>
+            </div>
+
+            <!-- 存储国际化文本的隐藏元素 -->
+            <div id="i18n-data" style="display: none;"
+                 data-lang="{{ lang }}"
+                 data-username-required="{{ '用户名不能为空' if lang == 'zh' else 'Username is required' }}"
+                 data-username-min-length="{{ '用户名至少需要2个字符' if lang == 'zh' else 'Username must be at least 2 characters' }}"
+                 data-phone-required="{{ '手机号不能为空' if lang == 'zh' else 'Phone number is required' }}"
+                 data-phone-invalid="{{ '请输入有效的手机号' if lang == 'zh' else 'Please enter a valid phone number' }}"
+                 data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
+                 data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
+                 data-copied="{{ '已复制！' if lang == 'zh' else 'Copied!' }}"
+                 data-registration-success="{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}"
+                 data-user-exists="{{ '用户已存在' if lang == 'zh' else 'User Already Exists' }}"
+                 data-existing-user-message="{{ '该用户已注册，以下是您的API密钥' if lang == 'zh' else 'This user is already registered. Here is your API key' }}">
+            </div>
+
+        <form id="registerForm">
+            <div class="form-group">
+                <label for="username">{{ '用户名' if lang == 'zh' else 'Username' }} *</label>
+                <input type="text" id="username" name="username" class="form-input"
+                       placeholder="{{ '请输入用户名' if lang == 'zh' else 'Enter username' }}" required>
+                <div class="error-message" id="usernameError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="phone_number">{{ '手机号' if lang == 'zh' else 'Phone Number' }} *</label>
+                <input type="tel" id="phone_number" name="phone_number" class="form-input"
+                       placeholder="{{ '请输入手机号' if lang == 'zh' else 'Enter phone number' }}" required>
+                <div class="error-message" id="phoneError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="description">{{ '描述' if lang == 'zh' else 'Description' }}</label>
+                <textarea id="description" name="description" class="form-textarea"
+                          placeholder="{{ '可选：添加个人描述' if lang == 'zh' else 'Optional: Add personal description' }}"></textarea>
+            </div>
+
+            <button type="submit" class="register-btn" id="registerBtn">
+                {{ '注册账号' if lang == 'zh' else 'Register Account' }}
+            </button>
+
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner fa-spin"></i>
+                {{ '正在注册...' if lang == 'zh' else 'Registering...' }}
+            </div>
+        </form>
+
+        <div class="api-key-result" id="apiKeyResult">
+            <h3 id="resultTitle">{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}</h3>
+            <p id="resultMessage">{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}</p>
+            <div class="api-key-display" id="apiKeyDisplay"></div>
+            <button class="copy-btn" id="copyBtn">{{ '复制密钥' if lang == 'zh' else 'Copy Key' }}</button>
+            <p id="warningMessage" style="margin-top: 15px; font-size: 12px; color: #0088ff; font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif; text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);">
+                {{ '⚠️ 请务必保存此密钥，丢失后无法找回！' if lang == 'zh' else '⚠️ Please save this key securely. It cannot be recovered if lost!' }}
+            </p>
+        </div>
+
+        <div class="back-link">
+            <a href="/">{{ '返回登录' if lang == 'zh' else 'Back to Login' }}</a>
+        </div>
+    </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取国际化文本
+            const i18nData = document.getElementById('i18n-data');
+            const i18n = {
+                usernameRequired: i18nData.getAttribute('data-username-required'),
+                usernameMinLength: i18nData.getAttribute('data-username-min-length'),
+                phoneRequired: i18nData.getAttribute('data-phone-required'),
+                phoneInvalid: i18nData.getAttribute('data-phone-invalid'),
+                registrationFailed: i18nData.getAttribute('data-registration-failed'),
+                networkError: i18nData.getAttribute('data-network-error'),
+                copied: i18nData.getAttribute('data-copied'),
+                registrationSuccess: i18nData.getAttribute('data-registration-success'),
+                userExists: i18nData.getAttribute('data-user-exists'),
+                existingUserMessage: i18nData.getAttribute('data-existing-user-message')
+            };
+
+            // 打字机效果
+            const typewriterText = document.getElementById('typewriter-text');
+            const fullText = 'AGI Agent';
+            let currentIndex = 0;
+            let isDeleting = false;
+
+            function typeWriter() {
+                if (!isDeleting) {
+                    // 正在打字
+                    typewriterText.textContent = fullText.substring(0, currentIndex + 1);
+                    currentIndex++;
+
+                    if (currentIndex === fullText.length) {
+                        // 打字完成，等待一段时间后开始删除
+                        setTimeout(() => {
+                            isDeleting = true;
+                        }, 2000);
+                    }
+                } else {
+                    // 正在删除
+                    typewriterText.textContent = fullText.substring(0, currentIndex);
+                    currentIndex--;
+
+                    if (currentIndex === 0) {
+                        // 删除完成，重新开始打字
+                        isDeleting = false;
+                        setTimeout(typeWriter, 500);
+                        return;
+                    }
+                }
+
+                // 根据当前状态设置打字速度
+                const typingSpeed = isDeleting ? 100 : 200;
+                setTimeout(typeWriter, typingSpeed);
+            }
+
+            // 开始打字机效果
+            setTimeout(typeWriter, 1000);
+
+            const form = document.getElementById('registerForm');
+            const registerBtn = document.getElementById('registerBtn');
+            const loading = document.getElementById('loading');
+            const apiKeyResult = document.getElementById('apiKeyResult');
+            const apiKeyDisplay = document.getElementById('apiKeyDisplay');
+            const copyBtn = document.getElementById('copyBtn');
+
+            // Form validation
+            function validateForm() {
+                let isValid = true;
+
+                // Username validation
+                const username = document.getElementById('username').value.trim();
+                const usernameError = document.getElementById('usernameError');
+                if (!username) {
+                    usernameError.textContent = i18n.usernameRequired;
+                    usernameError.style.display = 'block';
+                    document.getElementById('username').classList.add('error');
+                    isValid = false;
+                } else if (username.length < 2) {
+                    usernameError.textContent = i18n.usernameMinLength;
+                    usernameError.style.display = 'block';
+                    document.getElementById('username').classList.add('error');
+                    isValid = false;
+                } else {
+                    usernameError.style.display = 'none';
+                    document.getElementById('username').classList.remove('error');
+                }
+
+                // Phone validation
+                const phone = document.getElementById('phone_number').value.trim();
+                const phoneError = document.getElementById('phoneError');
+                const phoneRegex = /^1[3-9]\d{9}$/; // Chinese mobile number
+                if (!phone) {
+                    phoneError.textContent = i18n.phoneRequired;
+                    phoneError.style.display = 'block';
+                    document.getElementById('phone_number').classList.add('error');
+                    isValid = false;
+                } else if (!phoneRegex.test(phone)) {
+                    phoneError.textContent = i18n.phoneInvalid;
+                    phoneError.style.display = 'block';
+                    document.getElementById('phone_number').classList.add('error');
+                    isValid = false;
+                } else {
+                    phoneError.style.display = 'none';
+                    document.getElementById('phone_number').classList.remove('error');
+                }
+
+                return isValid;
+            }
+
+            // Form submission
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                if (!validateForm()) {
+                    return;
+                }
+
+                // Show loading
+                registerBtn.disabled = true;
+                loading.classList.add('show');
+
+                try {
+                    const formData = new FormData(form);
+                    const data = {
+                        username: formData.get('username'),
+                        phone_number: formData.get('phone_number'),
+                        description: formData.get('description')
+                    };
+
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        // Show success result
+                        apiKeyDisplay.textContent = result.api_key;
+                        apiKeyResult.style.display = 'block';
+                        form.style.display = 'none';
+
+                        // Check if this is an existing user
+                        const isExistingUser = result.user_info && result.user_info.existing_user;
+
+                        // Update title and message based on user status
+                        const resultTitle = document.getElementById('resultTitle');
+                        const resultMessage = document.getElementById('resultMessage');
+                        const warningMessage = document.getElementById('warningMessage');
+
+                        if (isExistingUser) {
+                            resultTitle.textContent = i18n.userExists;
+                            resultMessage.textContent = i18n.existingUserMessage;
+                            warningMessage.style.display = 'none'; // Hide warning for existing users
+                        } else {
+                            resultTitle.textContent = i18n.registrationSuccess;
+                            resultMessage.textContent = '{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}';
+                            warningMessage.style.display = 'block';
+                        }
+
+                        // Setup copy functionality
+                        copyBtn.addEventListener('click', function() {
+                            navigator.clipboard.writeText(result.api_key).then(function() {
+                                const originalText = copyBtn.textContent;
+                                copyBtn.textContent = i18n.copied;
+                                copyBtn.style.background = '#17a2b8';
+                                setTimeout(() => {
+                                    copyBtn.textContent = originalText;
+                                    copyBtn.style.background = '#28a745';
+                                }, 2000);
+                            });
+                        });
+                    } else {
+                        alert(result.error || i18n.registrationFailed);
+                    }
+                } catch (error) {
+                    console.error('Registration error:', error);
+                    alert(i18n.networkError);
+                } finally {
+                    registerBtn.disabled = false;
+                    loading.classList.remove('show');
+                }
+            });
+
+            // Real-time validation
+            document.getElementById('username').addEventListener('input', validateForm);
+            document.getElementById('phone_number').addEventListener('input', validateForm);
+        });
+    </script>
+</body>
+</html>
