@@ -2028,7 +2028,157 @@ class FileSystemTools:
                 'markdown_file': target_file,
                 'conversions': {}
             }
-            
+
+            # Track if PDF has already been converted via pywin32
+            pdf_already_converted = False
+
+            # Special handling for Windows PDF conversion: check for existing docx and convert directly
+            import platform
+            if platform.system() == 'Windows' and format_type == 'pdf':
+                print_debug(f"🔍 Windows system detected, checking for existing Word document: {word_file.name}")
+                if word_file.exists():
+                    print_debug(f"✅ Found existing Word document: {word_file.name}, converting directly to PDF")
+                    try:
+                        pdf_conversion_result = self._word_to_pdf(str(word_file), str(pdf_file))
+                        if pdf_conversion_result['status'] == 'success':
+                            conversion_results['conversions']['pdf'] = {
+                                'status': 'success',
+                                'file': str(pdf_file.relative_to(self.workspace_root)),
+                                'size': pdf_conversion_result['size'],
+                                'size_kb': pdf_conversion_result['size_kb'],
+                                'method': 'pywin32_from_existing_docx'
+                            }
+                            print_debug(f"✅ PDF document conversion successful (via pywin32 from existing docx): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
+                            return conversion_results
+                        elif pdf_conversion_result['status'] == 'skipped':
+                            print_debug(f"ℹ️ Word to PDF conversion skipped: {pdf_conversion_result.get('message', 'Unknown reason')}")
+                        else:
+                            print_debug(f"⚠️ Word to PDF conversion failed: {pdf_conversion_result.get('error', 'Unknown error')}")
+                            print_debug("Falling back to normal PDF conversion process...")
+                    except Exception as e:
+                        print_debug(f"⚠️ Error during Word to PDF conversion from existing docx: {e}")
+                        print_debug("Falling back to normal PDF conversion process...")
+                else:
+                    print_debug(f"ℹ️ No existing Word document found: {word_file.name}, will generate docx first then convert to PDF")
+                    # Generate Word document first, then convert to PDF using pywin32
+                    print_debug(f"📄 Generating Word document first: {word_file.name}")
+                    temp_files = []  # Track temporary files for cleanup
+
+                    try:
+                        # Step 1: Create emoji-free version if needed
+                        actual_input_file = md_path.name  # Default to original file
+                        try:
+                            temp_md_file = create_emoji_free_markdown(str(md_path))
+                            if temp_md_file:
+                                actual_input_file = os.path.basename(temp_md_file)  # Use filename for pandoc
+                                temp_files.append(temp_md_file)
+                        except Exception as e:
+                            print_debug(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
+
+                        # Use pandoc to convert to Word with multiple filters
+                        # Find the project root directory (where src/ folder exists)
+                        current_file = Path(__file__)
+                        project_root = current_file.parent.parent.parent  # Go up from src/tools/file_system_tools.py to project root
+                        svg_to_png_filter_path = project_root / 'src' / 'utils' / 'word_svg_to_png_filter.lua'
+                        image_filter_path = project_root / 'src' / 'utils' / 'word_image_filter.lua'
+                        title_color_filter_path = project_root / 'src' / 'utils' / 'word_title_color_filter.lua'
+                        reference_doc_path = project_root / 'src' / 'utils' / 'word_reference.docx'
+
+                        cmd = [
+                            'pandoc',
+                            actual_input_file,  # Use emoji-free file if available
+                            '-o', word_file.name,  # Use filename instead of full path
+                            '--from', 'markdown',
+                            '--to', 'docx'
+                        ]
+
+                        # Add reference document if it exists
+                        if reference_doc_path.exists():
+                            cmd.extend(['--reference-doc', str(reference_doc_path)])
+                            print_debug(f"✅ Using Word reference template: {reference_doc_path}")
+                        else:
+                            print_debug(f"⚠️ Word reference template not found: {reference_doc_path}")
+
+                        # Add SVG to PNG filter if it exists
+                        if svg_to_png_filter_path.exists():
+                            cmd.extend(['--lua-filter', str(svg_to_png_filter_path)])
+                            print_debug(f"✅ Using SVG to PNG filter: {svg_to_png_filter_path}")
+                        else:
+                            print_debug(f"⚠️ SVG to PNG filter not found: {svg_to_png_filter_path}")
+
+                        # Add image size limit filter if it exists
+                        if image_filter_path.exists():
+                            cmd.extend(['--lua-filter', str(image_filter_path)])
+                            print_debug(f"✅ Using image size limit filter: {image_filter_path}")
+                        else:
+                            print_debug(f"⚠️ Image size limit filter not found: {image_filter_path}")
+
+                        # Add title color filter if it exists
+                        if title_color_filter_path.exists():
+                            cmd.extend(['--lua-filter', str(title_color_filter_path)])
+                            print_debug(f"✅ Using title color filter: {title_color_filter_path}")
+                        else:
+                            print_debug(f"⚠️ Title color filter not found: {title_color_filter_path}")
+
+                        # Execute command in markdown file directory
+                        result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', cwd=str(output_dir))
+
+                        if word_file.exists():
+                            # 后处理：修改Word文档中的标题颜色
+                            try:
+                                postprocessor_path = project_root / 'src' / 'utils' / 'word_style_postprocessor.py'
+                                if postprocessor_path.exists():
+                                    import sys
+                                    postprocess_cmd = [sys.executable, str(postprocessor_path), str(word_file)]
+                                    subprocess.run(postprocess_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+                                    print_debug(f"✅ Word document post-processed for title colors: {word_file.name}")
+                                else:
+                                    print_debug(f"⚠️ Word style postprocessor not found: {postprocessor_path}")
+                            except Exception as e:
+                                print_debug(f"⚠️ Word document post-processing failed: {str(e)}")
+
+                            print_debug(f"✅ Word document generated: {word_file.name}")
+
+                            # Now convert the newly generated docx to PDF using pywin32
+                            print_debug(f"📄 Converting newly generated Word document to PDF: {pdf_file.name}")
+                            try:
+                                pdf_conversion_result = self._word_to_pdf(str(word_file), str(pdf_file))
+                                if pdf_conversion_result['status'] == 'success':
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'success',
+                                        'file': str(pdf_file.relative_to(self.workspace_root)),
+                                        'size': pdf_conversion_result['size'],
+                                        'size_kb': pdf_conversion_result['size_kb'],
+                                        'method': 'pywin32_from_generated_docx'
+                                    }
+                                    print_debug(f"✅ PDF document conversion successful (via pywin32 from generated docx): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
+                                    return conversion_results
+                                else:
+                                    print_debug(f"⚠️ Word to PDF conversion failed: {pdf_conversion_result.get('error', 'Unknown error')}")
+                                    print_debug("Falling back to normal PDF conversion process...")
+                            except Exception as e:
+                                print_debug(f"⚠️ Error during Word to PDF conversion from generated docx: {e}")
+                                print_debug("Falling back to normal PDF conversion process...")
+                        else:
+                            print_debug(f"❌ Word document generation failed: File not generated")
+                            print_debug("Falling back to normal PDF conversion process...")
+
+                    except subprocess.CalledProcessError as e:
+                        print_debug(f"❌ Word document generation failed: {e.stderr}")
+                        print_debug("Falling back to normal PDF conversion process...")
+                    except Exception as e:
+                        print_debug(f"❌ Word document generation exception: {str(e)}")
+                        print_debug("Falling back to normal PDF conversion process...")
+                    finally:
+                        # Clean up temporary files
+                        for temp_file in temp_files:
+                            try:
+                                if os.path.exists(temp_file):
+                                    os.remove(temp_file)
+                                    print_debug(f"🧹 Cleaned up temporary file: {temp_file}")
+                            except Exception as e:
+                                print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
+
             # Convert to Word document
             if format_type in ['word', 'both']:
                 print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
@@ -2115,6 +2265,28 @@ class FileSystemTools:
                             'size_kb': f"{file_size / 1024:.1f} KB"
                         }
                         print_debug(f"✅ Word document conversion successful: {word_file.name} ({file_size / 1024:.1f} KB)")
+
+                        # 在 Windows 系统上使用 pywin32 从 docx 生成 PDF
+                        pdf_already_converted = False
+                        if format_type in ['pdf', 'both']:
+                            try:
+                                pdf_conversion_result = self._word_to_pdf(str(word_file), str(pdf_file))
+                                if pdf_conversion_result['status'] == 'success':
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'success',
+                                        'file': str(pdf_file.relative_to(self.workspace_root)),
+                                        'size': pdf_conversion_result['size'],
+                                        'size_kb': pdf_conversion_result['size_kb'],
+                                        'method': 'pywin32_from_docx'
+                                    }
+                                    print_debug(f"✅ PDF document conversion successful (via pywin32): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
+                                    pdf_already_converted = True  # 标记PDF已转换
+                                elif pdf_conversion_result['status'] == 'skipped':
+                                    print_debug(f"ℹ️ Word to PDF conversion skipped: {pdf_conversion_result.get('message', 'Unknown reason')}")
+                                else:
+                                    print_debug(f"⚠️ Word to PDF conversion failed: {pdf_conversion_result.get('error', 'Unknown error')}")
+                            except Exception as e:
+                                print_debug(f"⚠️ Error during Word to PDF conversion: {e}")
                     else:
                         conversion_results['conversions']['word'] = {
                             'status': 'failed',
@@ -2145,7 +2317,7 @@ class FileSystemTools:
                             print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
             
             # Convert to PDF document
-            if format_type in ['pdf', 'both']:
+            if format_type in ['pdf', 'both'] and not pdf_already_converted:
                 print_debug(f"📄 Converting Markdown to PDF document: {pdf_file.name}")
                 try:
                     # Use trans_md_to_pdf.py script to convert to PDF
@@ -2368,6 +2540,89 @@ class FileSystemTools:
                 'markdown_file': target_file,
                 'error': str(e),
                 'message': f'Error occurred during conversion: {str(e)}'
+            }
+
+    def _word_to_pdf(self, word_path: str, pdf_path: str) -> Dict[str, Any]:
+        """
+        将 Word 文档转换为 PDF（仅在 Windows 系统上使用 pywin32）
+
+        Args:
+            word_path: Word 文件路径（.doc 或 .docx）
+            pdf_path: 输出 PDF 文件路径
+
+        Returns:
+            Dictionary containing conversion results
+        """
+        import platform
+        import os
+
+        # 仅在 Windows 系统上执行
+        if platform.system() != 'Windows':
+            return {
+                'status': 'skipped',
+                'message': 'Word to PDF conversion only available on Windows with pywin32'
+            }
+
+        try:
+            # 尝试导入 pywin32
+            import win32com.client
+
+            # 启动 Word 应用
+            word = win32com.client.Dispatch("Word.Application")
+            word.Visible = False  # 后台运行，不显示窗口
+
+            try:
+                # 打开 Word 文档
+                doc = word.Documents.Open(os.path.abspath(word_path))
+
+                # 导出为 PDF（FileFormat=17 对应 PDF 格式）
+                doc.SaveAs2(
+                    os.path.abspath(pdf_path),
+                    FileFormat=17  # 17 是 Word 中 PDF 格式的编码
+                )
+
+                file_size = os.path.getsize(pdf_path)
+                print_debug(f"✅ Word to PDF conversion successful: {pdf_path} ({file_size / 1024:.1f} KB)")
+
+                return {
+                    'status': 'success',
+                    'file': pdf_path,
+                    'size': file_size,
+                    'size_kb': f"{file_size / 1024:.1f} KB",
+                    'method': 'pywin32'
+                }
+
+            except Exception as e:
+                print_debug(f"❌ Word to PDF conversion failed: {e}")
+                return {
+                    'status': 'failed',
+                    'error': str(e),
+                    'message': f'Word to PDF conversion error: {e}'
+                }
+            finally:
+                # 关闭文档和 Word 应用
+                try:
+                    if 'doc' in locals() and doc:
+                        doc.Close()
+                except:
+                    pass
+                try:
+                    word.Quit()
+                except:
+                    pass
+
+        except ImportError:
+            print_debug("⚠️ pywin32 not available, skipping Word to PDF conversion")
+            return {
+                'status': 'skipped',
+                'message': 'pywin32 not installed'
+            }
+        except Exception as e:
+            print_debug(f"❌ Word to PDF conversion setup failed: {e}")
+            return {
+                'status': 'failed',
+                'error': str(e),
+                'message': f'Word to PDF setup error: {e}'
             }
 
 
