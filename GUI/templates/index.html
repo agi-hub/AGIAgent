@@ -1015,6 +1015,11 @@
                 overflow-x: hidden;
             }
             
+            .user-auth-right > div:last-child {
+                margin-left: 0 !important;
+                margin-top: 8px;
+            }
+            
             .api-key-group {
                 flex-direction: column;
                 align-items: center;
@@ -2148,12 +2153,6 @@
                 <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
                 <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
             </div>
-            <div style="margin-left: 20px;">
-                <a href="/register" style="color: #cccccc; text-decoration: none; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; transition: all 0.3s ease;" onmouseover="this.style.color='#569cd6'; this.style.background='#3e3e42'" onmouseout="this.style.color='#cccccc'; this.style.background='transparent'">
-                    <i class="fas fa-user-plus"></i>
-                    {{ '注册账号' if lang == 'zh' else 'Register' }}
-                </a>
-            </div>
         </div>
         <div class="user-auth-right">
             <!-- Routine file selection (moved to top, left of model selection) -->
@@ -2199,6 +2198,12 @@
             <div class="user-info">
                 <span id="userStatusText">{{ i18n.user_disconnected }}</span>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
+            </div>
+            <div style="margin-left: 15px;">
+                <a href="/register" style="color: #cccccc; text-decoration: none; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; transition: all 0.3s ease;" onmouseover="this.style.color='#569cd6'; this.style.background='#3e3e42'" onmouseout="this.style.color='#cccccc'; this.style.background='transparent'">
+                    <i class="fas fa-user-plus"></i>
+                    {{ '注册账号' if lang == 'zh' else 'Register' }}
+                </a>
             </div>
         </div>
     </div>
