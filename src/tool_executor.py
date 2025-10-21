@@ -733,6 +733,7 @@ class ToolExecutor:
             "todo_update": self.tools.todo_update,  # Add todo task status update tool
             "merge_file": self.tools.merge_file,  # Add file merging tool
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
+            "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,  # Add document conversion tool
         }
         
         # Add long-term memory tools if available
@@ -4318,6 +4319,7 @@ class ToolExecutor:
                         hallucination_detected = False
                         stream_error_occurred = False
                         last_event_type = None
+                        error_details = None
 
                         with self.client.messages.stream(
                             model=self.model,
@@ -4333,8 +4335,6 @@ class ToolExecutor:
                                         event_type = getattr(event, 'type', None)
                                         last_event_type = event_type
                                         
-                                        print_debug(f"📩 Stream event: {event_type}")
-                                        
                                         # 详细记录事件的原始数据用于调试
                                         try:
                                             # 尝试获取事件的所有属性
@@ -4343,19 +4343,16 @@ class ToolExecutor:
                                                 event_dict = event.__dict__
                                             elif hasattr(event, 'model_dump'):
                                                 event_dict = event.model_dump()
-                                            print_debug(f"   Event details: {str(event_dict)[:500]}")
                                         except:
                                             pass
 
                                         # 处理内容块开始事件
                                         if event_type == "content_block_start":
                                             try:
-                                                print_debug(f"   Processing content_block_start...")
                                                 
                                                 # 安全地获取index属性
                                                 try:
                                                     block_index = getattr(event, 'index', None)
-                                                    print_debug(f"   block_index: {block_index}")
                                                 except Exception as idx_err:
                                                     print_error(f"   Error getting index: {type(idx_err).__name__}: {str(idx_err)}")
                                                     block_index = None
@@ -4363,27 +4360,21 @@ class ToolExecutor:
                                                 # 安全地获取content_block属性
                                                 try:
                                                     content_block = getattr(event, 'content_block', None)
-                                                    print_debug(f"   content_block type: {type(content_block)}")
-                                                    
+
                                                     # 尝试序列化content_block以查看其内容
                                                     if content_block:
                                                         try:
-                                                            if hasattr(content_block, '__dict__'):
-                                                                print_debug(f"   content_block.__dict__: {str(content_block.__dict__)[:300]}")
-                                                            elif hasattr(content_block, 'model_dump'):
-                                                                print_debug(f"   content_block.model_dump(): {str(content_block.model_dump())[:300]}")
+                                                            pass
                                                         except Exception as dump_err:
-                                                            print_debug(f"   Could not dump content_block: {str(dump_err)}")
+                                                            pass
                                                 except Exception as cb_err:
                                                     print_error(f"   Error getting content_block: {type(cb_err).__name__}: {str(cb_err)}")
                                                     import traceback
-                                                    print_debug(f"   Traceback: {traceback.format_exc()}")
                                                     content_block = None
                                                 
                                                 if content_block:
                                                     try:
                                                         block_type = getattr(content_block, 'type', None)
-                                                        print_debug(f"   block_type: {block_type}")
                                                         current_block_index = block_index
                                                         current_block_type = block_type
                                                         
@@ -4436,15 +4427,13 @@ class ToolExecutor:
                                                             if is_complete_json(partial_json):
                                                                 # 如果已经有完整JSON，检查是否重复
                                                                 if current_json and is_complete_json(current_json):
-                                                                    print_debug(f"⚠️ Already have complete JSON, skipping duplicate")
+                                                                    pass
                                                                 else:
                                                                     # 替换
                                                                     tool_call_buffers[block_index]["input_json"] = partial_json
-                                                                    print_debug(f"📝 Complete tool JSON received: {len(partial_json)} chars")
                                                             else:
                                                                 # 增量追加
                                                                 tool_call_buffers[block_index]["input_json"] += partial_json
-                                                                print_debug(f"📝 Tool JSON delta: {len(partial_json)} chars (total: {len(tool_call_buffers[block_index]['input_json'])})")
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
                                                 # 继续处理其他事件
@@ -4463,15 +4452,13 @@ class ToolExecutor:
                                                     if is_complete_json(partial_json):
                                                         # 如果已经有数据了，检查是否重复
                                                         if current_json and is_complete_json(current_json):
-                                                            print_debug(f"⚠️ [Zhipu] Already have complete JSON, skipping duplicate")
+                                                            pass
                                                         else:
                                                             # 替换而不是追加
                                                             tool_call_buffers[last_index]["input_json"] = partial_json
-                                                            print_debug(f"📝 [Zhipu] Complete tool JSON received: {len(partial_json)} chars")
                                                     else:
                                                         # 不完整，追加
                                                         tool_call_buffers[last_index]["input_json"] += partial_json
-                                                        print_debug(f"📝 [Zhipu] Tool JSON delta: {len(partial_json)} chars (total: {len(tool_call_buffers[last_index]['input_json'])})")
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing input_json: {type(e).__name__}: {str(e)}")
                                                 # 继续处理其他事件
@@ -4480,7 +4467,7 @@ class ToolExecutor:
                                         elif event_type == "text":
                                             # 智谱AI会发送额外的 text 事件，包含当前的完整文本快照
                                             # 我们已经通过 content_block_delta 处理了增量，所以这里只记录
-                                            print_debug(f"📩 [Zhipu] Received text snapshot event (ignored)")
+                                            pass
 
                                         # 处理内容块结束事件
                                         elif event_type == "content_block_stop":
@@ -4493,7 +4480,6 @@ class ToolExecutor:
                                                     tool_name = buffer["name"]
                                                     json_str = buffer["input_json"]
                                                     
-                                                    print_debug(f"🔚 Tool call ended: {tool_name}")
                                                     
                                                     # 验证JSON完整性
                                                     is_valid, parsed_input, error_msg = validate_tool_call_json(json_str, tool_name)
@@ -4504,11 +4490,9 @@ class ToolExecutor:
                                                             "name": tool_name,
                                                             "input": parsed_input
                                                         })
-                                                        print_debug(f"✅ Tool call validated: {tool_name}")
                                                     else:
                                                         print_error(f"❌ Tool call JSON validation failed for {tool_name}:")
                                                         print_error(f"   {error_msg}")
-                                                        print_debug(f"   Raw JSON ({len(json_str)} chars): {json_str[:200]}...")
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_stop: {type(e).__name__}: {str(e)}")
 
@@ -4539,18 +4523,12 @@ class ToolExecutor:
                                 stream_error_occurred = True
                                 error_details = f"Streaming failed at event_type={last_event_type}: {type(e).__name__}: {str(e)}"
                                 print_error(error_details)
-                                print_debug(f"📊 Stream state: content_length={len(content)}, tool_buffers={len(tool_call_buffers)}")
-                                
                                 # 如果有部分工具调用数据，尝试保存
                                 if tool_call_buffers:
-                                    print_debug(f"🔧 Attempting to salvage {len(tool_call_buffers)} partial tool calls")
-                                    for idx, buffer in tool_call_buffers.items():
-                                        if buffer["input_json"]:
-                                            print_debug(f"   Tool {buffer['name']}: {len(buffer['input_json'])} chars buffered")
-                                
+                                    pass
+
                                 # 尝试回退到text_stream
                                 try:
-                                    print_debug("🔄 Attempting fallback to text_stream...")
                                     for text in stream.text_stream:
                                         if "**LLM Called Following Tools in this round" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
@@ -4571,7 +4549,6 @@ class ToolExecutor:
                         # 如果流式处理中没有获取到完整的工具调用，尝试从final message获取
                         if not tool_calls and not stream_error_occurred:
                             try:
-                                print_debug("🔄 Attempting to get tool calls from final_message...")
                                 final_message = stream.get_final_message()
                                 
                                 for content_block in final_message.content:
@@ -4593,13 +4570,11 @@ class ToolExecutor:
                                             "name": tool_name,
                                             "input": tool_input
                                         })
-                                        print_debug(f"✅ Tool call from final_message: {tool_name}")
-                                
+
                                 if tool_calls:
-                                    print_debug(f"✅ Retrieved {len(tool_calls)} tool calls from final_message")
+                                    pass
                             except Exception as e:
                                 print_error(f"Failed to get final message: {type(e).__name__}: {str(e)}")
-                                print_debug(f"   This may indicate the stream was interrupted or incomplete")
 
                     # 执行工具调用
                     if tool_calls:
@@ -4631,7 +4606,12 @@ class ToolExecutor:
                                 print_error(f"❌ Tool {tool_name} execution failed: {str(e)}")
 
                         print_debug("✅ All tool executions completed")
-                    
+
+                    # If an error occurred during streaming, append error details to content for feedback to the LLM
+                    if stream_error_occurred and error_details is not None:
+                        error_feedback = f"\n\n⚠️ **Streaming Error Feedback**: There was a problem parsing the previous response: {error_details}\nPlease regenerate a correct response based on this error message."
+                        content += error_feedback
+
                     return content, tool_calls
                 else:
                     # print_current("🔄 LLM is thinking: ")
@@ -4817,32 +4797,33 @@ class ToolExecutor:
         
         return "\n".join(formatted_calls)
 
-    def _truncate_code_parameter(self, code_content: str, max_lines: int = 3) -> str:
+    def _truncate_code_parameter(self, code_content: str, max_lines: int = 1) -> str:
         """
         Truncate code content to show only the first few lines with ellipsis.
-        
+
         Args:
             code_content: The code content to truncate
-            max_lines: Maximum number of lines to show (default: 3)
-            
+            max_lines: Maximum number of lines to show (default: 1)
+
         Returns:
             Truncated code content with ellipsis if needed
         """
         if not code_content:
             return code_content
-            
+
         lines = code_content.split('\n')
-        
+
         if len(lines) <= max_lines:
             return code_content
-        
+
         # Show first max_lines lines
         truncated_lines = lines[:max_lines]
         result = '\n'.join(truncated_lines)
-        
-        # Add ellipsis to indicate truncation
-        result += '\n...'
-        
+
+        # Add ellipsis to indicate truncation (on the same line)
+        if result:
+            result += '...'
+
         return result
 
     def _load_tool_definitions_from_file(self, json_file_path: str = None, force_reload: bool = False) -> Dict[str, Any]:
@@ -5575,10 +5556,22 @@ class ToolExecutor:
                     else:
                         print_debug(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
                 
-                # For file operations, only show if there's an error
-                elif 'status' in result and result.get('status') in ['error', 'failed']:
-                    status = result.get('status', 'unknown')
-                    print_debug(f"Status: {status}")
+                # For file operations, show results for edit_file tool and errors for others
+                elif 'status' in result:
+                    if tool_name == 'edit_file':
+                        # Always show edit_file results (success or error)
+                        status = result.get('status', 'unknown')
+                        file_path = result.get('file', 'unknown file')
+                        action = result.get('action', 'processed')
+
+                        if status == 'success':
+                            print_current(f"✅ File Operation Succeed: {action} {file_path}")
+                        elif status in ['error', 'failed']:
+                            error_msg = result.get('error')
+                            print_current(f"❌ File Operation Failed: {file_path} - {error_msg}")
+                    elif result.get('status') in ['error', 'failed']:
+                        status = result.get('status', 'unknown')
+                        print_debug(f"Status: {status}")
             
         except Exception as e:
             print_error(f"⚠️ Error streaming tool result: {e}")

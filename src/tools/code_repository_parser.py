@@ -270,9 +270,9 @@ class IncrementalUpdateThread:
                             # Only log the error type and basic message to avoid verbose output
                             error_msg = str(e)
                             if "empty vocabulary" in error_msg.lower():
-                                print_current(f"❌ Incremental update failed: empty vocabulary; perhaps the documents only contain stop words")
+                                print_debug(f"❌ Incremental update failed: empty vocabulary; perhaps the documents only contain stop words")
                             else:
-                                print_current(f"❌ Incremental update failed: {type(e).__name__}: {error_msg}")
+                                print_debug(f"❌ Incremental update failed: {type(e).__name__}: {error_msg}")
                 
                 # Calculate update time for this iteration
                 elapsed = time.time() - start_time

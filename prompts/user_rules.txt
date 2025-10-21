@@ -4,5 +4,8 @@ Do not use non-ASCII filtering tools that would remove Chinese characters from t
 
 Avoid using non-ascii characters in GUI and report figures if user not specified.
 
+Please do not repeatedly call the same tool - trust that the tool's returned results are stable and reliable.
+
+
 
 

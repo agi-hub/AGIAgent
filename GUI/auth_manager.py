@@ -9,6 +9,9 @@ import os
 import hashlib
 import json
 import logging
+import re
+import secrets
+import string
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Set
 
@@ -73,6 +76,27 @@ class AuthenticationManager:
     def _hash_api_key(self, api_key: str) -> str:
         """Generate SHA-256 hash of API key"""
         return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+
+    def _generate_api_key(self, length: int = 32) -> str:
+        """Generate a secure random API key"""
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    def _validate_phone_number(self, phone: str) -> bool:
+        """
+        Validate phone number format
+        Supports Chinese mobile numbers and international formats
+        """
+        # Remove all whitespace and common separators
+        phone = re.sub(r'[\s\-\(\)\+]', '', phone)
+
+        # Chinese mobile number patterns (11 digits starting with specific prefixes)
+        china_mobile_pattern = r'^1[3-9]\d{9}$'
+
+        # International format (allow +country code + number)
+        international_pattern = r'^\+\d{1,4}\d{6,14}$'
+
+        return bool(re.match(china_mobile_pattern, phone) or re.match(international_pattern, phone))
     
     def authenticate_api_key(self, api_key: Optional[str]) -> Dict[str, any]:
         """
@@ -195,21 +219,148 @@ class AuthenticationManager:
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
     
-    def add_authorized_key(self, name: str, api_key: str, description: str = "", 
+    def register_user(self, username: str, phone_number: str, description: str = "",
+                     permissions: List[str] = None) -> Dict[str, any]:
+        """
+        Register a new user with username and phone number
+
+        Returns:
+            Dict with registration result:
+            {
+                "success": bool,
+                "api_key": str or None,
+                "user_info": dict or None,
+                "error": str or None
+            }
+        """
+        if permissions is None:
+            permissions = ["read", "write", "execute"]
+
+        # Validate inputs
+        if not username or not username.strip():
+            return {
+                "success": False,
+                "api_key": None,
+                "user_info": None,
+                "error": "用户名不能为空"
+            }
+
+        if not phone_number or not phone_number.strip():
+            return {
+                "success": False,
+                "api_key": None,
+                "user_info": None,
+                "error": "手机号不能为空"
+            }
+
+        # Validate phone number format
+        if not self._validate_phone_number(phone_number):
+            return {
+                "success": False,
+                "api_key": None,
+                "user_info": None,
+                "error": "手机号格式不正确"
+            }
+
+        # Check if username already exists
+        auth_config = self._load_authorized_keys()
+        for key_info in auth_config.get("keys", []):
+            if key_info.get("name") == username.strip():
+                # User already exists, return their API key
+                return {
+                    "success": True,
+                    "api_key": key_info.get("sha256_hash"),
+                    "user_info": {
+                        "name": key_info.get("name"),
+                        "phone_number": key_info.get("phone_number", ""),
+                        "description": key_info.get("description", ""),
+                        "permissions": key_info.get("permissions", []),
+                        "created_at": key_info.get("created_at"),
+                        "is_guest": False,
+                        "existing_user": True  # 标记为已存在的用户
+                    },
+                    "error": None
+                }
+
+        # Check if phone number is already registered
+        for key_info in auth_config.get("keys", []):
+            if key_info.get("phone_number") == phone_number.strip():
+                # Phone number already exists, return existing user's API key
+                return {
+                    "success": True,
+                    "api_key": key_info.get("sha256_hash"),
+                    "user_info": {
+                        "name": key_info.get("name"),
+                        "phone_number": key_info.get("phone_number", ""),
+                        "description": key_info.get("description", ""),
+                        "permissions": key_info.get("permissions", []),
+                        "created_at": key_info.get("created_at"),
+                        "is_guest": False,
+                        "existing_user": True  # 标记为已存在的用户
+                    },
+                    "error": None
+                }
+
+        # Generate API key
+        api_key = self._generate_api_key()
+
+        # Create user record
+        new_user = {
+            "name": username.strip(),
+            "phone_number": phone_number.strip(),
+            "description": description or f"{username.strip()} 用户",
+            "sha256_hash": self._hash_api_key(api_key),
+            "permissions": permissions,
+            "created_at": datetime.now().isoformat(),
+            "expires_at": None,
+            "enabled": True
+        }
+
+        auth_config["keys"].append(new_user)
+
+        try:
+            self._save_authorized_keys(auth_config)
+            self.logger.info(f"Registered new user: {username} with phone: {phone_number}")
+
+            user_info = {
+                "name": new_user["name"],
+                "phone_number": new_user["phone_number"],
+                "description": new_user["description"],
+                "permissions": new_user["permissions"],
+                "created_at": new_user["created_at"],
+                "is_guest": False
+            }
+
+            return {
+                "success": True,
+                "api_key": api_key,
+                "user_info": user_info,
+                "error": None
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to register user: {e}")
+            return {
+                "success": False,
+                "api_key": None,
+                "user_info": None,
+                "error": f"注册失败: {str(e)}"
+            }
+
+    def add_authorized_key(self, name: str, api_key: str, description: str = "",
                           permissions: List[str] = None, expires_at: str = None) -> bool:
         """Add new authorized key"""
         if permissions is None:
             permissions = ["read", "write", "execute"]
-        
+
         # Always load fresh data
         auth_config = self._load_authorized_keys()
-        
+
         # Check if name already exists
         for key_info in auth_config.get("keys", []):
             if key_info.get("name") == name:
                 self.logger.error(f"Key with name '{name}' already exists")
                 return False
-        
+
         # Add new key
         new_key = {
             "name": name,
@@ -220,9 +371,9 @@ class AuthenticationManager:
             "expires_at": expires_at,
             "enabled": True
         }
-        
+
         auth_config["keys"].append(new_key)
-        
+
         try:
             self._save_authorized_keys(auth_config)
             self.logger.info(f"Added authorized key for user: {name}")
@@ -256,11 +407,12 @@ class AuthenticationManager:
         """List all authorized keys (without sensitive data)"""
         # Always load fresh data
         auth_config = self._load_authorized_keys()
-        
+
         result = []
         for key_info in auth_config.get("keys", []):
             safe_info = {
                 "name": key_info.get("name"),
+                "phone_number": key_info.get("phone_number", ""),
                 "description": key_info.get("description"),
                 "permissions": key_info.get("permissions"),
                 "created_at": key_info.get("created_at"),
@@ -269,7 +421,7 @@ class AuthenticationManager:
                 "hash_preview": key_info.get("sha256_hash", "")[:16] + "..." if key_info.get("sha256_hash") else ""
             }
             result.append(safe_info)
-        
+
         return result
     
     def enable_key(self, name: str, enabled: bool = True) -> bool:

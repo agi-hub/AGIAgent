@@ -112,32 +112,6 @@
       "required": ["target_file", "edit_mode", "code_edit"]
     }
   },
-  "file_search": {
-    "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "Fuzzy filename to search for"
-        }
-      },
-      "required": ["query"]
-    }
-  },
-  "delete_file": {
-    "description": "Deletes a file at the specified path. The operation will fail gracefully if the file doesn't exist.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "target_file": {
-          "type": "string",
-          "description": "The path of the file to delete, relative to the workspace root."
-        }
-      },
-      "required": ["target_file"]
-    }
-  },
   "web_search": {
     "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data, or when you need to verify current facts. The search results will include relevant snippets and URLs from web pages. This is particularly useful for questions about current events, technology updates, or any topic that requires recent information.",
     "parameters": {
@@ -152,7 +126,7 @@
     }
   },
   "search_img": {
-    "description": "Obtain up to 5 relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses a multi-search engine strategy: If Google is available, search in the order Google->Baidu->Bing; if Google is not available, search in the order Baidu->Bing.",
+    "description": "Obtain relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses a multi-search engine strategy: If Google is available, search in the order Google->Baidu->Bing; if Google is not available, search in the order Baidu->Bing.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -162,19 +136,6 @@
         }
       },
       "required": ["query"]
-    }
-  },
-  "tool_help": {
-    "description": "Get detailed help information for a specific tool, including its parameters and usage examples.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "tool_name": {
-          "type": "string",
-          "description": "The name of the tool to get help for"
-        }
-      },
-      "required": ["tool_name"]
     }
   },
   "fetch_webpage_content": {
@@ -192,48 +153,6 @@
         }
       },
       "required": ["url"]
-    }
-  },
-  "get_background_update_status": {
-    "description": "Get the status information and statistics of the background incremental update thread for code repository monitoring to track automatic code indexing updates.",
-    "parameters": {
-      "type": "object",
-      "properties": {},
-      "required": []
-    }
-  },
-  "talk_to_user": {
-    "description": "Display a question to the user and wait for keyboard input with timeout. This tool allows interactive communication with the user.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "The question to display to the user"
-        },
-        "timeout": {
-          "type": "integer",
-          "description": "Maximum time to wait for user response in seconds (default: 10 seconds)"
-        }
-      },
-      "required": ["query"]
-    }
-  },
-  "idle": {
-    "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "Optional message explaining why the agent is idling"
-        },
-        "reason": {
-          "type": "string",
-          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'task_completed', 'no_action_needed')"
-        }
-      },
-      "required": []
     }
   },
   "get_sensor_data": {
@@ -292,32 +211,17 @@
       "required": ["file_list", "output_file"]
     }
   },
-  "todo_update": {
-    "description": "Update todo task status in todo.md file and return the complete updated file content. This tool allows you to mark tasks as completed, in progress, blocked, or pending, and provides real-time progress tracking.",
+  "convert_docs_to_markdown": {
+    "description": "Convert various document formats to Markdown. Output files will have the same filename but substituted by a .md extension. Images are automatically extracted and saved to a doc_images folder.",
     "parameters": {
       "type": "object",
       "properties": {
-        "task_id": {
-          "type": "integer",
-          "description": "The ID of the task to update (1, 2, 3, etc.)"
-        },
-        "status": {
+        "file_path": {
           "type": "string",
-          "description": "New status for the task",
-          "enum": ["pending", "in_progress", "completed", "blocked", "skipped"]
-        },
-        "description": {
-          "type": "string",
-          "description": "Optional description explaining the status change or completion details"
-        },
-        "action": {
-          "type": "string",
-          "description": "Action to perform",
-          "enum": ["update_status", "get_progress", "list_tasks", "get_next_task"],
-          "default": "update_status"
+          "description": "Path to the document file to convert to Markdown. Supported formats: .docx, .xlsx, .html, .tex, .rst, .pptx, .pdf"
         }
       },
-      "required": ["task_id"]
+      "required": ["file_path"]
     }
   }
 } 

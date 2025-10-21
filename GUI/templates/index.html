@@ -2148,6 +2148,12 @@
                 <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
                 <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
             </div>
+            <div style="margin-left: 20px;">
+                <a href="/register" style="color: #cccccc; text-decoration: none; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; transition: all 0.3s ease;" onmouseover="this.style.color='#569cd6'; this.style.background='#3e3e42'" onmouseout="this.style.color='#cccccc'; this.style.background='transparent'">
+                    <i class="fas fa-user-plus"></i>
+                    {{ '注册账号' if lang == 'zh' else 'Register' }}
+                </a>
+            </div>
         </div>
         <div class="user-auth-right">
             <!-- Routine file selection (moved to top, left of model selection) -->
@@ -2570,6 +2576,7 @@
         // User connection management
         let socket = null;
         let currentUser = null;
+        let currentUserName = null;
         let isConnected = false;
         
         // Socket.IO connection configuration (will be initialized when user connects)
@@ -2723,6 +2730,7 @@
             }
             
             currentUser = null;
+            currentUserName = null;
             updateUserStatus('disconnected', I18N.user_disconnected);
             
             // Clear saved session from localStorage
@@ -2773,7 +2781,9 @@
             if (!socket) return;
             
             socket.on('connect', function() {
-                const identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
+                // 等待status事件获取用户名，如果还没有获取到则暂时显示API Key
+                const identity = currentUser === 'default' ? I18N.default_user :
+                    (currentUserName ? `${I18N.user_prefix}: ${currentUserName}` : `${I18N.user_prefix}: ${currentUser}`);
                 updateUserStatus('connected', I18N.user_connected, identity);
                 addMessage(I18N.connected, 'system');
 
@@ -2800,15 +2810,15 @@
             
             socket.on('status', function(data) {
                 isGuest = data.is_guest || false; // 保存到全局变量
-                const userName = data.user_name || 'unknown';
+                currentUserName = data.user_name || 'unknown'; // 保存用户名到全局变量
                 let identity = '';
-                
+
                 if (isGuest) {
                     identity = I18N.guest_user || '访客用户';
                 } else {
-                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUser}`;
+                    identity = currentUser === 'default' ? I18N.default_user : `${I18N.user_prefix}: ${currentUserName}`;
                 }
-                
+
                 updateUserStatus('connected', I18N.user_connected, identity, isGuest);
             });
 

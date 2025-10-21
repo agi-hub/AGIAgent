@@ -113,4 +113,6 @@ For web search usage:
 3. **File Storage**: Multiple images are saved in the workspace/web_search_result/images/ directory with descriptive filenames including sequence numbers
 </search>
 
+<preinstalled_packages>Available packages: requests, numpy, psutil, scikit-learn, pandas, openpyxl, playwright, pandoc, pillow - use directly without installation.</preinstalled_packages>
+
 
