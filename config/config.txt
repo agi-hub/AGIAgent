@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-# LANG=en
-LANG=zh
+LANG=en
+# LANG=zh
 
 # GUI API configuration
 api_key=your key

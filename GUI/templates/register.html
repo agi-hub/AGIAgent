@@ -344,6 +344,155 @@
                 inset 0 0 10px rgba(0, 64, 128, 0.2);
         }
 
+        .captcha-instruction {
+            font-size: 14px;
+            color: #0088ff;
+            margin-bottom: 8px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+        }
+
+        .captcha-text {
+            font-size: 18px;
+            color: #0088ff;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: linear-gradient(135deg, #001122 0%, #002244 100%);
+            border: 2px solid #004080;
+            border-radius: 0px;
+            text-align: center;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
+        }
+
+        .agreement-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #001122 0%, #002244 100%);
+            border: 2px solid #004080;
+            border-radius: 0px;
+            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+        }
+
+        .agreement-checkbox {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            accent-color: #0088ff;
+            cursor: pointer;
+        }
+
+        .agreement-text {
+            font-size: 14px;
+            color: #00ffff;
+            line-height: 1.5;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+        }
+
+        .agreement-link {
+            color: #0088ff;
+            text-decoration: none;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .agreement-link:hover {
+            text-decoration: underline;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
+            border: 2px solid #004080;
+            border-radius: 0px;
+            box-shadow:
+                0 0 30px rgba(0, 64, 128, 0.5),
+                inset 0 0 30px rgba(0, 64, 128, 0.1);
+            margin: 5% auto;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #00ffff;
+            position: relative;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #004080;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0088ff;
+            text-shadow: 0 0 10px rgba(0, 136, 255, 0.8);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: #0088ff;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+        }
+
+        .close-modal:hover {
+            color: #ff0040;
+            text-shadow: 0 0 10px rgba(255, 0, 64, 0.8);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #00ffff;
+            text-shadow: 0 0 2px rgba(0, 136, 255, 0.3);
+        }
+
+        .modal-body h3 {
+            color: #0088ff;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 18px;
+            text-shadow: 0 0 8px rgba(0, 136, 255, 0.6);
+        }
+
+        .modal-body p {
+            margin-bottom: 15px;
+        }
+
         /* Desktop styles - horizontal layout */
         @media (min-width: 769px) {
             body {
@@ -492,6 +641,20 @@
                 font-size: 15px;
                 text-shadow: 0 0 8px rgba(0, 102, 204, 0.5);
             }
+
+            .agreement-container {
+                padding: 12px;
+                margin-bottom: 15px;
+            }
+
+            .captcha-instruction {
+                font-size: 13px;
+            }
+
+            .captcha-text {
+                font-size: 16px;
+                padding: 8px;
+            }
         }
     </style>
 </head>
@@ -517,6 +680,9 @@
                  data-username-min-length="{{ '用户名至少需要2个字符' if lang == 'zh' else 'Username must be at least 2 characters' }}"
                  data-phone-required="{{ '手机号不能为空' if lang == 'zh' else 'Phone number is required' }}"
                  data-phone-invalid="{{ '请输入有效的手机号' if lang == 'zh' else 'Please enter a valid phone number' }}"
+                 data-captcha-required="{{ '请输入验证码' if lang == 'zh' else 'Please enter verification code' }}"
+                 data-captcha-incorrect="{{ '验证码错误，请重新输入' if lang == 'zh' else 'Verification code incorrect, please try again' }}"
+                 data-agreement-required="{{ '请同意用户协议' if lang == 'zh' else 'Please agree to the user agreement' }}"
                  data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
                  data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
                  data-copied="{{ '已复制！' if lang == 'zh' else 'Copied!' }}"
@@ -541,9 +707,20 @@
             </div>
 
             <div class="form-group">
-                <label for="description">{{ '描述' if lang == 'zh' else 'Description' }}</label>
-                <textarea id="description" name="description" class="form-textarea"
-                          placeholder="{{ '可选：添加个人描述' if lang == 'zh' else 'Optional: Add personal description' }}"></textarea>
+                <label for="captcha">{{ '验证码' if lang == 'zh' else 'Verification' }} *</label>
+                <p class="captcha-instruction">{{ '请填写以下内容的拼音（不含声调）' if lang == 'zh' else 'Please write the first letter of each word:' }}</p>
+                <p class="captcha-text">{{ '我不是大模型' if lang == 'zh' else 'I am not a large model' }}</p>
+                <input type="text" id="captcha" name="captcha" class="form-input"
+                       placeholder="{{ '请输入拼音' if lang == 'zh' else 'Enter first letters' }}" required maxlength="50">
+                <div class="error-message" id="captchaError"></div>
+            </div>
+
+            <div class="agreement-container">
+                <input type="checkbox" id="agreement" name="agreement" class="agreement-checkbox" required>
+                <label for="agreement" class="agreement-text">
+                    {{ '我已阅读并同意' if lang == 'zh' else 'I have read and agree to the' }}
+                    <a href="#" id="showAgreement" class="agreement-link">{{ '《用户协议》' if lang == 'zh' else 'User Agreement' }}</a>
+                </label>
             </div>
 
             <button type="submit" class="register-btn" id="registerBtn">
@@ -571,6 +748,42 @@
         </div>
     </div>
 
+    <!-- 用户协议模态窗口 -->
+    <div id="agreementModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">{{ '用户协议' if lang == 'zh' else 'User Agreement' }}</h2>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h3>{{ '1. 服务条款' if lang == 'zh' else '1. Terms of Service' }}</h3>
+                <p>{{ '欢迎使用AGI Agent。本服务由我们提供，以下是您使用本服务时需要遵守的条款。' if lang == 'zh' else 'Welcome to AGI Agent. This service is provided by us, and the following are the terms you need to comply with when using this service.' }}</p>
+
+                <h3>{{ '2. 用户注册' if lang == 'zh' else '2. User Registration' }}</h3>
+                <p>{{ '注册本服务需要提供真实、准确的信息。您负责维护账户的安全性。' if lang == 'zh' else 'Registration for this service requires providing true and accurate information. You are responsible for maintaining the security of your account.' }}</p>
+
+                <h3>{{ '3. 使用规则' if lang == 'zh' else '3. Usage Rules' }}</h3>
+                <p>{{ '您同意不使用本服务进行任何违法、侵权或有害活动。我们保留随时终止违规账户的权利。' if lang == 'zh' else 'You agree not to use this service for any illegal, infringing, or harmful activities. We reserve the right to terminate violating accounts at any time.' }}</p>
+
+                <h3>{{ '4. 隐私政策' if lang == 'zh' else '4. Privacy Policy' }}</h3>
+                <p>{{ '我们重视您的隐私。收集的信息仅用于提供服务，不会向第三方出售或泄露。' if lang == 'zh' else 'We value your privacy. The information collected is only used to provide services and will not be sold or disclosed to third parties.' }}</p>
+
+                <h3>{{ '5. 服务变更' if lang == 'zh' else '5. Service Changes' }}</h3>
+                <p>{{ '我们保留随时修改或终止服务的权利。重大变更将提前通知用户。' if lang == 'zh' else 'We reserve the right to modify or terminate the service at any time. Major changes will be notified to users in advance.' }}</p>
+
+                <h3>{{ '6. 免责声明' if lang == 'zh' else '6. Disclaimer' }}</h3>
+                <p>{{ '本服务按"现状"提供。我们不对服务中断、数据丢失或其他间接损害承担责任。' if lang == 'zh' else 'This service is provided "as is". We are not responsible for service interruptions, data loss, or other indirect damages.' }}</p>
+
+                <h3>{{ '7. 适用法律' if lang == 'zh' else '7. Applicable Law' }}</h3>
+                <p>{{ '本协议受相关法律法规管辖。如有争议，应通过友好协商解决。' if lang == 'zh' else 'This agreement is governed by relevant laws and regulations. Disputes should be resolved through friendly negotiation.' }}</p>
+
+                <p style="margin-top: 20px; font-weight: bold; color: #0088ff;">
+                    {{ '请仔细阅读以上条款，注册即表示您同意并接受这些条款。' if lang == 'zh' else 'Please read the above terms carefully. Registration means you agree to and accept these terms.' }}
+                </p>
+            </div>
+        </div>
+    </div>
+
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             // 获取国际化文本
@@ -580,6 +793,9 @@
                 usernameMinLength: i18nData.getAttribute('data-username-min-length'),
                 phoneRequired: i18nData.getAttribute('data-phone-required'),
                 phoneInvalid: i18nData.getAttribute('data-phone-invalid'),
+                captchaRequired: i18nData.getAttribute('data-captcha-required'),
+                captchaIncorrect: i18nData.getAttribute('data-captcha-incorrect'),
+                agreementRequired: i18nData.getAttribute('data-agreement-required'),
                 registrationFailed: i18nData.getAttribute('data-registration-failed'),
                 networkError: i18nData.getAttribute('data-network-error'),
                 copied: i18nData.getAttribute('data-copied'),
@@ -675,6 +891,40 @@
                     document.getElementById('phone_number').classList.remove('error');
                 }
 
+                // Captcha validation
+                const captcha = document.getElementById('captcha').value.trim().toLowerCase();
+                const captchaError = document.getElementById('captchaError');
+                const currentLang = i18nData.getAttribute('data-lang');
+                
+                let isValidCaptcha = false;
+                
+                if (currentLang === 'zh') {
+                    // 中文版：验证拼音 "我不是大模型" -> "wo bu shi da mo xing"
+                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    const expectedCaptcha = 'wobushidamoxing';
+                    const expectedCaptchaWithSpaces = 'wo bu shi da mo xing';
+                    isValidCaptcha = normalizedCaptcha === expectedCaptcha || captcha === expectedCaptchaWithSpaces;
+                } else {
+                    // 英文版：验证首字母 "I am not a large model" -> "ianalm"
+                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    isValidCaptcha = normalizedCaptcha === 'ianalm';
+                }
+
+                if (!captcha) {
+                    captchaError.textContent = i18n.captchaRequired;
+                    captchaError.style.display = 'block';
+                    document.getElementById('captcha').classList.add('error');
+                    isValid = false;
+                } else if (!isValidCaptcha) {
+                    captchaError.textContent = i18n.captchaIncorrect;
+                    captchaError.style.display = 'block';
+                    document.getElementById('captcha').classList.add('error');
+                    isValid = false;
+                } else {
+                    captchaError.style.display = 'none';
+                    document.getElementById('captcha').classList.remove('error');
+                }
+
                 return isValid;
             }
 
@@ -683,6 +933,13 @@
                 e.preventDefault();
 
                 if (!validateForm()) {
+                    return;
+                }
+
+                // Agreement validation - only check when submitting
+                const agreement = document.getElementById('agreement').checked;
+                if (!agreement) {
+                    alert(i18n.agreementRequired);
                     return;
                 }
 
@@ -695,7 +952,8 @@
                     const data = {
                         username: formData.get('username'),
                         phone_number: formData.get('phone_number'),
-                        description: formData.get('description')
+                        captcha: formData.get('captcha'),
+                        agreement: formData.get('agreement') ? true : false
                     };
 
                     const response = await fetch('/api/register', {
@@ -728,7 +986,8 @@
                             warningMessage.style.display = 'none'; // Hide warning for existing users
                         } else {
                             resultTitle.textContent = i18n.registrationSuccess;
-                            resultMessage.textContent = '{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}';
+                            resultMessage.textContent = i18nData.getAttribute('data-lang') === 'zh' ?
+                                '您的API密钥已生成，请妥善保存：' : 'Your API key has been generated. Please save it securely:';
                             warningMessage.style.display = 'block';
                         }
 
@@ -759,6 +1018,28 @@
             // Real-time validation
             document.getElementById('username').addEventListener('input', validateForm);
             document.getElementById('phone_number').addEventListener('input', validateForm);
+            document.getElementById('captcha').addEventListener('input', validateForm);
+
+            // Agreement modal functionality
+            const agreementModal = document.getElementById('agreementModal');
+            const showAgreementLink = document.getElementById('showAgreement');
+            const closeModalBtn = document.getElementById('closeModal');
+
+            showAgreementLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                agreementModal.style.display = 'block';
+            });
+
+            closeModalBtn.addEventListener('click', function() {
+                agreementModal.style.display = 'none';
+            });
+
+            // Close modal when clicking outside
+            window.addEventListener('click', function(event) {
+                if (event.target === agreementModal) {
+                    agreementModal.style.display = 'none';
+                }
+            });
         });
     </script>
 </body>

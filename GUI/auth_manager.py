@@ -81,6 +81,29 @@ class AuthenticationManager:
         """Generate a secure random API key"""
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    def _generate_deterministic_api_key(self, username: str, length: int = 32) -> str:
+        """Generate a deterministic API key based on username"""
+        # Use username + salt to generate deterministic key
+        salt = "AGI_Agent_2025"  # Fixed salt for consistency
+        combined = f"{username}_{salt}"
+        
+        # Generate hash and convert to alphanumeric string
+        hash_obj = hashlib.sha256(combined.encode('utf-8'))
+        hash_hex = hash_obj.hexdigest()
+        
+        # Convert hex to alphanumeric characters
+        alphabet = string.ascii_letters + string.digits
+        api_key = ""
+        for i in range(0, len(hash_hex), 2):
+            if len(api_key) >= length:
+                break
+            # Convert hex pair to integer and map to alphabet
+            hex_pair = hash_hex[i:i+2]
+            num = int(hex_pair, 16)
+            api_key += alphabet[num % len(alphabet)]
+        
+        return api_key[:length]
 
     def _validate_phone_number(self, phone: str) -> bool:
         """
@@ -157,7 +180,6 @@ class AuthenticationManager:
                 # Authentication successful
                 user_info = {
                     "name": key_info.get("name", "unknown"),
-                    "description": key_info.get("description", ""),
                     "permissions": key_info.get("permissions", ["read"]),
                     "authenticated_at": datetime.now().isoformat(),
                     "is_guest": False
@@ -219,8 +241,7 @@ class AuthenticationManager:
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
     
-    def register_user(self, username: str, phone_number: str, description: str = "",
-                     permissions: List[str] = None) -> Dict[str, any]:
+    def register_user(self, username: str, phone_number: str, permissions: List[str] = None) -> Dict[str, any]:
         """
         Register a new user with username and phone number
 
@@ -266,14 +287,14 @@ class AuthenticationManager:
         auth_config = self._load_authorized_keys()
         for key_info in auth_config.get("keys", []):
             if key_info.get("name") == username.strip():
-                # User already exists, return their API key
+                # User already exists, generate deterministic API key for display (don't update file)
+                api_key = self._generate_deterministic_api_key(username.strip())
                 return {
                     "success": True,
-                    "api_key": key_info.get("sha256_hash"),
+                    "api_key": api_key,  # Return the deterministic API key
                     "user_info": {
                         "name": key_info.get("name"),
                         "phone_number": key_info.get("phone_number", ""),
-                        "description": key_info.get("description", ""),
                         "permissions": key_info.get("permissions", []),
                         "created_at": key_info.get("created_at"),
                         "is_guest": False,
@@ -282,17 +303,19 @@ class AuthenticationManager:
                     "error": None
                 }
 
-        # Check if phone number is already registered
+        # Check if phone number is already registered (compare last 4 digits)
+        phone_last4 = phone_number.strip()[-4:] if len(phone_number.strip()) >= 4 else phone_number.strip()
         for key_info in auth_config.get("keys", []):
-            if key_info.get("phone_number") == phone_number.strip():
-                # Phone number already exists, return existing user's API key
+            stored_phone = key_info.get("phone_number", "")
+            if stored_phone == phone_last4:
+                # Phone number already exists, generate deterministic API key for display (don't update file)
+                api_key = self._generate_deterministic_api_key(key_info.get("name", ""))
                 return {
                     "success": True,
-                    "api_key": key_info.get("sha256_hash"),
+                    "api_key": api_key,  # Return the deterministic API key
                     "user_info": {
                         "name": key_info.get("name"),
                         "phone_number": key_info.get("phone_number", ""),
-                        "description": key_info.get("description", ""),
                         "permissions": key_info.get("permissions", []),
                         "created_at": key_info.get("created_at"),
                         "is_guest": False,
@@ -302,13 +325,13 @@ class AuthenticationManager:
                 }
 
         # Generate API key
-        api_key = self._generate_api_key()
+        api_key = self._generate_deterministic_api_key(username.strip())
 
-        # Create user record
+        # Create user record (store only last 4 digits of phone number)
+        phone_last4 = phone_number.strip()[-4:] if len(phone_number.strip()) >= 4 else phone_number.strip()
         new_user = {
             "name": username.strip(),
-            "phone_number": phone_number.strip(),
-            "description": description or f"{username.strip()} 用户",
+            "phone_number": phone_last4,
             "sha256_hash": self._hash_api_key(api_key),
             "permissions": permissions,
             "created_at": datetime.now().isoformat(),
@@ -320,12 +343,11 @@ class AuthenticationManager:
 
         try:
             self._save_authorized_keys(auth_config)
-            self.logger.info(f"Registered new user: {username} with phone: {phone_number}")
+            self.logger.info(f"Registered new user: {username} with phone ending: {phone_last4}")
 
             user_info = {
                 "name": new_user["name"],
                 "phone_number": new_user["phone_number"],
-                "description": new_user["description"],
                 "permissions": new_user["permissions"],
                 "created_at": new_user["created_at"],
                 "is_guest": False
@@ -346,8 +368,7 @@ class AuthenticationManager:
                 "error": f"注册失败: {str(e)}"
             }
 
-    def add_authorized_key(self, name: str, api_key: str, description: str = "",
-                          permissions: List[str] = None, expires_at: str = None) -> bool:
+    def add_authorized_key(self, name: str, api_key: str, permissions: List[str] = None, expires_at: str = None) -> bool:
         """Add new authorized key"""
         if permissions is None:
             permissions = ["read", "write", "execute"]
@@ -364,7 +385,6 @@ class AuthenticationManager:
         # Add new key
         new_key = {
             "name": name,
-            "description": description,
             "sha256_hash": self._hash_api_key(api_key),
             "permissions": permissions,
             "created_at": datetime.now().isoformat(),
@@ -413,7 +433,6 @@ class AuthenticationManager:
             safe_info = {
                 "name": key_info.get("name"),
                 "phone_number": key_info.get("phone_number", ""),
-                "description": key_info.get("description"),
                 "permissions": key_info.get("permissions"),
                 "created_at": key_info.get("created_at"),
                 "expires_at": key_info.get("expires_at"),
@@ -458,7 +477,6 @@ def main():
     add_parser = subparsers.add_parser("add", help="Add new authorized key")
     add_parser.add_argument("name", help="Key name/identifier")
     add_parser.add_argument("api_key", help="API key")
-    add_parser.add_argument("--description", default="", help="Key description")
     add_parser.add_argument("--permissions", nargs="+", default=["read", "write", "execute"], 
                            help="Permissions list")
     add_parser.add_argument("--expires", help="Expiration date (ISO format)")
@@ -491,8 +509,7 @@ def main():
     
     if args.command == "add":
         success = auth_manager.add_authorized_key(
-            args.name, args.api_key, args.description, 
-            args.permissions, args.expires
+            args.name, args.api_key, args.permissions, args.expires
         )
         print(f"Key addition {'successful' if success else 'failed'}")
     
@@ -506,7 +523,7 @@ def main():
         print("-" * 80)
         for key in keys:
             status = "✓" if key["enabled"] else "✗"
-            print(f"{status} {key['name']:15} | {key['description']:30} | {key['hash_preview']}")
+            print(f"{status} {key['name']:15} | {key['hash_preview']}")
             print(f"   Permissions: {', '.join(key['permissions'])}")
             if key['expires_at']:
                 print(f"   Expires: {key['expires_at']}")
