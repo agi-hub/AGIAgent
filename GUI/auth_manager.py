@@ -108,18 +108,19 @@ class AuthenticationManager:
     def _validate_phone_number(self, phone: str) -> bool:
         """
         Validate phone number format
-        Supports Chinese mobile numbers and international formats
+        Supports various international formats with more flexible rules
         """
         # Remove all whitespace and common separators
         phone = re.sub(r'[\s\-\(\)\+]', '', phone)
 
-        # Chinese mobile number patterns (11 digits starting with specific prefixes)
-        china_mobile_pattern = r'^1[3-9]\d{9}$'
+        # More flexible phone number validation
+        # Allow 7-20 digits, optionally starting with country code
+        phone_pattern = r'^\d{7,20}$'
+        
+        # Also allow international format with country code
+        international_pattern = r'^\d{1,4}\d{6,14}$'
 
-        # International format (allow +country code + number)
-        international_pattern = r'^\+\d{1,4}\d{6,14}$'
-
-        return bool(re.match(china_mobile_pattern, phone) or re.match(international_pattern, phone))
+        return bool(re.match(phone_pattern, phone) or re.match(international_pattern, phone))
     
     def authenticate_api_key(self, api_key: Optional[str]) -> Dict[str, any]:
         """

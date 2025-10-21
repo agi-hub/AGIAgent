@@ -875,7 +875,10 @@
                 // Phone validation
                 const phone = document.getElementById('phone_number').value.trim();
                 const phoneError = document.getElementById('phoneError');
-                const phoneRegex = /^1[3-9]\d{9}$/; // Chinese mobile number
+                
+                // 更宽松的电话号码验证，支持国际格式
+                const phoneRegex = /^(\+?[\d\s\-\(\)]{7,20})$/; // 支持国际格式，7-20位数字，可选+号开头
+                
                 if (!phone) {
                     phoneError.textContent = i18n.phoneRequired;
                     phoneError.style.display = 'block';
