@@ -412,10 +412,10 @@ class AGIAgentMain:
         try:
             requirement = input("Enter your requirement: ").strip()
             if not requirement:
-                print_current("❌ No valid requirement entered")
+                print_current("No valid requirement entered")
                 sys.exit(1)
         except EOFError:
-            print_current("❌ No valid requirement entered")
+            print_current("No valid requirement entered")
             sys.exit(1)
             
         except KeyboardInterrupt:
@@ -463,7 +463,7 @@ class AGIAgentMain:
                     except Exception as move_error:
                         print_current(f"❌ Failed to move file: {move_error}")
                 
-                print_current("❌ Task decomposition failed: Failed to create todo.md file")
+                print_current("Task decomposition failed: Failed to create todo.md file")
                 return False
             
             return True
@@ -1215,7 +1215,7 @@ Final result: {final_result}
         finish_operation("Get User Requirement")
         
         if not requirement:
-            print_current("❌ Invalid user requirement")
+            print_current("Invalid user requirement")
             return False
         
         # Save current output directory and requirement immediately after confirmation
@@ -1227,7 +1227,7 @@ Final result: {final_result}
         if self.interactive_mode:
             task_description = f"Execute task: {requirement}"
             if not self.ask_user_confirmation(f"🤖 Ready to execute task:\n   {requirement}\n\nProceed with execution?"):
-                print_current("❌ Task execution cancelled by user")
+                print_current("Task execution cancelled by user")
                 return False
         
         # Choose execution path based on mode
@@ -1245,7 +1245,7 @@ Final result: {final_result}
             # Step 2: Task decomposition
             track_operation("Task Decomposition")
             if not self.decompose_task(requirement):
-                print_current("❌ Task decomposition failed, program terminated")
+                print_current("Task decomposition failed, program terminated")
                 finish_operation("Task Decomposition")
                 finish_operation("Main Program Execution")
                 return False
@@ -1254,14 +1254,14 @@ Final result: {final_result}
             # Interactive mode confirmation after task decomposition
             if self.interactive_mode:
                 if not self.ask_user_confirmation(f"🤖 Task decomposition completed. Ready to execute all tasks?\n\nProceed with task execution?"):
-                    print_current("❌ Task execution cancelled by user")
+                    print_current("Task execution cancelled by user")
                     finish_operation("Main Program Execution")
                     return False
             
             # Step 3: Execute tasks
             track_operation("Multi-Task Execution")
             if not self.execute_tasks(loops):
-                print_current("❌ Task execution failed")
+                print_current("Task execution failed")
                 finish_operation("Multi-Task Execution")
                 finish_operation("Main Program Execution")
                 return False
