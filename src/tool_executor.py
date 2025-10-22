@@ -5565,10 +5565,10 @@ class ToolExecutor:
                         action = result.get('action', 'processed')
 
                         if status == 'success':
-                            print_current(f"✅ File Operation Succeed: {action} {file_path}")
+                            print_debug(f"✅ File Operation Succeed: {action} {file_path}")
                         elif status in ['error', 'failed']:
                             error_msg = result.get('error')
-                            print_current(f"❌ File Operation Failed: {file_path} - {error_msg}")
+                            print_debug(f"❌ File Operation Failed: {file_path} - {error_msg}")
                     elif result.get('status') in ['error', 'failed']:
                         status = result.get('status', 'unknown')
                         print_debug(f"Status: {status}")

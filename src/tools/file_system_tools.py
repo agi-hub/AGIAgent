@@ -933,7 +933,6 @@ class FileSystemTools:
         occurrence_count = original_content.count(old_code)
         
         if occurrence_count == 0:
-            print_current("no current code found to replace")
             raise ValueError(
                 f"EDIT REJECTED: The specified old_code was not found in the file. "
                 f"Please check that the code snippet matches exactly (including whitespace and indentation). "
@@ -1855,6 +1854,10 @@ class FileSystemTools:
                 if os.path.exists(md_path):
                     file_size = os.path.getsize(md_path)
                     print_debug(f"✅ Converted: {os.path.basename(resolved_file)} → {md_filename} ({file_size} bytes)")
+
+                    # Convert image paths to relative paths
+                    self._convert_image_paths_to_relative(md_path)
+
                     return {
                         'status': 'success',
                         'file': file_path,
@@ -2875,6 +2878,52 @@ class FileSystemTools:
                 'error': str(e),
                 'message': f'Word to PDF setup error: {e}'
             }
+
+    def _convert_image_paths_to_relative(self, md_file_path: str) -> None:
+        """
+        Convert image paths in markdown by replacing workspace root with '.' .
+
+        Args:
+            md_file_path: Path to the markdown file to process
+        """
+        try:
+            import re
+
+            # Read the markdown file
+            with open(md_file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Pattern to match markdown image references: ![alt](path)
+            image_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+
+            def convert_path(match):
+                alt_text = match.group(1)
+                image_path = match.group(2).strip()
+
+                # Normalize paths for comparison (handle both forward and backward slashes)
+                normalized_image_path = os.path.normpath(image_path)
+                normalized_workspace_root = os.path.normpath(self.workspace_root)
+
+                # Replace workspace root with '.'
+                if normalized_workspace_root in normalized_image_path:
+                    converted_path = normalized_image_path.replace(normalized_workspace_root, '.')
+                else:
+                    # If workspace root not found in path, replace entire path with '.'
+                    converted_path = '.'
+
+                return f'![{alt_text}]({converted_path})'
+
+            # Apply the conversion to all image references
+            converted_content = re.sub(image_pattern, convert_path, content)
+
+            # Write back only if content changed
+            if converted_content != content:
+                with open(md_file_path, 'w', encoding='utf-8') as f:
+                    f.write(converted_content)
+                print_debug(f"🔄 Converted image paths in: {os.path.basename(md_file_path)}")
+
+        except Exception as e:
+            print_debug(f"⚠️ Failed to convert image paths in {md_file_path}: {str(e)}")
 
 
 
