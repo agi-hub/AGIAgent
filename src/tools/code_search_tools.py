@@ -42,10 +42,6 @@ class CodeSearchTools:
         Returns:
             Dictionary with search results
         """
-        print_current(f"🔍 Codebase semantic search: {query}")
-        # Ignore additional parameters
-        if kwargs:
-            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         if not self.code_parser:
             print_current(f"❌ Code parser not initialized, using basic search")
@@ -100,7 +96,7 @@ class CodeSearchTools:
             stats = self.code_parser.get_repository_stats()
             
             print_current(f"✅ Search completed, found {len(results)} relevant code snippets")
-            print_current(f"📊 Codebase statistics: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} code segments")
+            #print_current(f"📊 Codebase statistics: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} code segments")
             
             return {
                 'query': query,

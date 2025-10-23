@@ -55,8 +55,6 @@ For Report Generation Tasks:
       ...
    ```
    <!-- the_example_diagram_caption -->
-
-   
    Rich SVG diagrams. Rich mermaid chart types are encouraged (such as Flowcharts, Class, Quadrant, Radar, Sankey, Timeline). Don't use mermaid TD type or TB type, and using LR instead. 
    Use style notation to draw colorful and beautiful diagram, limit to at most five colors. 
    For SVG diagram, avoid overlapped text box, avoid lines over text, draw larger text box to ensure text can be included, draw small arrow. Avoid using special svg flags in text such as >, <, &.
@@ -65,7 +63,7 @@ For Report Generation Tasks:
 9. You should also search for relevant images from web to supplement the report.
    For data analysis, you should firstly write and run analysis codes to generate figures and then add to the report. Tables are needed to interpret data. 
 10. Use proper indentation for all bullet points (3 spaces before each dash) to Ensure consistent formatting for Word document conversion.
-11. Citation and References: Mark information sources in the form of literature citations, using academic citation format. For data, do provide source link, otherwise do not write accurate data.
+11. Citation and References: Mark information sources in the form of literature citations, using academic citation format. NEVER write any specific or precise numerical values based solely on your own memory or assumptions; for each number you present, you must provide a reliable reference link as the source.
 </reports>
 
 <image_processing>

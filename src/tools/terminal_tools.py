@@ -217,7 +217,8 @@ class TerminalTools:
         if timed_out:
             print_current("⏰ Command execution timed out")
         elif return_code == 0:
-            print_current("✅ Command execution completed successfully")
+            pass
+            #print_current("✅ Command execution completed successfully")
         # Removed the failure status print - no longer printing failure messages
 
         

@@ -134,7 +134,10 @@ def print_current(*args: object, **kwargs) -> None:  # noqa: D401
     if current_id is None or current_id == 'manager':
         # Handle line breaks when outputting to terminal
         processed_message = _process_newlines_for_terminal(message)
+
+        # Print to terminal (encoding is handled by module initialization)
         builtins.print(processed_message, **print_kwargs)
+
         # Also write to manager.out file
         _write_to_file("manager.out", message, newline=(end_char != ''))
     else:
@@ -250,3 +253,24 @@ def print_agent(agent_id: str, *args, **kwargs):  # pragma: no cover
         message = remove_emoji(message)
     end_char = kwargs.get('end', '\n')
     _write_to_file(f"{agent_id}.out", message, newline=(end_char != ''))
+
+
+# Initialize stdout encoding for proper Unicode support
+def _initialize_stdout_encoding():
+    """Configure stdout encoding once at module import time to avoid repeated configuration."""
+    try:
+        import sys
+        # Try to reconfigure stdout to use UTF-8 encoding
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            except (OSError, ValueError):
+                # Some environments might not support reconfigure
+                pass
+    except ImportError:
+        # sys module might not be available in some contexts
+        pass
+
+
+# Configure encoding once when module is imported
+_initialize_stdout_encoding()

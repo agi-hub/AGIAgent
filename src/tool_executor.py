@@ -92,389 +92,57 @@ def is_claude_model(model: str) -> bool:
     """
     return model.lower().startswith('claude')
 
+def _fix_json_boolean_values(json_str: str) -> str:
+    """
+    Fix boolean value formatting issues in a JSON string.
+    Replace :True with :true and :False with :false.
 
-def is_complete_json(json_str: str) -> bool:
-    """
-    验证JSON字符串是否完整且格式正确
-    
     Args:
-        json_str: 要验证的JSON字符串
-        
+        json_str: The original JSON string.
+
     Returns:
-        True if JSON is complete and valid, False otherwise
+        The corrected JSON string.
     """
-    if not json_str or not json_str.strip():
-        return False
-    
-    try:
-        json.loads(json_str)
-        return True
-    except json.JSONDecodeError as e:
-        # 检查是否是不完整的JSON（而非格式错误）
-        # 不完整的JSON通常在字符串末尾出现错误
-        error_pos = e.pos if hasattr(e, 'pos') else len(json_str)
-        # 如果错误在字符串末尾附近（最后10%），可能是不完整
-        if error_pos >= len(json_str) * 0.9:
-            print_debug(f"JSON可能不完整: {e.msg} at position {error_pos}/{len(json_str)}")
-        else:
-            print_debug(f"JSON格式错误: {e.msg} at position {error_pos}")
-        return False
-    except Exception as e:
-        print_debug(f"JSON验证失败: {str(e)}")
-        return False
+    json_str = re.sub(r':\s*True\b', ': true', json_str)
+    json_str = re.sub(r':\s*False\b', ': false', json_str)
+    return json_str
 
 
 def validate_tool_call_json(json_str: str, tool_name: str = "") -> Tuple[bool, Optional[Dict], str]:
     """
-    验证并解析工具调用的JSON参数，支持多种格式的自动修复
-    
+    Validate and parse the JSON parameters for a tool call, with auto-fix support for multiple formats.
+
     Args:
-        json_str: JSON字符串
-        tool_name: 工具名称（用于日志）
-        
+        json_str: The JSON string.
+        tool_name: Name of the tool (for logging).
+
     Returns:
-        (is_valid, parsed_data, error_message)
+        Tuple of (is_valid, parsed_data, error_message)
     """
-    if not json_str:
+    if not json_str or not json_str.strip():
         return False, None, "Empty JSON string"
-    
-    # 首先尝试直接解析
+
+    # Try parsing directly first
     try:
         data = json.loads(json_str)
         return True, data, ""
     except json.JSONDecodeError as e:
-        # 尝试修复常见的JSON格式问题
-        fixed_json = _fix_common_json_issues(json_str, tool_name)
-        if fixed_json != json_str:
-            try:
-                data = json.loads(fixed_json)
-                print_debug(f"🔧 Fixed JSON format for {tool_name}")
-                return True, data, ""
-            except json.JSONDecodeError:
-                pass  # 继续使用原始错误信息
-        
-        error_msg = f"JSON解析失败"
+        error_msg = f"JSON parsing failed"
         if tool_name:
-            error_msg += f" (工具: {tool_name})"
+            error_msg += f" (tool: {tool_name})"
         error_msg += f": {e.msg} at line {e.lineno} column {e.colno}"
-        
-        # 提供更详细的错误上下文
+
+        # Add detailed error context
         lines = json_str.split('\n')
         if 0 <= e.lineno - 1 < len(lines):
             error_line = lines[e.lineno - 1]
-            error_msg += f"\n错误行: {error_line}"
+            error_msg += f"\nError line: {error_line}"
             if e.colno > 0:
-                error_msg += f"\n位置: {' ' * (e.colno - 1)}^"
-        
+                error_msg += f"\nPosition: {' ' * (e.colno - 1)}^"
+
         return False, None, error_msg
     except Exception as e:
-        return False, None, f"未预期的错误: {str(e)}"
-
-
-def _fix_common_json_issues(json_str: str, tool_name: str) -> str:
-    """
-    修复常见的JSON格式问题
-    
-    Args:
-        json_str: 原始JSON字符串
-        tool_name: 工具名称
-        
-    Returns:
-        修复后的JSON字符串
-    """
-    # 优先处理XML格式混入JSON的问题
-    if '<arg_key>' in json_str and ('<arg_value>' in json_str or '</arg_value>' in json_str):
-        print_debug(f"🔧 Detected XML format mixed with JSON for {tool_name}, attempting conversion")
-        return _extract_key_value_pairs(json_str)
-    
-    # 尝试智能修复JSON格式
-    json_str = _smart_fix_json(json_str)
-    
-    # 修复缺少引号的问题
-    if 'query:' in json_str and not '"query"' in json_str:
-        json_str = re.sub(r'query:([^,}]+)', r'"query": "\1"', json_str)
-    
-    # 修复布尔值格式问题
-    json_str = re.sub(r':\s*True\b', ': true', json_str)
-    json_str = re.sub(r':\s*False\b', ': false', json_str)
-    json_str = re.sub(r':\s*None\b', ': null', json_str)
-    
-    # 修复缺少逗号的问题
-    json_str = re.sub(r'"\s*\n\s*"', '",\n"', json_str)
-    
-    return json_str
-
-
-def _smart_fix_json(json_str: str) -> str:
-    """
-    智能修复JSON格式问题
-    
-    Args:
-        json_str: 格式错误的JSON字符串
-        
-    Returns:
-        修复后的JSON字符串
-    """
-    # 处理重复的JSON对象
-    if json_str.count('{') > 1:
-        # 找到第一个完整的JSON对象
-        brace_count = 0
-        end_pos = 0
-        start_pos = json_str.find('{')
-        if start_pos != -1:
-            for i in range(start_pos, len(json_str)):
-                char = json_str[i]
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_pos = i + 1
-                        break
-        
-        if end_pos > 0:
-            json_str = json_str[:end_pos]
-    
-    # 如果包含XML标签，尝试提取键值对
-    if '<arg_key>' in json_str and '<arg_value>' in json_str:
-        return _extract_key_value_pairs(json_str)
-    
-    # 修复常见的格式问题
-    # 修复缺少引号的键名
-    json_str = re.sub(r'(\w+):', r'"\1":', json_str)
-    
-    # 修复布尔值
-    json_str = re.sub(r':\s*True\b', ': true', json_str)
-    json_str = re.sub(r':\s*False\b', ': false', json_str)
-    json_str = re.sub(r':\s*None\b', ': null', json_str)
-    
-    return json_str
-
-
-def _extract_key_value_pairs(text: str) -> str:
-    """
-    从包含XML标签的文本中提取键值对并构建JSON
-    
-    Args:
-        text: 包含XML标签的文本
-        
-    Returns:
-        JSON格式的字符串
-    """
-    try:
-        # 处理混合格式：{"key:value</arg_value><arg_key>key:value</arg_value>...
-        # 首先尝试标准的XML格式
-        pattern1 = r'<arg_key>([^<]+)</arg_key><arg_value>([^<]*)</arg_value>'
-        pattern2 = r'<arg_key>([^<]+)</arg_key></arg_value>([^<]*)</arg_value>'
-        
-        matches1 = re.findall(pattern1, text)
-        matches2 = re.findall(pattern2, text)
-        
-        matches = matches1 if matches1 else matches2
-        
-        if not matches:
-            # 尝试更宽松的匹配模式
-            pattern3 = r'<arg_key>([^<]+)</arg_key>.*?</arg_value>([^<]*)</arg_value>'
-            matches = re.findall(pattern3, text)
-        
-        if not matches:
-            # 尝试解析混合格式：{"key:value</arg_value><arg_key>key:value</arg_value>
-            print_debug(f"🔧 Trying mixed format parsing...")
-            return _parse_mixed_format(text)
-        
-        # 构建JSON对象
-        json_parts = ['{']
-        for i, (key, value) in enumerate(matches):
-            # 处理值类型
-            if value.lower() in ['true', 'false']:
-                json_value = value.lower()
-            elif value.isdigit():
-                json_value = value
-            elif value == '':
-                json_value = '""'
-            else:
-                # 转义引号并添加引号
-                escaped_value = value.replace('"', '\\"')
-                json_value = f'"{escaped_value}"'
-            
-            json_parts.append(f'  "{key}": {json_value}')
-            if i < len(matches) - 1:
-                json_parts.append(',')
-        
-        json_parts.append('\n}')
-        return '\n'.join(json_parts)
-    
-    except Exception as e:
-        print_debug(f"⚠️ Failed to extract key-value pairs: {e}")
-        return text
-
-
-def _parse_mixed_format(text: str) -> str:
-    """
-    解析混合格式的文本：{"key:value</arg_value><arg_key>key:value</arg_value>
-    
-    Args:
-        text: 混合格式的文本
-        
-    Returns:
-        JSON格式的字符串
-    """
-    try:
-        # 分割文本：{"key:value</arg_value><arg_key>key:value</arg_value>
-        parts = text.split('</arg_value><arg_key>')
-        
-        key_value_pairs = []
-        for part in parts:
-            # 移除开头的 { 和 <arg_key>
-            part = part.replace('{', '').replace('<arg_key>', '')
-            # 移除结尾的 </arg_value>
-            part = part.replace('</arg_value>', '')
-            
-            # 按第一个冒号分割
-            if ':' in part:
-                key, value = part.split(':', 1)
-                key = key.strip()
-                value = value.strip()
-                
-                # 清理键名中的引号
-                if key.startswith('"') and key.endswith('"'):
-                    key = key[1:-1]
-                elif key.startswith('"'):
-                    key = key[1:]
-                
-                key_value_pairs.append((key, value))
-        
-        if not key_value_pairs:
-            print_debug(f"⚠️ No key-value pairs found in mixed format")
-            return text
-        
-        # 构建JSON对象
-        json_parts = ['{']
-        for i, (key, value) in enumerate(key_value_pairs):
-            # 处理值类型
-            if value.lower() in ['true', 'false']:
-                json_value = value.lower()
-            elif value.isdigit():
-                json_value = value
-            elif value == '':
-                json_value = '""'
-            else:
-                # 转义引号并添加引号
-                escaped_value = value.replace('"', '\\"')
-                json_value = f'"{escaped_value}"'
-            
-            json_parts.append(f'  "{key}": {json_value}')
-            if i < len(key_value_pairs) - 1:
-                json_parts.append(',')
-        
-        json_parts.append('\n}')
-        return '\n'.join(json_parts)
-    
-    except Exception as e:
-        print_debug(f"⚠️ Failed to parse mixed format: {e}")
-        return text
-
-
-def _convert_xml_to_json(xml_str: str) -> str:
-    """
-    将XML格式转换为JSON格式
-    
-    Args:
-        xml_str: XML格式的字符串
-        
-    Returns:
-        JSON格式的字符串
-    """
-    try:
-        # 提取所有的arg_key和arg_value对
-        pattern = r'<arg_key>([^<]+)</arg_key><arg_value>([^<]*)</arg_value>'
-        matches = re.findall(pattern, xml_str)
-        
-        if not matches:
-            return xml_str
-        
-        # 构建JSON对象
-        json_parts = ['{']
-        for i, (key, value) in enumerate(matches):
-            # 处理值类型
-            if value.lower() in ['true', 'false']:
-                json_value = value.lower()
-            elif value.isdigit():
-                json_value = value
-            elif value == '':
-                json_value = '""'
-            else:
-                # 转义引号并添加引号
-                escaped_value = value.replace('"', '\\"')
-                json_value = f'"{escaped_value}"'
-            
-            json_parts.append(f'  "{key}": {json_value}')
-            if i < len(matches) - 1:
-                json_parts.append(',')
-        
-        json_parts.append('\n}')
-        return '\n'.join(json_parts)
-    
-    except Exception as e:
-        print_debug(f"⚠️ Failed to convert XML to JSON: {e}")
-        return xml_str
-
-
-def _fix_malformed_json(json_str: str) -> str:
-    """
-    修复格式错误的JSON字符串
-    
-    Args:
-        json_str: 格式错误的JSON字符串
-        
-    Returns:
-        修复后的JSON字符串
-    """
-    # 处理重复的JSON对象
-    if json_str.count('{') > 1:
-        # 找到第一个完整的JSON对象
-        brace_count = 0
-        end_pos = 0
-        for i, char in enumerate(json_str):
-            if char == '{':
-                brace_count += 1
-            elif char == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    end_pos = i + 1
-                    break
-        
-        if end_pos > 0:
-            json_str = json_str[:end_pos]
-    
-    # 修复缺少引号的问题 - 只修复键名，不修复值
-    json_str = re.sub(r'(\w+):', r'"\1":', json_str)
-    
-    # 修复布尔值
-    json_str = re.sub(r':\s*True\b', ': true', json_str)
-    json_str = re.sub(r':\s*False\b', ': false', json_str)
-    json_str = re.sub(r':\s*None\b', ': null', json_str)
-    
-    return json_str
-
-
-def should_use_chat_based_tools(model: str) -> bool:
-    """
-    Determine if a model should use chat-based tool calling based on the configuration.
-    
-    Args:
-        model: The model name
-        
-    Returns:
-        Boolean indicating whether to use chat-based tool calling
-    """
-            # Load tool calling format configuration from config/config.txt
-    # True = standard tool calling, False = chat-based tool calling
-    tool_calling_format = get_tool_calling_format()
-    
-    # Return the inverse of tool_calling_format
-    # use_chat_based_tools is the inverse of tool_calling_format
-    return not tool_calling_format
+        return False, None, f"Unexpected error: {str(e)}"
 
 
 # Dynamically import Anthropic
@@ -484,7 +152,7 @@ def get_anthropic_client():
         from anthropic import Anthropic
         return Anthropic
     except ImportError:
-        print_current("❌ Anthropic library not installed, please run: pip install anthropic")
+        print_current("Anthropic library not installed, please run: pip install anthropic")
         raise ImportError("Anthropic library not installed")
 
 
@@ -576,6 +244,9 @@ class ToolExecutor:
         
         # Check if using Anthropic API based on api_base
         self.is_claude = is_anthropic_api(self.api_base)
+        
+        # Check if using GLM model with Anthropic API
+        self.is_glm = 'glm-' in self.model.lower() and 'anthropic' in self.api_base.lower()
         
         # Load tool calling format configuration from config/config.txt
         # True = standard tool calling, False = chat-based tool calling
@@ -872,8 +543,7 @@ class ToolExecutor:
         if self.cli_mcp_initialized or self.direct_mcp_initialized:
             self._add_mcp_tools_to_map()
             #print_current(f"🔧 MCP tools loaded successfully during startup")
-        else:
-            pass  # Neither MCP client initialized
+
         
         # Log related settings
         # Only create logs directory if we have a valid workspace_dir
@@ -893,10 +563,7 @@ class ToolExecutor:
         if self.llm_logs_dir:
             os.makedirs(self.llm_logs_dir, exist_ok=True)
         
-        # If DEBUG mode is enabled, initialize CSV logger
-        if self.debug_mode:
-            # print_current(f"🐛 DEBUG mode enabled, LLM call records will be saved to: {self.llm_logs_dir}/llmcall.csv")
-            pass
+
     
     async def _initialize_mcp_async(self):
         """Initialize both MCP clients asynchronously"""
@@ -1820,15 +1487,14 @@ class ToolExecutor:
             # Check for TASK_COMPLETED flag and detect conflicts
             has_task_completed = "TASK_COMPLETED:" in content
             has_tool_calls = len(tool_calls) > 0
-            
-            # Check for TASK_COMPLETED flag and detect conflicts
-            has_task_completed = "TASK_COMPLETED:" in content
-            has_tool_calls = len(tool_calls) > 0
-            
+
+            # Remember if there was originally a TASK_COMPLETED flag
+            original_has_task_completed = has_task_completed
+
             # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
             conflict_detected = has_tool_calls and has_task_completed
             if conflict_detected:
-                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, removing TASK_COMPLETED flag")
+                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, executing tools first then completing task")
                 # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
                 content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
                 has_task_completed = False # Ensure the flag is updated after removal
@@ -1891,13 +1557,14 @@ class ToolExecutor:
                     successful_executions = len(all_tool_results)
                     
                     # Show tool call information
-                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                    #print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
                     if tool_calls_formatted:
                         # Remove the "**Tool Calls:**" header since we already printed our own
                         display_content = tool_calls_formatted.replace("**Tool Calls:**\n", "").strip()
                         print_current(display_content)
                 else:
-                    print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
+                    pass
+                    #print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
 
                     
                     # Print tool calls for terminal display with better formatting
@@ -1983,17 +1650,56 @@ class ToolExecutor:
                     result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
                 result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
                 
-                # Store task completion in long-term memory
+                # Check if this was originally intended to be task completion after tool execution
+                if original_has_task_completed:
+                    # Extract the completion message
+                    task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                    if task_completed_match:
+                        completion_message = task_completed_match.group(1).strip()
+
+                    # Save final debug log
+                    if self.debug_mode:
+                        try:
+                            completion_info = {
+                                "has_tool_calls": True,
+                                "task_completed": True,
+                                "completion_detected": True,
+                                "execution_result": "task_completed_with_tools",
+                                "tool_calls_count": len(tool_calls),
+                                "successful_executions": successful_executions
+                            }
+
+                            self._save_llm_call_debug_log(messages, f"Task completed with TASK_COMPLETED flag after tool execution", 1, completion_info)
+                        except Exception as log_error:
+                            print_current(f"❌ Completion debug log save failed: {log_error}")
+
+                    # Store task completion in long-term memory
+                    self._store_task_completion_memory(prompt, combined_result, {
+                        "task_completed": True,
+                        "completion_method": "task_completed_with_tools",
+                        "execution_round": round_counter,
+                        "tool_calls_count": len(tool_calls),
+                        "successful_executions": successful_executions,
+                        "model_used": self.model
+                    }, force_update=True)
+
+                    finish_operation(f"executing task (round {round_counter})")
+                    # Return optimized history if available
+                    if history_was_optimized:
+                        return (combined_result, task_history)
+                    return combined_result
+
+                # Store task completion in long-term memory (normal tool execution)
                 combined_result = "".join(result_parts)
                 self._store_task_completion_memory(prompt, combined_result, {
-                    "task_completed": True,
+                    "task_completed": False,  # Not task completion, just tool execution
                     "completion_method": "tool_execution",
                     "execution_round": round_counter,
                     "tool_calls_count": len(tool_calls),
                     "successful_executions": successful_executions,
                     "model_used": self.model
                 }, force_update=False)
-                
+
                 finish_operation(f"executing task (round {round_counter})")
                 # Return optimized history if available, even with tool calls
                 if history_was_optimized:
@@ -2002,7 +1708,7 @@ class ToolExecutor:
             
             else:
                 # No tool calls, return LLM response directly
-                print_current("📝 No tool calls found, returning LLM response")
+                # print_current("📝 No tool calls found, returning LLM response")
                 
                 # 🔧 NEW: Add base64 data status information when no tools are called
                 #base64_status_info = "\n\n## Base64 Data Status\n❌ No base64 encoded image data acquired in this round (no get_sensor_data tool called)."
@@ -2036,15 +1742,15 @@ class ToolExecutor:
                 return content
             
         except json.JSONDecodeError as e:
-            error_msg = f"❌ JSON parsing error in tool call: {str(e)}"
-            print_current(error_msg)
-            print_current(f"📄 This usually means the model generated invalid JSON in tool arguments")
-            print_current(f"💡 Try regenerating the response or check the model's tool calling format")
+            error_msg = f"JSON parsing error in tool call: {str(e)}"
+            print_debug(error_msg)
+            print_debug(f"📄 This usually means the model generated invalid JSON in tool arguments")
+            print_debug(f"💡 Try regenerating the response or check the model's tool calling format")
             finish_operation(f"executing task (round {round_counter})")
             return error_msg
         except Exception as e:
-            error_msg = f"❌ Error executing subtask: {str(e)}"
-            print_current(error_msg)
+            error_msg = f"Error executing subtask: {str(e)}"
+            print_debug(error_msg)
             
             # Add more specific error information for common issues
             if "Expecting ',' delimiter" in str(e):
@@ -2068,10 +1774,10 @@ class ToolExecutor:
             #round_counter += 1
         
         # If we reach here, it means we've completed all tool calls
-        print_current("🎉 All tool calls completed successfully!")
-        
+        # print_current("🎉 All tool calls completed successfully!")  # Reduced verbose output
+
         # Return final accumulated results
-        return "error"
+        return "Error: Task execution failed - reached unexpected code path"
     
     def _check_terminate_messages(self) -> Optional[str]:
         """
@@ -2197,7 +1903,7 @@ class ToolExecutor:
                             return all_tool_calls
                     except json.JSONDecodeError as e:
                         print_current(f"Failed to parse JSON block: {str(e)[:200]}")
-                        pass  # Continue to try other parsing methods
+
             except json.JSONDecodeError as e:
                 if self.debug_mode:
                     print_current(f"Failed to parse OpenAI-style JSON tool calls: {e}")
@@ -3319,8 +3025,8 @@ class ToolExecutor:
             # Display simplified statistics in one line
             cached_tokens = cache_stats['estimated_cache_tokens']
             new_input_tokens = cache_stats['new_tokens']
-            
-            print_current(f"📊 Input cached tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,}")
+
+            # print_current(f"📊 Input cached tokens: {cached_tokens:,}, Input new tokens: {new_input_tokens:,}, Output tokens: {total_output_tokens:,}")  # Reduced verbose output
             
         except Exception as e:
             print_current(f"⚠️ Statistics calculation failed: {e}")
@@ -3583,7 +3289,7 @@ class ToolExecutor:
             results = data.get('results', [])
             total_results = len(results)
             
-            lines.append(f"🔍 Code search for '{query}': Found {total_results} results")
+            #lines.append(f"🔍 Code search for '{query}': Found {total_results} results")
             
             # Show all results (up to 10) with brief info
             for i, result in enumerate(results[:10], 1):
@@ -3601,9 +3307,9 @@ class ToolExecutor:
                 lines.append(f"  ... and {total_results - 10} more results")
             
             # Add repository stats briefly
-            stats = data.get('repository_stats', {})
-            if stats:
-                lines.append(f"📊 Repository: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} segments")
+            #stats = data.get('repository_stats', {})
+            #if stats:
+            #    lines.append(f"📊 Repository: {stats.get('total_files', 0)} files, {stats.get('total_segments', 0)} segments")
         
         # Handle web_search results
         elif tool_name == 'web_search':
@@ -3840,6 +3546,8 @@ class ToolExecutor:
         """
         if self.use_chat_based_tools:
             return self._call_llm_with_chat_based_tools(messages, user_message, system_message)
+        elif self.is_glm:
+            return self._call_glm_with_standard_tools(messages, user_message, system_message)
         elif self.is_claude:
             return self._call_claude_with_standard_tools(messages, user_message, system_message)
         else:
@@ -3902,6 +3610,11 @@ class ToolExecutor:
                         for content_block in response.content:
                             if content_block.type == "text":
                                 content += content_block.text
+
+                        # Check for hallucination pattern in non-streaming response
+                        if "**LLM Called Following Tools in this round" in content:
+                            # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
+                            return content, []
                         
                 else:
                     # Use OpenAI API for chat-based tool calling
@@ -3929,7 +3642,7 @@ class ToolExecutor:
                                     if delta.content is not None:
                                         # Check for hallucination pattern
                                         if "**LLM Called Following Tools in this round" in delta.content:
-                                            print_current("\n🚨 Hallucination Detected, stop chat")
+                                            # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
                                             hallucination_detected = True
                                             break
                                         printer.write(delta.content)
@@ -3946,10 +3659,23 @@ class ToolExecutor:
                             max_tokens=self._get_max_tokens_for_model(self.model),
                             temperature=0.7,
                             top_p=0.8
-                        )
-                        
-                        content = response.choices[0].message.content or ""
-                
+                    )
+
+                    # Extract content and thinking field from OpenAI response
+                    message = response.choices[0].message
+                    content = message.content or ""
+
+                    # Handle thinking field for OpenAI o1 models and other reasoning models
+                    thinking = getattr(message, 'thinking', None)
+                    if thinking:
+                        # Combine thinking and content with clear separation
+                        content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
+
+                    # Check for hallucination pattern in non-streaming response
+                        if "**LLM Called Following Tools in this round" in content:
+                            # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
+                            return content, []
+
                 # Parse tool calls from the response content
                 tool_calls = self.parse_tool_calls(content)
                 
@@ -3969,9 +3695,10 @@ class ToolExecutor:
                 
                 # Check if this is a retryable error
                 retryable_errors = [
-                    'overloaded', 'rate limit', 'too many requests', 
+                    'overloaded', 'rate limit', 'too many requests',
                     'service unavailable', 'timeout', 'temporary failure',
-                    'server error', '429', '503', '502', '500'
+                    'server error', '429', '503', '502', '500',
+                    'peer closed connection', 'incomplete chunked read'
                 ]
                 
                 # Find which error keyword matched
@@ -4006,6 +3733,278 @@ class ToolExecutor:
                         print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     else:
                         print_current(f"❌ Chat-based LLM API call failed: {e}")
+                    
+                    raise e
+
+    def _call_glm_with_standard_tools(self, messages, user_message, system_message):
+        """
+        Call GLM with standard tool calling format.
+        """
+        # Get standard tools for Anthropic
+        tools = self._convert_tools_to_standard_format("anthropic")
+        
+        # Check if we have stored image data for vision API
+        if hasattr(self, 'current_round_images') and self.current_round_images:
+            print_current(f"🖼️ Using vision API with {len(self.current_round_images)} stored images")
+            # Build vision message with stored images
+            vision_user_message = self._build_vision_message(user_message if isinstance(user_message, str) else user_message.get("text", ""))
+            claude_messages = [{"role": "user", "content": vision_user_message}]
+            # Clear image data after using it for vision API to prevent reuse in subsequent rounds
+            print_current("🧹 Clearing image data after vision API usage")
+            self.current_round_images = []
+        else:
+            # Prepare messages for Claude - user_message can be string or content array
+            claude_messages = [{"role": "user", "content": user_message}]
+        
+
+        
+        # Retry logic for retryable errors
+        max_retries = 3
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
+            try:
+                if self.streaming:
+                    # Simplified streaming logic - only handle message streaming, read tool calls from final messages in other parts
+                    content = ""
+                    tool_calls = []
+
+                    with streaming_context(show_start_message=True) as printer:
+                        # 显示LLM开始说话的emoji
+                        printer.write(f"\n💬 ")
+
+                        hallucination_detected = False
+                        stream_error_occurred = False
+                        last_event_type = None
+                        error_details = None
+
+                        with self.client.messages.stream(
+                            model=self.model,
+                            max_tokens=self._get_max_tokens_for_model(self.model),
+                            system=system_message,
+                            messages=claude_messages,
+                            tools=tools,
+                            temperature=0.7
+                        ) as stream:
+                            try:
+                                for event in stream:
+                                    try:
+                                        event_type = getattr(event, 'type', None)
+                                        last_event_type = event_type
+
+                                        # Only handle text content streaming events
+                                        if event_type == "content_block_delta":
+                                            try:
+                                                delta = getattr(event, 'delta', None)
+
+                                                if delta:
+                                                    delta_type = getattr(delta, 'type', None)
+
+                                                    if delta_type == "text_delta":
+                                                        # 文本内容流式输出
+                                                        text = getattr(delta, 'text', '')
+                                                        # 检测幻觉模式
+                                                        if "**LLM Called Following Tools in this round" in text:
+                                                            print_current("\n🚨 Hallucination detected, stopping conversation")
+                                                            hallucination_detected = True
+                                                            break
+                                                        printer.write(text)
+                                                        content += text
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
+                                                # 继续处理其他事件
+
+                                        # 处理消息统计信息
+                                        elif event_type == "message_delta":
+                                            try:
+                                                delta = getattr(event, 'delta', None)
+                                                if delta:
+                                                    usage = getattr(delta, 'usage', None) or getattr(event, 'usage', None)
+                                                    if usage:
+                                                        input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                                                        output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                                                        cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                                                        cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+
+                                                        if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                                                            print_debug(f"\n📊 Token Usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                                            except Exception as e:
+                                                print_debug(f"⚠️ Error processing message_delta: {type(e).__name__}: {str(e)}")
+
+                                    except Exception as event_error:
+                                        # Single event processing failure should not interrupt the entire stream
+                                        print_debug(f"⚠️ Error processing event {last_event_type}: {type(event_error).__name__}: {str(event_error)}")
+                                        # Do not use continue, let the loop continue naturally
+
+                            except Exception as e:
+                                # Check if it's a JSON parsing error, if so ignore and continue streaming inference
+                                error_str = str(e)
+                                if "expected value at line 1 column" in error_str and "ValueError" in str(type(e)):
+                                    # JSON parsing error, ignore and continue processing other events
+                                    print_debug(f"⚠️ JSON parsing error ignored for event_type={last_event_type}: {type(e).__name__}: {str(e)}")
+                                    continue  # 继续处理下一个事件
+                                else:
+                                    # 其他类型的错误，使用增强的错误处理
+                                    stream_error_occurred = True
+                                    error_details = f"Streaming failed at event_type={last_event_type}: {type(e).__name__}: {str(e)}"
+                                    print_debug(error_details)
+
+                                    # 尝试回退到text_stream
+                                    try:
+                                        for text in stream.text_stream:
+                                            if "**LLM Called Following Tools in this round" in text:
+                                                print_current("\n🚨 Hallucination detected, stopping conversation")
+                                                hallucination_detected = True
+                                                break
+                                            printer.write(text)
+                                            content += text
+                                    except Exception as fallback_error:
+                                        print_error(f"Text streaming also failed: {fallback_error}")
+                                        break
+
+                            # 如果检测到幻觉，提前返回
+                            if hallucination_detected:
+                                return content, []
+
+                        print_current("")
+
+                        # Read tool calls directly from final message
+                        if not stream_error_occurred:
+                            try:
+                                final_message = stream.get_final_message()
+
+                                for content_block in final_message.content:
+                                    if content_block.type == "tool_use":
+                                        # 验证工具调用input
+                                        tool_input = content_block.input
+                                        tool_name = content_block.name
+
+                                        # input should already be dict, but check for safety
+                                        if isinstance(tool_input, str):
+                                            # Fix boolean format issues
+                                            tool_input = _fix_json_boolean_values(tool_input)
+                                            is_valid, parsed_input, error_msg = validate_tool_call_json(tool_input, tool_name)
+                                            if not is_valid:
+                                                # Only show failure info for non-empty string errors
+                                                if error_msg != "Empty JSON string":
+                                                    print_error(f"❌ Final message tool call validation failed: {error_msg}")
+                                                else:
+                                                    print_debug(f"⚠️ Empty tool input for {tool_name}, skipping")
+                                                continue
+                                            tool_input = parsed_input
+
+                                        tool_calls.append({
+                                            "id": content_block.id,
+                                            "name": tool_name,
+                                            "input": tool_input
+                                        })
+
+                            except Exception as e:
+                                print_error(f"Failed to get final message: {type(e).__name__}: {str(e)}")
+
+                    # Execute tool calls
+                    if tool_calls:
+                        for tool_call_data in tool_calls:
+                            try:
+                                tool_name = tool_call_data['name']
+
+                                # Convert to standard format
+                                standard_tool_call = {
+                                    "name": tool_name,
+                                    "arguments": tool_call_data['input']
+                                }
+
+                                tool_result = self.execute_tool(standard_tool_call, streaming_output=True)
+
+                                # 存储结果
+                                if not hasattr(self, '_streaming_tool_results'):
+                                    self._streaming_tool_results = []
+
+                                self._streaming_tool_results.append({
+                                    'tool_name': tool_name,
+                                    'tool_params': tool_call_data['input'],
+                                    'tool_result': tool_result
+                                })
+
+                                self._tools_executed_in_stream = True
+
+                            except Exception as e:
+                                print_error(f"❌ Tool {tool_name} execution failed: {str(e)}")
+
+                        print_debug("✅ All tool executions completed")
+
+                    # If an error occurred during streaming, append error details to content for feedback to the LLM
+                    if stream_error_occurred and error_details is not None:
+                        error_feedback = f"\n\n⚠️ **Streaming Error Feedback**: There was a problem parsing the previous response: {error_details}\nPlease regenerate a correct response based on this error message."
+                        content += error_feedback
+
+                    return content, tool_calls
+                else:
+                    # print_current("🔄 LLM is thinking: ")
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        system=system_message,
+                        messages=claude_messages,
+                        tools=tools,
+                        temperature=0.7
+                    )
+                    
+                    content = ""
+                    tool_calls = []
+                    
+                    # Extract content and tool use blocks
+                    for content_block in response.content:
+                        if content_block.type == "text":
+                            content += content_block.text
+                        elif content_block.type == "tool_use":
+                            tool_calls.append({
+                                "id": content_block.id,
+                                "name": content_block.name,
+                                "input": content_block.input
+                            })
+                    
+                    return content, tool_calls
+                    
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Check if this is a retryable error
+                retryable_errors = [
+                    'overloaded', 'rate limit', 'too many requests',
+                    'service unavailable', 'timeout', 'temporary failure',
+                    'server error', '429', '503', '502', '500',
+                    'peer closed connection', 'incomplete chunked read'
+                ]
+                
+                # Find which error keyword matched
+                matched_error_keyword = None
+                for error_keyword in retryable_errors:
+                    if error_keyword in error_str:
+                        matched_error_keyword = error_keyword
+                        break
+                
+                is_retryable = matched_error_keyword is not None
+                
+                if is_retryable and attempt < max_retries:
+                    # Calculate retry delay with exponential backoff
+                    retry_delay = 1
+                    
+                    print_current(f"⚠️ GLM API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                    print_current(f"💡 Consider switching to a different model or trying again later")
+                    print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
+                    print_current(f"🔄 Retrying in {retry_delay} seconds...")
+                    
+                    # Wait before retry
+                    time.sleep(retry_delay)
+                    continue  # Retry the loop
+                    
+                else:
+                    # Non-retryable error or max retries exceeded
+                    if is_retryable:
+                        print_current(f"❌ GLM API {matched_error_keyword} error: Maximum retries ({max_retries}) exceeded")
+                        print_current(f"💡 Consider switching to a different model or trying again later")
+                        print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
+                    else:
+                        print_current(f"❌ GLM API call failed: {e}")
                     
                     raise e
 
@@ -4045,6 +4044,8 @@ class ToolExecutor:
                     tool_calls = []
                     
                     with streaming_context(show_start_message=False) as printer:
+                        # 显示LLM开始说话的emoji
+                        printer.write(f"\n💬 ")
                         hallucination_detected = False
 
                         response = self.client.chat.completions.create(
@@ -4064,10 +4065,10 @@ class ToolExecutor:
                                 # 只处理文本内容的流式输出
                                 if delta.content is not None:
                                     # 检测幻觉模式
-                                    if "**LLM Called Following Tools in this round" in delta.content:
-                                        print_current("\n🚨 Hallucination Detected, stop chat")
-                                        hallucination_detected = True
-                                        break
+                                    #if "**LLM Called Following Tools in this round" in delta.content:
+                                    #    print_current("\n🚨 Hallucination Detected, stop chat")
+                                    #    hallucination_detected = True
+                                    #    break
 
                                     printer.write(delta.content)
                                     content += delta.content
@@ -4080,8 +4081,8 @@ class ToolExecutor:
                         print_current("")
                         
                         # 如果检测到幻觉，提前返回
-                        if hallucination_detected:
-                            return content, []
+                        #if hallucination_detected:
+                        #    return content, []
                     
                     # 从最终响应中读取工具调用信息
                     try:
@@ -4109,7 +4110,7 @@ class ToolExecutor:
                     except Exception as e:
                         print_error(f"Failed to get tool calls from final response: {e}")
                     
-                    # 执行工具调用
+                    # Execute tool calls
                     if tool_calls:
                         for i, tool_call in enumerate(tool_calls):
                             try:
@@ -4117,6 +4118,8 @@ class ToolExecutor:
                                 tool_params_str = tool_call["function"]["arguments"]
                                 
                                 # 使用增强的JSON验证和解析
+                                # 修复布尔值格式问题
+                                # tool_params_str = _fix_json_boolean_values(tool_params_str)
                                 is_valid, tool_params, error_msg = validate_tool_call_json(tool_params_str, tool_name)
                                 
                                 if not is_valid:
@@ -4125,9 +4128,9 @@ class ToolExecutor:
                                     print_debug(f"   Raw arguments: {tool_params_str[:200]}...")
                                     continue
                                 
-                                print_current(f"🎯 Tool {i + 1}: {tool_name}")
+                                #print_current(f"🎯 Tool {i + 1}: {tool_name}")
                                 
-                                # 转换为标准格式
+                                # Convert to standard format
                                 standard_tool_call = {
                                     "name": tool_name,
                                     "arguments": tool_params
@@ -4157,6 +4160,17 @@ class ToolExecutor:
                     if hallucination_detected:
                         return content, []
 
+                    # Check for thinking field in final response for OpenAI o1 models
+                    try:
+                        final_message = final_response.choices[0].message
+                        thinking = getattr(final_message, 'thinking', None)
+                        if thinking and not content.startswith("## Thinking Process"):
+                            # Prepend thinking process if not already included
+                            content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
+                    except Exception as e:
+                        # If we can't get the thinking field, continue without it
+                        pass
+
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
                 else:
@@ -4169,8 +4183,22 @@ class ToolExecutor:
                         temperature=0.7,
                         top_p=0.8
                     )
-                    
-                    content = response.choices[0].message.content or ""
+
+                    # Extract content and thinking field from OpenAI response
+                    message = response.choices[0].message
+                    content = message.content or ""
+
+                    # Handle thinking field for OpenAI o1 models and other reasoning models
+                    thinking = getattr(message, 'thinking', None)
+                    if thinking:
+                        # Combine thinking and content with clear separation
+                        content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
+
+                    # Check for hallucination pattern in non-streaming response
+                    if "**LLM Called Following Tools in this round" in content:
+                        print_current("\n🚨 Hallucination Detected, stop chat")
+                        return content, []
+
                     raw_tool_calls = response.choices[0].message.tool_calls or []
                     
                     # Convert OpenAI tool_calls objects to dictionary format
@@ -4193,9 +4221,10 @@ class ToolExecutor:
                 
                 # Check if this is a retryable error
                 retryable_errors = [
-                    'overloaded', 'rate limit', 'too many requests', 
+                    'overloaded', 'rate limit', 'too many requests',
                     'service unavailable', 'timeout', 'temporary failure',
-                    'server error', '429', '503', '502', '500'
+                    'server error', '429', '503', '502', '500',
+                    'peer closed connection', 'incomplete chunked read'
                 ]
                 
                 # Find which error keyword matched
@@ -4314,7 +4343,7 @@ class ToolExecutor:
 
                     with streaming_context(show_start_message=True) as printer:
                         # 显示LLM开始说话的emoji
-                        printer.write(f"💬 ")
+                        printer.write(f"\n💬 ")
                         
                         hallucination_detected = False
                         stream_error_occurred = False
@@ -4331,6 +4360,11 @@ class ToolExecutor:
                         ) as stream:
                             try:
                                 for event in stream:
+                                    # 在每个事件处理前检查是否已经检测到幻觉
+                                    if hallucination_detected:
+                                        print_current("\n🛑 Stopping stream due to hallucination detection")
+                                        break
+                                        
                                     try:
                                         event_type = getattr(event, 'type', None)
                                         last_event_type = event_type
@@ -4364,7 +4398,8 @@ class ToolExecutor:
                                                     # 尝试序列化content_block以查看其内容
                                                     if content_block:
                                                         try:
-                                                            pass
+                                                            if hasattr(content_block, '__dict__'):
+                                                                pass
                                                         except Exception as dump_err:
                                                             pass
                                                 except Exception as cb_err:
@@ -4388,7 +4423,6 @@ class ToolExecutor:
                                                                 "name": tool_name,
                                                                 "input_json": ""
                                                             }
-                                                            print_debug(f"🔧 Tool call started: {tool_name} (index: {block_index})")
                                                     except Exception as type_err:
                                                         print_error(f"   Error processing block_type: {type(type_err).__name__}: {str(type_err)}")
                                             except Exception as e:
@@ -4418,56 +4452,14 @@ class ToolExecutor:
                                                         content += text
                                                     
                                                     elif delta_type == "input_json_delta":
-                                                        # 工具参数JSON增量 - 逐步累积
                                                         partial_json = getattr(delta, 'partial_json', '')
+
                                                         if block_index in tool_call_buffers and partial_json:
                                                             current_json = tool_call_buffers[block_index]["input_json"]
                                                             
-                                                            # 检查是否是完整JSON（有些API可能一次发送完整的）
-                                                            if is_complete_json(partial_json):
-                                                                # 如果已经有完整JSON，检查是否重复
-                                                                if current_json and is_complete_json(current_json):
-                                                                    pass
-                                                                else:
-                                                                    # 替换
-                                                                    tool_call_buffers[block_index]["input_json"] = partial_json
-                                                            else:
-                                                                # 增量追加
-                                                                tool_call_buffers[block_index]["input_json"] += partial_json
+                                                            tool_call_buffers[block_index]["input_json"] += partial_json
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
-                                                # 继续处理其他事件
-                                        
-                                        # 处理智谱AI的非标准 input_json 事件
-                                        elif event_type == "input_json":
-                                            try:
-                                                # 智谱AI使用 input_json 而不是标准的 content_block_delta + input_json_delta
-                                                partial_json = getattr(event, 'partial_json', '')
-                                                # 智谱AI可能没有 index，需要使用最后一个工具调用
-                                                if tool_call_buffers and partial_json:
-                                                    last_index = max(tool_call_buffers.keys())
-                                                    current_json = tool_call_buffers[last_index]["input_json"]
-                                                    
-                                                    # 检查是否是完整的JSON（智谱AI可能一次发送完整的JSON）
-                                                    if is_complete_json(partial_json):
-                                                        # 如果已经有数据了，检查是否重复
-                                                        if current_json and is_complete_json(current_json):
-                                                            pass
-                                                        else:
-                                                            # 替换而不是追加
-                                                            tool_call_buffers[last_index]["input_json"] = partial_json
-                                                    else:
-                                                        # 不完整，追加
-                                                        tool_call_buffers[last_index]["input_json"] += partial_json
-                                            except Exception as e:
-                                                print_debug(f"⚠️ Error processing input_json: {type(e).__name__}: {str(e)}")
-                                                # 继续处理其他事件
-                                        
-                                        # 处理智谱AI的非标准 text 事件（仅记录，不处理）
-                                        elif event_type == "text":
-                                            # 智谱AI会发送额外的 text 事件，包含当前的完整文本快照
-                                            # 我们已经通过 content_block_delta 处理了增量，所以这里只记录
-                                            pass
 
                                         # 处理内容块结束事件
                                         elif event_type == "content_block_stop":
@@ -4480,8 +4472,9 @@ class ToolExecutor:
                                                     tool_name = buffer["name"]
                                                     json_str = buffer["input_json"]
                                                     
-                                                    
                                                     # 验证JSON完整性
+                                                    # 修复布尔值格式问题
+                                                    # json_str = _fix_json_boolean_values(json_str)
                                                     is_valid, parsed_input, error_msg = validate_tool_call_json(json_str, tool_name)
                                                     
                                                     if is_valid:
@@ -4490,9 +4483,11 @@ class ToolExecutor:
                                                             "name": tool_name,
                                                             "input": parsed_input
                                                         })
+                                                        print_debug(f"✅ Tool call validated: {tool_name}")
                                                     else:
                                                         print_error(f"❌ Tool call JSON validation failed for {tool_name}:")
                                                         print_error(f"   {error_msg}")
+                                                        print_debug(f"   Raw JSON: {json_str[:200]}...")
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_stop: {type(e).__name__}: {str(e)}")
 
@@ -4514,9 +4509,9 @@ class ToolExecutor:
                                                 print_debug(f"⚠️ Error processing message_delta: {type(e).__name__}: {str(e)}")
                                     
                                     except Exception as event_error:
-                                        # 单个事件处理失败不应该中断整个流
+                                        # Single event processing failure should not interrupt the entire stream
                                         print_debug(f"⚠️ Error processing event {last_event_type}: {type(event_error).__name__}: {str(event_error)}")
-                                        # 不使用 continue，让循环自然继续
+                                        # Do not use continue, let the loop continue naturally
 
                             except Exception as e:
                                 # 增强的错误处理
@@ -4559,9 +4554,14 @@ class ToolExecutor:
                                         
                                         # input应该已经是dict，但为安全起见检查
                                         if isinstance(tool_input, str):
+                                            #tool_input = _fix_json_boolean_values(tool_input)
                                             is_valid, parsed_input, error_msg = validate_tool_call_json(tool_input, tool_name)
                                             if not is_valid:
-                                                print_error(f"❌ Final message tool call validation failed: {error_msg}")
+                                                # Only show failure info for non-empty string errors
+                                                if error_msg != "Empty JSON string":
+                                                    print_error(f"❌ Final message tool call validation failed: {error_msg}")
+                                                else:
+                                                    print_debug(f"⚠️ Empty tool input for {tool_name}, skipping")
                                                 continue
                                             tool_input = parsed_input
                                         
@@ -4576,13 +4576,13 @@ class ToolExecutor:
                             except Exception as e:
                                 print_error(f"Failed to get final message: {type(e).__name__}: {str(e)}")
 
-                    # 执行工具调用
+                    # Execute tool calls
                     if tool_calls:
                         for tool_call_data in tool_calls:
                             try:
                                 tool_name = tool_call_data['name']
 
-                                # 转换为标准格式
+                                # Convert to standard format
                                 standard_tool_call = {
                                     "name": tool_name,
                                     "arguments": tool_call_data['input']
@@ -4637,37 +4637,42 @@ class ToolExecutor:
                                 "name": content_block.name,
                                 "input": content_block.input
                             })
-                    
+
+                    # Check for hallucination pattern in non-streaming response
+                    if "**LLM Called Following Tools in this round" in content:
+                        print_current("\n🚨 Hallucination Detected, stop chat")
+                        return content, []
+
                     return content, tool_calls
-                    
+
             except Exception as e:
                 error_str = str(e).lower()
-                
+
                 # Check if this is a retryable error
                 retryable_errors = [
-                    'overloaded', 'rate limit', 'too many requests', 
+                    'overloaded', 'rate limit', 'too many requests',
                     'service unavailable', 'timeout', 'temporary failure',
                     'server error', '429', '503', '502', '500'
                 ]
-                
+
                 # Find which error keyword matched
                 matched_error_keyword = None
                 for error_keyword in retryable_errors:
                     if error_keyword in error_str:
                         matched_error_keyword = error_keyword
                         break
-                
+
                 is_retryable = matched_error_keyword is not None
-                
+
                 if is_retryable and attempt < max_retries:
                     # Calculate retry delay with exponential backoff
                     retry_delay = 1
-                    
+
                     print_current(f"⚠️ Claude API {matched_error_keyword} error (attempt {attempt + 1}/{max_retries + 1}): {e}")
                     print_current(f"💡 Consider switching to a different model or trying again later")
                     print_current(f"🔄 You can change the model in config.txt and restart AGIAgent")
                     print_current(f"🔄 Retrying in {retry_delay} seconds...")
-                    
+
                     # Wait before retry
                     time.sleep(retry_delay)
                     continue  # Retry the loop
@@ -5838,8 +5843,16 @@ class ToolExecutor:
                     temperature=0.7,
                     top_p=0.8
                 )
-                
-                vision_analysis = response.choices[0].message.content or ""
+
+                # Extract content and thinking field from OpenAI response
+                message = response.choices[0].message
+                vision_analysis = message.content or ""
+
+                # Handle thinking field for OpenAI o1 models and other reasoning models
+                thinking = getattr(message, 'thinking', None)
+                if thinking:
+                    # Combine thinking and content with clear separation
+                    vision_analysis = f"## Thinking Process\n\n{thinking}\n\n## Analysis Result\n\n{vision_analysis}"
             
             print_current(f"✅ Vision analysis completed: {len(vision_analysis)} characters")
             return f"## Vision Analysis Results:\n\n{vision_analysis}"

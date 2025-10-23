@@ -90,10 +90,10 @@ class BaseTools:
             )
             
             if self.code_parser is None:
-                print_current("❌ Failed to get code parser from global manager")
+                print_current("Failed to get code parser from global manager")
                 
         except Exception as e:
-            print_current(f"❌ Failed to initialize code repository parser: {e}")
+            print_current(f"Failed to initialize code repository parser: {e}")
             self.code_parser = None
 
     def _get_code_index_path(self) -> str:

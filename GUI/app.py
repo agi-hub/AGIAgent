@@ -2991,11 +2991,6 @@ def handle_create_new_directory():
             'message': i18n['directory_created_with_workspace'].format(new_dir_name)
         }, room=session_id)
         
-        # Also emit chat_cleared event to update the frontend
-        emit('chat_cleared', {
-            'success': True,
-            'message': i18n['chat_cleared']
-        }, room=session_id)
         
     except Exception as e:
         emit('directory_created', {

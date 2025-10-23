@@ -3334,7 +3334,10 @@
                 }
                 
                 // Configuration is valid, proceed with execution
-                
+
+                // Immediately set task running state for better user experience
+                setTaskRunning(true);
+
                 // Display execution mode information
                 let modeInfo = '';
                 if (planMode) {
