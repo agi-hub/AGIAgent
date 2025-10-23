@@ -996,7 +996,7 @@ class MermaidProcessor:
                 }
             
             if not markdown_files:
-                print_current("❌ No markdown files found")
+                print_current("No markdown files found")
                 return {
                     'status': 'success',
                     'files_found': 0,

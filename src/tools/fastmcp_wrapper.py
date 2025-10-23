@@ -110,7 +110,7 @@ class FastMcpWrapper:
         if workspace_dir:
             # If workspace_dir is provided, use it directly
             self._workspace_dir = workspace_dir
-            print_current(f"📁 Using specified workspace directory: {workspace_dir}")
+            print_debug(f"📁 Using specified workspace directory: {workspace_dir}")
         else:
             # Fall back to automatic detection
             self._workspace_dir = self._get_default_workspace_dir()
@@ -119,7 +119,7 @@ class FastMcpWrapper:
         """Get default workspace directory for MCP servers"""
         try:
             current_dir = os.getcwd()
-            print_current(f"🔍 Current working directory: {current_dir}")
+            print_debug(f"🔍 Current working directory: {current_dir}")
 
             # Strategy 1: Check if we're currently in an output_xxx/workspace directory
             dir_name = os.path.basename(current_dir)
@@ -127,13 +127,13 @@ class FastMcpWrapper:
                 parent_dir = os.path.dirname(current_dir)
                 parent_name = os.path.basename(parent_dir)
                 if parent_name.startswith('output_'):
-                    print_current(f"📁 Already in workspace directory: {current_dir}")
+                    print_debug(f"📁 Already in workspace directory: {current_dir}")
                     return current_dir
 
             # Strategy 2: Check if we're in an output_xxx directory (directly)
             if dir_name.startswith('output_') and os.path.exists(os.path.join(current_dir, 'workspace')):
                 workspace_dir = os.path.join(current_dir, latest_output_dir, 'workspace')
-                # print_current(f"📁 Found workspace directory in current output dir: {workspace_dir}")
+                print_debug(f"📁 Found workspace directory in current output dir: {workspace_dir}")
                 return workspace_dir
 
             # Strategy 3: Look for the most recent output_xxx directory in current directory
@@ -149,18 +149,18 @@ class FastMcpWrapper:
                     workspace_dir = os.path.join(current_dir, latest_output_dir, 'workspace')
 
                     if os.path.exists(workspace_dir):
-                        print_current(f"📁 Found latest workspace directory: {workspace_dir}")
+                        print_debug(f"📁 Found latest workspace directory: {workspace_dir}")
                         return workspace_dir
                     else:
                         # Create workspace in the latest output directory
                         try:
                             os.makedirs(workspace_dir, exist_ok=True)
-                            # print_current(f"📁 Created workspace directory in latest output: {workspace_dir}")
+                            print_debug(f"📁 Created workspace directory in latest output: {workspace_dir}")
                             return workspace_dir
                         except Exception as e:
-                            print_current(f"⚠️ Could not create workspace in latest output dir: {e}")
+                            print_debug(f"⚠️ Could not create workspace in latest output dir: {e}")
             except Exception as e:
-                print_current(f"⚠️ Error searching output directories: {e}")
+                print_debug(f"⚠️ Error searching output directories: {e}")
 
             # Strategy 4: Look for output_xxx directories in parent directory
             parent_dir = os.path.dirname(current_dir)
@@ -215,7 +215,7 @@ class FastMcpWrapper:
     async def initialize(self) -> bool:
         """Initialize MCP client with persistent server manager"""
         if not FASTMCP_AVAILABLE:
-            print_current("❌ FastMCP not available")
+            print_current("FastMCP not available")
             return False
             
         try:

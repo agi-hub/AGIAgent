@@ -71,7 +71,7 @@ def get_anthropic_client():
         from anthropic import Anthropic
         return Anthropic
     except ImportError:
-        print_current("❌ Anthropic library not installed, please run: pip install anthropic")
+        print_current("Anthropic library not installed, please run: pip install anthropic")
         raise ImportError("Anthropic library not installed")
 
 
@@ -970,7 +970,7 @@ Please create a detailed, structured analysis that preserves important informati
                     print_debug("🔍 DuckDuckGo search engine added as additional fallback")
                     
                     if not search_engines:
-                        print_current("❌ No search engines available")
+                        print_current("No search engines available")
                         return {
                             'status': 'failed',
                             'search_term': search_term,
@@ -1391,7 +1391,6 @@ Please create a detailed, structured analysis that preserves important informati
                 }
         
         except TimeoutError:
-            # print_current("❌ Web search timed out after 60 seconds")  # Commented out to reduce terminal noise
             return {
                 'status': 'failed',
                 'search_term': search_term,

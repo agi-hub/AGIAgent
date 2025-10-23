@@ -216,7 +216,7 @@ class LLMClient:
                 endpoint,
                 headers=headers,
                 json=data,
-                timeout=60
+                timeout=120
             )
             response.raise_for_status()
 
@@ -287,7 +287,7 @@ class LLMClient:
                 endpoint,
                 headers=headers,
                 json=data,
-                timeout=60
+                timeout=120
             )
             response.raise_for_status()
 
