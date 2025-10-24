@@ -8,7 +8,7 @@ ForeignObject 转换工具
 
 import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, List
 import html
 
 
@@ -22,7 +22,7 @@ def extract_text_from_html(html_content: str) -> str:
     return ' '.join(text.split()).strip()
 
 
-def extract_text_lines_from_html(html_content: str) -> list[str]:
+def extract_text_lines_from_html(html_content: str) -> List[str]:
     """从HTML内容中提取文本行，保持换行结构"""
     # 解码HTML实体
     text = html.unescape(html_content)
@@ -57,7 +57,7 @@ def calculate_text_position(x: float, y: float, width: float, height: float,
     return text_x, text_y
 
 
-def create_multiline_svg_text(text_lines: list[str], x: float, y: float, width: float, height: float,
+def create_multiline_svg_text(text_lines: List[str], x: float, y: float, width: float, height: float,
                              font_size: int = 16) -> str:
     """创建多行SVG文本元素"""
     if not text_lines:
