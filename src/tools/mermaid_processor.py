@@ -17,7 +17,7 @@ import base64
 import hashlib
 import urllib.request
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 # 导入ForeignObject转换工具
 try:
@@ -698,7 +698,7 @@ class MermaidProcessor:
                 'message': f'Failed to process markdown file: {e}'
             }
     
-    def _generate_mermaid_image(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> tuple[bool, bool]:
+    def _generate_mermaid_image(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> Tuple[bool, bool]:
         """
         Generate Mermaid SVG and PNG images using the best available method.
         
@@ -962,7 +962,7 @@ class MermaidProcessor:
     
 
     
-    def _generate_mermaid_image_playwright(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> tuple[bool, bool]:
+    def _generate_mermaid_image_playwright(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> Tuple[bool, bool]:
         """
         Generate Mermaid SVG and PNG images using Playwright browser automation.
         
