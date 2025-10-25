@@ -554,6 +554,16 @@ I18N_TEXTS = {
         'guest_cannot_upload': 'guest用户为演示账户，无法上传文件。',
         'select_valid_config': '请选择有效的模型配置',
         'config_validation_failed': '配置验证失败，请检查网络连接',
+        
+        # SVG Editor buttons
+        'edit_svg': '编辑',
+        'ai_optimize_svg': 'AI润色',
+        'restore_svg': '恢复',
+        'delete_svg': '删除',
+        'edit_svg_tooltip': '编辑SVG图',
+        'ai_optimize_svg_tooltip': 'AI智能重新设计SVG图',
+        'restore_svg_tooltip': '恢复原图',
+        'delete_svg_tooltip': '删除SVG图',
     },
     'en': {
         # Page title and basic info
@@ -830,6 +840,16 @@ I18N_TEXTS = {
         'guest_cannot_upload': 'Guest user is a demo account and cannot upload files.',
         'select_valid_config': 'Please select a valid model configuration',
         'config_validation_failed': 'Configuration validation failed, please check network connection',
+        
+        # SVG Editor buttons
+        'edit_svg': 'Edit',
+        'ai_optimize_svg': 'AI Polish',
+        'restore_svg': 'Restore',
+        'delete_svg': 'Delete',
+        'edit_svg_tooltip': 'Edit SVG image',
+        'ai_optimize_svg_tooltip': 'AI intelligent redesign SVG image',
+        'restore_svg_tooltip': 'Restore original image',
+        'delete_svg_tooltip': 'Delete SVG image',
     }
 }
 
@@ -3876,12 +3896,12 @@ if __name__ == '__main__':
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='AGIAgent GUI Server')
     parser.add_argument('--port', '-p', type=int, default=5002, 
-                       help='指定服务器启动端口 (默认: 5002)')
+                       help='Port specified to use')
     args = parser.parse_args()
     
     # 优先使用命令行参数，其次使用环境变量，最后使用默认值
     port = args.port if args.port else int(os.environ.get('PORT', 5002))
     
-    print(f"启动AGIAgent GUI服务器，端口: {port}")
+    print(f"Start server with port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
 

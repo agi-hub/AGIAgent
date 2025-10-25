@@ -1102,17 +1102,18 @@ class MermaidProcessor:
                     print(f"🔧 Loading HTML file...")
                     # Load HTML file with optimized settings
                     file_url = f"file://{temp_html_path}"
-                    page.goto(file_url, wait_until="domcontentloaded", timeout=3000)
+                    print(f"🔧 File URL: {file_url}")
+                    page.goto(file_url, wait_until="domcontentloaded", timeout=10000)
                     
                     print(f"🔧 Waiting for Mermaid to render...")
                     # Wait for Mermaid to render with more precise conditions
                     try:
                         # Wait for SVG element to appear
-                        page.wait_for_selector(".mermaid svg", timeout=2000)
+                        page.wait_for_selector(".mermaid svg", timeout=5000)
                         # Wait for SVG to have actual content (not empty)
                         page.wait_for_function(
                             "document.querySelector('.mermaid svg').innerHTML.length > 0",
-                            timeout=2000
+                            timeout=5000
                         )
                     except Exception as e:
                         print(f"⚠️ Waiting for SVG content failed: {e}")
@@ -1217,7 +1218,7 @@ class MermaidProcessor:
             print(f"❌ Playwright generation failed: {e}")
             import traceback
             traceback.print_exc()
-            return False
+            return False, False
     
     def has_mermaid_charts(self, md_file_path: str) -> bool:
         """
