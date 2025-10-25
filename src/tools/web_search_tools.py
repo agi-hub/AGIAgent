@@ -117,8 +117,7 @@ class WebSearchTools:
     def _ensure_result_directory(self):
         """Ensure the web search result directory exists"""
         try:
-            if not os.path.exists(self.web_result_dir):
-                os.makedirs(self.web_result_dir)
+            os.makedirs(self.web_result_dir, exist_ok=True)
         except Exception as e:
             print_current(f"⚠️ Failed to create result directory: {e}")
             self.web_result_dir = None
