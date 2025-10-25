@@ -1501,6 +1501,17 @@
             background-color: rgba(0, 0, 0, 0.5);
         }
 
+        /* 预览窗口特殊样式 - 更强的背景遮罩和阻止交互 */
+        #previewModal {
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+        }
+
+        #previewModal .modal-content {
+            position: relative;
+            z-index: 2001;
+        }
+
         .modal-content {
             background-color: #2d2d30;
             margin: 2% auto;
@@ -4522,6 +4533,11 @@
             previewContent.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ${I18N.loading}</div>`;
             previewModal.style.display = 'block';
             
+            // 阻止其他内容的交互
+            document.body.style.overflow = 'hidden';
+            document.body.style.pointerEvents = 'none';
+            previewModal.style.pointerEvents = 'auto';
+            
             console.log('🔍 Making API request to:', `/api/file/${filePath}`);
 
             const headers = {};
@@ -4788,18 +4804,18 @@
                             // 网上下载的图片：显示上一张、下一张、删除按钮
                             buttonsHtml = `<button class=\"md-prev-btn\" style=\"${btnStyle}\" title=\"上一张\" onclick=\"prevWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-left\\\"></i> 上一张</button>`
                                         + `<button class=\"md-next-btn\" style=\"${btnStyle}\" title=\"下一张\" onclick=\"nextWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-right\\\"></i> 下一张</button>`
-                                        + `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                                        + `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isSvgFile) {
                             // SVG文件：显示编辑、润色、恢复、删除按钮
                             const btnEditStyle = 'background: #6f42c1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
                             const btnAiOptimizeStyle = 'background: #7c4dff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
-                            buttonsHtml = `<button class=\"md-edit-svg-btn\" style=\"${btnEditStyle}\" title=\"编辑SVG图\" onclick=\"editSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5a2d91'\" onmouseout=\"this.style.backgroundColor='#6f42c1'\"><i class=\\\"fas fa-edit\\\"></i> 编辑</button>`
-                                        + `<button class=\"md-ai-optimize-svg-btn\" style=\"${btnAiOptimizeStyle}\" title=\"AI智能重新设计SVG图\" onclick=\"optimizeSvgImageWithLLM(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5e35b1'\" onmouseout=\"this.style.backgroundColor='#7c4dff'\"><i class=\\\"fas fa-robot\\\"></i> AI润色</button>`
-                                        + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"恢复原图\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> 恢复</button>`
-                                        + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"删除SVG图\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                            buttonsHtml = `<button class=\"md-edit-svg-btn\" style=\"${btnEditStyle}\" title=\"${I18N.edit_svg_tooltip || '编辑SVG图'}\" onclick=\"editSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5a2d91'\" onmouseout=\"this.style.backgroundColor='#6f42c1'\"><i class=\\\"fas fa-edit\\\"></i> ${I18N.edit_svg || '编辑'}</button>`
+                                        + `<button class=\"md-ai-optimize-svg-btn\" style=\"${btnAiOptimizeStyle}\" title=\"${I18N.ai_optimize_svg_tooltip || 'AI智能重新设计SVG图'}\" onclick=\"optimizeSvgImageWithLLM(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5e35b1'\" onmouseout=\"this.style.backgroundColor='#7c4dff'\"><i class=\\\"fas fa-robot\\\"></i> ${I18N.ai_optimize_svg || 'AI润色'}</button>`
+                                        + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"${I18N.restore_svg_tooltip || '恢复原图'}\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '恢复'}</button>`
+                                        + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"${I18N.delete_svg_tooltip || '删除SVG图'}\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isOtherImage) {
                             // PNG、JPG等其他图片：只显示删除按钮
-                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         }
                         
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
@@ -7896,18 +7912,18 @@
                             // 网上下载的图片：显示上一张、下一张、删除按钮
                             buttonsHtml = `<button class=\"md-prev-btn\" style=\"${btnStyle}\" title=\"上一张\" onclick=\"prevWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-left\\\"></i> 上一张</button>`
                                         + `<button class=\"md-next-btn\" style=\"${btnStyle}\" title=\"下一张\" onclick=\"nextWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" data-md-basedir=\"${currentDir}\" onmouseover=\"this.style.backgroundColor='#005a9e'\" onmouseout=\"this.style.backgroundColor='#007acc'\"><i class=\\\"fas fa-chevron-right\\\"></i> 下一张</button>`
-                                        + `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                                        + `<button class=\"md-remove-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeWebSearchImage(this)\" data-md-href=\"${href}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isSvgFile) {
                             // SVG文件：显示编辑、润色、恢复、删除按钮
                             const btnEditStyle = 'background: #6f42c1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
                             const btnAiOptimizeStyle = 'background: #7c4dff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
-                            buttonsHtml = `<button class=\"md-edit-svg-btn\" style=\"${btnEditStyle}\" title=\"编辑SVG图\" onclick=\"editSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5a2d91'\" onmouseout=\"this.style.backgroundColor='#6f42c1'\"><i class=\\\"fas fa-edit\\\"></i> 编辑</button>`
-                                        + `<button class=\"md-ai-optimize-svg-btn\" style=\"${btnAiOptimizeStyle}\" title=\"AI智能重新设计SVG图\" onclick=\"optimizeSvgImageWithLLM(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5e35b1'\" onmouseout=\"this.style.backgroundColor='#7c4dff'\"><i class=\\\"fas fa-robot\\\"></i> AI润色</button>`
-                                        + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"恢复原图\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> 恢复</button>`
-                                        + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"删除SVG图\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                            buttonsHtml = `<button class=\"md-edit-svg-btn\" style=\"${btnEditStyle}\" title=\"${I18N.edit_svg_tooltip || '编辑SVG图'}\" onclick=\"editSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5a2d91'\" onmouseout=\"this.style.backgroundColor='#6f42c1'\"><i class=\\\"fas fa-edit\\\"></i> ${I18N.edit_svg || '编辑'}</button>`
+                                        + `<button class=\"md-ai-optimize-svg-btn\" style=\"${btnAiOptimizeStyle}\" title=\"${I18N.ai_optimize_svg_tooltip || 'AI智能重新设计SVG图'}\" onclick=\"optimizeSvgImageWithLLM(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#5e35b1'\" onmouseout=\"this.style.backgroundColor='#7c4dff'\"><i class=\\\"fas fa-robot\\\"></i> ${I18N.ai_optimize_svg || 'AI润色'}</button>`
+                                        + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"${I18N.restore_svg_tooltip || '恢复原图'}\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '恢复'}</button>`
+                                        + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"${I18N.delete_svg_tooltip || '删除SVG图'}\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isOtherImage) {
                             // PNG、JPG等其他图片：只显示删除按钮
-                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> 删除</button>`;
+                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         }
                         
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
@@ -8436,9 +8452,18 @@
                 .replace(/\\\\/g, '\\');    // 反斜杠
         }
 
+        // 关闭预览模态框的统一函数
+        function closePreviewModal() {
+            previewModal.style.display = 'none';
+            // 恢复其他内容的交互
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = '';
+            previewModal.style.pointerEvents = '';
+        }
+
         // 关闭预览模态框
         previewClose.onclick = function() {
-            previewModal.style.display = 'none';
+            closePreviewModal();
         }
 
         // 重命名功能
@@ -8547,9 +8572,10 @@
         });
 
         window.onclick = function(event) {
-            if (event.target === previewModal) {
-                previewModal.style.display = 'none';
-            }
+            // 预览窗口不会因为点击外部区域而关闭
+            // if (event.target === previewModal) {
+            //     previewModal.style.display = 'none';
+            // }
             if (event.target === uploadModal) {
                 uploadModal.style.display = 'none';
             }
@@ -8569,7 +8595,7 @@
             
             // Esc 键关闭预览模态框
             if (e.key === 'Escape' && previewModal.style.display === 'block') {
-                previewModal.style.display = 'none';
+                closePreviewModal();
             }
             
             // End 键滚动到底部
