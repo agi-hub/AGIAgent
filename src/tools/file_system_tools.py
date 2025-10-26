@@ -2583,9 +2583,8 @@ class FileSystemTools:
                             sys.executable,  # Use current Python interpreter
                             str(trans_script),
                             md_path.name,  # Use filename instead of full path
-                            pdf_file.name,  # Use filename instead of full path
-                            '--no-template'  # Use no-template option to avoid missing LaTeX packages
-                        ]
+                            pdf_file.name
+                            ]
                         
                         # Execute command synchronously in markdown file directory
                         result = subprocess.run(

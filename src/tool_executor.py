@@ -3801,13 +3801,13 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        # 检测幻觉模式
-                                                        if "**LLM Called Following Tools in this round" in text:
+                                                        content += text
+                                                        # 检测幻觉模式（检查累积的content而不是单个text块）
+                                                        if "**LLM Called Following Tools in this round" in content:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
                                                         printer.write(text)
-                                                        content += text
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
                                                 # 继续处理其他事件
@@ -3850,12 +3850,13 @@ class ToolExecutor:
                                     # 尝试回退到text_stream
                                     try:
                                         for text in stream.text_stream:
-                                            if "**LLM Called Following Tools in this round" in text:
+                                            content += text
+                                            # 检测幻觉模式（检查累积的content而不是单个text块）
+                                            if "**LLM Called Following Tools in this round" in content:
                                                 print_current("\n🚨 Hallucination detected, stopping conversation")
                                                 hallucination_detected = True
                                                 break
                                             printer.write(text)
-                                            content += text
                                     except Exception as fallback_error:
                                         print_error(f"Text streaming also failed: {fallback_error}")
                                         break
@@ -4443,13 +4444,13 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        # 检测幻觉模式
-                                                        if "**LLM Called Following Tools in this round" in text:
+                                                        content += text
+                                                        # 检测幻觉模式（检查累积的content而不是单个text块）
+                                                        if "**LLM Called Following Tools in this round" in content:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
                                                         printer.write(text)
-                                                        content += text
                                                     
                                                     elif delta_type == "input_json_delta":
                                                         partial_json = getattr(delta, 'partial_json', '')
@@ -4525,12 +4526,13 @@ class ToolExecutor:
                                 # 尝试回退到text_stream
                                 try:
                                     for text in stream.text_stream:
-                                        if "**LLM Called Following Tools in this round" in text:
+                                        content += text
+                                        # 检测幻觉模式（检查累积的content而不是单个text块）
+                                        if "**LLM Called Following Tools in this round" in content:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                             hallucination_detected = True
                                             break
                                         printer.write(text)
-                                        content += text
                                 except Exception as fallback_error:
                                     print_error(f"Text streaming also failed: {fallback_error}")
                                     break
