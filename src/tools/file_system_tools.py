@@ -574,6 +574,28 @@ class FileSystemTools:
                         'message': f'SVG processing error: {e}'
                     }
             
+            # Ensure markdown file ends with proper newlines after image processing
+            # This is important because Mermaid/SVG processors may rewrite the file
+            if target_file.lower().endswith('.md'):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        final_content = f.read()
+                    
+                    # Check if file needs newlines at the end
+                    if final_content and not final_content.endswith('\n\n'):
+                        if final_content.endswith('\n'):
+                            final_content += '\n'
+                            print_debug(f"📝 Added second newline at end of markdown file after image processing")
+                        else:
+                            final_content += '\n\n'
+                            print_debug(f"📝 Added two newlines at end of markdown file after image processing")
+                        
+                        # Write the corrected content back
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(final_content)
+                except Exception as e:
+                    print_debug(f"⚠️ Error ensuring newlines at end of file: {e}")
+            
             # Determine action and status
             if not file_exists:
                 action = 'created'

@@ -1,12 +1,12 @@
 # Language setting: en for English, zh for Chinese
-LANG=en
-# LANG=zh
+#LANG=en
+LANG=zh
 
 # GUI API configuration
 api_key=your key
-api_base=https://api.deepseek.com/v1
-model=deepseek-chat
-max_tokens=8192
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.5
+max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
@@ -37,7 +37,6 @@ max_tokens=8192
 # api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
 # model=qwen3-coder-480b-a35b-instruct
 # max_tokens=65536
-
 
 # Google gemini model
 # api_key=your key

@@ -228,27 +228,52 @@ class SVGProcessor:
             corrections_made += 1
             print_debug(f"🔧 Fixed malformed SVG blocks with missing closing markers")
 
-        # Pattern 2: ```svg\n...<svg>\n``` followed by extra content before next ```
-        # This handles cases where AI adds extra ``` after the proper closing
-        # We need to be careful not to break standard blocks
-
-        # For now, let's implement a more targeted fix for the specific issue mentioned:
-        # If we find ```svg\n...<svg>\n```\n```, remove the extra trailing ```
-        extra_marker_pattern = r'(```svg\s*\n.*?</svg>\s*```\s*)\n```(?!\s*\n```)'
-        corrected_content = re.sub(
-            extra_marker_pattern,
-            r'\1',
-            corrected_content,
-            flags=re.DOTALL | re.IGNORECASE
-        )
-        if re.search(extra_marker_pattern, content, re.DOTALL | re.IGNORECASE):
-            corrections_made += 1
-            print_debug(f"🔧 Removed erroneous trailing ``` markers after SVG blocks")
-
         if corrections_made > 0:
             print_debug(f"✅ Applied {corrections_made} SVG error tolerance corrections")
 
         return corrected_content
+    
+    def _fix_svg_xml_entities(self, svg_code: str) -> str:
+        """
+        自动修复SVG中未转义的XML特殊字符
+        
+        在XML/SVG中，以下字符必须转义：
+        - & → &amp;
+        - < → &lt;
+        - > → &gt;
+        - " → &quot;
+        - ' → &apos;
+        
+        Args:
+            svg_code: 原始SVG代码
+            
+        Returns:
+            修正后的SVG代码
+        """
+        try:
+            # 在文本内容中查找未转义的 & 字符
+            # 匹配 >...& ...< 之间的内容（文本节点）
+            def replace_unescaped_ampersand(match):
+                text = match.group(0)
+                # 只替换未转义的 & (不是 &amp; &lt; &gt; &quot; &apos; &#数字; &#x十六进制;)
+                text = re.sub(r'&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
+                return text
+            
+            # 在标签的文本内容中替换（匹配 >文本< 的模式）
+            fixed_code = re.sub(r'>([^<>]*)<', replace_unescaped_ampersand, svg_code)
+            
+            if fixed_code != svg_code:
+                print_debug("🔧 Fixed unescaped XML entities in SVG code")
+                # 显示修正的数量
+                original_ampersands = len(re.findall(r'&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', svg_code))
+                if original_ampersands > 0:
+                    print_debug(f"   ✓ Fixed {original_ampersands} unescaped '&' character(s)")
+            
+            return fixed_code
+            
+        except Exception as e:
+            print_debug(f"⚠️ Error fixing XML entities: {e}")
+            return svg_code  # 如果修复失败，返回原始代码
     
     def generate_svg_file(self, svg_code: str, output_dir: Path, svg_id: str) -> Optional[Path]:
         """
@@ -266,13 +291,16 @@ class SVGProcessor:
             # Ensure output directory exists
             output_dir.mkdir(parents=True, exist_ok=True)
             
+            # 自动修复SVG中的XML实体问题
+            fixed_svg_code = self._fix_svg_xml_entities(svg_code)
+            
             # Generate SVG filename
             svg_filename = f"svg_{svg_id}.svg"
             svg_path = output_dir / svg_filename
             
-            # Write SVG content to file
+            # Write SVG content to file (使用修正后的代码)
             with open(svg_path, 'w', encoding='utf-8') as f:
-                f.write(svg_code)
+                f.write(fixed_svg_code)
             
             print_debug(f"📄 Generated SVG file: {svg_path}")
             return svg_path
@@ -579,6 +607,19 @@ class SVGProcessor:
             
             # Replace the original SVG code block
             updated_content = updated_content.replace(full_block, replacement, 1)
+        
+        # Final cleanup: Remove orphaned ``` markers left after SVG replacement
+        # This single pattern handles: ``` after images, at end of file, or standalone
+        before_cleanup = updated_content
+        updated_content = re.sub(
+            r'(?:^|\n)\s*```\s*(?:\n|$)',  # Match ``` on its own line
+            '\n',
+            updated_content,
+            flags=re.MULTILINE
+        )
+        
+        if updated_content != before_cleanup:
+            print_debug("🧹 Cleaned up orphaned ``` markers after SVG replacement")
         
         return updated_content
     

@@ -222,6 +222,7 @@
             height: 100vh;
             overflow: hidden;
             color: #cccccc;
+            zoom: 0.9; /* 统一缩放90%，包括文字和图像 */
         }
 
         /* User authentication area styles */
@@ -1510,6 +1511,17 @@
         #previewModal .modal-content {
             position: relative;
             z-index: 2001;
+        }
+
+        /* SVG编辑器窗口特殊样式 - 显示在预览窗口上方 */
+        #svgEditorModal {
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 2100;
+        }
+
+        #svgEditorModal .modal-content {
+            position: relative;
+            z-index: 2101;
         }
 
         .modal-content {
@@ -5182,46 +5194,63 @@
             const img = previewContent.querySelector('img');
             if (!img) return;
             
-            // Create fullscreen overlay
-            const overlay = document.createElement('div');
+            // 关闭函数
+            let overlay = null;
+            const closeOverlay = () => {
+                if (overlay && overlay.parentNode) {
+                    document.body.removeChild(overlay);
+                }
+                overlay = null;
+                document.removeEventListener('keydown', escKeyHandler);
+            };
+            
+            // ESC键关闭处理器
+            const escKeyHandler = (e) => {
+                if (e.key === 'Escape') {
+                    closeOverlay();
+                }
+            };
+            
+            // 创建全屏遮罩层
+            overlay = document.createElement('div');
+            overlay.tabIndex = 0;
             overlay.style.cssText = `
                 position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                background: #ffffff; z-index: 10000; display: flex; 
-                align-items: center; justify-content: center; cursor: zoom-out;
-                backdrop-filter: none;
+                background: #ffffff; z-index: 999999; 
+                display: flex; flex-direction: column; align-items: center; 
+                justify-content: center; outline: none;
             `;
             
             const fullImg = document.createElement('img');
             fullImg.src = img.src;
             fullImg.style.cssText = `
-                max-width: 95%; max-height: 95%; object-fit: contain;
-                border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-                background: white;
+                max-width: 98vw; max-height: 90vh; width: auto; height: auto;
+                object-fit: contain;
             `;
             
-            // Add close button for better UX
-            const closeBtn = document.createElement('div');
-            closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-            closeBtn.style.cssText = `
-                position: absolute; top: 20px; right: 20px; 
-                width: 40px; height: 40px; border-radius: 50%;
-                background: rgba(0,0,0,0.7); color: white; 
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; font-size: 18px; z-index: 10001;
-                transition: background 0.2s ease;
+            // 底部提示文字
+            const hintText = document.createElement('div');
+            hintText.textContent = '按 ESC 键返回';
+            hintText.style.cssText = `
+                position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+                background: rgba(255, 255, 255, 0.9); color: #333; 
+                padding: 12px 24px; border-radius: 8px; font-size: 18px;
+                font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             `;
-            closeBtn.onmouseover = () => closeBtn.style.background = 'rgba(0,0,0,0.9)';
-            closeBtn.onmouseout = () => closeBtn.style.background = 'rgba(0,0,0,0.7)';
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                document.body.removeChild(overlay);
-            };
+            
+            // ESC键关闭
+            document.addEventListener('keydown', escKeyHandler);
             
             overlay.appendChild(fullImg);
-            overlay.appendChild(closeBtn);
-            overlay.onclick = () => document.body.removeChild(overlay);
-            
+            overlay.appendChild(hintText);
             document.body.appendChild(overlay);
+            
+            // 强制聚焦
+            setTimeout(() => {
+                if (overlay) {
+                    overlay.focus();
+                }
+            }, 10);
         }
 
         function loadPDF(filePath) {
@@ -5810,6 +5839,9 @@
                     window.svgModified = false;
                     loadSvgIntoEditor(svgContent, canvas);
                     modal.style.display = 'block';
+                    
+                    // 确保SVG编辑器可以交互（当预览窗口打开时body的pointer-events可能被设置为none）
+                    modal.style.pointerEvents = 'auto';
                 })
                 .catch(error => {
                     console.error('加载SVG文件失败:', error);
@@ -5832,6 +5864,17 @@
 
         // 关闭SVG编辑器，检查修改状态
         function closeSvgEditor(modal) {
+            const actualClose = () => {
+                modal.style.display = 'none';
+                modal.style.pointerEvents = '';
+                
+                // 如果预览窗口还在显示，恢复其pointer-events设置
+                const previewModal = document.getElementById('previewModal');
+                if (previewModal && previewModal.style.display === 'block') {
+                    previewModal.style.pointerEvents = 'auto';
+                }
+            };
+            
             if (window.svgModified) {
                 // 获取I18N对象用于国际化
                 const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
@@ -5847,16 +5890,16 @@
                 if (confirm(confirmSaveMsg)) {
                     // 用户选择保存
                     saveSvg(() => {
-                        modal.style.display = 'none';
+                        actualClose();
                     });
                 } else {
                     // 用户选择不保存，直接关闭
-                    modal.style.display = 'none';
+                    actualClose();
                 }
                 // 如果用户选择取消（取消按钮），不执行任何操作
             } else {
                 // 没有修改，直接关闭
-                modal.style.display = 'none';
+                actualClose();
             }
         }
 
@@ -8643,6 +8686,21 @@
             
             initResizer();
             
+            // 动态调整容器高度（稍微延迟确保DOM完全渲染）
+            setTimeout(function() {
+                adjustContainerHeight();
+            }, 50);
+            
+            // 监听窗口大小变化，重新计算容器高度
+            let resizeTimer;
+            window.addEventListener('resize', function() {
+                // 使用防抖避免频繁计算
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() {
+                    adjustContainerHeight();
+                }, 150);
+            });
+            
             // 设置GUI配置选项的默认值
             document.getElementById('enableWebSearch').checked = true;       // 搜索网络默认选择
 
@@ -8695,6 +8753,12 @@
                     toggleBtn.title = I18N.show_config_options || '显示配置选项';
                     toggleIcon.style.transform = 'rotate(0deg)';
                 }
+                
+                // 配置面板显示/隐藏后，重新计算容器高度
+                // 使用setTimeout确保DOM更新完成后再计算
+                setTimeout(function() {
+                    adjustContainerHeight();
+                }, 10);
             });
             
             // 设置图标过渡效果
@@ -8755,6 +8819,11 @@
                         checkbox.checked = false;
                     });
                 }
+                
+                // MCP服务器选择面板显示/隐藏后，重新计算容器高度
+                setTimeout(function() {
+                    adjustContainerHeight();
+                }, 10);
             });
 
             // 默认隐藏MCP服务器选择区域
@@ -9067,6 +9136,22 @@
                     toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
                     toggleBtn.title = '切换到预览模式';
                 }
+            }
+        }
+
+        // 动态调整容器高度以适应顶部区域的实际高度
+        function adjustContainerHeight() {
+            const authArea = document.querySelector('.user-auth-area');
+            const container = document.querySelector('.container');
+            
+            if (authArea && container) {
+                // 获取顶部区域的实际高度
+                const authAreaHeight = authArea.offsetHeight;
+                
+                // 动态设置容器高度
+                container.style.height = `calc(100vh - ${authAreaHeight}px)`;
+                
+                console.log(`Adjusted container height: 100vh - ${authAreaHeight}px`);
             }
         }
 
