@@ -26,6 +26,10 @@ The installation script automatically performs the following tasks:
 6. **Install Pandoc** - Installs document converter based on system type
    - Linux: Uses apt-get/yum/pacman
    - macOS: Uses Homebrew
+7. **Install XeLaTeX (Optional)** - For high-quality PDF generation with Unicode and CJK support
+   - Prompts user for installation
+   - Linux: Installs texlive-xetex (~500MB)
+   - macOS: Installs BasicTeX (~100MB)
 
 ### Prerequisites
 
@@ -118,6 +122,106 @@ sudo pacman -S pandoc
 
 Download installer from [Pandoc official website](https://pandoc.org/installing.html)
 
+### 7. Install XeLaTeX (Optional, for PDF Generation)
+
+XeLaTeX is a TeX engine with Unicode and modern font support for generating high-quality PDF documents.
+
+#### macOS
+
+```bash
+# Install BasicTeX (smaller distribution, ~100MB)
+brew install --cask basictex
+
+# Update TeX Live Manager
+sudo tlmgr update --self
+
+# Install basic CJK support packages (required)
+sudo tlmgr install xetex xecjk ctex fontspec
+
+# Add TeX binaries to PATH (may need to restart terminal)
+export PATH="/Library/TeX/texbin:$PATH"
+```
+
+**If you need full LaTeX template functionality** (with enhanced headers, footers, document info, etc.), install additional packages:
+
+```bash
+# Install additional packages required by the template
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**One-command installation** (recommended):
+
+```bash
+# Complete installation (includes both basic and template packages)
+sudo tlmgr install xecjk ctex fontspec datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**Or install the full MacTeX distribution** (~4GB), which includes all packages:
+```bash
+brew install --cask mactex
+```
+
+**Verify installation:**
+```bash
+# Check XeLaTeX
+xelatex --version
+
+# Optional: Run package check script
+cd /path/to/AGIAgent
+./check_latex_packages.sh
+```
+
+#### Ubuntu/Debian
+
+```bash
+# Install basic LaTeX and CJK support (required)
+sudo apt-get update
+sudo apt-get install -y texlive-xetex texlive-fonts-recommended texlive-fonts-extra
+
+# Install Noto CJK fonts (recommended for Linux)
+sudo apt-get install -y fonts-noto-cjk
+
+# Install additional packages required by the template
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**Note:** If `tlmgr` command is not available, you may need to install:
+```bash
+sudo apt-get install -y texlive-latex-extra texlive-lang-chinese
+```
+
+#### CentOS/RHEL
+
+```bash
+# Install basic LaTeX and CJK support
+sudo yum install -y texlive-xetex texlive-collection-fontsrecommended
+
+# If tlmgr is available, install additional packages required by the template
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+#### Arch Linux
+
+```bash
+# Install basic LaTeX support
+sudo pacman -S texlive-core texlive-fontsextra
+
+# Install additional packages required by the template
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+#### Windows
+
+**Note:** Windows systems use a different PDF generation method (via Word printing) and do not require XeLaTeX installation. If you specifically need XeLaTeX:
+
+1. Download and install [MiKTeX](https://miktex.org/download) or [TeX Live](https://tug.org/texlive/windows.html)
+2. MiKTeX will automatically install missing packages on first use
+
+**Verify installation:**
+```bash
+xelatex --version
+```
+
 ## Verify Installation
 
 After installation, verify that all components are correctly installed:
@@ -131,6 +235,9 @@ python -c "import playwright; print('Playwright OK')"
 
 # Check Pandoc
 pandoc --version
+
+# Check XeLaTeX (if installed)
+xelatex --version
 
 # Deactivate virtual environment
 deactivate
@@ -260,19 +367,11 @@ python lib_demo.py
 
 ## Troubleshooting
 
-### 1. Python Version Too Old
+### 1. Python Version Requirement
 
-**Issue**: `Python 3.8 or higher is required`
+**Requirement**: Python 3.8 or higher
 
-**Solution**: Upgrade Python to 3.8 or higher
-
-```bash
-# macOS
-brew install python@3.13
-
-# Ubuntu/Debian
-sudo apt-get install python3.13
-```
+If your Python version is too old, please install Python 3.8 or higher before running the installation script.
 
 ### 2. Homebrew Not Installed (macOS)
 
@@ -282,6 +381,58 @@ sudo apt-get install python3.13
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### 3. XeLaTeX Not Found or PDF Generation Failed
+
+**Issue**: PDF generation fails with xelatex not found error
+
+**Solution**:
+
+XeLaTeX is optional and used for high-quality PDF generation. If not installed:
+
+1. Choose to install XeLaTeX when prompted by the installation script
+2. Or install manually (see step 7 above)
+3. After installation, you may need to restart your terminal or update PATH:
+   ```bash
+   # macOS
+   export PATH="/Library/TeX/texbin:$PATH"
+   ```
+
+If you don't need PDF functionality, you can skip XeLaTeX installation.
+
+### 4. TeX Live Installation Takes Too Long
+
+**Issue**: Installing texlive-xetex on Linux takes a long time
+
+**Solution**:
+
+- TeX Live complete package is large (~500MB), download and installation takes time
+- This is normal, please be patient
+- If network is slow, consider using a mirror server
+
+### 5. tlmgr Permission Error on macOS
+
+**Issue**: Permission denied when running `tlmgr`
+
+**Solution**:
+
+```bash
+# Run tlmgr commands with sudo
+sudo tlmgr update --self
+sudo tlmgr install xetex xecjk fontspec
+```
+
+### 6. Playwright Browser Download Failed
+
+**Issue**: Network issues preventing browser download
+
+**Solution**: Set proxy or use Playwright mirror
+
+```bash
+# Set mirror (for users in China)
+export PLAYWRIGHT_DOWNLOAD_HOST=https://playwright.azureedge.net
+playwright install chromium
 ```
 
 ## License

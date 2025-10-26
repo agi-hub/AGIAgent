@@ -5575,10 +5575,10 @@
                     // 图片切换成功后自动保存文件
                     autoSaveMarkdown().then(saved => {
                         if (saved) {
-                            console.log('图片切换后已自动保存markdown文件');
+                            console.log(I18N.image_switched_auto_save);
                         }
                     }).catch(e => {
-                        console.warn('自动保存时出错:', e);
+                        console.warn(I18N.auto_save_error + ':', e);
                     });
                 });
             } catch (e) {
@@ -5617,10 +5617,10 @@
                     // 图片切换成功后自动保存文件
                     autoSaveMarkdown().then(saved => {
                         if (saved) {
-                            console.log('图片切换后已自动保存markdown文件');
+                            console.log(I18N.image_switched_auto_save);
                         }
                     }).catch(e => {
-                        console.warn('自动保存时出错:', e);
+                        console.warn(I18N.auto_save_error + ':', e);
                     });
                 });
             } catch (e) {
@@ -5683,10 +5683,10 @@
                 // 图片删除成功后自动保存文件
                 autoSaveMarkdown().then(saved => {
                     if (saved) {
-                        console.log('图片删除后已自动保存markdown文件');
+                        console.log(I18N.image_deleted_auto_save);
                     }
                 }).catch(e => {
-                    console.warn('自动保存时出错:', e);
+                    console.warn(I18N.auto_save_error + ':', e);
                 });
             } catch (e) {
                 console.warn('remove image failed:', e);
@@ -5727,7 +5727,7 @@
                 
                 // 新的用户认证系统不需要user_前缀，直接使用相对路径
                 
-                console.log('编辑SVG文件:', filePath);
+                console.log(I18N.edit_svg_file + ':', filePath);
                 
                 // 打开SVG编辑器模态框
                 openSvgEditor(filePath);
@@ -6976,9 +6976,9 @@
             }
 
             // 确认删除
-            const confirmMsg = I18N?.lang === 'zh'
-                ? `确定要删除选中的 ${selectedElements.length} 个元素吗？此操作无法撤销。`
-                : `Are you sure you want to delete the selected ${selectedElements.length} elements? This action cannot be undone.`;
+            const confirmMsg = CURRENT_LANG === 'zh'
+                ? I18N.confirm_delete_elements.replace('{count}', selectedElements.length)
+                : I18N.confirm_delete_elements.replace('{count}', selectedElements.length);
             if (!confirm(confirmMsg)) {
                 return;
             }
@@ -7103,7 +7103,7 @@
                 const href = btnEl?.getAttribute('data-md-href');
                 
                 if (!src && !href) {
-                    alert('无法获取SVG文件路径');
+                    alert(I18N.cannot_get_svg_path);
                     return;
                 }
                 
@@ -7234,7 +7234,7 @@
                 const href = btnEl?.getAttribute('data-md-href');
                 
                 if (!src && !href) {
-                    alert('无法获取SVG文件路径');
+                    alert(I18N.cannot_get_svg_path);
                     return;
                 }
                 
@@ -7486,15 +7486,15 @@
                 const targetUrl = href || src;
                 
                 if (!targetUrl) {
-                    alert('无法获取SVG文件路径');
+                    alert(I18N.cannot_get_svg_path);
                     return;
                 }
                 
-                if (!confirm('确定要删除这个SVG图吗？')) {
+                if (!confirm(I18N.confirm_delete_svg)) {
                     return;
                 }
                 
-                console.log('删除SVG图:', targetUrl, '出现序号:', occIndex);
+                console.log('Delete SVG:', targetUrl, 'Occurrence index:', occIndex);
                 
                 // 精确删除第 occIndex 次出现的该图片语法
                 let count = 0;
@@ -7542,15 +7542,15 @@
                 // 自动保存
                 autoSaveMarkdown().then(saved => {
                     if (saved) {
-                        console.log('SVG删除后已自动保存markdown文件');
+                        console.log(I18N.svg_deleted_auto_save);
                     }
                 }).catch(e => {
-                    console.warn('自动保存时出错:', e);
+                    console.warn(I18N.auto_save_error + ':', e);
                 });
                 
             } catch (e) {
-                console.warn('删除SVG失败:', e);
-                alert(`删除SVG失败: ${e.message}`);
+                console.warn(I18N.delete_svg_failed + ':', e);
+                alert(`${I18N.delete_svg_failed}: ${e.message}`);
             }
         }
 
@@ -7561,7 +7561,7 @@
                 const href = btnEl?.getAttribute('data-md-href');
                 
                 if (!src && !href) {
-                    alert('无法获取SVG文件路径');
+                    alert(I18N.cannot_get_svg_path);
                     return;
                 }
                 
@@ -7694,15 +7694,15 @@
                 const targetUrl = href || src;
                 
                 if (!targetUrl) {
-                    alert('无法获取图片文件路径');
+                    alert(I18N.cannot_get_image_path);
                     return;
                 }
                 
-                if (!confirm('确定要删除这张图片吗？')) {
+                if (!confirm(I18N.confirm_delete_image)) {
                     return;
                 }
                 
-                console.log('删除图片:', targetUrl, '出现序号:', occIndex);
+                console.log(I18N.delete_image + ':', targetUrl, 'Occurrence index:', occIndex);
                 
                 // 精确删除第 occIndex 次出现的该图片语法
                 let count = 0;
@@ -7750,15 +7750,15 @@
                 // 自动保存
                 autoSaveMarkdown().then(saved => {
                     if (saved) {
-                        console.log('图片删除后已自动保存markdown文件');
+                        console.log(I18N.image_deleted_auto_save);
                     }
                 }).catch(e => {
-                    console.warn('自动保存时出错:', e);
+                    console.warn(I18N.auto_save_error + ':', e);
                 });
                 
             } catch (e) {
-                console.warn('删除图片失败:', e);
-                alert(`删除图片失败: ${e.message}`);
+                console.warn(I18N.delete_image_failed + ':', e);
+                alert(`${I18N.delete_image_failed}: ${e.message}`);
             }
         }
 
@@ -7782,12 +7782,12 @@
                 } else if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
                     contentToSave = window.currentMarkdownContent.processed;
                 } else {
-                    alert('未检测到可保存的Markdown内容');
+                    alert(I18N.no_markdown_to_save);
                     return;
                 }
                 
                 if (!window.currentOriginalFilePath && !currentFilePath) {
-                    alert('无法确定当前Markdown文件路径');
+                    alert(I18N.cannot_determine_file_path);
                     return;
                 }
                 const headers = { 'Content-Type': 'application/json' };
@@ -8030,17 +8030,17 @@
             try {
                 // 检查guest用户权限 - guest用户跳过保存
                 if (isGuest) {
-                    console.log('Guest用户跳过自动保存');
+                    console.log(I18N.guest_skip_auto_save);
                     return false;
                 }
                 
                 // 检查是否有可保存的内容
                 if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
-                    console.log('无Markdown内容可自动保存');
+                    console.log(I18N.no_markdown_auto_save);
                     return false;
                 }
                 if (!window.currentOriginalFilePath && !currentFilePath) {
-                    console.log('无法确定Markdown文件路径，跳过自动保存');
+                    console.log(I18N.cannot_determine_path_auto_save);
                     return false;
                 }
 
@@ -8058,14 +8058,14 @@
                 const data = await resp.json();
                 
                 if (data && data.success) {
-                    console.log('Markdown已自动保存');
+                    console.log(I18N.markdown_auto_saved);
                     return true;
                 } else {
-                    console.warn('自动保存失败:', data && data.error ? data.error : '未知错误');
+                    console.warn(I18N.auto_save_failed + ':', data && data.error ? data.error : I18N.unknown_error);
                     return false;
                 }
             } catch (e) {
-                console.error('自动保存Markdown失败:', e);
+                console.error(I18N.auto_save_markdown_failed + ':', e);
                 return false;
             }
         }
@@ -8098,7 +8098,7 @@
                 window.currentMermaidContent = contentToSave;
                 
                 if (!window.currentFilePath) {
-                    alert('无法确定当前Mermaid文件路径');
+                    alert(I18N.cannot_determine_mermaid_path);
                     return;
                 }
                 
@@ -8134,7 +8134,7 @@
             try {
                 const path = window.currentOriginalFilePath || currentFilePath;
                 if (!path) {
-                    alert('无法确定当前Markdown文件路径');
+                    alert(I18N.cannot_determine_markdown_path);
                     return;
                 }
                 const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
@@ -8376,7 +8376,7 @@
             // 获取当前文件路径
             const filePath = window.currentFilePath || '';
             if (!filePath) {
-                alert('无法获取文件路径');
+                alert(I18N.cannot_get_file_path);
                 return;
             }
             
@@ -8384,7 +8384,7 @@
             const convertBtn = event.target;
             const originalText = convertBtn.innerHTML;
             convertBtn.disabled = true;
-            convertBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 转换中...';
+            convertBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.converting}`;
             
             // 发送转换请求到后端
             const headers = {
@@ -8409,26 +8409,26 @@
                 convertBtn.innerHTML = originalText;
                 
                 if (data.success) {
-                    let message = '✅ Mermaid图表转换成功！\n\n';
+                    let message = `✅ ${I18N.mermaid_conversion_success}\n\n`;
                     if (data.svg_path) {
-                        message += `SVG文件: ${data.svg_path}\n`;
+                        message += `${I18N.svg_file}: ${data.svg_path}\n`;
                     }
                     if (data.png_path) {
-                        message += `PNG文件: ${data.png_path}\n`;
+                        message += `${I18N.png_file}: ${data.png_path}\n`;
                     }
                     if (data.message) {
                         message += `\n${data.message}`;
                     }
                     alert(message);
                 } else {
-                    alert('❌ 转换失败: ' + (data.error || '未知错误'));
+                    alert(`❌ ${I18N.conversion_failed}: ` + (data.error || I18N.unknown_error));
                 }
             })
             .catch(error => {
                 convertBtn.disabled = false;
                 convertBtn.innerHTML = originalText;
-                console.error('转换请求失败:', error);
-                alert('❌ 转换请求失败: ' + error.message);
+                console.error(I18N.conversion_request_failed + ':', error);
+                alert(`❌ ${I18N.conversion_request_failed}: ` + error.message);
             });
         }
 
@@ -8835,14 +8835,14 @@
             }
             
             if (!currentFilePath) {
-                alert('无法获取当前文件路径');
+                alert(I18N.cannot_get_current_file_path);
                 return;
             }
             
             const wordBtn = document.getElementById('convertWordBtn');
             if (wordBtn) {
                 wordBtn.disabled = true;
-                wordBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 转换中...';
+                wordBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.converting}`;
             }
             
             const headers = {};
@@ -8880,17 +8880,17 @@
                         document.body.removeChild(downloadLink);
                         
                         // 显示成功消息
-                        addMessage(`✅ Word文档转换成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${wordConversion.size_kb}`, 'success');
+                        addMessage(`✅ ${I18N.word_conversion_success}${I18N.file_label}: ${fileName.split('/').pop()}, ${I18N.size_label}: ${wordConversion.size_kb}`, 'success');
                     } else {
-                        alert(`❌ Word文档转换失败: ${wordConversion?.error || '未知错误'}`);
+                        alert(`❌ ${I18N.word_conversion_failed}: ${wordConversion?.error || I18N.unknown_error}`);
                     }
                 } else {
-                    alert(`❌ 转换失败: ${data.error}`);
+                    alert(`❌ ${I18N.conversion_failed}: ${data.error}`);
                 }
             })
             .catch(error => {
-                console.error('转换错误:', error);
-                alert(`❌ 转换过程中发生错误: ${error.message}`);
+                console.error(I18N.conversion_error + ':', error);
+                alert(`❌ ${I18N.error_during_conversion}: ${error.message}`);
             })
             .finally(() => {
                 if (wordBtn) {
@@ -8911,14 +8911,14 @@
             }
             
             if (!currentFilePath) {
-                alert('无法获取当前文件路径');
+                alert(I18N.cannot_get_current_file_path);
                 return;
             }
             
             const pdfBtn = document.getElementById('convertPdfBtn');
             if (pdfBtn) {
                 pdfBtn.disabled = true;
-                pdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 转换中...';
+                pdfBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18N.converting}`;
             }
             
             const headers = {};
@@ -8956,17 +8956,17 @@
                         document.body.removeChild(downloadLink);
                         
                         // 显示成功消息
-                        addMessage(`✅ PDF文档转换成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${pdfConversion.size_kb}`, 'success');
+                        addMessage(`✅ ${I18N.pdf_conversion_success}${I18N.file_label}: ${fileName.split('/').pop()}, ${I18N.size_label}: ${pdfConversion.size_kb}`, 'success');
                     } else {
-                        alert(`❌ PDF文档转换失败: ${pdfConversion?.error || '未知错误'}`);
+                        alert(`❌ ${I18N.pdf_conversion_failed}: ${pdfConversion?.error || I18N.unknown_error}`);
                     }
                 } else {
-                    alert(`❌ 转换失败: ${data.error}`);
+                    alert(`❌ ${I18N.conversion_failed}: ${data.error}`);
                 }
             })
             .catch(error => {
-                console.error('转换错误:', error);
-                alert(`❌ 转换过程中发生错误: ${error.message}`);
+                console.error(I18N.conversion_error + ':', error);
+                alert(`❌ ${I18N.error_during_conversion}: ${error.message}`);
             })
             .finally(() => {
                 if (pdfBtn) {
@@ -8984,7 +8984,7 @@
             }
             
             if (!currentFilePath) {
-                alert('无法获取当前文件路径');
+                alert(I18N.cannot_get_current_file_path);
                 return;
             }
             
@@ -9029,17 +9029,17 @@
                         document.body.removeChild(downloadLink);
                         
                         // 显示成功消息
-                        addMessage(`✅ LaTeX源文件生成成功并开始下载！文件: ${fileName.split('/').pop()}, 大小: ${latexConversion.size_kb}`, 'success');
+                        addMessage(`✅ ${I18N.latex_generation_success}${I18N.file_label}: ${fileName.split('/').pop()}, ${I18N.size_label}: ${latexConversion.size_kb}`, 'success');
                     } else {
-                        alert(`❌ LaTeX源文件生成失败: ${latexConversion?.error || '未知错误'}`);
+                        alert(`❌ ${I18N.latex_generation_failed}: ${latexConversion?.error || I18N.unknown_error}`);
                     }
                 } else {
-                    alert(`❌ 生成失败: ${data.error}`);
+                    alert(`❌ ${I18N.generation_failed}: ${data.error}`);
                 }
             })
             .catch(error => {
-                console.error('生成错误:', error);
-                alert(`❌ 生成过程中发生错误: ${error.message}`);
+                console.error(I18N.generation_error + ':', error);
+                alert(`❌ ${I18N.error_during_generation}: ${error.message}`);
             })
             .finally(() => {
                 if (latexBtn) {

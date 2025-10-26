@@ -26,6 +26,10 @@ cd /path/to/AGIAgent
 6. **安装 Pandoc** - 根据系统类型安装文档转换工具
    - Linux: 使用 apt-get/yum/pacman
    - macOS: 使用 Homebrew
+7. **安装 XeLaTeX（可选）** - 用于高质量 PDF 生成，支持 Unicode 和中文
+   - 会询问用户是否安装
+   - Linux: 安装 texlive-xetex (~500MB)
+   - macOS: 安装 BasicTeX (~100MB)
 
 ### 前置要求
 
@@ -118,6 +122,106 @@ sudo pacman -S pandoc
 
 从 [Pandoc 官网](https://pandoc.org/installing.html) 下载安装包
 
+### 7. 安装 XeLaTeX（可选，用于 PDF 生成）
+
+XeLaTeX 是一个支持 Unicode 和现代字体的 TeX 引擎，用于生成高质量 PDF 文档。
+
+#### macOS
+
+```bash
+# 安装 BasicTeX (较小的发行版，约 100MB)
+brew install --cask basictex
+
+# 更新 TeX Live Manager
+sudo tlmgr update --self
+
+# 安装基础的中文支持包（必需）
+sudo tlmgr install xetex xecjk ctex fontspec
+
+# 将 TeX 二进制文件添加到 PATH（可能需要重启终端）
+export PATH="/Library/TeX/texbin:$PATH"
+```
+
+**如果需要使用完整的 LaTeX 模板功能**（包含精美页眉页脚、文档信息等），还需安装额外的包：
+
+```bash
+# 安装模板所需的额外包
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**一键安装所有包**（推荐）：
+
+```bash
+# 完整安装命令（包含基础包和模板包）
+sudo tlmgr install xecjk ctex fontspec datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**或者安装完整版 MacTeX** (~4GB)，包含所有包:
+```bash
+brew install --cask mactex
+```
+
+**验证安装：**
+```bash
+# 检查 XeLaTeX
+xelatex --version
+
+# 可选：运行包检查脚本
+cd /path/to/AGIAgent
+./check_latex_packages.sh
+```
+
+#### Ubuntu/Debian
+
+```bash
+# 安装基础的 LaTeX 和中文支持（必需）
+sudo apt-get update
+sudo apt-get install -y texlive-xetex texlive-fonts-recommended texlive-fonts-extra
+
+# 安装 Noto CJK 字体（Linux 推荐）
+sudo apt-get install -y fonts-noto-cjk
+
+# 安装模板所需的额外包
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+**注意：** 如果 `tlmgr` 命令不可用，可能需要先安装：
+```bash
+sudo apt-get install -y texlive-latex-extra texlive-lang-chinese
+```
+
+#### CentOS/RHEL
+
+```bash
+# 安装基础的 LaTeX 和中文支持
+sudo yum install -y texlive-xetex texlive-collection-fontsrecommended
+
+# 如果 tlmgr 可用，安装模板所需的额外包
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+#### Arch Linux
+
+```bash
+# 安装基础的 LaTeX 支持
+sudo pacman -S texlive-core texlive-fontsextra
+
+# 安装模板所需的额外包
+sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+```
+
+#### Windows
+
+**注意：** Windows 系统使用不同的 PDF 生成方式（通过 Word 打印），不需要安装 XeLaTeX。如果你确实需要 XeLaTeX：
+
+1. 下载并安装 [MiKTeX](https://miktex.org/download) 或 [TeX Live](https://tug.org/texlive/windows.html)
+2. MiKTeX 会在首次使用时自动安装缺少的包
+
+**验证安装：**
+```bash
+xelatex --version
+```
+
 ## 验证安装
 
 安装完成后，验证所有组件是否正确安装：
@@ -131,6 +235,9 @@ python -c "import playwright; print('Playwright OK')"
 
 # 检查 Pandoc
 pandoc --version
+
+# 检查 XeLaTeX（如果已安装）
+xelatex --version
 
 # 退出虚拟环境
 deactivate
@@ -273,6 +380,46 @@ python lib_demo.py
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### 3. XeLaTeX 未找到或 PDF 生成失败
+
+**问题**: PDF 生成时提示找不到 xelatex 或转换失败
+
+**解决方案**:
+
+XeLaTeX 是可选的，用于生成高质量 PDF。如果未安装：
+
+1. 运行安装脚本时选择安装 XeLaTeX
+2. 或手动安装（见上文第 7 步）
+3. 安装后可能需要重启终端或更新 PATH：
+   ```bash
+   # macOS
+   export PATH="/Library/TeX/texbin:$PATH"
+   ```
+
+如果不需要 PDF 功能，可以跳过 XeLaTeX 安装。
+
+### 4. TeX Live 安装时间过长
+
+**问题**: Linux 上安装 texlive-xetex 耗时很长
+
+**解决方案**:
+
+- TeX Live 完整安装包较大（~500MB），下载和安装需要时间
+- 这是正常现象，请耐心等待
+- 如果网络较慢，可以考虑使用国内镜像源
+
+### 5. macOS 上 tlmgr 权限错误
+
+**问题**: 运行 `tlmgr` 时提示权限不足
+
+**解决方案**:
+
+```bash
+# 使用 sudo 运行 tlmgr 命令
+sudo tlmgr update --self
+sudo tlmgr install xetex xecjk fontspec
 ```
 
 ## 许可证
