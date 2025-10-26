@@ -7,6 +7,7 @@ import subprocess
 import argparse
 import tempfile
 import re
+import platform
 from pathlib import Path
 
 # 设置控制台编码为UTF-8（Windows兼容性）
@@ -120,6 +121,45 @@ def get_script_dir():
     return Path(__file__).parent.absolute()
 
 
+def get_cjk_fonts():
+    """
+    Get CJK fonts based on the operating system
+    
+    Returns:
+        tuple: (main_font, sans_font, mono_font)
+    """
+    system = platform.system().lower()
+    
+    if system == 'darwin':  # macOS
+        # macOS 系统自带的中文字体
+        return (
+            'Hiragino Sans GB',
+            'Hiragino Sans GB', 
+            'Hiragino Sans GB'
+        )
+    elif system == 'linux':
+        # Linux 系统使用 Noto 字体（需要安装 fonts-noto-cjk）
+        return (
+            'Noto Serif CJK SC',
+            'Noto Sans CJK SC',
+            'Noto Sans Mono CJK SC'
+        )
+    elif system == 'windows':
+        # Windows 系统使用微软雅黑等字体
+        return (
+            'Microsoft YaHei',
+            'Microsoft YaHei',
+            'Microsoft YaHei'
+        )
+    else:
+        # 默认使用 Noto 字体
+        return (
+            'Noto Serif CJK SC',
+            'Noto Sans CJK SC',
+            'Noto Sans Mono CJK SC'
+        )
+
+
 def check_pdf_engine_availability():
     """Check which PDF engines are available and return the best one"""
     engines = [
@@ -169,10 +209,12 @@ def get_engine_specific_options(engine_name):
     """Get engine-specific options based on the selected PDF engine"""
     if engine_name in ['xelatex', 'lualatex']:
         # XeLaTeX and LuaLaTeX support CJK fonts
+        # Get fonts based on operating system
+        main_font, sans_font, mono_font = get_cjk_fonts()
         return [
-            '-V', 'CJKmainfont=Noto Serif CJK SC',
-            '-V', 'CJKsansfont=Noto Sans CJK SC',
-            '-V', 'CJKmonofont=Noto Sans Mono CJK SC',
+            '-V', f'CJKmainfont={main_font}',
+            '-V', f'CJKsansfont={sans_font}',
+            '-V', f'CJKmonofont={mono_font}',
         ]
     elif engine_name == 'pdflatex':
         # pdfLaTeX doesn't support CJK fonts natively, use basic fonts
@@ -223,14 +265,15 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
     except Exception as e:
         print(f"⚠️ Warning: Failed to create emoji-free markdown: {e}")
     
-    # Create temporary LaTeX header file
-    latex_header = """
-\\usepackage{float}
-\\floatplacement{figure}{H}
-\\usepackage{xeCJK}
-\\setCJKmainfont{Noto Serif CJK SC}
-\\setCJKsansfont{Noto Sans CJK SC}
-\\setCJKmonofont{Noto Sans Mono CJK SC}
+    # Create temporary LaTeX header file with OS-specific fonts
+    main_font, sans_font, mono_font = get_cjk_fonts()
+    latex_header = f"""
+\\usepackage{{float}}
+\\floatplacement{{figure}}{{H}}
+\\usepackage{{xeCJK}}
+\\setCJKmainfont{{{main_font}}}
+\\setCJKsansfont{{{sans_font}}}
+\\setCJKmonofont{{{mono_font}}}
 """
     header_file = None
     
@@ -255,7 +298,7 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=2.0',
-        '--syntax-highlighting=tango',
+        '--highlight-style=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
@@ -270,13 +313,18 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
     
     # Add filter options
     if filter_path and os.path.isfile(filter_path):
-        # Use full Python path to avoid "python not found" error
-        python_executable = sys.executable
-        cmd.extend(['--filter', f'{python_executable} {filter_path}'])
+        # Filter file has shebang and execute permission, use directly
+        cmd.extend(['--filter', filter_path])
     
     # Add template options
     if template_path and os.path.isfile(template_path):
         cmd.extend(['--template', template_path])
+    
+    # Display system and font information
+    system_name = platform.system()
+    main_font, sans_font, mono_font = get_cjk_fonts()
+    print(f"🖥️  Operating System: {system_name}")
+    print(f"🔤 CJK Fonts: {main_font}")
     
     # Execute conversion
     print(f"Converting to LaTeX: {input_file} -> {output_file}")
@@ -383,13 +431,15 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     header_file = None
     
     if engine_name in ['xelatex', 'lualatex', 'pdflatex']:
-        latex_header = """
-\\usepackage{float}
-\\floatplacement{figure}{H}
-\\usepackage{xeCJK}
-\\setCJKmainfont{Noto Serif CJK SC}
-\\setCJKsansfont{Noto Sans CJK SC}
-\\setCJKmonofont{Noto Sans Mono CJK SC}
+        # Get OS-specific fonts
+        main_font, sans_font, mono_font = get_cjk_fonts()
+        latex_header = f"""
+\\usepackage{{float}}
+\\floatplacement{{figure}}{{H}}
+\\usepackage{{xeCJK}}
+\\setCJKmainfont{{{main_font}}}
+\\setCJKsansfont{{{sans_font}}}
+\\setCJKmonofont{{{mono_font}}}
 """
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix='.tex', delete=False) as f:
@@ -416,7 +466,7 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=2.0',
-        '--syntax-highlighting=tango',
+        '--highlight-style=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
@@ -437,13 +487,18 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     
     # Add filter options (only for LaTeX engines)
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and filter_path and os.path.isfile(filter_path):
-        # Use full Python path to avoid "python not found" error
-        python_executable = sys.executable
-        cmd.extend(['--filter', f'{python_executable} {filter_path}'])
+        # Filter file has shebang and execute permission, use directly
+        cmd.extend(['--filter', filter_path])
     
     # Add template options (only for LaTeX engines)
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and template_path and os.path.isfile(template_path):
         cmd.extend(['--template', template_path])
+    
+    # Display system and font information
+    system_name = platform.system()
+    main_font, sans_font, mono_font = get_cjk_fonts()
+    print(f"🖥️  Operating System: {system_name}")
+    print(f"🔤 CJK Fonts: {main_font}")
     
     # Execute conversion
     print(f"Converting: {input_file} -> {output_file}")
@@ -522,6 +577,7 @@ Example:
     parser.add_argument('-i', '--input', help='Input Markdown file')
     parser.add_argument('-o', '--output', help='Output PDF or LaTeX file')
     parser.add_argument('--latex', action='store_true', help='Generate LaTeX source file instead of PDF')
+    parser.add_argument('--no-template', action='store_true', help='Do not use LaTeX template (useful when template dependencies are missing)')
     
     args = parser.parse_args()
     
@@ -546,8 +602,18 @@ Example:
     # Set filter path
     filter_path = script_dir / "svg_chinese_filter.py"
     
-    # Set template path
-    template_path = script_dir / "template.latex"
+    # Set template path (only if not disabled)
+    template_path = None
+    if not args.no_template:
+        template_path = script_dir / "template.latex"
+        if not template_path.exists():
+            template_path = None
+    
+    # Display template status
+    if template_path:
+        print(f"📄 Using template: {template_path.name}")
+    else:
+        print("📄 Template: Disabled")
     
     # Execute conversion based on output format
     if args.latex or output_file.lower().endswith('.tex'):
@@ -556,7 +622,7 @@ Example:
             input_file, 
             output_file, 
             str(filter_path) if filter_path.exists() else None,
-            str(template_path) if template_path.exists() else None
+            str(template_path) if template_path else None
         )
     else:
         # Generate PDF file
@@ -564,7 +630,7 @@ Example:
             input_file, 
             output_file, 
             str(filter_path) if filter_path.exists() else None,
-            str(template_path) if template_path.exists() else None
+            str(template_path) if template_path else None
         )
     
     # Check conversion result

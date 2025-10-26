@@ -74,6 +74,14 @@ except ImportError:
     #print("⚠️ LLM SVG optimizer not available")
     LLM_SVG_OPTIMIZER_AVAILABLE = False
 
+# Import SVG to PNG converter
+try:
+    from src.tools.svg_to_png import EnhancedSVGToPNGConverter
+    SVG_TO_PNG_CONVERTER_AVAILABLE = True
+except ImportError:
+    #print("⚠️ SVG to PNG converter not available")
+    SVG_TO_PNG_CONVERTER_AVAILABLE = False
+
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
 current_dir_name = os.path.basename(current_dir)
@@ -610,6 +618,60 @@ I18N_TEXTS = {
         'ai_optimize_svg_tooltip': 'AI智能重新设计SVG图',
         'restore_svg_tooltip': '恢复原图',
         'delete_svg_tooltip': '删除SVG图',
+        
+        # Document conversion messages
+        'converting': '转换中...',
+        'mermaid_conversion_success': 'Mermaid图表转换成功！',
+        'conversion_failed': '转换失败',
+        'unknown_error': '未知错误',
+        'word_conversion_success': 'Word文档转换成功并开始下载！',
+        'word_conversion_failed': 'Word文档转换失败',
+        'pdf_conversion_success': 'PDF文档转换成功并开始下载！',
+        'pdf_conversion_failed': 'PDF文档转换失败',
+        'latex_generation_success': 'LaTeX源文件生成成功并开始下载！',
+        'latex_generation_failed': 'LaTeX源文件生成失败',
+        'generation_failed': '生成失败',
+        'file_label': '文件',
+        'size_label': '大小',
+        'svg_file': 'SVG文件',
+        'png_file': 'PNG文件',
+        
+        # Dialog messages
+        'confirm_delete_svg': '确定要删除这个SVG图吗？',
+        'confirm_delete_image': '确定要删除这张图片吗？',
+        'delete_image_failed': '删除图片失败',
+        'no_markdown_to_save': '未检测到可保存的Markdown内容',
+        'cannot_determine_file_path': '无法确定当前Markdown文件路径',
+        'confirm_delete_elements': '确定要删除选中的 {count} 个元素吗？此操作无法撤销。',
+        'confirm_delete_elements_en': 'Are you sure you want to delete the selected {count} elements? This action cannot be undone.',
+        
+        # Console log messages (for debugging, but should be consistent)
+        'edit_svg_file': '编辑SVG文件',
+        'delete_image': '删除图片',
+        'image_deleted_auto_save': '图片删除后已自动保存markdown文件',
+        'image_switched_auto_save': '图片切换后已自动保存markdown文件',
+        'svg_deleted_auto_save': 'SVG删除后已自动保存markdown文件',
+        'auto_save_error': '自动保存时出错',
+        'guest_skip_auto_save': 'Guest用户跳过自动保存',
+        'no_markdown_auto_save': '无Markdown内容可自动保存',
+        'cannot_determine_path_auto_save': '无法确定Markdown文件路径，跳过自动保存',
+        'markdown_auto_saved': 'Markdown已自动保存',
+        'auto_save_failed': '自动保存失败',
+        'auto_save_markdown_failed': '自动保存Markdown失败',
+        
+        # Additional error messages
+        'cannot_get_svg_path': '无法获取SVG文件路径',
+        'cannot_get_image_path': '无法获取图片文件路径',
+        'cannot_get_file_path': '无法获取文件路径',
+        'cannot_get_current_file_path': '无法获取当前文件路径',
+        'cannot_determine_mermaid_path': '无法确定当前Mermaid文件路径',
+        'cannot_determine_markdown_path': '无法确定当前Markdown文件路径',
+        'delete_svg_failed': '删除SVG失败',
+        'conversion_request_failed': '转换请求失败',
+        'conversion_error': '转换错误',
+        'error_during_conversion': '转换过程中发生错误',
+        'generation_error': '生成错误',
+        'error_during_generation': '生成过程中发生错误',
     },
     'en': {
         # Page title and basic info
@@ -897,6 +959,60 @@ I18N_TEXTS = {
         'ai_optimize_svg_tooltip': 'AI intelligent redesign SVG image',
         'restore_svg_tooltip': 'Restore original image',
         'delete_svg_tooltip': 'Delete SVG image',
+        
+        # Document conversion messages
+        'converting': 'Converting...',
+        'mermaid_conversion_success': 'Mermaid chart conversion successful!',
+        'conversion_failed': 'Conversion failed',
+        'unknown_error': 'Unknown error',
+        'word_conversion_success': 'Word document conversion successful and download started!',
+        'word_conversion_failed': 'Word document conversion failed',
+        'pdf_conversion_success': 'PDF document conversion successful and download started!',
+        'pdf_conversion_failed': 'PDF document conversion failed',
+        'latex_generation_success': 'LaTeX source file generation successful and download started!',
+        'latex_generation_failed': 'LaTeX source file generation failed',
+        'generation_failed': 'Generation failed',
+        'file_label': 'File',
+        'size_label': 'Size',
+        'svg_file': 'SVG file',
+        'png_file': 'PNG file',
+        
+        # Dialog messages
+        'confirm_delete_svg': 'Are you sure you want to delete this SVG image?',
+        'confirm_delete_image': 'Are you sure you want to delete this image?',
+        'delete_image_failed': 'Failed to delete image',
+        'no_markdown_to_save': 'No Markdown content detected to save',
+        'cannot_determine_file_path': 'Cannot determine current Markdown file path',
+        'confirm_delete_elements': 'Are you sure you want to delete the selected {count} elements? This action cannot be undone.',
+        'confirm_delete_elements_en': 'Are you sure you want to delete the selected {count} elements? This action cannot be undone.',
+        
+        # Console log messages (for debugging, but should be consistent)
+        'edit_svg_file': 'Edit SVG file',
+        'delete_image': 'Delete image',
+        'image_deleted_auto_save': 'Markdown file auto-saved after image deletion',
+        'image_switched_auto_save': 'Markdown file auto-saved after image switch',
+        'svg_deleted_auto_save': 'Markdown file auto-saved after SVG deletion',
+        'auto_save_error': 'Auto-save error',
+        'guest_skip_auto_save': 'Guest user skips auto-save',
+        'no_markdown_auto_save': 'No Markdown content to auto-save',
+        'cannot_determine_path_auto_save': 'Cannot determine Markdown file path, skip auto-save',
+        'markdown_auto_saved': 'Markdown auto-saved',
+        'auto_save_failed': 'Auto-save failed',
+        'auto_save_markdown_failed': 'Auto-save Markdown failed',
+        
+        # Additional error messages
+        'cannot_get_svg_path': 'Cannot get SVG file path',
+        'cannot_get_image_path': 'Cannot get image file path',
+        'cannot_get_file_path': 'Cannot get file path',
+        'cannot_get_current_file_path': 'Cannot get current file path',
+        'cannot_determine_mermaid_path': 'Cannot determine current Mermaid file path',
+        'cannot_determine_markdown_path': 'Cannot determine current Markdown file path',
+        'delete_svg_failed': 'Failed to delete SVG',
+        'conversion_request_failed': 'Conversion request failed',
+        'conversion_error': 'Conversion error',
+        'error_during_conversion': 'Error occurred during conversion',
+        'generation_error': 'Generation error',
+        'error_during_generation': 'Error occurred during generation',
     }
 }
 
@@ -3523,6 +3639,25 @@ def save_file():
         # Save content
         with open(full_path, 'w', encoding='utf-8') as f:
             f.write(content)
+        
+        # Auto-convert SVG to PNG if the saved file is an SVG
+        if rel_path.lower().endswith('.svg') and SVG_TO_PNG_CONVERTER_AVAILABLE:
+            try:
+                from pathlib import Path
+                svg_path = Path(full_path)
+                png_path = svg_path.with_suffix('.png')
+                
+                converter = EnhancedSVGToPNGConverter()
+                success, message = converter.convert(svg_path, png_path, enhance_chinese=True, dpi=300)
+                
+                if success:
+                    print(f"✅ SVG自动转换为PNG成功: {png_path.name}")
+                else:
+                    print(f"⚠️ SVG转PNG失败: {message}")
+            except Exception as e:
+                # 转换失败不影响SVG保存成功
+                print(f"⚠️ SVG转PNG出错: {e}")
+        
         return jsonify({'success': True, 'path': rel_path})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -3852,4 +3987,4 @@ if __name__ == '__main__':
     
     print(f"🚀 Starting AGIAgent GUI Server on port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
-
+    print(f"🚀 Wait for 5 seconds and open the browser with url 127.0.0.1:{port}")

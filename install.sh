@@ -234,6 +234,169 @@ install_pandoc() {
     fi
 }
 
+# Install XeLaTeX (Linux)
+install_xelatex_linux() {
+    print_info "Installing XeLaTeX on Linux..."
+    
+    if command -v xelatex &> /dev/null; then
+        XELATEX_VERSION=$(xelatex --version | head -n 1)
+        print_warning "XeLaTeX is already installed: $XELATEX_VERSION"
+        print_info "Do you want to reinstall? (y/n)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            return 0
+        fi
+    fi
+    
+    print_info "Installing XeLaTeX requires sudo privileges and will download ~500MB of packages"
+    
+    # Detect Linux distribution
+    if [ -f /etc/debian_version ]; then
+        # Debian/Ubuntu
+        print_info "Detected Debian/Ubuntu system, installing texlive-xetex..."
+        sudo apt-get update
+        sudo apt-get install -y texlive-xetex texlive-fonts-recommended texlive-fonts-extra fonts-noto-cjk
+    elif [ -f /etc/redhat-release ]; then
+        # RedHat/CentOS/Fedora
+        print_info "Detected RedHat/CentOS/Fedora system, installing texlive-xetex..."
+        sudo yum install -y texlive-xetex texlive-collection-fontsrecommended
+    elif [ -f /etc/arch-release ]; then
+        # Arch Linux
+        print_info "Detected Arch Linux system, installing texlive-core..."
+        sudo pacman -S --noconfirm texlive-core texlive-fontsextra
+    else
+        print_warning "Unable to auto-detect Linux distribution, trying apt-get..."
+        sudo apt-get update
+        sudo apt-get install -y texlive-xetex texlive-fonts-recommended texlive-fonts-extra fonts-noto-cjk
+    fi
+    
+    if command -v xelatex &> /dev/null; then
+        print_success "XeLaTeX installed successfully: $(xelatex --version | head -n 1)"
+        
+        # Install additional packages if tlmgr is available
+        if command -v tlmgr &> /dev/null; then
+            echo ""
+            print_info "Do you want to install additional LaTeX packages for full template support?"
+            print_info "This includes enhanced headers, footers, and document formatting (~30MB)"
+            print_info "Install template packages? (y/n)"
+            read -r template_response
+            
+            if [[ "$template_response" =~ ^[Yy]$ ]]; then
+                print_info "Installing template packages..."
+                sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+                if [ $? -eq 0 ]; then
+                    print_success "Template packages installed successfully"
+                else
+                    print_warning "Failed to install some template packages. You can install them later with:"
+                    print_info "sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl"
+                fi
+            else
+                print_warning "Skipping template packages. Basic Markdown to PDF conversion will work with --no-template option"
+                print_info "You can install template packages later with:"
+                print_info "sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl"
+            fi
+        else
+            print_warning "tlmgr not found. You can install additional packages later if needed."
+        fi
+    else
+        print_error "Failed to install XeLaTeX"
+        print_info "You can install it manually later for PDF generation support"
+        return 1
+    fi
+}
+
+# Install XeLaTeX (Mac)
+install_xelatex_mac() {
+    print_info "Installing XeLaTeX on macOS..."
+    
+    if command -v xelatex &> /dev/null; then
+        XELATEX_VERSION=$(xelatex --version | head -n 1)
+        print_warning "XeLaTeX is already installed: $XELATEX_VERSION"
+        print_info "Do you want to reinstall? (y/n)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            return 0
+        fi
+    fi
+    
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        print_error "Homebrew package manager not found"
+        print_info "Please install Homebrew first: https://brew.sh/"
+        return 1
+    fi
+    
+    print_info "Installing BasicTeX (smaller distribution, ~100MB)..."
+    print_info "This will take a few minutes..."
+    brew install --cask basictex
+    
+    # Update PATH to include TeX binaries
+    if [[ ":$PATH:" != *":/Library/TeX/texbin:"* ]]; then
+        export PATH="/Library/TeX/texbin:$PATH"
+        print_info "Added /Library/TeX/texbin to PATH"
+    fi
+    
+    # Refresh tlmgr and install necessary packages
+    if command -v tlmgr &> /dev/null; then
+        print_info "Updating TeX Live Manager..."
+        sudo tlmgr update --self
+        print_info "Installing basic CJK support packages..."
+        sudo tlmgr install xetex xecjk ctex fontspec
+        
+        # Ask about template packages
+        echo ""
+        print_info "Do you want to install additional LaTeX packages for full template support?"
+        print_info "This includes enhanced headers, footers, and document formatting (~30MB)"
+        print_info "Install template packages? (y/n)"
+        read -r template_response
+        
+        if [[ "$template_response" =~ ^[Yy]$ ]]; then
+            print_info "Installing template packages..."
+            sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl
+            if [ $? -eq 0 ]; then
+                print_success "Template packages installed successfully"
+            else
+                print_warning "Failed to install some template packages. You can install them later with:"
+                print_info "sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl"
+            fi
+        else
+            print_warning "Skipping template packages. Basic Markdown to PDF conversion will work with --no-template option"
+            print_info "You can install template packages later with:"
+            print_info "sudo tlmgr install datetime2 tracklang fvextra adjustbox lastpage fancyhdr framed seqsplit xurl"
+        fi
+    fi
+    
+    if command -v xelatex &> /dev/null; then
+        print_success "XeLaTeX installed successfully: $(xelatex --version | head -n 1)"
+    else
+        print_error "Failed to install XeLaTeX"
+        print_info "You may need to restart your terminal and run: brew install --cask basictex"
+        print_info "You can install it manually later for PDF generation support"
+        return 1
+    fi
+}
+
+# Install XeLaTeX
+install_xelatex() {
+    echo ""
+    print_info "XeLaTeX is required for high-quality PDF generation with Unicode support"
+    print_warning "Installation will download 100-500MB of packages depending on your system"
+    print_info "Do you want to install XeLaTeX? (y/n)"
+    read -r response
+    
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        print_warning "Skipping XeLaTeX installation"
+        print_info "You can install it later manually if needed for PDF generation"
+        return 0
+    fi
+    
+    if [ "$OS" == "linux" ]; then
+        install_xelatex_linux
+    elif [ "$OS" == "mac" ]; then
+        install_xelatex_mac
+    fi
+}
+
 # Verify installation
 verify_installation() {
     print_info "Verifying installation..."
@@ -257,6 +420,13 @@ verify_installation() {
         print_success "✓ Pandoc is installed: $(pandoc --version | head -n 1)"
     else
         print_error "✗ Pandoc is not installed"
+    fi
+    
+    # Check XeLaTeX
+    if command -v xelatex &> /dev/null; then
+        print_success "✓ XeLaTeX is installed: $(xelatex --version | head -n 1)"
+    else
+        print_warning "✗ XeLaTeX is not installed (optional, needed for PDF generation)"
     fi
     
     echo ""
@@ -320,6 +490,9 @@ main() {
     
     # Install Pandoc
     install_pandoc
+    
+    # Install XeLaTeX (optional, for PDF generation)
+    install_xelatex
     
     # Reactivate virtual environment for verification
     activate_venv

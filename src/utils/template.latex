@@ -24,7 +24,11 @@
 \geometry{margin=2.5cm}
 
 % 字体设置
-\setCJKmainfont{Noto Serif CJK SC}
+% 注意：字体由 pandoc 命令行参数 -V CJKmainfont 指定
+% 这样可以根据不同操作系统使用不同的字体
+% macOS: Hiragino Sans GB
+% Linux: Noto Serif CJK SC
+% Windows: Microsoft YaHei
 
 % 图片设置 - 防止超出边界并控制合理大小，居中显示
 \usepackage{adjustbox}
