@@ -35,6 +35,10 @@ from collections import defaultdict
 from threading import Lock, Semaphore
 import argparse
 
+# Note: We use the default multiprocessing start method
+# 'fork' is faster but unsafe in multi-threaded environment (Flask/SocketIO)
+# 'spawn' is slower but safer
+
 
 # Determine template and static directories FIRST - always relative to this app.py file
 # Get the directory where app.py is located (before any directory changes)
@@ -53,7 +57,6 @@ try:
     from src.tools.mermaid_processor import mermaid_processor
     MERMAID_PROCESSOR_AVAILABLE = True
 except ImportError:
-    print("⚠️ Mermaid processor not available")
     MERMAID_PROCESSOR_AVAILABLE = False
 
 # Import SVG optimizers
@@ -96,10 +99,11 @@ from src.main import AGIAgentMain
 class ConcurrencyManager:
     """Concurrency Control and Performance Monitoring Manager"""
     
-    def __init__(self, max_concurrent_tasks=16, max_connections=40, task_timeout=3600):  # 60 minute timeout (Expand by 1x)
+    def __init__(self, max_concurrent_tasks=16, max_connections=40, task_timeout=3600, gui_instance=None):  # 60 minute timeout (Expand by 1x)
         self.max_concurrent_tasks = max_concurrent_tasks
         self.max_connections = max_connections
         self.task_timeout = task_timeout  # 任务超时时间（Seconds）
+        self.gui_instance = gui_instance  # Reference to GUI instance for session cleanup
         
         # Concurrency control
         self.task_semaphore = Semaphore(max_concurrent_tasks)
@@ -121,15 +125,10 @@ class ConcurrencyManager:
             'last_updated': time.time()
         }
         
-        # Resource monitoring
-        self.resource_monitor_active = True
-        self.resource_thread = threading.Thread(target=self._monitor_resources, daemon=True)
-        self.resource_thread.start()
-        
-        # Timeout monitoring
-        self.timeout_monitor_active = True
-        self.timeout_thread = threading.Thread(target=self._monitor_timeouts, daemon=True)
-        self.timeout_thread.start()
+        # Unified resource and monitoring thread
+        self.monitor_active = True
+        self.monitor_thread = threading.Thread(target=self._unified_monitor, daemon=True)
+        self.monitor_thread.start()
         
 
     
@@ -196,56 +195,101 @@ class ConcurrencyManager:
             metrics_copy['queue_size'] = self.task_queue.qsize()
             return metrics_copy
     
-    def _monitor_resources(self):
-        """Resource monitoring thread"""
-        while self.resource_monitor_active:
+    def _unified_monitor(self):
+        """Unified resource and monitoring thread - handles resources, timeouts, and session cleanup"""
+        resource_check_counter = 0
+        timeout_check_counter = 0
+        session_cleanup_counter = 0
+        
+        while self.monitor_active:
             try:
-                # Monitor memory usage
-                process = psutil.Process()
-                memory_info = process.memory_info()
-                memory_mb = memory_info.rss / 1024 / 1024
+                # Check resources every 30 seconds (every 6 cycles of 5 seconds)
+                resource_check_counter += 1
+                if resource_check_counter >= 6:
+                    resource_check_counter = 0
+                    try:
+                        process = psutil.Process()
+                        memory_info = process.memory_info()
+                        memory_mb = memory_info.rss / 1024 / 1024
+                        
+                        with self.lock:
+                            if memory_mb > self.metrics['peak_memory_usage']:
+                                self.metrics['peak_memory_usage'] = memory_mb
+                            self.metrics['last_updated'] = time.time()
+                    except Exception as e:
+                        pass  # Ignore metrics error
                 
-                with self.lock:
-                    if memory_mb > self.metrics['peak_memory_usage']:
-                        self.metrics['peak_memory_usage'] = memory_mb
-                    self.metrics['last_updated'] = time.time()
+                # Check timeouts every 60 seconds (every 12 cycles of 5 seconds)
+                timeout_check_counter += 1
+                if timeout_check_counter >= 12:
+                    timeout_check_counter = 0
+                    try:
+                        current_time = time.time()
+                        timeout_sessions = []
+                        
+                        with self.lock:
+                            for session_id, task_info in self.active_tasks.items():
+                                if current_time - task_info['start_time'] > self.task_timeout:
+                                    timeout_sessions.append(session_id)
+                        
+                        # Handle timeout tasks
+                        for session_id in timeout_sessions:
+                            self._handle_task_timeout(session_id)
+                    except Exception as e:
+                        pass
                 
-                time.sleep(30)  # Monitor every 30 seconds
+                # Check idle sessions every 30 minutes (every 360 cycles of 5 seconds)
+                session_cleanup_counter += 1
+                if session_cleanup_counter >= 360:
+                    session_cleanup_counter = 0
+                    if self.gui_instance:
+                        try:
+                            self._cleanup_idle_sessions_for_gui()
+                        except Exception as e:
+                            pass
+                
+                # Sleep 5 seconds per cycle
+                time.sleep(5)
+                
             except Exception as e:
-                print(f"⚠️ Resource monitoring error: {e}")
-                time.sleep(60)
+                time.sleep(10)
     
-    def _monitor_timeouts(self):
-        """Timeout monitoring thread"""
-        while self.timeout_monitor_active:
-            try:
-                current_time = time.time()
-                timeout_sessions = []
+    def _cleanup_idle_sessions_for_gui(self):
+        """Clean up idle sessions - integrated from GUI class"""
+        if not self.gui_instance:
+            return
+            
+        try:
+            current_time = time.time()
+            idle_sessions = []
+            
+            # Check idle sessions (no activity for over 2 hours)
+            for session_id, user_session in self.gui_instance.user_sessions.items():
+                # Check if authentication session is still valid
+                session_info = self.gui_instance.auth_manager.validate_session(session_id)
+                if not session_info:
+                    idle_sessions.append(session_id)
+                    continue
                 
-                with self.lock:
-                    for session_id, task_info in self.active_tasks.items():
-                        if current_time - task_info['start_time'] > self.task_timeout:
-                            timeout_sessions.append(session_id)
-                
-                # Handle timeout tasks
-                for session_id in timeout_sessions:
-                    print(f"⏰ Task timeout detected for user {session_id}")
-                    self._handle_task_timeout(session_id)
-                
-
-                
-                time.sleep(60)  # Check timeout every minute
-            except Exception as e:
-                print(f"⚠️ Timeout monitoring error: {e}")
-                time.sleep(120)
+                # Check if there are running processes
+                if user_session.current_process and user_session.current_process.is_alive():
+                    continue  # 有活动进程，不清理
+            
+            # Clean up idle sessions
+            for session_id in idle_sessions:
+                try:
+                    if hasattr(self.gui_instance, '_cleanup_session'):
+                        self.gui_instance._cleanup_session(session_id)
+                except Exception as e:
+                    pass  # Silent cleanup
+        except Exception as e:
+            pass  # Cleanup error
     
     def _handle_task_timeout(self, session_id):
         """Handle task timeout"""
         # This method needs to set callback after GUI instance initialization
         if hasattr(self, '_timeout_callback') and self._timeout_callback:
             self._timeout_callback(session_id)
-        else:
-            print(f"⚠️ Timeout handling callback not set: {session_id}")
     
     def set_timeout_callback(self, callback):
         """Set timeout handling callback"""
@@ -264,8 +308,9 @@ class ConcurrencyManager:
     
     def stop(self):
         """Stop monitoring"""
-        self.resource_monitor_active = False
-        self.timeout_monitor_active = False
+        self.monitor_active = False
+        if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=2)
 
 
 
@@ -531,6 +576,7 @@ I18N_TEXTS = {
         'config_missing': '模型配置信息缺失',
         'config_incomplete': '配置信息不完整：缺少 API Key、API Base 或模型名称',
         'custom_label': '自定义',
+        'task_emitted': '✅ 任务已发起',
         'task_starting': '🚀 任务开始执行...',
         
         # Directory status messages
@@ -817,6 +863,7 @@ I18N_TEXTS = {
         'config_missing': 'Model configuration information missing',
         'config_incomplete': 'Incomplete configuration: missing API Key, API Base, or model name',
         'custom_label': 'Custom',
+        'task_emitted': '✅ Task Emitted',
         'task_starting': '🚀 Task starting...',
         
         # Directory status messages
@@ -859,14 +906,18 @@ def get_i18n_texts():
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
 def execute_agia_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None):
-    # Get i18n texts for this process
-    i18n = get_i18n_texts()
     """
     This function runs in a separate process.
     It cannot use the `socketio` object directly.
     It communicates back to the main process via the queue.
     """
     try:
+        # 🚀 Send task_started event IMMEDIATELY to provide instant feedback (before any other operations)
+        output_queue.put({'event': 'task_started', 'data': {'message': '🚀 Task starting...'}})
+        
+        # Get i18n texts for this process (after sending initial message)
+        i18n = get_i18n_texts()
+        
         if not out_dir:
             # Get GUI default data directory from config for new directories
             from src.config_loader import get_gui_default_data_directory
@@ -1014,11 +1065,20 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             if os.path.exists(workspace_dir):
                 workspace_info += f"\nworkspace subdirectory path: {workspace_dir}\nworkspace subdirectory content:"
                 try:
-                    # List workspace contents for context
+                    # List workspace contents for context (limit to first 50 files for performance)
                     workspace_files = []
                     md_files = []
+                    max_files = 50  # Limit to avoid long delays with large directories
+                    file_count = 0
+                    
                     for root, dirs, files in os.walk(workspace_dir):
+                        # Skip hidden directories and common large directories
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv', '.git']]
+                        
                         for file in files:
+                            if file_count >= max_files:
+                                break
+                            
                             file_path = os.path.join(root, file)
                             rel_path = os.path.relpath(file_path, workspace_dir)
                             file_size = os.path.getsize(file_path)
@@ -1027,6 +1087,11 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                                 md_files.append(f"  - {rel_path} ({format_size(file_size)})")
                             else:
                                 workspace_files.append(f"  - {rel_path} ({format_size(file_size)})")
+                            
+                            file_count += 1
+                        
+                        if file_count >= max_files:
+                            break
                     
                     # Prioritize displaying MD files
                     if md_files:
@@ -1036,6 +1101,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                     if workspace_files:
                         workspace_info += "\nOther files:"
                         workspace_info += "\n" + "\n".join(workspace_files)
+                    
+                    if file_count >= max_files:
+                        workspace_info += f"\n  ... (showing first {max_files} files, more files exist)"
                     
                     if not md_files and not workspace_files:
                         workspace_info += "\n  (Empty directory)"
@@ -1062,9 +1130,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         
         # Send user requirement as separate message
         output_queue.put({'event': 'output', 'data': {'message': f"User requirement: {user_requirement}", 'type': 'user'}})
-        
-        # Send task_started event to update UI buttons
-        output_queue.put({'event': 'task_started', 'data': {'message': i18n.get('task_starting', '🚀 Task starting...')}})
         
         class QueueSocketHandler:
             def __init__(self, q, socket_type='info'):
@@ -1191,7 +1256,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                         self.buffer.strip().startswith('Processing files:') or
                         'userwarning' in buffer_lower or
                         'warnings.warn' in buffer_lower or
-                        '⚠️' in self.buffer or  # 中文警告符号
+                        '⚠️' in self.buffer or  
                         self.buffer.strip().startswith('W: ') or  # apt warning format
                         'W: ' in self.buffer):  # apt warning format
                         message_type = 'info'
@@ -1245,10 +1310,11 @@ class AGIAgentGUI:
         # Initialize authentication manager
         self.auth_manager = AuthenticationManager()
         
-        # Initialize concurrency manager
+        # Initialize concurrency manager with reference to this GUI instance
         self.concurrency_manager = ConcurrencyManager(
             max_concurrent_tasks=16,  # Maximum concurrent tasks (Expand by 1x)
-            max_connections=40        # 最大Connect数 (Expand by 1x)
+            max_connections=40,       # 最大Connect数 (Expand by 1x)
+            gui_instance=self         # Pass GUI instance for unified monitoring
         )
         
         # Get GUI default data directory from config, fallback to current directory
@@ -1264,10 +1330,8 @@ class AGIAgentGUI:
         # Don't create default userdata directory until needed
         self.default_user_dir = os.path.join(self.base_data_dir, 'userdata')
         
-        # Start session cleanup thread
-        self.session_cleanup_active = True
-        self.session_cleanup_thread = threading.Thread(target=self._cleanup_idle_sessions, daemon=True)
-        self.session_cleanup_thread.start()
+        # Session cleanup is now handled by ConcurrencyManager unified monitor
+        # No separate thread needed
         
         # Set timeout handling callback
         self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
@@ -1283,7 +1347,7 @@ class AGIAgentGUI:
         # Always authenticate (including guest access)
         auth_result = self.auth_manager.authenticate_api_key(api_key)
         if not auth_result["authenticated"]:
-            print(f"🚫 Authentication failed for session {session_id}: {auth_result['error']}")
+            pass  # Authentication failed
             return None
         
         # Store guest status and user info
@@ -1295,53 +1359,19 @@ class AGIAgentGUI:
             if self.auth_manager.create_session(api_key, session_id):
                 self.user_sessions[session_id] = UserSession(session_id, api_key, user_info)
                 session_type = "guest" if is_guest else "authenticated"
-                print(f"✅ Created {session_type} session for {session_id}")
             else:
-                print(f"🚫 Failed to create session for {session_id}")
                 return None
         else:
             # Update API key if it has changed
             existing_session = self.user_sessions[session_id]
             if existing_session.api_key != api_key:
-                print(f"🔄 API key changed for session {session_id}")
                 # Re-authenticate and update session
                 if self.auth_manager.create_session(api_key, session_id):
                     self.user_sessions[session_id] = UserSession(session_id, api_key, user_info)
                 else:
-                    print(f"🚫 Failed to update session for {session_id}")
                     return None
         
         return self.user_sessions[session_id]
-    
-    def _cleanup_idle_sessions(self):
-        """Clean up idle session thread"""
-        while self.session_cleanup_active:
-            try:
-                current_time = time.time()
-                idle_sessions = []
-                
-                # Check idle sessions (no activity for over 2 hours)
-                for session_id, user_session in self.user_sessions.items():
-                    # Check if authentication session is still valid
-                    session_info = self.auth_manager.validate_session(session_id)
-                    if not session_info:
-                        idle_sessions.append(session_id)
-                        continue
-                    
-                    # Check if there are running processes
-                    if user_session.current_process and user_session.current_process.is_alive():
-                        continue  # 有活动进程，不清理
-                
-                # Clean up idle sessions
-                for session_id in idle_sessions:
-                    print(f"🧹 Cleaning up idle session: {session_id}")
-                    self._cleanup_session(session_id)
-                
-                # Check every 30 minutes
-                time.sleep(1800)
-            except Exception as e:
-                print(f"⚠️ Session cleanup error: {e}")
-                time.sleep(3600)  # Wait 1 hour before retrying on error
     
     def _cleanup_session(self, session_id):
         """Clean up specified session"""
@@ -1351,7 +1381,6 @@ class AGIAgentGUI:
                 
                 # Clean up running processes
                 if user_session.current_process and user_session.current_process.is_alive():
-                    print(f"🛑 Terminating process for cleanup session {session_id}")
                     user_session.current_process.terminate()
                     user_session.current_process.join(timeout=5)
                 
@@ -1373,9 +1402,8 @@ class AGIAgentGUI:
                 # Remove user session
                 del self.user_sessions[session_id]
                 
-                print(f"🧹 Session cleaned up: {session_id}")
         except Exception as e:
-            print(f"⚠️ Session cleanup error {session_id}: {e}")
+                pass  # Session cleanup error
     
     def _handle_user_task_timeout(self, session_id):
         """Handle user task timeout"""
@@ -1385,7 +1413,6 @@ class AGIAgentGUI:
 
                 # Terminate process
                 if user_session.current_process and user_session.current_process.is_alive():
-                    print(f"🛑 Terminating timeout process for user {session_id}")
                     user_session.current_process.terminate()
                     user_session.current_process.join(timeout=10)
 
@@ -1397,9 +1424,8 @@ class AGIAgentGUI:
 
                 # Release task resources - call finish_task to clean up active_tasks
                 self.concurrency_manager.finish_task(session_id, success=False)
-                print(f"✅ Cleaned up timeout task for user {session_id}")
         except Exception as e:
-            print(f"⚠️ Error handling user task timeout: {e}")
+            pass
     
 
     
@@ -1436,7 +1462,7 @@ class AGIAgentGUI:
                             'is_last': item == user_session.last_output_dir  # Mark if it's last used directory
                         })
         except (OSError, PermissionError) as e:
-            print(f"Error reading directories: {e}")
+            pass
         
         # Sort by modification time
         result.sort(key=lambda x: os.path.getmtime(x['path']), reverse=True)
@@ -1582,10 +1608,8 @@ def create_temp_session_id(request, api_key=None):
 
 def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
-    print(f"Queue reader thread started for user {session_id}.")
     
     if session_id not in gui_instance.user_sessions:
-        print(f"❌ User session {session_id} not found")
         return
     
     user_session = gui_instance.user_sessions[session_id]
@@ -1593,13 +1617,11 @@ def queue_reader_thread(session_id):
     while True:
         try:
             if user_session.current_process and not user_session.current_process.is_alive() and user_session.output_queue.empty():
-                print(f"Process finished and queue is empty for user {session_id}, stopping reader.")
                 break
 
             message = user_session.output_queue.get(timeout=1)
             
             if message.get('event') == 'STOP':
-                print(f"Received STOP sentinel for user {session_id}.")
                 break
             
             # If task completion message, save last used directory and clear current directory mark
@@ -1611,18 +1633,15 @@ def queue_reader_thread(session_id):
                 # Get updated metrics
                 metrics = gui_instance.concurrency_manager.get_metrics()
                 status_msg = "Complete" if task_success else "Failed"
-                print(f"✅ Task {status_msg} for user {session_id}")
-                print(f"📊 Updated metrics - Active tasks: {metrics['active_tasks']}, Completed: {metrics['completed_tasks']}, Failed: {metrics['failed_tasks']}")
                 
                 if user_session.current_output_dir:
                     user_session.last_output_dir = user_session.current_output_dir
                     # If current directory is the selected directory, keep the selection
                     # This ensures user can continue in the same directory
                     if user_session.selected_output_dir == user_session.current_output_dir:
-                        print(f"🔄 Keeping selected directory for user {session_id}: {user_session.selected_output_dir}")
+                        pass
                     else:
                         # If different directories, clear selection to avoid confusion
-                        print(f"🔄 Clearing selected directory for user {session_id} (was {user_session.selected_output_dir}, current {user_session.current_output_dir})")
                         user_session.selected_output_dir = None
                 
                 # Add to conversation history if we have context from last executed task
@@ -1638,12 +1657,13 @@ def queue_reader_thread(session_id):
         except queue.Empty:
             continue
         except Exception as e:
-            print(f"Error in queue_reader_thread for user {session_id}: {e}")
             break
     
-    print(f"Queue reader thread finished for user {session_id}.")
-    if user_session.current_process:
-        user_session.current_process.join(timeout=1)
+    if user_session.current_process and hasattr(user_session.current_process, '_popen') and user_session.current_process._popen is not None:
+        try:
+            user_session.current_process.join(timeout=1)
+        except Exception as e:
+            pass
     user_session.current_process = None
     user_session.output_queue = None
     if user_session.current_output_dir:
@@ -1693,7 +1713,6 @@ def api_register():
             return jsonify({'success': False, 'error': result['error']}), 400
 
     except Exception as e:
-        print(f"Registration error: {e}")
         return jsonify({'success': False, 'error': '注册过程中发生错误'}), 500
 
 @app.route('/test_toggle_simple.html')
@@ -1752,7 +1771,6 @@ def download_directory(dir_name):
                     # Exclude code_index directory and other unwanted directories
                     dirs_to_exclude = {'code_index', '__pycache__', '.git', '.vscode', 'node_modules'}
                     if any(excluded in root for excluded in dirs_to_exclude):
-                        print(f"Excluding directory: {root}")  # Debug info
                         continue
                     
                     for file in files:
@@ -1769,14 +1787,12 @@ def download_directory(dir_name):
                             arcname = os.path.join(dir_name, rel_path).replace('\\', '/')
                             zipf.write(file_path, arcname)
                         except (OSError, IOError) as file_error:
-                            print(f"Warning: Could not add file {file_path} to zip: {file_error}")
                             continue
             
             # Verify that the zip file was created and is not empty
             if not os.path.exists(temp_file) or os.path.getsize(temp_file) == 0:
                 return jsonify({'success': False, 'error': 'Failed to create zip file or zip file is empty'})
             
-            print(f"ZIP file created successfully: {temp_file}, size: {os.path.getsize(temp_file)} bytes")
             
             # Schedule cleanup after the request is complete
             @after_this_request
@@ -1784,9 +1800,8 @@ def download_directory(dir_name):
                 try:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
-                        print(f"Cleaned up temporary file: {temp_file}")
                 except Exception as cleanup_error:
-                    print(f"Warning: Could not clean up temporary file {temp_file}: {cleanup_error}")
+                    pass
                 return response
             
             # Return the file with proper headers
@@ -1807,7 +1822,6 @@ def download_directory(dir_name):
             raise zip_error
     
     except Exception as e:
-        print(f"Download error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/list-directory', methods=['POST'])
@@ -2164,11 +2178,10 @@ def get_file_content(file_path):
 def serve_pdf(file_path):
     """Serve PDF file directly"""
     try:
-        print(f"PDF request for: {file_path}")  # Add debug logs
+        pass
         
         # Get API key from query parameters or headers
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
-        print(f"API key: {api_key[:10] + '...' if api_key else 'None'}")  # Add debug logs
         
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
@@ -2181,22 +2194,18 @@ def serve_pdf(file_path):
         
         # Use the passed path directly, don't use secure_filename as we need to maintain path structure
         full_path = os.path.join(user_base_dir, file_path)
-        print(f"Full path: {full_path}")  # Add debug logs
         
         # Security check: ensure path is within user's output directory
         real_output_dir = os.path.realpath(user_base_dir)
         real_file_path = os.path.realpath(full_path)
         if not real_file_path.startswith(real_output_dir):
-            print(f"Access denied: {real_file_path} not in {real_output_dir}")
             return jsonify({'success': False, 'error': 'Access denied'})
         
         if not os.path.exists(full_path) or not os.path.isfile(full_path):
-            print(f"File not found: {full_path}")
             return jsonify({'success': False, 'error': f'File not found: {file_path}'})
         
         # Check if it's a PDF file
         if not full_path.lower().endswith('.pdf'):
-            print(f"Not a PDF file: {full_path}")
             return jsonify({'success': False, 'error': 'Not a PDF file'})
         
         # Verify PDF file structure
@@ -2204,13 +2213,10 @@ def serve_pdf(file_path):
             with open(full_path, 'rb') as f:
                 header = f.read(8)
                 if not header.startswith(b'%PDF-'):
-                    print(f"Invalid PDF header: {header}")
                     return jsonify({'success': False, 'error': 'Invalid PDF file structure'})
         except Exception as pdf_check_error:
-            print(f"PDF validation error: {pdf_check_error}")
             return jsonify({'success': False, 'error': f'PDF validation failed: {str(pdf_check_error)}'})
         
-        print(f"Serving PDF file: {full_path}")
         response = send_file(full_path, mimetype='application/pdf')
         
         # Add CORS headers
@@ -2221,7 +2227,6 @@ def serve_pdf(file_path):
         return response
     
     except Exception as e:
-        print(f"PDF serve error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
@@ -2447,11 +2452,6 @@ def convert_markdown():
         )
         
         # Call the conversion method from FileSystemTools
-        print(f"🔍 Conversion debug information:")
-        print(f"  file_path: {file_path}")
-        print(f"  full_path: {full_path}")
-        print(f"  user_base_dir: {user_base_dir}")
-        print(f"  workspace_root: {tools.workspace_root}")
         
         # Handle LaTeX conversion separately if requested
         if format_type == 'latex':
@@ -2459,7 +2459,6 @@ def convert_markdown():
         else:
             conversion_result = tools._convert_markdown_to_formats(full_path, file_path, format_type)
         
-        print(f"  Conversion result: {conversion_result}")
         
         if conversion_result.get('status') == 'success':
             # Check for partial success (some conversions failed)
@@ -2520,7 +2519,6 @@ def convert_markdown():
             })
     
     except Exception as e:
-        print(f"Markdown conversion error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
@@ -2588,10 +2586,6 @@ def convert_mermaid_to_images():
         svg_path = os.path.join(images_dir, f"{base_name}.svg")
         png_path = os.path.join(images_dir, f"{base_name}.png")
         
-        print(f"🎨 Converting Mermaid chart to images:")
-        print(f"  File: {full_path}")
-        print(f"  SVG output: {svg_path}")
-        print(f"  PNG output: {png_path}")
         
         # Use mermaid processor to generate images
         from pathlib import Path
@@ -2625,17 +2619,14 @@ def convert_mermaid_to_images():
             elif png_success:
                 result['message'] += i18n['mermaid_png_only']
             
-            print(f"✅ Mermaid conversion successful: SVG={svg_success}, PNG={png_success}")
             return jsonify(result)
         else:
-            print(f"❌ Mermaid conversion failed")
             return jsonify({
                 'success': False,
                 'error': 'Failed to generate images from Mermaid chart'
             })
     
     except Exception as e:
-        print(f"❌ Mermaid conversion error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
@@ -2678,7 +2669,6 @@ def handle_connect(auth):
         emit('connection_rejected', {
             'message': 'Server connection limit reached'
         }, room=session_id)
-        print(f"🚫 Connection rejected for {session_id}: Server at capacity")
         return False
     
     # Get user authentication info
@@ -2692,7 +2682,6 @@ def handle_connect(auth):
     if not user_session:
         # Authentication failed
         emit('auth_failed', {'message': 'Authentication failed. Please check your API key.'}, room=session_id)
-        print(f"🚫 Connection rejected for {session_id}: Authentication failed")
         return False
     
     # Add connection to concurrency manager
@@ -2700,7 +2689,6 @@ def handle_connect(auth):
         emit('connection_rejected', {
             'message': 'Server connection limit reached'
         }, room=session_id)
-        print(f"🚫 Connection rejected for {session_id}: Failed to add connection")
         return False
     
     # Create user directory if not exists
@@ -2717,8 +2705,6 @@ def handle_connect(auth):
     # Get current performance metrics
     metrics = gui_instance.concurrency_manager.get_metrics()
     
-    print(f"🔗 User connected: {session_id}, User: {user_name}, API Key: {'***' if api_key else 'Guest'}, Directory: {os.path.basename(user_dir)}")
-    print(f"📊 Current metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
     
     # Send status with guest indicator and performance info
     connection_data = {
@@ -2751,25 +2737,21 @@ def handle_disconnect():
 
         # Terminate any running processes
         if user_session.current_process and user_session.current_process.is_alive():
-            print(f"🛑 Terminating process for disconnected user {session_id}")
             user_session.current_process.terminate()
             user_session.current_process.join(timeout=5)
 
         # Clean up active task if exists
         gui_instance.concurrency_manager.finish_task(session_id, success=False)
-        print(f"✅ Cleaned up task for disconnected user {session_id}")
 
         # Clean up session
         gui_instance.auth_manager.destroy_session(session_id)
         del gui_instance.user_sessions[session_id]
 
-        print(f"🔌 User {session_id} disconnected and cleaned up")
 
         # Get updated metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
-        print(f"📊 Updated metrics - Active connections: {metrics['active_connections']}, Active tasks: {metrics['active_tasks']}")
     else:
-        print(f"🔌 User disconnected (no session found): {session_id}")
+        pass
 
 @socketio.on('execute_task')
 def handle_execute_task(data):
@@ -2823,7 +2805,6 @@ def handle_execute_task(data):
             out_dir = os.path.join(user_base_dir, target_dir_name)
             # Update backend state to match frontend
             user_session.selected_output_dir = target_dir_name
-            print(f"🎯 Using selected directory: {target_dir_name} (from {'frontend' if selected_directory else 'backend state'})")
         else:
             # 🔧 Fix: if user selected selected mode but didn't specify directory
             emit('error', {'message': i18n['select_directory_first']}, room=session_id)
@@ -2853,7 +2834,6 @@ def handle_execute_task(data):
             'message': 'Current server tasks are busy...',
             'queue_position': gui_instance.concurrency_manager.task_queue.qsize() + 1
         }, room=session_id)
-        print(f"⏳ Task queued for user {session_id}: server at capacity")
         return
     
     user_session.output_queue = multiprocessing.Queue()
@@ -2864,25 +2844,32 @@ def handle_execute_task(data):
         import hashlib
         user_id = hashlib.sha256(user_session.api_key.encode()).hexdigest()
     
+    # 🎯 Send immediate feedback to user
+    emit('output', {
+        'message': i18n.get('task_emitted', '✅ Task Emitted'),
+        'type': 'system'
+    }, room=session_id)
+    
     try:
+        # 🚀 Create and start process with highest priority (minimize delay)
         user_session.current_process = multiprocessing.Process(
             target=execute_agia_task_process_target,
             args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id)
         )
         user_session.current_process.daemon = True
         user_session.current_process.start()
-
-
+        
         # Get current performance metrics
         metrics = gui_instance.concurrency_manager.get_metrics()
-        print(f"🚀 Task started for user {session_id}")
-        print(f"📊 Current metrics - Active tasks: {metrics['active_tasks']}, Completed: {metrics['completed_tasks']}")
+        
+        # Start queue reader thread after process is confirmed started
+        # Messages will be buffered in queue, so slight delay is fine
+        threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
         
     except Exception as e:
         # If process startup fails
         gui_instance.concurrency_manager.finish_task(session_id, success=False)
         emit('error', {'message': f'Task startup failed: {str(e)}'}, room=session_id)
-        print(f"❌ Failed to start task for user {session_id}: {e}")
         return
     
     # Set current output directory name (extract from absolute path if needed)
@@ -2893,8 +2880,6 @@ def handle_execute_task(data):
     
     # Store current task for conversation history
     user_session._current_task_requirement = user_requirement
-
-    threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
 
 @socketio.on('select_directory')
 def handle_select_directory(data):
@@ -2953,11 +2938,10 @@ def handle_stop_task():
     user_session = gui_instance.user_sessions[session_id]
     
     if user_session.current_process and user_session.current_process.is_alive():
-        print(f"Received stop request for user {session_id}. Terminating process.")
+        pass
 
         # 🔧 Fix: save current conversation to history when stopping task
         if hasattr(user_session, '_current_task_requirement'):
-            print(f"💾 Saving interrupted conversation to history for user {session_id}")
             user_session.add_to_conversation_history(
                 user_session._current_task_requirement,
                 "Task stopped by user"
@@ -3003,7 +2987,6 @@ def handle_create_new_directory():
         
         # Clear conversation history when creating new workspace
         user_session.conversation_history.clear()
-        print(f"🧹 Cleared conversation history for user {session_id} when creating new workspace")
         
         emit('directory_created', {
             'dir_name': new_dir_name,
@@ -3031,7 +3014,6 @@ def handle_clear_chat():
         # Clear server-side conversation history
         user_session = gui_instance.user_sessions[session_id]
         user_session.conversation_history.clear()
-        print(f"🧹 Cleared conversation history for user {session_id}")
         
         emit('chat_cleared', {
             'success': True,
@@ -3069,7 +3051,6 @@ def refresh_directories():
             'message': i18n['directory_list_refreshed']
         })
     except Exception as e:
-        print(f"Failed to refresh directories: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -3113,7 +3094,6 @@ def get_file_count(dir_name):
             'file_count': file_count
         })
     except Exception as e:
-        print(f"Failed to get file count: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -3176,7 +3156,6 @@ def upload_files(dir_name):
         })
         
     except Exception as e:
-        print(f"File upload failed: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -3244,13 +3223,6 @@ def rename_directory(old_name):
         new_path = os.path.join(user_base_dir, new_name_safe)
         
         # Debug info
-        print(f"Rename debug info:")
-        print(f"  Original old_name: {old_name}")
-        print(f"  Original new_name: {new_name}")
-        print(f"  Safe old_name: {new_name_safe}")
-        print(f"  Old path: {old_path}")
-        print(f"  New path: {new_path}")
-        print(f"  Paths are same: {old_path == new_path}")
         
         # If processed paths are the same, it means the new name is invalid
         if old_path == new_path:
@@ -3272,7 +3244,6 @@ def rename_directory(old_name):
         if os.path.exists(new_path):
             return jsonify({'success': False, 'error': 'Target directory already exists'})
         
-        print(f"Renaming directory: {old_path} -> {new_path}")
         
         # Rename directory
         os.rename(old_path, new_path)
@@ -3283,7 +3254,6 @@ def rename_directory(old_name):
         if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == old_name:
             user_session.last_output_dir = new_name_safe
         
-        print(f"Successfully renamed directory: {old_name} -> {new_name_safe}")
         
         return jsonify({
             'success': True, 
@@ -3293,7 +3263,6 @@ def rename_directory(old_name):
         })
         
     except Exception as e:
-        print(f"Failed to rename directory: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/delete-directory/<path:dir_name>', methods=['DELETE'])
@@ -3331,7 +3300,6 @@ def delete_directory(dir_name):
         if hasattr(user_session, 'current_output_dir') and user_session.current_output_dir == dir_name:
             return jsonify({'success': False, 'error': 'Cannot delete currently executing directory'})
         
-        print(f"Deleting directory: {target_dir}")
         
         # Delete directory and all its contents
         shutil.rmtree(target_dir)
@@ -3342,7 +3310,6 @@ def delete_directory(dir_name):
         if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == dir_name:
             user_session.selected_output_dir = None
         
-        print(f"Successfully deleted directory: {dir_name}")
         
         return jsonify({
             'success': True, 
@@ -3350,10 +3317,8 @@ def delete_directory(dir_name):
         })
         
     except PermissionError as e:
-        print(f"Permission error deleting directory {dir_name}: {str(e)}")
         return jsonify({'success': False, 'error': f'Permission denied: {str(e)}'})
     except Exception as e:
-        print(f"Error deleting directory {dir_name}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/delete-file', methods=['DELETE'])
@@ -3391,17 +3356,14 @@ def delete_file():
             return jsonify({'success': False, 'error': f'Path not found: {file_path}'})
         
         if os.path.isfile(full_file_path):
-            print(f"Deleting file: {full_file_path}")
             # Delete the file
             os.remove(full_file_path)
         elif os.path.isdir(full_file_path):
-            print(f"Deleting folder: {full_file_path}")
             # Delete the folder and all its contents
             shutil.rmtree(full_file_path)
         else:
             return jsonify({'success': False, 'error': f'Path is neither a file nor a directory: {file_path}'})
         
-        print(f"Successfully deleted file: {file_path}")
         
         return jsonify({
             'success': True, 
@@ -3409,10 +3371,8 @@ def delete_file():
         })
         
     except PermissionError as e:
-        print(f"Permission error deleting file {file_path}: {str(e)}")
         return jsonify({'success': False, 'error': f'Permission denied: {str(e)}'})
     except Exception as e:
-        print(f"Error deleting file {file_path}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/routine-files', methods=['GET'])
@@ -3462,7 +3422,6 @@ def get_routine_files():
         })
         
     except Exception as e:
-        print(f"Error getting routine files: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e),
@@ -3533,7 +3492,6 @@ def validate_config():
         })
         
     except Exception as e:
-        print(f"Error validating configuration: {str(e)}")
         return jsonify({
             'success': False,
             'error': f'Configuration validation failed: {str(e)}'
@@ -3687,7 +3645,6 @@ def get_gui_configs():
         })
         
     except Exception as e:
-        print(f"Error getting GUI configurations: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -3747,7 +3704,6 @@ def optimize_svg():
                     'issues_fixed': report.get('issues_fixed', [])
                 }
             except Exception as llm_error:
-                print(f"LLM optimization failed, falling back to traditional: {str(llm_error)}")
                 use_llm = False
 
         if not use_llm and SVG_OPTIMIZER_AVAILABLE:
@@ -3763,7 +3719,6 @@ def optimize_svg():
                     'remaining_issues_count': len(report.remaining_issues)
                 }
             except Exception as trad_error:
-                print(f"Traditional optimization failed: {str(trad_error)}")
                 return jsonify({'success': False, 'error': f'Optimization failed: {str(trad_error)}'})
 
         # Create backup if content changed
@@ -3772,9 +3727,8 @@ def optimize_svg():
             try:
                 with open(backup_path, 'w', encoding='utf-8') as f:
                     f.write(original_content)
-                print(f"Created backup: {backup_path}")
             except Exception as backup_error:
-                print(f"Warning: Failed to create backup: {str(backup_error)}")
+                pass
 
             # Save optimized content
             with open(full_path, 'w', encoding='utf-8') as f:
@@ -3808,7 +3762,6 @@ def optimize_svg():
         })
 
     except Exception as e:
-        print(f"SVG optimization error: {str(e)}")
         return jsonify({
             'success': False,
             'error': f'SVG optimization failed: {str(e)}'
@@ -3827,7 +3780,6 @@ def get_mcp_servers_config():
 
         # Check if example config exists
         if not os.path.exists(example_config_path):
-            print(f"Warning: MCP example config not found at {example_config_path}")
             return {}
 
         # Load the example configuration
@@ -3838,7 +3790,6 @@ def get_mcp_servers_config():
         return config.get('mcpServers', {})
 
     except Exception as e:
-        print(f"Error loading MCP servers config: {str(e)}")
         return {}
 
 
@@ -3858,7 +3809,6 @@ def generate_custom_mcp_config(selected_servers, out_dir):
 
         # Check if example config exists
         if not os.path.exists(example_config_path):
-            print(f"Warning: MCP example config not found at {example_config_path}")
             return None
 
         # Load the example configuration
@@ -3873,7 +3823,7 @@ def generate_custom_mcp_config(selected_servers, out_dir):
             if server_name in example_config.get('mcpServers', {}):
                 custom_config['mcpServers'][server_name] = example_config['mcpServers'][server_name]
             else:
-                print(f"Warning: MCP server '{server_name}' not found in example config")
+                pass
 
         # Generate filename with timestamp to avoid conflicts
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -3884,11 +3834,9 @@ def generate_custom_mcp_config(selected_servers, out_dir):
         with open(custom_config_path, 'w', encoding='utf-8') as f:
             json.dump(custom_config, f, indent=2, ensure_ascii=False)
 
-        print(f"Generated custom MCP config: {custom_config_path}")
         return custom_config_path
 
     except Exception as e:
-        print(f"Error generating custom MCP config: {str(e)}")
         return None
 
 
@@ -3902,6 +3850,6 @@ if __name__ == '__main__':
     # 优先使用命令行参数，其次使用环境变量，最后使用默认值
     port = args.port if args.port else int(os.environ.get('PORT', 5002))
     
-    print(f"Start server with port {port}")
+    print(f"🚀 Starting AGIAgent GUI Server on port {port}")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
 
