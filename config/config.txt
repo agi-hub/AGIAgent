@@ -4,9 +4,9 @@ LANG=en
 
 # GUI API configuration
 api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.5
-max_tokens=16384
+api_base=https://api.deepseek.com/v1
+model=deepseek-chat
+max_tokens=8192
 
 # OpenAI API configuration 
 # api_key=your key
@@ -27,7 +27,7 @@ max_tokens=16384
 # max_tokens=32768
 
 # Zhipu API configuration 
-# api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
+# api_key=your key
 # api_base=https://open.bigmodel.cn/api/anthropic
 # model=glm-4.5
 # max_tokens=16384
@@ -36,14 +36,7 @@ max_tokens=16384
 # api_key=your key
 # api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
 # model=qwen3-coder-480b-a35b-instruct
-# model=qwen3-coder-30b-a3b-instruct
 # max_tokens=65536
-
-# model=qwen3-235b-a22b-instruct-2507
-# max_tokens=32768
-
-# model=qwen3-coder-plus
-# max_tokens=32768
 
 
 # Google gemini model
@@ -71,9 +64,7 @@ max_tokens=16384
 # SiliconFlow API configuration 
 # api_key=your key
 # api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-8B
 # model=Qwen/Qwen3-30B-A3B
-# model=Qwen/Qwen2.5-7B-Instruct
 # max_tokens=4096
 
 # Ollama (local serve)
@@ -82,6 +73,7 @@ max_tokens=16384
 # model=qwen3:8b
 # max_tokens=4096
 
+# Note: only the last configuration is valid.
 
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
@@ -248,33 +240,3 @@ enable_jieba=True
 # Set to True to disable emoji display
 emoji_disabled=False
 
-# PDF Fallback Document Configuration
-# Controls whether to generate Word documents when PDF conversion fails
-# When enabled (True), generates _pdf_fallback.docx files when no PDF engines are available
-# When disabled (False), skips fallback document generation and only shows error messages
-# Default: True (fallback enabled)
-# Set to False to disable PDF fallback document generation
-pdf_fallback_enabled=False
-
-# Message Format Configuration
-# Controls how conversation history is organized for LLM API calls
-# aggregated: Single user message with history context (current default, better cache performance)
-# interleave: Alternating assistant/user/tool messages (standard API format, better tool state tracking)
-# Default: aggregated (current behavior)
-# Set to interleave to use alternating message format
-message_organization=interleave
-
-# Message History Optimization Configuration
-# Controls whether to enable message history optimization for better performance
-# When enabled, applies various optimizations like image data compression, format standardization
-# Default: True (enabled)
-# Set to False to disable message optimization
-enable_message_optimization=True
-
-# Maximum Interleave Messages Configuration
-# Maximum number of messages to keep in interleave mode history
-# Older messages beyond this limit will be trimmed to manage context length
-# Only applies when message_organization=interleave
-# Default: 50
-# Adjust based on your model's context window and performance needs
-max_interleave_messages=50
