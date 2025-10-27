@@ -30,7 +30,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="agiagent",
-    version="1.0.1",
+    version="1.0.2",
     author=f"{APP_NAME} Team",
     description="AGI Agent for general purposed task execution",
     long_description=long_description,

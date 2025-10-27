@@ -450,7 +450,7 @@ Usage Examples:
     parser.add_argument(
         "--version", "-v",
         action="version",
-        version=f"{APP_NAME} v0.1.0"
+        version=f"{APP_NAME} v1.0.2"
     )
     
     parser.add_argument(
