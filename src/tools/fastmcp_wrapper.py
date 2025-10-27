@@ -201,21 +201,21 @@ class FastMcpWrapper:
             return workspace_dir
 
         except Exception as e:
-            print_current(f"⚠️ Error determining workspace directory: {e}")
+            print_debug(f"⚠️ Error determining workspace directory: {e}")
             return os.getcwd()
 
         # Check if FastMCP is available
         if not FASTMCP_AVAILABLE:
             if not self._installation_message_shown:
-                print_current("FastMCP not found. Please install it using: pip install fastmcp")
-                print_current("💡 After installation, restart AGIAgent to use MCP tools.")
+                print_debug("FastMCP not found. Please install it using: pip install fastmcp")
+                print_debug("💡 After installation, restart AGIAgent to use MCP tools.")
                 self._installation_message_shown = True
             return
     
     async def initialize(self) -> bool:
         """Initialize MCP client with persistent server manager"""
         if not FASTMCP_AVAILABLE:
-            print_current("FastMCP not available")
+            print_debug("FastMCP not available")
             return False
             
         try:

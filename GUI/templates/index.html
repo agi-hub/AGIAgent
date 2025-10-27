@@ -216,13 +216,22 @@
             box-sizing: border-box;
         }
 
+        html {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #1e1e1e;
             height: 100vh;
             overflow: hidden;
             color: #cccccc;
-            zoom: 0.9; /* 统一缩放90%，包括文字和图像 */
+            /* zoom: 0.9; */ /* 暂时禁用zoom，使用transform替代 */
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            padding: 0;
         }
 
         /* User authentication area styles */
@@ -236,6 +245,7 @@
             flex-wrap: wrap;
             gap: 10px;
             min-height: 50px;
+            flex-shrink: 0;
         }
 
         .user-auth-left {
@@ -288,6 +298,17 @@
 
         .api-key-input::placeholder {
             color: #6a6a6a;
+        }
+
+        /* 覆盖浏览器自动填充的浅色背景 */
+        .api-key-input:-webkit-autofill,
+        .api-key-input:-webkit-autofill:hover,
+        .api-key-input:-webkit-autofill:focus,
+        .api-key-input:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0px 1000px #1e1e1e inset !important;
+            -webkit-text-fill-color: #cccccc !important;
+            box-shadow: 0 0 0px 1000px #1e1e1e inset !important;
+            transition: background-color 5000s ease-in-out 0s;
         }
 
         .connect-btn {
@@ -343,8 +364,10 @@
 
         .container {
             display: flex;
-            height: calc(100vh - 50px);  /* Subtract auth area height */
+            flex: 1;
+            min-height: 0;
             background: #252526;
+            overflow: hidden;
         }
 
         .main-content {
@@ -352,8 +375,9 @@
             display: flex;
             flex-direction: column;
             padding: 20px;
-            min-width: 0;
             min-width: 400px;
+            min-height: 0;
+            overflow: hidden;
         }
 
         #resizer {
@@ -402,6 +426,8 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            flex-shrink: 0;
+            min-height: 0;
         }
 
         .header {
@@ -423,6 +449,7 @@
 
         .chat-container {
             flex: 1;
+            min-height: 0;
             background: #1e1e1e;
             border: 1px solid #3e3e42;
             border-radius: 8px;
@@ -439,6 +466,7 @@
 
         .chat-messages {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 20px;
             background: #1e1e1e;
@@ -456,7 +484,7 @@
         }
 
         .message-text {
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             white-space: pre-wrap;
             word-break: break-all;
             overflow-wrap: anywhere;
@@ -518,6 +546,7 @@
             border: 1px solid #3e3e42;
             border-radius: 8px;
             padding: 20px;
+            flex-shrink: 0;
         }
 
         .input-group {
@@ -974,8 +1003,10 @@
         /* Responsive design for mobile devices */
         @media (max-width: 768px) {
             body {
-                overflow: auto;
-                height: auto; /* 允许页面自然伸展 */
+                overflow: hidden;
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
             }
             
             /* Header optimization */
@@ -1068,30 +1099,30 @@
             /* Container layout */
             .container {
                 flex-direction: column;
-                height: auto; /* 改为自动高度，避免固定限制 */
-                min-height: calc(100vh - 220px); /* 设置最小高度 */
-                overflow-y: visible; /* 允许内容自然溢出 */
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto; /* 允许内容滚动 */
             }
             
             .sidebar {
                 width: 100%;
-                height: auto; /* 改为自动高度 */
-                min-height: 300px; /* 增加最小高度确保有足够空间 */
-                max-height: 60vh; /* 设置最大高度，支持更长的下拉 */
+                flex-shrink: 0;
                 border-radius: 0;
                 border-left: none;
                 border-bottom: 1px solid #3e3e42;
                 order: 2;
-                overflow-y: auto; /* 内容超出时可滚动 */
+                overflow-y: auto;
+                max-height: 40vh; /* 限制最大高度为40%视口高度 */
             }
             
             .main-content {
-                height: auto; /* 改为自动高度 */
-                min-height: 400px; /* 设置最小高度 */
                 padding: 10px;
                 min-width: unset;
                 order: 1;
-                flex: 1; /* 占用剩余空间 */
+                flex: 1;
+                min-height: 0; /* 允许内容收缩 */
+                display: flex;
+                flex-direction: column;
             }
             
             /* Hide resizer on mobile */
@@ -1103,15 +1134,17 @@
             .chat-container {
                 margin-bottom: 10px;
                 flex: 1;
-                min-height: 300px; /* 设置最小高度确保有足够的显示空间 */
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
             }
             
             
             .chat-messages {
                 padding: 10px;
                 flex: 1;
-                min-height: 200px; /* 消息区域最小高度 */
-                max-height: 400px; /* 固定最大高度避免过度拉伸 */
+                min-height: 0;
+                overflow-y: auto;
             }
             
             .message {
@@ -1223,24 +1256,26 @@
             
             .main-content {
                 padding: 8px;
-                height: auto; /* 改为自动高度 */
-                min-height: 350px; /* 增加小屏设备主内容区最小高度 */
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
             }
             
             .sidebar {
-                height: auto; /* 改为自动高度 */
-                min-height: 250px; /* 增加小屏设备侧边栏最小高度 */
-                max-height: 50vh; /* 小屏设备最大高度 */
+                flex-shrink: 0;
+                max-height: 35vh; /* 小屏设备最大高度 */
             }
             
             .chat-container {
-                min-height: 220px; /* 小屏设备聊天容器最小高度 */
+                flex: 1;
+                min-height: 0;
             }
             
             .chat-messages {
                 padding: 8px;
-                min-height: 150px; /* 小屏设备消息区域最小高度 */
-                max-height: 300px; /* 固定最大高度 */
+                flex: 1;
+                min-height: 0;
             }
             
             .message {
@@ -1468,7 +1503,8 @@
         @media (max-width: 768px) and (orientation: landscape) {
             .container {
                 flex-direction: row;
-                height: calc(100vh - 80px);
+                flex: 1;
+                min-height: 0;
             }
             
             .sidebar {
@@ -9940,7 +9976,7 @@
         /**
          * 保存自定义配置
          */
-        function saveCustomConfig() {
+        async function saveCustomConfig() {
             const apiKey = document.getElementById('customApiKey').value.trim();
             const apiBase = document.getElementById('customApiBase').value.trim();
             const model = document.getElementById('customModel').value.trim();
@@ -9963,7 +9999,7 @@
                 }
             }
             
-            // 保存自定义配置
+            // 保存自定义配置到JavaScript变量
             customModelConfig = {
                 api_key: apiKey,
                 api_base: apiBase,
@@ -9974,6 +10010,39 @@
             
             console.log('已保存自定义模型配置:', customModelConfig);
             hideCustomConfigDialog();
+            
+            // 弹出确认对话框询问是否保存为长期配置
+            const confirmMessage = I18N.save_to_config_confirm || 
+                '是否将此配置保存到 config/config.txt 作为长期配置？\n\n这将更新配置文件中的默认模型设置。';
+            
+            if (confirm(confirmMessage)) {
+                try {
+                    // 调用API保存到config.txt
+                    const response = await fetch('/api/save-to-config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            api_key: apiKey,
+                            api_base: apiBase,
+                            model: model,
+                            max_tokens: maxTokens
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        addMessage('✅ ' + (I18N.save_to_config_success || '配置已成功保存到 config.txt'), 'success');
+                    } else {
+                        addMessage('❌ ' + (I18N.save_to_config_failed || '保存到 config.txt 失败') + ': ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('保存配置到config.txt时出错:', error);
+                    addMessage('❌ ' + (I18N.save_to_config_error || '保存到 config.txt 时发生错误') + ': ' + error.message, 'error');
+                }
+            }
         }
 
         /**

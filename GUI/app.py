@@ -544,6 +544,10 @@ I18N_TEXTS = {
         'custom_config_save': '保存配置',
         'custom_config_cancel': '取消',
         'custom_config_required': '所有字段都是必填的',
+        'save_to_config_confirm': '是否将此配置保存到 config/config.txt 作为长期配置？\n\n这将更新配置文件中的默认模型设置。',
+        'save_to_config_success': '配置已成功保存到 config.txt',
+        'save_to_config_failed': '保存到 config.txt 失败',
+        'save_to_config_error': '保存到 config.txt 时发生错误',
         
         # Additional UI elements
         'new_messages': '条新消息',
@@ -885,6 +889,10 @@ I18N_TEXTS = {
         'custom_config_save': 'Save Configuration',
         'custom_config_cancel': 'Cancel',
         'custom_config_required': 'All fields are required',
+        'save_to_config_confirm': 'Would you like to save this configuration to config/config.txt as a long-term configuration?\n\nThis will update the default model settings in the config file.',
+        'save_to_config_success': 'Configuration successfully saved to config.txt',
+        'save_to_config_failed': 'Failed to save to config.txt',
+        'save_to_config_error': 'An error occurred while saving to config.txt',
         
         # Additional UI elements
         'new_messages': 'new messages',
@@ -3777,6 +3785,92 @@ def get_gui_configs():
         return jsonify({
             'success': True,
             'configs': configs
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@app.route('/api/save-to-config', methods=['POST'])
+def save_to_config():
+    """Save custom model configuration to config.txt"""
+    try:
+        data = request.json
+        api_key = data.get('api_key', '').strip()
+        api_base = data.get('api_base', '').strip()
+        model = data.get('model', '').strip()
+        max_tokens = data.get('max_tokens', 8192)
+        
+        # Validate required fields
+        if not api_key or not api_base or not model:
+            return jsonify({
+                'success': False,
+                'error': 'All fields are required'
+            })
+        
+        # Path to config.txt
+        config_path = os.path.join(os.getcwd(), 'config', 'config.txt')
+        
+        if not os.path.exists(config_path):
+            return jsonify({
+                'success': False,
+                'error': 'config.txt file not found'
+            })
+        
+        # Read the current config file
+        with open(config_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Update the first uncommented configuration section
+        updated_lines = []
+        found_first_config = False
+        lines_updated = 0
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith('#'):
+                updated_lines.append(line)
+                continue
+            
+            # Check if this line contains a config key-value pair
+            if '=' in line and not found_first_config:
+                key = line.split('=')[0].strip()
+                
+                # Update the first configuration block (top-most uncommented configs)
+                if key == 'api_key' and lines_updated == 0:
+                    updated_lines.append(f'api_key={api_key}\n')
+                    lines_updated += 1
+                elif key == 'api_base' and lines_updated == 1:
+                    updated_lines.append(f'api_base={api_base}\n')
+                    lines_updated += 1
+                elif key == 'model' and lines_updated == 2:
+                    updated_lines.append(f'model={model}\n')
+                    lines_updated += 1
+                elif key == 'max_tokens' and lines_updated == 3:
+                    updated_lines.append(f'max_tokens={max_tokens}\n')
+                    lines_updated += 1
+                    found_first_config = True  # We've updated all needed fields
+                else:
+                    updated_lines.append(line)
+            else:
+                updated_lines.append(line)
+        
+        # Write back to config.txt
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+        
+        # Clear config cache so changes take effect immediately
+        from src.config_loader import clear_config_cache
+        clear_config_cache()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Configuration saved to config.txt successfully'
         })
         
     except Exception as e:

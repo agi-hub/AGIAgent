@@ -12,6 +12,7 @@ import time
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
+from .print_system import print_current, print_system, print_error, print_debug
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(__file__))
@@ -26,14 +27,14 @@ try:
 
     _MEM_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Failed to import mem modules: {e}")
+    print_debug(f"Warning: Failed to import mem modules: {e}")
     # Fallback to simplified implementation
     MemManagerAgent = None
     MemCell = None
     get_logger = lambda name: None
     _MEM_AVAILABLE = False
 
-from .print_system import print_current, print_system, print_error, print_debug
+
 
 
 class LongTermMemoryManager:

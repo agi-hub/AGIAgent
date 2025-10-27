@@ -12,7 +12,7 @@
 </div>
 
 ## 🚀 最新动态
-
+2025/10/27 AGIAgent 在线注册已开启，点击<https://agiagentonline.com>右侧注册账号按钮，可以注册使用。
 2025/10/12 AGIAgent富图像文档撰写功能介绍已发布，详见 [colourfuldoc/ColourfulDoc_zh.md](colourfuldoc/ColourfulDoc_zh.md) 和 [colourfuldoc/ColourfulDoc.md](colourfuldoc/ColourfulDoc.md)（英文版）。
 
 2025/10/10 Windows安装包（在线/离线版本）已准备就绪！请查看[发布页面](https://github.com/agi-hub/AGIAgent/releases/)。
