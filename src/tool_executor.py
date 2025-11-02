@@ -2040,8 +2040,6 @@ class ToolExecutor:
                     # 尝试使用修复函数修复JSON
                     fixed_json = smart_escape_quotes_in_json_values(json_content)
                     test_json = json.loads(fixed_json)
-                    # 修复成功，更新内容但不打印警告
-                    print_current(f"✅ First JSON block content fixed successfully: {len(json_content)} chars, has_tool_name={('tool_name' in test_json)}")
                     # 更新内容中的JSON部分（保持原有的空白字符格式）
                     leading_ws_len = len(json_content_raw) - len(json_content_raw.lstrip())
                     trailing_ws_len = len(json_content_raw) - len(json_content_raw.rstrip())
@@ -2088,31 +2086,8 @@ class ToolExecutor:
         # 截取到第二个```json之前的内容
         content_before_second = content[:second_json_pos].rstrip()
         
-        # 调试：检查截取后的内容
-        print_current(f"🔍 After _get_content_before_second_json: second_json_pos={second_json_pos}, content_before_second length={len(content_before_second)}")
-        
-        # 检查第一个JSON块是否完整
-        json_block_marker = '```json'
-        first_pos = content_before_second.find(json_block_marker)
-        if first_pos != -1:
-            json_start = first_pos + len(json_block_marker)
-            first_block_end = content_before_second.find('```', json_start)
-            if first_block_end == -1:
-                print_current(f"⚠️ Warning: First JSON block not closed in content_before_second, trying to complete it...")
-            else:
-                print_current(f"✅ First JSON block is closed: starts at {first_pos}, ends at {first_block_end}")
-        
         # 确保第一个块是完整的
         result = self._ensure_first_json_block_complete(content_before_second)
-        
-        # 调试：检查最终结果
-        if '```json' in result:
-            json_start = result.find('```json')
-            json_end = result.find('```', json_start + 7)
-            if json_end != -1:
-                print_current(f"✅ Final result has complete JSON block: {json_start} to {json_end}")
-            else:
-                print_current(f"⚠️ Warning: Final result JSON block not closed")
         
         return result
     
@@ -4164,7 +4139,6 @@ class ToolExecutor:
                                                         total_printed = len(content_to_print)
                                                     buffer = ""
                                                     json_block_detected = True
-                                                    print_current("Multiple Tool calls detected, left the first and stop chatting")
                                                     break
                                             else:
                                                 # 正常打印
@@ -4175,7 +4149,6 @@ class ToolExecutor:
                                         # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
                                         if self._is_complete_json_tool_call(content):
                                             json_block_detected = True
-                                            print_current("Multiple Tool calls detected, left the first and stop chatting")
                                             break
                                 except Exception as e:
                                     # 捕获流式处理中的异常
@@ -4382,7 +4355,6 @@ class ToolExecutor:
                                                             total_printed = len(content_to_print)
                                                         buffer = ""
                                                         json_block_detected = True
-                                                        print_current("Multiple Tool calls detected, left the first and stop chatting")
                                                         break
                                                 else:
                                                     # 正常打印
@@ -4393,7 +4365,6 @@ class ToolExecutor:
                                             # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
                                             if self._is_complete_json_tool_call(content):
                                                 json_block_detected = True
-                                                print_current("Multiple Tool calls detected, left the first and stop chatting")
                                                 break
                             except Exception as e:
                                 # 捕获流式处理中的异常
@@ -4424,26 +4395,6 @@ class ToolExecutor:
                             if json_block_detected:
                                 # 找到第二个```json的位置
                                 content_to_print = self._get_content_before_second_json(content)
-                                
-                                # 调试：检查截取后的内容
-                                print_current(f"🔍 After _get_content_before_second_json: length={len(content_to_print)}")
-                                if '```json' in content_to_print:
-                                    json_start = content_to_print.find('```json')
-                                    json_end = content_to_print.find('```', json_start + 7)
-                                    if json_end != -1:
-                                        json_block = content_to_print[json_start:json_end+3]
-                                        print_current(f"🔍 First JSON block in content_to_print: length={len(json_block)}")
-                                        # 尝试解析这个JSON块
-                                        try:
-                                            json_content = json_block[7:-3].strip()  # 去掉 ```json 和 ```
-                                            test_data = json.loads(json_content)
-                                            print_current(f"✅ JSON block is valid: has_tool_name={('tool_name' in test_data)}, has_parameters={('parameters' in test_data)}")
-                                        except json.JSONDecodeError as e:
-                                            print_current(f"❌ JSON block is invalid: {str(e)[:200]}")
-                                    else:
-                                        print_current(f"⚠️ Warning: First JSON block not properly closed in content_to_print")
-                                else:
-                                    print_current(f"⚠️ Warning: No ```json found in content_to_print")
                                 
                                 # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
                                 remaining_buffer = content_to_print[total_printed:]
@@ -4478,45 +4429,10 @@ class ToolExecutor:
                                 
                                 # 确保用于解析的content包含完整的第一个工具调用
                                 # 即使被截断了，也要确保第一个JSON块是完整的
-                                print_current(f"🔍 Detected multiple tool calls, extracting first one...")
-                                print_current(f"🔍 Original content length: {len(content)}, content_before_second length: {len(content_before_second)}")
                                 content_for_parsing = self._ensure_first_json_block_complete(content_before_second)
-                                
-                                # 调试：检查截取后的内容
-                                print_current(f"🔍 Content after extraction: length={len(content_for_parsing)}, has_json_block={('```json' in content_for_parsing)}")
-                                if '```json' in content_for_parsing:
-                                    json_start = content_for_parsing.find('```json')
-                                    json_end = content_for_parsing.find('```', json_start + 7)
-                                    if json_end != -1:
-                                        json_block = content_for_parsing[json_start:json_end+3]
-                                        print_current(f"🔍 First JSON block length: {len(json_block)}")
-                                        # 尝试解析这个JSON块
-                                        try:
-                                            json_content = json_block[7:-3].strip()  # 去掉 ```json 和 ```
-                                            test_data = json.loads(json_content)
-                                            print_current(f"✅ JSON content is valid: has_tool_name={('tool_name' in test_data)}, has_parameters={('parameters' in test_data)}")
-                                            if 'tool_name' in test_data:
-                                                print_current(f"  Tool name: {test_data['tool_name']}")
-                                            if 'parameters' in test_data:
-                                                print_current(f"  Parameters keys: {list(test_data['parameters'].keys())}")
-                                        except json.JSONDecodeError as e:
-                                            print_current(f"❌ JSON content is invalid: {str(e)[:200]}")
-                                            print_current(f"JSON content snippet (first 500 chars): {json_content[:500]}...")
-                                            print_current(f"JSON content snippet (last 500 chars): {json_content[-500:] if len(json_content) > 500 else json_content}...")
-                                    else:
-                                        print_current(f"⚠️ Warning: First JSON block not properly closed")
                                 
                                 # Parse tool calls from the accumulated content
                                 tool_calls = self.parse_tool_calls(content_for_parsing)
-                                
-                                # 调试：检查解析结果
-                                print_current(f"🔍 Parsed tool calls after extraction: count={len(tool_calls)}")
-                                if tool_calls:
-                                    for i, tc in enumerate(tool_calls):
-                                        print_current(f"  Tool {i+1}: name={tc.get('name', 'unknown')}, has_arguments={('arguments' in tc)}")
-                                else:
-                                    print_current(f"⚠️ Warning: Failed to parse tool calls from extracted content")
-                                    print_current(f"Extracted content snippet (first 1000 chars): {content_for_parsing[:1000]}...")
                                 
                                 # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
                                 if tool_calls and len(tool_calls) > 1:
@@ -4612,7 +4528,6 @@ class ToolExecutor:
                                         
                                         # 检测完整的JSON工具调用块
                                         if self._is_complete_json_tool_call(content):
-                                            print_current("Multiple Tool calls detected, left the first and stop chatting")
                                             json_block_detected = True
                                             break
                         except Exception as e:
