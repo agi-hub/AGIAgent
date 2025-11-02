@@ -4,7 +4,7 @@ LANG=zh
 
 # GUI API configuration
 api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
+api_base=https://open.bigmodel.cn/api/coding/paas/v4
 model=glm-4.5
 max_tokens=16384
 
@@ -95,7 +95,7 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # When set to False, uses chat-based tool calling (tools described in messages)
 # This overrides the automatic model-based detection
 # Default: True (use standard tool calling when available)
-Tool_calling_format=True
+Tool_calling_format=False
 
 # Truncation Length Configuration
 # These configurations control the length of information returned by tool calls to the large model,
