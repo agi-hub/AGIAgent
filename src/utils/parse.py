@@ -58,44 +58,115 @@ def smart_escape_quotes_in_json_values(json_str: str) -> str:
         JSON string with properly escaped quotes in values
     """
     try:
-        # Simple but effective approach: 
-        # Find patterns like "key": "value with "quotes" inside"
-        # and escape the quotes inside the value
+        # More robust approach: find JSON string values and escape unescaped characters
+        # This handles multiline strings with unescaped newlines, quotes, etc.
         
-        # Step 1: Find all possible JSON value strings
-        # This pattern captures: "field": "content that may contain "quotes""
         def escape_value_quotes(match):
             prefix = match.group(1)  # "field": "
-            content = match.group(2)  # content that may contain quotes
+            content = match.group(2)  # content that may contain quotes, newlines, etc.
             
             # Escape unescaped quotes in the content
             escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
             
-            # Also escape other common problematic characters
+            # Also escape other common problematic characters (newlines, tabs, carriage returns)
             escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
             escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
             escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
             
-            return f'{prefix}{escaped_content}'
+            return f'{prefix}{escaped_content}"'
         
-        # Pattern to match JSON field values
-        # Matches: "field": "value_content" but stops at the closing quote that's followed by , or }
-        pattern = r'("[^"]*"\s*:\s*")(.*?)(?="(?:\s*[,}]))'
+        # Improved pattern: matches "field": "value" where value can contain newlines
+        # Uses non-greedy matching with DOTALL flag to handle multiline strings
+        # The pattern looks for: "field": "content" where content may span multiple lines
+        pattern = r'("[^"]*"\s*:\s*")(.*?)(?="\s*[,}])'
         
         fixed_json = re.sub(pattern, escape_value_quotes, json_str, flags=re.DOTALL)
         
         # Handle edge case: if the pattern didn't match properly, try a different approach
         if fixed_json == json_str:
             # Alternative approach: specifically target code_edit field which commonly has this issue
-            code_edit_pattern = r'("code_edit"\s*:\s*")(.*?)("(?:\s*[,}]))'
+            # This handles SVG XML content and other complex content with multiline strings
+            code_edit_pattern = r'("code_edit"\s*:\s*")(.*?)(?="\s*[,}])'
             def fix_code_edit_quotes(match):
                 prefix = match.group(1)
                 content = match.group(2)
-                suffix = match.group(3)
+                # Escape unescaped quotes, but preserve SVG/XML structure
                 escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
-                return f'{prefix}{escaped_content}{suffix}'
+                # Also escape newlines and tabs for JSON compatibility
+                escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
+                escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
+                escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
+                return f'{prefix}{escaped_content}"'
             
             fixed_json = re.sub(code_edit_pattern, fix_code_edit_quotes, json_str, flags=re.DOTALL)
+            
+            # If still not fixed, try handling any field that contains XML-like content
+            if fixed_json == json_str:
+                # Pattern to match any field value that contains XML/SVG tags
+                xml_content_pattern = r'("[\w_]+"\s*:\s*")(.*?<svg.*?>.*?)(?="\s*[,}])'
+                def fix_xml_content_quotes(match):
+                    prefix = match.group(1)
+                    content = match.group(2)
+                    # Escape unescaped quotes in XML content
+                    escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
+                    escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
+                    escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
+                    escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
+                    return f'{prefix}{escaped_content}"'
+                
+                fixed_json = re.sub(xml_content_pattern, fix_xml_content_quotes, json_str, flags=re.DOTALL)
+        
+        # If still not fixed, try a more aggressive approach: find unescaped newlines in string values
+        # This handles cases where the string doesn't have a proper closing quote
+        if fixed_json == json_str:
+            # Look for patterns like "field": "value with\nnewline" where the newline is not escaped
+            # and try to escape it
+            lines = json_str.split('\n')
+            fixed_lines = []
+            in_string_value = False
+            string_start_key = None
+            
+            for i, line in enumerate(lines):
+                # Check if this line starts a string value
+                string_value_match = re.match(r'(\s*"[^"]*"\s*:\s*")(.*)', line)
+                if string_value_match:
+                    in_string_value = True
+                    string_start_key = string_value_match.group(1)
+                    content = string_value_match.group(2)
+                    # Check if the line ends with a closing quote
+                    if re.search(r'"\s*[,}]', line):
+                        # String ends on this line
+                        escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
+                        escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
+                        escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
+                        escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
+                        fixed_lines.append(f'{string_start_key}{escaped_content}')
+                        in_string_value = False
+                        string_start_key = None
+                    else:
+                        # String continues on next line(s)
+                        fixed_lines.append(line)
+                elif in_string_value:
+                    # This line is part of a multiline string value
+                    # Check if this line ends the string
+                    if re.search(r'"\s*[,}]', line):
+                        # String ends on this line
+                        escaped_content = re.sub(r'(?<!\\)"', '\\"', line)
+                        escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
+                        escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
+                        escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
+                        fixed_lines.append(escaped_content.replace('\n', '\\n'))
+                        in_string_value = False
+                        string_start_key = None
+                    else:
+                        # Still in the string value, escape the line
+                        escaped_line = line.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r')
+                        fixed_lines.append(escaped_line)
+                else:
+                    fixed_lines.append(line)
+            
+            if fixed_lines != lines:
+                fixed_json = '\n'.join(fixed_lines)
         
         return fixed_json
         
@@ -224,25 +295,91 @@ def fix_long_json_with_code(json_str: str) -> str:
             pass
         
         # Fallback: Try to extract and rebuild key-value pairs manually
-        # This is specifically for edit_file tool calls
+        # First, check if this is a tool call format with tool_name and parameters
+        tool_name_match = re.search(r'"tool_name":\s*"([^"]*)"', fixed_json)
+        tool_name = tool_name_match.group(1) if tool_name_match else None
+        
+        # Check if parameters structure exists
+        parameters_match = re.search(r'"parameters":\s*\{', fixed_json)
+        has_parameters_wrapper = parameters_match is not None
+        
+        # Extract parameters content (may be nested)
+        if has_parameters_wrapper:
+            # Find the parameters object boundaries
+            params_start = fixed_json.find('"parameters":')
+            if params_start != -1:
+                # Find the opening brace after "parameters":
+                brace_start = fixed_json.find('{', params_start)
+                if brace_start != -1:
+                    # Count braces to find matching closing brace
+                    brace_count = 0
+                    params_end = brace_start
+                    for i in range(brace_start, len(fixed_json)):
+                        char = fixed_json[i]
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                params_end = i + 1
+                                break
+                    params_content = fixed_json[brace_start:params_end]
+                else:
+                    params_content = None
+            else:
+                params_content = None
+        else:
+            params_content = fixed_json  # The whole JSON is the parameters
+        
+        # Extract individual parameter fields
         pairs = {}
         
         # Extract target_file
-        target_match = re.search(r'"target_file":\s*"([^"]*)"', fixed_json)
+        target_match = re.search(r'"target_file":\s*"([^"]*)"', params_content if params_content else fixed_json)
         if target_match:
             pairs['target_file'] = target_match.group(1)
         
         # Extract edit_mode  
-        mode_match = re.search(r'"edit_mode":\s*"([^"]*)"', fixed_json)
+        mode_match = re.search(r'"edit_mode":\s*"([^"]*)"', params_content if params_content else fixed_json)
         if mode_match:
             pairs['edit_mode'] = mode_match.group(1)
         
         # Extract code_edit (this is the tricky one with potentially long content)
-        code_match = re.search(r'"code_edit":\s*"((?:[^"\\]|\\.)*)"\s*}?\s*$', fixed_json, re.DOTALL)
-        if code_match:
-            code_content = code_match.group(1)
-            # Unescape the content properly
-            pairs['code_edit'] = code_content
+        # First, try to find code_edit field position
+        code_edit_pattern = r'"code_edit":\s*"'
+        code_edit_match = re.search(code_edit_pattern, params_content if params_content else fixed_json, re.DOTALL)
+        
+        if code_edit_match:
+            # Find the start position after the opening quote
+            start_pos = code_edit_match.end() - 1  # Position of the opening quote
+            search_text = params_content if params_content else fixed_json
+            
+            # Try to find the matching closing quote, handling escaped quotes
+            # But also handle cases where newlines are not escaped
+            # Strategy: find the closing quote that's followed by } or comma or end of string
+            # Look for pattern: " followed by whitespace and } or comma
+            end_pattern = r'"\s*[,}]'
+            end_match = re.search(end_pattern, search_text[start_pos + 1:], re.DOTALL)
+            
+            if end_match:
+                # Found a closing quote followed by } or comma
+                end_pos = start_pos + 1 + end_match.start()
+                code_content = search_text[start_pos + 1:end_pos]
+                # Unescape the content properly (handle already escaped characters)
+                pairs['code_edit'] = code_content
+            else:
+                # No matching quote found, extract everything until the end or next field
+                # Look for the next field pattern or end of JSON
+                next_field_pattern = r'\s*"[\w_]+"\s*:'
+                next_field_match = re.search(next_field_pattern, search_text[start_pos + 1:], re.DOTALL)
+                if next_field_match:
+                    end_pos = start_pos + 1 + next_field_match.start()
+                    code_content = search_text[start_pos + 1:end_pos].rstrip().rstrip('"')
+                    pairs['code_edit'] = code_content
+                else:
+                    # Extract until the end, removing trailing quote if present
+                    code_content = search_text[start_pos + 1:].rstrip().rstrip('"').rstrip('}')
+                    pairs['code_edit'] = code_content
         
         # If we found the key components, rebuild the JSON
         if len(pairs) >= 2:  # At least target_file and one other parameter
@@ -253,12 +390,25 @@ def fix_long_json_with_code(json_str: str) -> str:
                 code = code.replace('\\', '\\\\').replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r').replace('"', '\\"')
                 pairs['code_edit'] = code
             
-            # Rebuild the JSON
+            # Rebuild the parameters JSON
             rebuilt_parts = []
             for key, value in pairs.items():
                 rebuilt_parts.append(f'"{key}": "{value}"')
             
-            rebuilt_json = '{' + ', '.join(rebuilt_parts) + '}'
+            rebuilt_params_json = '{' + ', '.join(rebuilt_parts) + '}'
+            
+            # Rebuild the full tool call JSON if tool_name was found
+            if tool_name:
+                rebuilt_json = f'{{"tool_name": "{tool_name}", "parameters": {rebuilt_params_json}}}'
+            else:
+                # If no tool_name found, infer from parameters
+                # Common patterns: edit_file has target_file and edit_mode/code_edit
+                if 'target_file' in pairs and ('edit_mode' in pairs or 'code_edit' in pairs):
+                    tool_name = 'edit_file'
+                    rebuilt_json = f'{{"tool_name": "{tool_name}", "parameters": {rebuilt_params_json}}}'
+                else:
+                    # Just return parameters if we can't infer tool_name
+                    rebuilt_json = rebuilt_params_json
             
             # Validate the rebuilt JSON
             try:

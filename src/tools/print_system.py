@@ -82,10 +82,21 @@ def _join_message(*args: object, sep: str = ' ') -> str:
 
 
 def _process_newlines_for_terminal(text: str) -> str:
-    """Convert \n in text to real line breaks for terminal output"""
+    """Convert escape sequences in text to real characters for terminal output
+    
+    Handles: \\n \\t \\r \\" \\' \\\\
+    """
     if not isinstance(text, str):
         return text
-    return text.replace('\\n', '\n')
+    # Order matters: process \\\\ first to avoid double-processing
+    text = text.replace('\\\\', '\x00')  # Temp placeholder
+    text = text.replace('\\n', '\n')
+    text = text.replace('\\t', '\t')
+    text = text.replace('\\r', '\r')
+    text = text.replace('\\"', '"')
+    text = text.replace("\\'", "'")
+    text = text.replace('\x00', '\\')  # Restore single backslash
+    return text
 
 
 def _write_to_file(file_path: str, content: str, newline: bool = True) -> None:
@@ -182,25 +193,70 @@ def print_system(*args: object, **kwargs) -> None:  # noqa: D401
 
 
 class _StreamWriter:
-    """Simplified streaming writer."""
+    """Simplified streaming writer with escape sequence buffering."""
 
     def __init__(self, agent_id: Optional[str]):
         self.agent_id = agent_id or 'manager'
         self.buffer: List[str] = []
+        self.pending_backslash: bool = False  # Track if last char was backslash
 
     def write(self, text: str) -> None: 
         if not text:
             return
         processed = remove_emoji(text) if _emoji_disabled() else text
+        
         if self.agent_id == 'manager':
-            # Handle line breaks when outputting to terminal
-            processed_for_terminal = _process_newlines_for_terminal(processed)
-            builtins.print(processed_for_terminal, end='', flush=True)
-            # Also write to manager.out file
+            # Smart escape sequence handling for streaming output
+            output_text = self._process_streaming_escapes(processed)
+            if output_text:  # Only print if there's text to output
+                builtins.print(output_text, end='', flush=True)
+            # Also write to manager.out file (keep original)
             _write_to_file("manager.out", processed, newline=False)
         else:
             _write_to_file(f"{self.agent_id}.out", processed, newline=False)
         self.buffer.append(processed)
+
+    def _process_streaming_escapes(self, text: str) -> str:
+        """Process escape sequences in streaming mode (handles cross-call sequences)"""
+        if not text:
+            return text
+        
+        result = []
+        i = 0
+        
+        # Handle pending backslash from previous call
+        if self.pending_backslash and len(text) > 0:
+            first_char = text[0]
+            escape_map = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', "'": "'", '\\': '\\'}
+            if first_char in escape_map:
+                result.append(escape_map[first_char])
+                i = 1
+            else:
+                result.append('\\')
+            self.pending_backslash = False
+        
+        # Process remaining text
+        while i < len(text):
+            if text[i] == '\\':
+                if i + 1 < len(text):
+                    next_char = text[i + 1]
+                    escape_map = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', "'": "'", '\\': '\\'}
+                    if next_char in escape_map:
+                        result.append(escape_map[next_char])
+                        i += 2
+                    else:
+                        result.append(text[i])
+                        i += 1
+                else:
+                    # Backslash at end, wait for next call
+                    self.pending_backslash = True
+                    i += 1
+                    break
+            else:
+                result.append(text[i])
+                i += 1
+        
+        return ''.join(result)
 
     def get_content(self) -> str:
         """Return written content (no newline)."""

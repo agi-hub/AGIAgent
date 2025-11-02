@@ -367,7 +367,7 @@ class MultiRoundTaskExecutor:
         # Check if task was actually completed or just reached max rounds
         completed_rounds = [h for h in task_history if isinstance(h, dict) and h.get("task_completed", False)]
         if completed_rounds:
-            print_current(f"✅ Task completed successfully")
+            #print_current(f"✅ Task completed successfully")
             status = "completed"
         else:
             print_current(f"⚠️ Task reached maximum rounds without explicit completion")

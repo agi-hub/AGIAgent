@@ -539,7 +539,65 @@
             padding: 2px 0;
         }
 
+        /* JSON折叠框样式 */
+        .json-collapsible {
+            background: #0f5132;
+            border: 2px solid #198754;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            max-width: 95%;
+            overflow: hidden;
+            animation: fadeIn 0.3s ease-in;
+        }
 
+        .json-collapsible-header {
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+
+        .json-collapsible-header:hover {
+            background-color: rgba(25, 135, 84, 0.2);
+        }
+
+        .json-collapsible-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #75b798;
+            font-weight: 500;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .json-collapsible-icon {
+            transition: transform 0.3s ease;
+            font-size: 12px;
+        }
+
+        .json-collapsible.collapsed .json-collapsible-icon {
+            transform: rotate(-90deg);
+        }
+
+        .json-collapsible-content {
+            padding: 12px 16px;
+            border-top: 1px solid rgba(25, 135, 84, 0.3);
+            color: #cccccc;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-wrap: anywhere;
+            line-height: 1.4;
+            max-height: none;
+            overflow: visible;
+        }
+
+        .json-collapsible.collapsed .json-collapsible-content {
+            display: none;
+        }
 
         .input-container {
             background: #2d2d30;
@@ -2912,6 +2970,9 @@
                 // 任务开始时重置消息状态，确保新的任务从新的info消息框开始
                 lastMessageType = null;
                 lastMessageDiv = null;
+                lastMessageContent = null;
+                // 重置JSON收集状态
+                resetJsonCollectingState();
                 
                 addMessage(data.message, 'info');
                 setTaskRunning(true);
@@ -3035,6 +3096,18 @@
         // Message handling
         let lastMessageType = null;
         let lastMessageDiv = null;
+        let lastMessageContent = null; // 跟踪上一个消息的内容
+        
+        // JSON折叠框状态跟踪
+        let jsonCollectingState = {
+            isCollecting: false,
+            jsonContent: '',
+            jsonContainer: null,
+            braceCount: 0,
+            toolName: null,
+            waitingForJsonStart: false,  // 标记是否在等待JSON开始（遇到```json后）
+            waitingForJsonEnd: false     // 标记是否在等待JSON结束标记（```）
+        };
         
         // 批量消息处理相关变量
         let messageBatchQueue = [];
@@ -3079,6 +3152,132 @@
         }
         
         /**
+         * 检测JSON开始（检测到{开头）
+         * @param {string} message 消息内容
+         * @returns {boolean} 是否是JSON开始
+         */
+        function detectJsonStart(message) {
+            const trimmed = message.trim();
+            // 检测是否以{开头（忽略前导空格）
+            return trimmed.startsWith('{');
+        }
+        
+        /**
+         * 计算JSON括号匹配情况
+         * @param {string} text 文本内容
+         * @returns {number} 括号计数（>0表示未闭合，0表示闭合）
+         */
+        function countJsonBraces(text) {
+            let count = 0;
+            let inString = false;
+            let escapeNext = false;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                
+                if (escapeNext) {
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    escapeNext = true;
+                    continue;
+                }
+                
+                if (char === '"' && !escapeNext) {
+                    inString = !inString;
+                    continue;
+                }
+                
+                if (!inString) {
+                    if (char === '{') {
+                        count++;
+                    } else if (char === '}') {
+                        count--;
+                    }
+                }
+            }
+            
+            return count;
+        }
+        
+        /**
+         * 从JSON内容中提取工具名称
+         * @param {string} jsonText JSON文本
+         * @returns {string|null} 工具名称
+         */
+        function extractToolName(jsonText) {
+            try {
+                // 尝试解析JSON（可能不完整）
+                const nameMatch = jsonText.match(/"name"\s*:\s*"([^"]+)"/);
+                if (nameMatch) {
+                    return nameMatch[1];
+                }
+                
+                // 尝试匹配tool字段
+                const toolMatch = jsonText.match(/"tool"\s*:\s*"([^"]+)"/);
+                if (toolMatch) {
+                    return toolMatch[1];
+                }
+                
+                // 尝试匹配tool_name字段
+                const toolNameMatch = jsonText.match(/"tool_name"\s*:\s*"([^"]+)"/);
+                if (toolNameMatch) {
+                    return toolNameMatch[1];
+                }
+            } catch (e) {
+                // 忽略解析错误
+            }
+            return null;
+        }
+        
+        /**
+         * 创建JSON折叠框
+         * @param {string} toolName 工具名称
+         * @returns {HTMLElement} 折叠框元素
+         */
+        function createJsonCollapsible(toolName) {
+            const container = document.createElement('div');
+            container.className = 'json-collapsible collapsed';
+            
+            const header = document.createElement('div');
+            header.className = 'json-collapsible-header';
+            
+            const title = document.createElement('div');
+            title.className = 'json-collapsible-title';
+            title.innerHTML = `<span class="json-collapsible-icon">▼</span><span>${escapeHtml(toolName || 'JSON输出')}</span>`;
+            
+            header.appendChild(title);
+            
+            const content = document.createElement('div');
+            content.className = 'json-collapsible-content';
+            
+            container.appendChild(header);
+            container.appendChild(content);
+            
+            // 添加点击事件来切换折叠状态
+            header.addEventListener('click', () => {
+                container.classList.toggle('collapsed');
+            });
+            
+            return container;
+        }
+        
+        /**
+         * 重置JSON收集状态
+         */
+        function resetJsonCollectingState() {
+            jsonCollectingState.isCollecting = false;
+            jsonCollectingState.jsonContent = '';
+            jsonCollectingState.jsonContainer = null;
+            jsonCollectingState.braceCount = 0;
+            jsonCollectingState.toolName = null;
+            jsonCollectingState.waitingForJsonStart = false;
+            jsonCollectingState.waitingForJsonEnd = false;
+        }
+        
+        /**
          * 批量处理消息队列
          * @description 将队列中的所有消息一次性添加到DOM，然后执行一次滚动
          */
@@ -3088,67 +3287,11 @@
             }
             
             isBatchProcessing = true;
-            const shouldScroll = shouldAutoScroll();
             
-            // 创建文档片段以优化DOM操作性能
-            const fragment = document.createDocumentFragment();
-            
-            // 处理队列中的所有消息
+            // 处理队列中的所有消息（使用addMessageImmediate以确保JSON检测正常工作）
             for (const messageData of messageBatchQueue) {
                 const { message, type } = messageData;
-                
-                // 对于info类型的消息，总是尝试合并到上一个info消息框中
-                // 也包括normal类型的消息，如果它们是警告信息的话
-                if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
-                    lastMessageType === 'info' &&
-                    lastMessageDiv &&
-                    lastMessageDiv.parentNode === chatMessages) {
-                    
-                    // 合并到现有info消息
-                    const textSpan = lastMessageDiv.querySelector('.message-text');
-                    if (textSpan) {
-                        textSpan.innerHTML += '<br>' + escapeHtml(message);
-                    } else {
-                        lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
-                    }
-                } else if (['error', 'success'].includes(type) && 
-                    lastMessageType === type && 
-                    lastMessageDiv && 
-                    lastMessageDiv.parentNode === chatMessages) {
-                    
-                    // 对于error和success类型，保持原有合并逻辑
-                    const textSpan = lastMessageDiv.querySelector('.message-text');
-                    if (textSpan) {
-                        textSpan.innerHTML += '<br>' + escapeHtml(message);
-                    } else {
-                        lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
-                    }
-                } else {
-                    // 创建新的消息元素
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = `message ${type}`;
-                    
-                    const textSpan = document.createElement('span');
-                    textSpan.className = 'message-text';
-                    textSpan.textContent = message;
-                    
-                    messageDiv.appendChild(textSpan);
-                    fragment.appendChild(messageDiv);
-                    
-                    // 更新lastMessage引用
-                    if (['info', 'error', 'success'].includes(type)) {
-                        lastMessageType = type;
-                        lastMessageDiv = messageDiv;
-                    } else {
-                        lastMessageType = null;
-                        lastMessageDiv = null;
-                    }
-                }
-            }
-            
-            // 一次性添加所有新消息到DOM
-            if (fragment.children.length > 0) {
-                chatMessages.appendChild(fragment);
+                addMessageImmediate(message, type);
             }
             
             // 清空队列
@@ -3156,6 +3299,7 @@
             isBatchProcessing = false;
             
             // 批量处理完成后执行一次滚动
+            const shouldScroll = shouldAutoScroll();
             if (shouldScroll && batchScrollPending) {
                 // 使用requestAnimationFrame确保DOM更新完成后再滚动
                 requestAnimationFrame(() => {
@@ -3231,10 +3375,276 @@
         function addMessageImmediate(message, type = 'info') {
             const shouldScroll = shouldAutoScroll();
             
+            // JSON检测和处理逻辑
+            // 如果正在收集JSON，继续追加内容
+            if (jsonCollectingState.isCollecting) {
+                jsonCollectingState.jsonContent += message + '\n';
+                jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                
+                // 更新折叠框内容
+                if (jsonCollectingState.jsonContainer) {
+                    const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                    if (contentDiv) {
+                        contentDiv.textContent = jsonCollectingState.jsonContent;
+                    }
+                    
+                    // 如果还没有提取工具名称，尝试提取
+                    if (!jsonCollectingState.toolName) {
+                        const toolName = extractToolName(jsonCollectingState.jsonContent);
+                        if (toolName) {
+                            jsonCollectingState.toolName = toolName;
+                            const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                            if (titleSpan) {
+                                titleSpan.textContent = toolName;
+                            }
+                        }
+                    }
+                }
+                
+                // 检查JSON是否结束（括号匹配）
+                if (jsonCollectingState.braceCount === 0) {
+                    // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                    jsonCollectingState.isCollecting = false;
+                    jsonCollectingState.waitingForJsonEnd = true;
+                    // 不重置状态，等待下一个消息
+                }
+                
+                if (shouldScroll) {
+                    throttledAutoScroll(true);
+                } else {
+                    showNewMessageIndicator();
+                }
+                return;
+            }
+            
+            // JSON检测和处理逻辑
+            // 如果正在等待JSON结束标记（```）
+            if (jsonCollectingState.waitingForJsonEnd && type === 'info') {
+                const trimmedMessage = message.trim();
+                if (trimmedMessage === '```') {
+                    // 将结束标记包含到JSON内容中
+                    jsonCollectingState.jsonContent += message + '\n';
+                    
+                    // 更新折叠框内容
+                    if (jsonCollectingState.jsonContainer) {
+                        const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                        if (contentDiv) {
+                            contentDiv.textContent = jsonCollectingState.jsonContent;
+                        }
+                    }
+                    
+                    // 完成收集，重置状态
+                    resetJsonCollectingState();
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                    
+                    if (shouldScroll) {
+                        throttledAutoScroll(true);
+                    } else {
+                        showNewMessageIndicator();
+                    }
+                    return;
+                } else {
+                    // 如果不是结束标记，完成收集（不包含结束标记）
+                    // 确保清空lastMessageDiv的引用，防止后续消息被追加到JSON容器
+                    resetJsonCollectingState();
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                    // 继续处理当前消息（不会return，继续执行下面的逻辑）
+                }
+            }
+            
+            // 如果正在收集JSON，继续追加内容
+            if (jsonCollectingState.isCollecting) {
+                jsonCollectingState.jsonContent += message + '\n';
+                jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                
+                // 更新折叠框内容
+                if (jsonCollectingState.jsonContainer) {
+                    const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                    if (contentDiv) {
+                        contentDiv.textContent = jsonCollectingState.jsonContent;
+                    }
+                    
+                    // 如果还没有提取工具名称，尝试提取
+                    if (!jsonCollectingState.toolName) {
+                        const toolName = extractToolName(jsonCollectingState.jsonContent);
+                        if (toolName) {
+                            jsonCollectingState.toolName = toolName;
+                            const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                            if (titleSpan) {
+                                titleSpan.textContent = toolName;
+                            }
+                        }
+                    }
+                }
+                
+                // 检查JSON是否结束（括号匹配）
+                if (jsonCollectingState.braceCount === 0) {
+                    // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                    jsonCollectingState.isCollecting = false;
+                    jsonCollectingState.waitingForJsonEnd = true;
+                    // 不重置状态，等待下一个消息
+                }
+                
+                if (shouldScroll) {
+                    throttledAutoScroll(true);
+                } else {
+                    showNewMessageIndicator();
+                }
+                return;
+            }
+            
+            // 如果正在等待JSON开始（之前遇到了```json），检查当前消息是否是JSON
+            if (jsonCollectingState.waitingForJsonStart && type === 'info') {
+                if (detectJsonStart(message)) {
+                    // 开始收集JSON
+                    jsonCollectingState.isCollecting = true;
+                    jsonCollectingState.waitingForJsonStart = false;
+                    jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message + '\n';
+                    jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                    
+                    // 尝试提取工具名称
+                    const toolName = extractToolName(jsonCollectingState.jsonContent);
+                    jsonCollectingState.toolName = toolName;
+                    
+                    // 更新折叠框内容
+                    if (jsonCollectingState.jsonContainer) {
+                        const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                        if (contentDiv) {
+                            contentDiv.textContent = jsonCollectingState.jsonContent;
+                        }
+                        // 更新标题
+                        if (toolName) {
+                            const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                            if (titleSpan) {
+                                titleSpan.textContent = toolName;
+                            }
+                        }
+                    }
+                    
+                    // 如果JSON已经完成（单行完整JSON），检查是否需要等待结束标记
+                    if (jsonCollectingState.braceCount === 0) {
+                        // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                        jsonCollectingState.isCollecting = false;
+                        jsonCollectingState.waitingForJsonEnd = true;
+                        lastMessageType = null;
+                        lastMessageDiv = jsonCollectingState.jsonContainer;
+                        lastMessageContent = null;
+                    } else {
+                        lastMessageType = null;
+                        lastMessageDiv = jsonCollectingState.jsonContainer;
+                        lastMessageContent = null;
+                    }
+                    
+                    if (shouldScroll) {
+                        throttledAutoScroll(true);
+                    } else {
+                        showNewMessageIndicator();
+                    }
+                    return;
+                } else {
+                    // 如果不是JSON开始，取消等待状态，移除临时折叠框，将```json作为普通消息显示
+                    const jsonMarker = jsonCollectingState.jsonContent.trim();
+                    if (jsonCollectingState.jsonContainer && jsonCollectingState.jsonContainer.parentNode === chatMessages) {
+                        jsonCollectingState.jsonContainer.remove();
+                    }
+                    resetJsonCollectingState();
+                    // 将```json作为普通消息显示
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${type}`;
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'message-text';
+                    textSpan.textContent = jsonMarker;
+                    messageDiv.appendChild(textSpan);
+                    chatMessages.appendChild(messageDiv);
+                    lastMessageType = type;
+                    lastMessageDiv = messageDiv;
+                    lastMessageContent = jsonMarker;
+                    // 继续处理当前消息（不会return，继续执行下面的逻辑）
+                }
+            }
+            
+            // 检测```json标记（单独的消息）
+            if (type === 'info') {
+                const trimmedMessage = message.trim();
+                if (trimmedMessage === '```json' || trimmedMessage === '```') {
+                    // 开始等待JSON开始
+                    jsonCollectingState.waitingForJsonStart = true;
+                    jsonCollectingState.jsonContent = message + '\n';
+                    
+                    // 创建一个临时的折叠框（但先不显示内容，等待JSON开始）
+                    jsonCollectingState.jsonContainer = createJsonCollapsible('JSON输出');
+                    const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                    contentDiv.textContent = jsonCollectingState.jsonContent;
+                    
+                    chatMessages.appendChild(jsonCollectingState.jsonContainer);
+                    lastMessageType = null;
+                    lastMessageDiv = jsonCollectingState.jsonContainer;
+                    lastMessageContent = null;
+                    
+                    if (shouldScroll) {
+                        throttledAutoScroll(true);
+                    } else {
+                        showNewMessageIndicator();
+                    }
+                    return;
+                }
+            }
+            
+            // 检测JSON开始（直接以{开头，没有```json标记）
+            if (type === 'info' && detectJsonStart(message)) {
+                // 开始收集JSON
+                jsonCollectingState.isCollecting = true;
+                jsonCollectingState.jsonContent = message + '\n';
+                jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                
+                // 尝试提取工具名称
+                const toolName = extractToolName(jsonCollectingState.jsonContent);
+                jsonCollectingState.toolName = toolName;
+                
+                // 创建JSON折叠框
+                jsonCollectingState.jsonContainer = createJsonCollapsible(toolName || 'JSON输出');
+                const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                contentDiv.textContent = jsonCollectingState.jsonContent;
+                
+                // 添加到聊天窗口
+                chatMessages.appendChild(jsonCollectingState.jsonContainer);
+                
+                // 如果JSON已经完成（单行完整JSON），检查是否需要等待结束标记
+                if (jsonCollectingState.braceCount === 0) {
+                    // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                    jsonCollectingState.isCollecting = false;
+                    jsonCollectingState.waitingForJsonEnd = true;
+                    // 不要将lastMessageDiv设置为JSON容器，防止后续消息被追加
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                } else {
+                    // 更新lastMessage引用为JSON容器
+                    lastMessageType = null;
+                    lastMessageDiv = jsonCollectingState.jsonContainer;
+                    lastMessageContent = null;
+                }
+                
+                if (shouldScroll) {
+                    throttledAutoScroll(true);
+                } else {
+                    showNewMessageIndicator();
+                }
+                return;
+            }
+            
             // 对于info类型的消息，总是尝试追加到上一个info消息框中
             // 也包括normal类型的消息，如果它们是警告信息的话
+            // 但确保不会追加到JSON折叠框中
             if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
-                lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages) {
+                lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages &&
+                !lastMessageDiv.classList.contains('json-collapsible') &&
+                !jsonCollectingState.isCollecting &&
+                !jsonCollectingState.waitingForJsonEnd) {
                 // 追加到现有的info消息框
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
@@ -3242,6 +3652,12 @@
                 } else {
                     // If no text span found, fallback to original method but with escaping
                     lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                }
+                // 更新lastMessageContent
+                if (lastMessageContent) {
+                    lastMessageContent += '\n' + message;
+                } else {
+                    lastMessageContent = message;
                 }
                 if (shouldScroll) {
                     // 使用节流的自动滚动函数，减少跳动
@@ -3262,6 +3678,12 @@
                 } else {
                     // If no text span found, fallback to original method but with escaping
                     lastMessageDiv.innerHTML += '<br>' + escapeHtml(message);
+                }
+                // 更新lastMessageContent
+                if (lastMessageContent) {
+                    lastMessageContent += '\n' + message;
+                } else {
+                    lastMessageContent = message;
                 }
                 if (shouldScroll) {
                     // 使用节流的自动滚动函数，减少跳动
@@ -3300,9 +3722,11 @@
             if (['info', 'error', 'success'].includes(type)) {
                 lastMessageType = type;
                 lastMessageDiv = messageDiv;
+                lastMessageContent = message; // 保存消息内容
             } else {
                 lastMessageType = null;
                 lastMessageDiv = null;
+                lastMessageContent = null;
             }
         }
 
@@ -5135,8 +5559,9 @@
                     `;
                 } else {
                     // 使用Prism.js进行语法高亮
-                    // 先处理转义字符，再进行HTML转义
-                    const processedContent = escapeHtml(processFileContent(content));
+                    // 代码文件保持\n等转义字符原样显示，不进行转换（因为代码中的print等语句可能包含\n字符串）
+                    // 直接进行HTML转义即可
+                    const processedContent = escapeHtml(content);
                     
                     // 为mermaid文件提供特殊的样式处理
                     if (language === 'mermaid') {

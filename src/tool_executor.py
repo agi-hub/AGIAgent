@@ -1098,10 +1098,10 @@ class ToolExecutor:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
                 
                 # Log the approach used
-                if json_tools_prompt:
-                    print_current("✅ Using JSON-generated tool descriptions for chat-based model")
-                else:
-                    print_current("⚠️  Failed to generate JSON tool descriptions, falling back to file-based approach")
+                #if json_tools_prompt:
+                #    print_current("✅ Using JSON-generated tool descriptions for chat-based model")
+                #else:
+                #    print_current("⚠️  Failed to generate JSON tool descriptions, falling back to file-based approach")
                     
             else:
                 # For standard tool calling, load only rules (no tool descriptions needed)
@@ -1490,11 +1490,17 @@ class ToolExecutor:
 
             # Remember if there was originally a TASK_COMPLETED flag
             original_has_task_completed = has_task_completed
+            # Save the completion message before removing it (for conflict case)
+            original_completion_message = None
+            if has_task_completed:
+                task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                if task_completed_match:
+                    original_completion_message = task_completed_match.group(1).strip()
 
             # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
             conflict_detected = has_tool_calls and has_task_completed
             if conflict_detected:
-                print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, executing tools first then completing task")
+                #print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, executing tools first then completing task")
                 # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
                 content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
                 has_task_completed = False # Ensure the flag is updated after removal
@@ -1550,7 +1556,7 @@ class ToolExecutor:
                                         getattr(self, '_tools_executed_in_stream', False))
                 
                 if tools_already_executed:
-                    print_debug("✅ Tools were already executed during streaming - collecting results for response formatting")
+                    print_current("✅ Tools were already executed during streaming - collecting results for response formatting")
                     # For streaming execution, we still need to format the response properly
                     # but skip actual execution since it was done during streaming
                     all_tool_results = getattr(self, '_streaming_tool_results', [])
@@ -1582,10 +1588,17 @@ class ToolExecutor:
                 
                 # Only execute tools if they weren't already executed during streaming
                 if not tools_already_executed:
+                    print_current(f"🚀 Starting execution of {len(tool_calls)} tool calls...")
                     for i, tool_call in enumerate(tool_calls, 1):
                         # Handle standard format tool calls (both OpenAI and Anthropic)
-                        tool_name = self._get_tool_name_from_call(tool_call)
-                        tool_params = self._get_tool_params_from_call(tool_call)
+                        try:
+                            tool_name = self._get_tool_name_from_call(tool_call)
+                            tool_params = self._get_tool_params_from_call(tool_call)
+                            print_current(f"🔧 Executing tool {i}/{len(tool_calls)}: {tool_name}")
+                        except Exception as e:
+                            print_current(f"❌ Failed to extract tool name/params from tool_call {i}: {e}")
+                            print_current(f"Tool call structure: {tool_call}")
+                            continue
                         
                         # 🔧 NEW: Track if get_sensor_data was called in current round
                         if tool_name == 'get_sensor_data':
@@ -1652,11 +1665,19 @@ class ToolExecutor:
                 
                 # Check if this was originally intended to be task completion after tool execution
                 if original_has_task_completed:
-                    # Extract the completion message
-                    task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
-                    if task_completed_match:
-                        completion_message = task_completed_match.group(1).strip()
-
+                    # Use saved completion message or extract from content
+                    completion_message = original_completion_message
+                    if not completion_message:
+                        task_completed_match = re.search(r'TASK_COMPLETED:\s*(.+)', content)
+                        if task_completed_match:
+                            completion_message = task_completed_match.group(1).strip()
+                    
+                    # Re-add TASK_COMPLETED flag to the result so task_checker can detect it
+                    if completion_message:
+                        combined_result = "".join(result_parts) + f"\n\nTASK_COMPLETED: {completion_message}"
+                    else:
+                        combined_result = "".join(result_parts) + "\n\nTASK_COMPLETED"
+                    
                     # Save final debug log
                     if self.debug_mode:
                         try:
@@ -1843,6 +1864,258 @@ class ToolExecutor:
             if self.debug_mode:
                 print_current(f"⚠️ Warning: Failed to check terminate messages: {e}")
             return None
+    
+    def _is_complete_json_tool_call(self, content: str) -> bool:
+        """
+        检测content中是否包含完整的工具调用
+        策略：检测是否有第二个```json块，并且第一个```json块已经完整闭合
+        如果有第二个```json块且第一个块已完整，则说明有多个工具调用需要截断
+        
+        Args:
+            content: 累积的响应内容
+            
+        Returns:
+            bool: 如果检测到第二个```json块且第一个块已完整返回True
+        """
+        # 查找第一个```json块
+        json_block_marker = '```json'
+        first_pos = content.find(json_block_marker)
+        if first_pos == -1:
+            return False
+        
+        # 检查第一个JSON块是否已经完整闭合
+        json_start = first_pos + len(json_block_marker)
+        first_block_end = content.find('```', json_start)
+        
+        # 如果第一个块没有闭合，不要停止（可能还在接收中）
+        if first_block_end == -1:
+            return False
+        
+        # 查找第二个```json块（必须在第一个块之后）
+        second_pos = content.find(json_block_marker, first_block_end + 3)
+        
+        # 如果找到第二个```json块，且第一个块已完整，说明有多个工具调用，需要截断
+        return second_pos != -1
+    
+    def _find_second_json_block_start(self, content: str) -> int:
+        """
+        找到第二个```json块的起始位置
+        确保第一个JSON块已经完整闭合后再查找第二个
+        
+        Args:
+            content: 响应内容
+            
+        Returns:
+            int: 第二个```json块的起始位置，如果没找到返回-1
+        """
+        json_block_marker = '```json'
+        first_pos = content.find(json_block_marker)
+        if first_pos == -1:
+            return -1
+        
+        # 检查第一个JSON块是否已经完整闭合
+        json_start = first_pos + len(json_block_marker)
+        first_block_end = content.find('```', json_start)
+        
+        # 如果第一个块没有闭合，不要查找第二个块（可能还在接收中）
+        if first_block_end == -1:
+            return -1
+        
+        # 在第一个块闭合之后查找第二个```json块
+        second_pos = content.find(json_block_marker, first_block_end + 3)
+        return second_pos
+    
+    def _ensure_first_json_block_complete(self, content: str) -> str:
+        """
+        确保第一个```json块是完整的（有闭合的```）
+        如果不完整，尝试找到第一个完整的JSON对象并补全闭合标记
+        
+        Args:
+            content: 响应内容
+            
+        Returns:
+            str: 确保第一个JSON块完整的内容
+        """
+        json_block_marker = '```json'
+        first_pos = content.find(json_block_marker)
+        if first_pos == -1:
+            # 如果没有找到```json标记，尝试查找JSON对象
+            # 这可能是因为内容被截断了
+            json_start = content.find('{')
+            if json_start != -1:
+                # 尝试找到完整的JSON对象
+                brace_count = 0
+                json_end_pos = -1
+                in_string = False
+                escape_next = False
+                
+                for i in range(json_start, len(content)):
+                    char = content[i]
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    
+                    if char == '"':
+                        in_string = not in_string
+                        continue
+                    
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                json_end_pos = i + 1
+                                break
+                
+                if json_end_pos > json_start:
+                    # 找到了完整的JSON对象，添加```json标记
+                    complete_content = content[:json_start] + json_block_marker + '\n' + content[json_start:json_end_pos] + '\n```'
+                    return complete_content
+            return content
+        
+        # 找到第一个```json块的开始位置
+        json_start = first_pos + len(json_block_marker)
+        
+        # 查找第一个```json块的结束位置（闭合的```）
+        first_block_end = content.find('```', json_start)
+        
+        if first_block_end == -1:
+            # 第一个块没有闭合，需要找到第一个完整的JSON对象
+            json_content = content[json_start:].strip()
+            
+            # 跳过开头的空白字符和换行
+            json_content = json_content.lstrip()
+            
+            # 尝试找到第一个完整的JSON对象（从第一个{到匹配的}）
+            brace_count = 0
+            json_end_pos = -1
+            in_string = False
+            escape_next = False
+            
+            for i, char in enumerate(json_content):
+                if escape_next:
+                    escape_next = False
+                    continue
+                
+                if char == '\\':
+                    escape_next = True
+                    continue
+                
+                if char == '"':
+                    in_string = not in_string
+                    continue
+                
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end_pos = i + 1
+                            break
+            
+            if json_end_pos > 0:
+                # 找到了完整的JSON对象，补全闭合标记
+                complete_content = content[:json_start] + json_content[:json_end_pos] + '\n```'
+                return complete_content
+            else:
+                # 如果找不到完整的JSON对象，尝试使用原始内容（可能已经包含了部分JSON）
+                # 这种情况下，parse_tool_calls可能需要更宽松的解析
+                return content
+        
+        # 如果第一个块已经完整闭合，验证JSON内容是否有效
+        if first_block_end != -1:
+            json_content_raw = content[json_start:first_block_end]
+            json_content = json_content_raw.strip()
+            try:
+                test_json = json.loads(json_content)
+            except json.JSONDecodeError as e:
+                # JSON内容无效，尝试修复
+                try:
+                    # 尝试使用修复函数修复JSON
+                    fixed_json = smart_escape_quotes_in_json_values(json_content)
+                    test_json = json.loads(fixed_json)
+                    # 修复成功，更新内容但不打印警告
+                    print_current(f"✅ First JSON block content fixed successfully: {len(json_content)} chars, has_tool_name={('tool_name' in test_json)}")
+                    # 更新内容中的JSON部分（保持原有的空白字符格式）
+                    leading_ws_len = len(json_content_raw) - len(json_content_raw.lstrip())
+                    trailing_ws_len = len(json_content_raw) - len(json_content_raw.rstrip())
+                    leading_ws = json_content_raw[:leading_ws_len] if leading_ws_len > 0 else ''
+                    trailing_ws = json_content_raw[-trailing_ws_len:] if trailing_ws_len > 0 else ''
+                    content = content[:json_start] + leading_ws + fixed_json + trailing_ws + content[first_block_end:]
+                except (json.JSONDecodeError, Exception):
+                    # 修复也失败，尝试使用长JSON修复器
+                    try:
+                        fixed_json = fix_long_json_with_code(json_content)
+                        test_json = json.loads(fixed_json)
+                        # 修复成功，更新内容但不打印警告
+                        # 更新内容中的JSON部分（保持原有的空白字符格式）
+                        leading_ws_len = len(json_content_raw) - len(json_content_raw.lstrip())
+                        trailing_ws_len = len(json_content_raw) - len(json_content_raw.rstrip())
+                        leading_ws = json_content_raw[:leading_ws_len] if leading_ws_len > 0 else ''
+                        trailing_ws = json_content_raw[-trailing_ws_len:] if trailing_ws_len > 0 else ''
+                        content = content[:json_start] + leading_ws + fixed_json + trailing_ws + content[first_block_end:]
+                    except (json.JSONDecodeError, Exception):
+                        # 所有修复尝试都失败，打印警告但保持原样返回，让parse_tool_calls尝试修复
+                        print_current(f"⚠️ Warning: First JSON block content is invalid: {str(e)[:200]}")
+                        print_current(f"JSON content snippet (first 500 chars): {json_content[:500]}...")
+                        print_current(f"JSON content snippet (last 500 chars): {json_content[-500:] if len(json_content) > 500 else json_content}...")
+                        print_current(f"💡 Will attempt to fix during parsing...")
+        
+        return content
+    
+    def _get_content_before_second_json(self, content: str) -> str:
+        """
+        获取第二个```json块之前的内容
+        确保包含完整的第一个JSON块
+        
+        Args:
+            content: 完整的响应内容
+            
+        Returns:
+            str: 第二个```json块之前的内容，确保第一个JSON块完整
+        """
+        second_json_pos = self._find_second_json_block_start(content)
+        if second_json_pos == -1:
+            # 没有找到第二个```json，尝试确保第一个块完整
+            return self._ensure_first_json_block_complete(content)
+        
+        # 截取到第二个```json之前的内容
+        content_before_second = content[:second_json_pos].rstrip()
+        
+        # 调试：检查截取后的内容
+        print_current(f"🔍 After _get_content_before_second_json: second_json_pos={second_json_pos}, content_before_second length={len(content_before_second)}")
+        
+        # 检查第一个JSON块是否完整
+        json_block_marker = '```json'
+        first_pos = content_before_second.find(json_block_marker)
+        if first_pos != -1:
+            json_start = first_pos + len(json_block_marker)
+            first_block_end = content_before_second.find('```', json_start)
+            if first_block_end == -1:
+                print_current(f"⚠️ Warning: First JSON block not closed in content_before_second, trying to complete it...")
+            else:
+                print_current(f"✅ First JSON block is closed: starts at {first_pos}, ends at {first_block_end}")
+        
+        # 确保第一个块是完整的
+        result = self._ensure_first_json_block_complete(content_before_second)
+        
+        # 调试：检查最终结果
+        if '```json' in result:
+            json_start = result.find('```json')
+            json_end = result.find('```', json_start + 7)
+            if json_end != -1:
+                print_current(f"✅ Final result has complete JSON block: {json_start} to {json_end}")
+            else:
+                print_current(f"⚠️ Warning: Final result JSON block not closed")
+        
+        return result
+    
     def parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """
         Parse multiple tool calls from the model's response.
@@ -1903,6 +2176,61 @@ class ToolExecutor:
                             return all_tool_calls
                     except json.JSONDecodeError as e:
                         print_current(f"Failed to parse JSON block: {str(e)[:200]}")
+                        # Try to fix JSON containing SVG/XML content or other complex content
+                        try:
+                            # Try fixing with smart quote escaping (handles SVG XML with quotes)
+                            fixed_json = smart_escape_quotes_in_json_values(json_block)
+                            tool_calls_data = json.loads(fixed_json)
+                            
+                            if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                                for i, tool_call in enumerate(tool_calls_data['tool_calls']):
+                                    if isinstance(tool_call, dict) and 'function' in tool_call:
+                                        function_data = tool_call['function']
+                                        if 'name' in function_data and 'arguments' in function_data:
+                                            arguments = function_data['arguments']
+                                            if isinstance(arguments, str):
+                                                try:
+                                                    arguments = json.loads(arguments)
+                                                except json.JSONDecodeError:
+                                                    pass
+                                            
+                                            all_tool_calls.append({
+                                                "name": function_data['name'],
+                                                "arguments": arguments
+                                            })
+                            
+                            if all_tool_calls:
+                                print_current("✅ Successfully parsed JSON after applying quote escaping fixes")
+                                return all_tool_calls
+                        except (json.JSONDecodeError, Exception) as fix_error:
+                            # Try one more time with long JSON fixer (handles code blocks)
+                            try:
+                                fixed_json = fix_long_json_with_code(json_block)
+                                tool_calls_data = json.loads(fixed_json)
+                                
+                                if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                                    for i, tool_call in enumerate(tool_calls_data['tool_calls']):
+                                        if isinstance(tool_call, dict) and 'function' in tool_call:
+                                            function_data = tool_call['function']
+                                            if 'name' in function_data and 'arguments' in function_data:
+                                                arguments = function_data['arguments']
+                                                if isinstance(arguments, str):
+                                                    try:
+                                                        arguments = json.loads(arguments)
+                                                    except json.JSONDecodeError:
+                                                        pass
+                                                
+                                                all_tool_calls.append({
+                                                    "name": function_data['name'],
+                                                    "arguments": arguments
+                                                })
+                                
+                                if all_tool_calls:
+                                    print_current("✅ Successfully parsed JSON after applying long JSON fixes")
+                                    return all_tool_calls
+                            except (json.JSONDecodeError, Exception) as final_error:
+                                if self.debug_mode:
+                                    print_current(f"⚠️ All JSON fix attempts failed. Original error: {str(e)[:200]}, Fix error: {str(final_error)[:200]}")
 
             except json.JSONDecodeError as e:
                 if self.debug_mode:
@@ -1939,6 +2267,61 @@ class ToolExecutor:
             except json.JSONDecodeError as e:
                 if self.debug_mode:
                     print_current(f"Failed to parse direct JSON tool calls: {e}")
+                # Try to fix JSON containing SVG/XML content or other complex content
+                try:
+                    # Try fixing with smart quote escaping (handles SVG XML with quotes)
+                    fixed_json = smart_escape_quotes_in_json_values(json_str)
+                    tool_calls_data = json.loads(fixed_json)
+                    
+                    if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                        for tool_call in tool_calls_data['tool_calls']:
+                            if isinstance(tool_call, dict) and 'function' in tool_call:
+                                function_data = tool_call['function']
+                                if 'name' in function_data and 'arguments' in function_data:
+                                    arguments = function_data['arguments']
+                                    if isinstance(arguments, str):
+                                        try:
+                                            arguments = json.loads(arguments)
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    all_tool_calls.append({
+                                        "name": function_data['name'],
+                                        "arguments": arguments
+                                    })
+                    
+                    if all_tool_calls:
+                        print_current("✅ Successfully parsed direct JSON after applying quote escaping fixes")
+                        return all_tool_calls
+                except (json.JSONDecodeError, Exception) as fix_error:
+                    # Try one more time with long JSON fixer (handles code blocks)
+                    try:
+                        fixed_json = fix_long_json_with_code(json_str)
+                        tool_calls_data = json.loads(fixed_json)
+                        
+                        if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                            for tool_call in tool_calls_data['tool_calls']:
+                                if isinstance(tool_call, dict) and 'function' in tool_call:
+                                    function_data = tool_call['function']
+                                    if 'name' in function_data and 'arguments' in function_data:
+                                        arguments = function_data['arguments']
+                                        if isinstance(arguments, str):
+                                            try:
+                                                arguments = json.loads(arguments)
+                                            except json.JSONDecodeError:
+                                                pass
+                                        
+                                        all_tool_calls.append({
+                                            "name": function_data['name'],
+                                            "arguments": arguments
+                                        })
+                        
+                        if all_tool_calls:
+                            print_current("✅ Successfully parsed direct JSON after applying long JSON fixes")
+                            return all_tool_calls
+                    except (json.JSONDecodeError, Exception) as final_error:
+                        if self.debug_mode:
+                            print_current(f"⚠️ All direct JSON fix attempts failed. Original error: {str(e)[:200]}, Fix error: {str(final_error)[:200]}")
         
         # Continue with existing XML parsing logic...
         # Try to parse individual <function_call> tags (single format)
@@ -2030,8 +2413,52 @@ class ToolExecutor:
                                 "name": tool_data["name"],
                                 "arguments": tool_data["content"]
                             })
-                except json.JSONDecodeError:
-                    continue
+                except json.JSONDecodeError as e:
+                    # Try to fix JSON containing unescaped newlines or quotes
+                    try:
+                        fixed_json = smart_escape_quotes_in_json_values(json_str)
+                        tool_data = json.loads(fixed_json)
+                        
+                        if isinstance(tool_data, dict):
+                            if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                all_tool_calls.append({
+                                    "name": tool_data["tool_name"],
+                                    "arguments": tool_data["parameters"]
+                                })
+                            elif 'name' in tool_data and 'parameters' in tool_data:
+                                all_tool_calls.append({
+                                    "name": tool_data["name"],
+                                    "arguments": tool_data["parameters"]
+                                })
+                            elif 'name' in tool_data and 'content' in tool_data:
+                                all_tool_calls.append({
+                                    "name": tool_data["name"],
+                                    "arguments": tool_data["content"]
+                                })
+                    except (json.JSONDecodeError, Exception):
+                        # If fix also fails, try long JSON fixer (handles code blocks)
+                        try:
+                            fixed_json = fix_long_json_with_code(json_str)
+                            tool_data = json.loads(fixed_json)
+                            
+                            if isinstance(tool_data, dict):
+                                if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    all_tool_calls.append({
+                                        "name": tool_data["tool_name"],
+                                        "arguments": tool_data["parameters"]
+                                    })
+                                elif 'name' in tool_data and 'parameters' in tool_data:
+                                    all_tool_calls.append({
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["parameters"]
+                                    })
+                                elif 'name' in tool_data and 'content' in tool_data:
+                                    all_tool_calls.append({
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["content"]
+                                    })
+                        except (json.JSONDecodeError, Exception):
+                            continue
             
             # If we found any tool calls through multiple JSON blocks, return them
             if all_tool_calls:
@@ -2099,7 +2526,111 @@ class ToolExecutor:
                                 "arguments": tool_data
                             }]
             except json.JSONDecodeError as e:
-                pass
+                # Try to fix JSON containing unescaped newlines or quotes
+                try:
+                    fixed_json = smart_escape_quotes_in_json_values(json_str)
+                    tool_data = json.loads(fixed_json)
+                    
+                    if isinstance(tool_data, dict):
+                        if 'name' in tool_data and 'content' in tool_data:
+                            return [{
+                                "name": tool_data["name"],
+                                "arguments": tool_data["content"]
+                            }]
+                        elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                            return [{
+                                "name": tool_data["tool_name"],
+                                "arguments": tool_data["parameters"]
+                            }]
+                        elif 'name' in tool_data and 'parameters' in tool_data:
+                            return [{
+                                "name": tool_data["name"],
+                                "arguments": tool_data["parameters"]
+                            }]
+                        else:
+                            # Try to infer tool name from parameters
+                            text_before_json = content[:content.find('```json')]
+                            tool_names = list(self.tool_map.keys())
+                            inferred_tool = None
+                            
+                            for tool_name in tool_names:
+                                if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
+                                    inferred_tool = tool_name
+                                    break
+                            
+                            if not inferred_tool:
+                                if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
+                                    inferred_tool = 'read_file'
+                                elif 'relative_workspace_path' in tool_data:
+                                    inferred_tool = 'list_dir'
+                                elif 'query' in tool_data and 'target_directories' in tool_data:
+                                    inferred_tool = 'workspace_search'
+                                elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
+                                    inferred_tool = 'grep_search'
+                                elif 'command' in tool_data and 'is_background' in tool_data:
+                                    inferred_tool = 'run_terminal_cmd'
+                                elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
+                                    inferred_tool = 'edit_file'
+                            
+                            if inferred_tool:
+                                return [{
+                                    "name": inferred_tool,
+                                    "arguments": tool_data
+                                }]
+                except (json.JSONDecodeError, Exception):
+                    # If fix also fails, try long JSON fixer (handles code blocks)
+                    try:
+                        fixed_json = fix_long_json_with_code(json_str)
+                        tool_data = json.loads(fixed_json)
+                        
+                        if isinstance(tool_data, dict):
+                            if 'name' in tool_data and 'content' in tool_data:
+                                return [{
+                                    "name": tool_data["name"],
+                                    "arguments": tool_data["content"]
+                                }]
+                            elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                                return [{
+                                    "name": tool_data["tool_name"],
+                                    "arguments": tool_data["parameters"]
+                                }]
+                            elif 'name' in tool_data and 'parameters' in tool_data:
+                                return [{
+                                    "name": tool_data["name"],
+                                    "arguments": tool_data["parameters"]
+                                }]
+                            else:
+                                # Try to infer tool name from parameters
+                                text_before_json = content[:content.find('```json')]
+                                tool_names = list(self.tool_map.keys())
+                                inferred_tool = None
+                                
+                                for tool_name in tool_names:
+                                    if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
+                                        inferred_tool = tool_name
+                                        break
+                                
+                                if not inferred_tool:
+                                    if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
+                                        inferred_tool = 'read_file'
+                                    elif 'relative_workspace_path' in tool_data:
+                                        inferred_tool = 'list_dir'
+                                    elif 'query' in tool_data and 'target_directories' in tool_data:
+                                        inferred_tool = 'workspace_search'
+                                    elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
+                                        inferred_tool = 'grep_search'
+                                    elif 'command' in tool_data and 'is_background' in tool_data:
+                                        inferred_tool = 'run_terminal_cmd'
+                                    elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
+                                        inferred_tool = 'edit_file'
+                                
+                                if inferred_tool:
+                                    return [{
+                                        "name": inferred_tool,
+                                        "arguments": tool_data
+                                    }]
+                    except (json.JSONDecodeError, Exception):
+                        pass
         
         # Try to parse JSON array format (AGIAgent's chat-based tool calls)
         try:
@@ -2736,6 +3267,15 @@ class ToolExecutor:
             error_msg = f"Error: {data['error']}"
             if 'tool' in data:
                 error_msg = f"Tool '{data['tool']}' failed: {data['error']}"
+            # Add available tools help if present (for unknown tool errors)
+            if 'available_tools_help' in data:
+                error_msg += f"\n\n{data['available_tools_help']}"
+            elif 'available_tools' in data:
+                tools_list = data['available_tools']
+                if isinstance(tools_list, list) and len(tools_list) > 0:
+                    error_msg += f"\n\nAvailable tools: {', '.join(tools_list[:10])}"
+                    if len(tools_list) > 10:
+                        error_msg += f", and {len(tools_list) - 10} more..."
             return error_msg
         
         # Show status if present
@@ -3575,7 +4115,10 @@ class ToolExecutor:
                     claude_messages = [{"role": "user", "content": user_message}]
                     
                     if self.streaming:
-                        with streaming_context(show_start_message=True) as printer:
+                        with streaming_context(show_start_message=False) as printer:
+                            # 显示LLM开始说话的emoji
+                            printer.write(f"\n💬 ")
+                            
                             with self.client.messages.stream(
                                 model=self.model,
                                 max_tokens=self._get_max_tokens_for_model(self.model),
@@ -3585,17 +4128,175 @@ class ToolExecutor:
                             ) as stream:
                                 content = ""
                                 hallucination_detected = False
-                                for text in stream.text_stream:
-                                    # Check for hallucination pattern
-                                    if "**LLM Called Following Tools in this round" in text:
-                                        print_current("\n🚨 Hallucination Detected, stop chat")
-                                        hallucination_detected = True
-                                        break
-                                    printer.write(text)
-                                    content += text
+                                json_block_detected = False
+                                stream_error_occurred = False
+                                stream_error_message = ""
+                                
+                                # 缓冲打印机制：至少缓冲100个字符
+                                buffer = ""
+                                min_buffer_size = 100
+                                total_printed = 0
+                                
+                                try:
+                                    for text in stream.text_stream:
+                                        # Check for hallucination pattern
+                                        if "**LLM Called Following Tools in this round" in text:
+                                            print_current("\n🚨 Hallucination Detected, stop chat")
+                                            hallucination_detected = True
+                                            break
+                                        
+                                        buffer += text
+                                        content += text
+                                        
+                                        # 当缓冲区达到最小大小时，打印缓冲区内容
+                                        # 但需要检查是否已经包含了第二个```json（如果检测到工具调用）
+                                        if len(buffer) >= min_buffer_size:
+                                            # 检查是否应该提前截断（如果已经检测到第二个工具调用）
+                                            if self._is_complete_json_tool_call(content):
+                                                # 找到第二个```json的位置
+                                                content_to_print = self._get_content_before_second_json(content)
+                                                # 只打印到第二个```json之前的内容
+                                                if len(content_to_print) < total_printed + len(buffer):
+                                                    # 需要截断
+                                                    to_print = content_to_print[total_printed:]
+                                                    if to_print:
+                                                        printer.write(to_print)
+                                                        total_printed = len(content_to_print)
+                                                    buffer = ""
+                                                    json_block_detected = True
+                                                    print_current("Multiple Tool calls detected, left the first and stop chatting")
+                                                    break
+                                            else:
+                                                # 正常打印
+                                                printer.write(buffer)
+                                                total_printed += len(buffer)
+                                                buffer = ""
+                                        
+                                        # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
+                                        if self._is_complete_json_tool_call(content):
+                                            json_block_detected = True
+                                            print_current("Multiple Tool calls detected, left the first and stop chatting")
+                                            break
+                                except Exception as e:
+                                    # 捕获流式处理中的异常
+                                    stream_error_occurred = True
+                                    stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
+                                    print_debug(f"⚠️ {stream_error_message}")
+                                    print_current(f"⚠️ Claude API streaming error: {str(e)}")
+                                    # 继续处理已接收的内容
+                                finally:
+                                    # 确保流被正确关闭
+                                    try:
+                                        if hasattr(stream, 'close'):
+                                            stream.close()
+                                    except Exception as close_error:
+                                        print_debug(f"⚠️ Error closing Anthropic stream: {close_error}")
+                                
+                                # 如果发生流错误，记录并继续处理
+                                if stream_error_occurred:
+                                    print_current(f"⚠️ 流式响应中断，已处理内容长度: {len(content)} 字符")
+                                    if not content:
+                                        # 如果没有接收到任何内容，重新抛出异常
+                                        raise Exception(f"Anthropic API streaming failed: {stream_error_message}")
+                                
+                                # 处理剩余缓冲区和截断逻辑
+                                if json_block_detected:
+                                    # 找到第二个```json的位置
+                                    content_to_print = self._get_content_before_second_json(content)
+                                    
+                                    # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
+                                    remaining_buffer = content_to_print[total_printed:]
+                                    if remaining_buffer:
+                                        printer.write(remaining_buffer)
+                                    
+                                    # 不打印buffer中第二个```json之后的内容
+                                    buffer = ""
+                                else:
+                                    # 没有检测到工具调用，打印剩余缓冲区
+                                    if buffer:
+                                        printer.write(buffer)
+                                
                                 # If hallucination was detected, return early
                                 if hallucination_detected:
+                                    # 添加换行（仅限chat接口）
+                                    if not content.endswith('\n'):
+                                        content += '\n'
                                     return content, []
+                                
+                                # 检查是否有工具调用（即使只有一个）
+                                # 查找第一个```json块
+                                has_json_block = '```json' in content
+                                
+                                if json_block_detected:
+                                    # 检测到第二个工具调用，只解析第一个
+                                    # 确保用于解析的content包含完整的第一个工具调用
+                                    # 即使被截断了，也要确保第一个JSON块是完整的
+                                    content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    
+                                    # Parse tool calls from the accumulated content
+                                    tool_calls = self.parse_tool_calls(content_for_parsing)
+                                    
+                                    # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
+                                    if tool_calls and len(tool_calls) > 1:
+                                        tool_calls = [tool_calls[0]]
+                                    
+                                    # Convert tool calls to standard format for compatibility
+                                    standardized_tool_calls = []
+                                    for tool_call in tool_calls:
+                                        if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                                            standardized_tool_calls.append({
+                                                "name": tool_call["name"],
+                                                "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                                            })
+                                    
+                                    # 调试：检查解析结果
+                                    if not standardized_tool_calls:
+                                        print_current(f"⚠️ Warning: After detecting multiple tool calls, failed to parse any valid tool call. Content length: {len(content_for_parsing)}")
+                                        print_current(f"Content for parsing: {content_for_parsing[:500]}...")
+                                    
+                                    # 添加换行（仅限chat接口）
+                                    if not content_for_parsing.endswith('\n'):
+                                        content_for_parsing += '\n'
+                                    return content_for_parsing, standardized_tool_calls
+                                elif has_json_block:
+                                    # 只有一个工具调用，正常解析并返回
+                                    # 确保JSON块完整
+                                    content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    
+                                    # Parse tool calls from the accumulated content
+                                    tool_calls = self.parse_tool_calls(content_for_parsing)
+                                    
+                                    # 只保留第一个工具调用
+                                    if tool_calls and len(tool_calls) > 1:
+                                        tool_calls = [tool_calls[0]]
+                                    
+                                    # Convert tool calls to standard format for compatibility
+                                    standardized_tool_calls = []
+                                    for tool_call in tool_calls:
+                                        if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                                            standardized_tool_calls.append({
+                                                "name": tool_call["name"],
+                                                "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                                            })
+                                        else:
+                                            print_current(f"⚠️ Warning: Tool call format invalid: {tool_call}")
+                                    
+                                    # 调试：检查转换结果
+                                    if not standardized_tool_calls:
+                                        print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
+                                        print_current(f"Content for parsing length: {len(content_for_parsing)}")
+                                        print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                    
+                                    # 添加换行（仅限chat接口）
+                                    if not content_for_parsing.endswith('\n'):
+                                        content_for_parsing += '\n'
+                                    return content_for_parsing, standardized_tool_calls
+                                
+                                # 没有工具调用，返回空列表
+                                # 添加换行（仅限chat接口）
+                                if not content.endswith('\n'):
+                                    content += '\n'
+                                return content, []
                     else:
                         # print_current("🔄 LLM is thinking:")
                         response = self.client.messages.create(
@@ -3614,6 +4315,9 @@ class ToolExecutor:
                         # Check for hallucination pattern in non-streaming response
                         if "**LLM Called Following Tools in this round" in content:
                             # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
+                            # 添加换行（仅限chat接口）
+                            if not content.endswith('\n'):
+                                content += '\n'
                             return content, []
                         
                 else:
@@ -3624,7 +4328,10 @@ class ToolExecutor:
                     ]
                     
                     if self.streaming:
-                        with streaming_context(show_start_message=True) as printer:
+                        with streaming_context(show_start_message=False) as printer:
+                            # 显示LLM开始说话的emoji
+                            printer.write(f"\n💬 ")
+                            
                             response = self.client.chat.completions.create(
                                 model=self.model,
                                 messages=api_messages,
@@ -3636,20 +4343,245 @@ class ToolExecutor:
 
                             content = ""
                             hallucination_detected = False
-                            for chunk in response:
-                                if chunk.choices and len(chunk.choices) > 0:
-                                    delta = chunk.choices[0].delta
-                                    if delta.content is not None:
-                                        # Check for hallucination pattern
-                                        if "**LLM Called Following Tools in this round" in delta.content:
-                                            # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
-                                            hallucination_detected = True
-                                            break
-                                        printer.write(delta.content)
-                                        content += delta.content
+                            json_block_detected = False
+                            stream_error_occurred = False
+                            stream_error_message = ""
+                            
+                            # 缓冲打印机制：至少缓冲100个字符
+                            buffer = ""
+                            min_buffer_size = 100
+                            total_printed = 0
+                            
+                            try:
+                                for chunk in response:
+                                    if chunk.choices and len(chunk.choices) > 0:
+                                        delta = chunk.choices[0].delta
+                                        if delta.content is not None:
+                                            # Check for hallucination pattern
+                                            if "**LLM Called Following Tools in this round" in delta.content:
+                                                # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
+                                                hallucination_detected = True
+                                                break
+                                            
+                                            buffer += delta.content
+                                            content += delta.content
+                                            
+                                            # 当缓冲区达到最小大小时，打印缓冲区内容
+                                            # 但需要检查是否已经包含了第二个```json（如果检测到工具调用）
+                                            if len(buffer) >= min_buffer_size:
+                                                # 检查是否应该提前截断（如果已经检测到第二个工具调用）
+                                                if self._is_complete_json_tool_call(content):
+                                                    # 找到第二个```json的位置
+                                                    content_to_print = self._get_content_before_second_json(content)
+                                                    # 只打印到第二个```json之前的内容
+                                                    if len(content_to_print) < total_printed + len(buffer):
+                                                        # 需要截断
+                                                        to_print = content_to_print[total_printed:]
+                                                        if to_print:
+                                                            printer.write(to_print)
+                                                            total_printed = len(content_to_print)
+                                                        buffer = ""
+                                                        json_block_detected = True
+                                                        print_current("Multiple Tool calls detected, left the first and stop chatting")
+                                                        break
+                                                else:
+                                                    # 正常打印
+                                                    printer.write(buffer)
+                                                    total_printed += len(buffer)
+                                                    buffer = ""
+                                            
+                                            # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
+                                            if self._is_complete_json_tool_call(content):
+                                                json_block_detected = True
+                                                print_current("Multiple Tool calls detected, left the first and stop chatting")
+                                                break
+                            except Exception as e:
+                                # 捕获流式处理中的异常
+                                stream_error_occurred = True
+                                stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
+                                print_debug(f"⚠️ {stream_error_message}")
+                                print_current(f"⚠️ OpenAI API streaming error: {str(e)}")
+                                # 继续处理已接收的内容
+                            finally:
+                                # 显式关闭streaming连接（无论是否发生错误都要关闭）
+                                try:
+                                    if hasattr(response, 'close'):
+                                        response.close()
+                                    elif hasattr(response, '__aexit__'):
+                                        # 异步上下文管理器
+                                        pass
+                                except Exception as close_error:
+                                    print_debug(f"⚠️ Error closing OpenAI stream: {close_error}")
+                            
+                            # 如果发生流错误，记录并继续处理
+                            if stream_error_occurred:
+                                print_current(f"⚠️ 流式响应中断，已处理内容长度: {len(content)} 字符")
+                                if not content:
+                                    # 如果没有接收到任何内容，重新抛出异常
+                                    raise Exception(f"OpenAI API streaming failed: {stream_error_message}")
+                            
+                            # 处理剩余缓冲区和截断逻辑
+                            if json_block_detected:
+                                # 找到第二个```json的位置
+                                content_to_print = self._get_content_before_second_json(content)
+                                
+                                # 调试：检查截取后的内容
+                                print_current(f"🔍 After _get_content_before_second_json: length={len(content_to_print)}")
+                                if '```json' in content_to_print:
+                                    json_start = content_to_print.find('```json')
+                                    json_end = content_to_print.find('```', json_start + 7)
+                                    if json_end != -1:
+                                        json_block = content_to_print[json_start:json_end+3]
+                                        print_current(f"🔍 First JSON block in content_to_print: length={len(json_block)}")
+                                        # 尝试解析这个JSON块
+                                        try:
+                                            json_content = json_block[7:-3].strip()  # 去掉 ```json 和 ```
+                                            test_data = json.loads(json_content)
+                                            print_current(f"✅ JSON block is valid: has_tool_name={('tool_name' in test_data)}, has_parameters={('parameters' in test_data)}")
+                                        except json.JSONDecodeError as e:
+                                            print_current(f"❌ JSON block is invalid: {str(e)[:200]}")
+                                    else:
+                                        print_current(f"⚠️ Warning: First JSON block not properly closed in content_to_print")
+                                else:
+                                    print_current(f"⚠️ Warning: No ```json found in content_to_print")
+                                
+                                # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
+                                remaining_buffer = content_to_print[total_printed:]
+                                if remaining_buffer:
+                                    printer.write(remaining_buffer)
+                                
+                                # 不打印buffer中第二个```json之后的内容
+                                buffer = ""
+                                
+                                # 保存content_to_print用于后续解析
+                                content = content_to_print
+                            else:
+                                # 没有检测到工具调用，打印剩余缓冲区
+                                if buffer:
+                                    printer.write(buffer)
+                            
                             # If hallucination was detected, return early
                             if hallucination_detected:
+                                # 添加换行（仅限chat接口）
+                                if not content.endswith('\n'):
+                                    content += '\n'
                                 return content, []
+                            
+                            # 检查是否有工具调用（即使只有一个）
+                            # 查找第一个```json块
+                            has_json_block = '```json' in content
+                            
+                            if json_block_detected:
+                                # 检测到第二个工具调用，只解析第一个
+                                # 首先获取截取到第二个JSON块之前的内容
+                                content_before_second = self._get_content_before_second_json(content)
+                                
+                                # 确保用于解析的content包含完整的第一个工具调用
+                                # 即使被截断了，也要确保第一个JSON块是完整的
+                                print_current(f"🔍 Detected multiple tool calls, extracting first one...")
+                                print_current(f"🔍 Original content length: {len(content)}, content_before_second length: {len(content_before_second)}")
+                                content_for_parsing = self._ensure_first_json_block_complete(content_before_second)
+                                
+                                # 调试：检查截取后的内容
+                                print_current(f"🔍 Content after extraction: length={len(content_for_parsing)}, has_json_block={('```json' in content_for_parsing)}")
+                                if '```json' in content_for_parsing:
+                                    json_start = content_for_parsing.find('```json')
+                                    json_end = content_for_parsing.find('```', json_start + 7)
+                                    if json_end != -1:
+                                        json_block = content_for_parsing[json_start:json_end+3]
+                                        print_current(f"🔍 First JSON block length: {len(json_block)}")
+                                        # 尝试解析这个JSON块
+                                        try:
+                                            json_content = json_block[7:-3].strip()  # 去掉 ```json 和 ```
+                                            test_data = json.loads(json_content)
+                                            print_current(f"✅ JSON content is valid: has_tool_name={('tool_name' in test_data)}, has_parameters={('parameters' in test_data)}")
+                                            if 'tool_name' in test_data:
+                                                print_current(f"  Tool name: {test_data['tool_name']}")
+                                            if 'parameters' in test_data:
+                                                print_current(f"  Parameters keys: {list(test_data['parameters'].keys())}")
+                                        except json.JSONDecodeError as e:
+                                            print_current(f"❌ JSON content is invalid: {str(e)[:200]}")
+                                            print_current(f"JSON content snippet (first 500 chars): {json_content[:500]}...")
+                                            print_current(f"JSON content snippet (last 500 chars): {json_content[-500:] if len(json_content) > 500 else json_content}...")
+                                    else:
+                                        print_current(f"⚠️ Warning: First JSON block not properly closed")
+                                
+                                # Parse tool calls from the accumulated content
+                                tool_calls = self.parse_tool_calls(content_for_parsing)
+                                
+                                # 调试：检查解析结果
+                                print_current(f"🔍 Parsed tool calls after extraction: count={len(tool_calls)}")
+                                if tool_calls:
+                                    for i, tc in enumerate(tool_calls):
+                                        print_current(f"  Tool {i+1}: name={tc.get('name', 'unknown')}, has_arguments={('arguments' in tc)}")
+                                else:
+                                    print_current(f"⚠️ Warning: Failed to parse tool calls from extracted content")
+                                    print_current(f"Extracted content snippet (first 1000 chars): {content_for_parsing[:1000]}...")
+                                
+                                # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
+                                if tool_calls and len(tool_calls) > 1:
+                                    tool_calls = [tool_calls[0]]
+                                
+                                # Convert tool calls to standard format for compatibility
+                                standardized_tool_calls = []
+                                for tool_call in tool_calls:
+                                    if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                                        standardized_tool_calls.append({
+                                            "name": tool_call["name"],
+                                            "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                                        })
+                                    else:
+                                        print_current(f"⚠️ Warning: Tool call format invalid: {tool_call}")
+                                
+                                # 调试：检查转换结果
+                                if not standardized_tool_calls and tool_calls:
+                                    print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
+                                    print_current(f"Content for parsing length: {len(content_for_parsing)}")
+                                    print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                
+                                # 添加换行（仅限chat接口）
+                                if not content_for_parsing.endswith('\n'):
+                                    content_for_parsing += '\n'
+                                return content_for_parsing, standardized_tool_calls
+                            elif has_json_block:
+                                # 只有一个工具调用，正常解析并返回
+                                # 确保JSON块完整
+                                content_for_parsing = self._ensure_first_json_block_complete(content)
+                                
+                                # Parse tool calls from the accumulated content
+                                tool_calls = self.parse_tool_calls(content_for_parsing)
+                                
+                                # 只保留第一个工具调用
+                                if tool_calls and len(tool_calls) > 1:
+                                    tool_calls = [tool_calls[0]]
+                                
+                                # Convert tool calls to standard format for compatibility
+                                standardized_tool_calls = []
+                                for tool_call in tool_calls:
+                                    if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                                        standardized_tool_calls.append({
+                                            "name": tool_call["name"],
+                                            "input": tool_call["arguments"]  # Use "input" format like Anthropic
+                                        })
+                                    else:
+                                        print_current(f"⚠️ Warning: Tool call format invalid: {tool_call}")
+                                
+                                # 调试：检查转换结果
+                                if not standardized_tool_calls:
+                                    print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
+                                    print_current(f"Content for parsing length: {len(content_for_parsing)}")
+                                    print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                
+                                # 添加换行（仅限chat接口）
+                                if not content_for_parsing.endswith('\n'):
+                                    content_for_parsing += '\n'
+                                return content_for_parsing, standardized_tool_calls
+                            
+                            # 没有工具调用，返回空列表
+                            # 添加换行（仅限chat接口）
+                            if not content.endswith('\n'):
+                                content += '\n'
+                            return content, []
                         
                     else:
                         # print_current("🔄 LLM is thinking:")
@@ -3658,8 +4590,67 @@ class ToolExecutor:
                             messages=api_messages,
                             max_tokens=self._get_max_tokens_for_model(self.model),
                             temperature=0.7,
-                            top_p=0.8
+                            top_p=0.8,
+                            stream=False
                     )
+
+                    # Check if response is a Stream object (should not happen with stream=False)
+                    if hasattr(response, '__iter__') and not hasattr(response, 'choices'):
+                        # If we got a Stream object, consume it to get the actual response
+                        print_current("⚠️ Warning: Received Stream object despite stream=False. Converting to regular response...")
+                        content = ""
+                        json_block_detected = False
+                        stream_error_occurred = False
+                        stream_error_message = ""
+                        
+                        try:
+                            for chunk in response:
+                                if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                                    delta = chunk.choices[0].delta
+                                    if hasattr(delta, 'content') and delta.content is not None:
+                                        content += delta.content
+                                        
+                                        # 检测完整的JSON工具调用块
+                                        if self._is_complete_json_tool_call(content):
+                                            print_current("Multiple Tool calls detected, left the first and stop chatting")
+                                            json_block_detected = True
+                                            break
+                        except Exception as e:
+                            # 捕获流式处理中的异常
+                            stream_error_occurred = True
+                            stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
+                            print_debug(f"⚠️ {stream_error_message}")
+                            print_current(f"⚠️ OpenAI API streaming error (unexpected stream mode): {str(e)}")
+                            # 继续处理已接收的内容
+                        finally:
+                            # 显式关闭streaming连接（无论是否发生错误都要关闭）
+                            try:
+                                if hasattr(response, 'close'):
+                                    response.close()
+                                    print_debug("🔌 已显式关闭streaming连接")
+                            except Exception as close_error:
+                                print_debug(f"⚠️ 关闭streaming连接时出错: {close_error}")
+                        
+                        # 如果发生流错误，记录并继续处理
+                        if stream_error_occurred:
+                            print_current(f"⚠️ 流式响应中断，已处理内容长度: {len(content)} 字符")
+                            if not content:
+                                # 如果没有接收到任何内容，重新抛出异常
+                                raise Exception(f"OpenAI API streaming failed (unexpected stream mode): {stream_error_message}")
+                        
+                        # Return early with parsed content
+                        tool_calls = self.parse_tool_calls(content)
+                        standardized_tool_calls = []
+                        for tool_call in tool_calls:
+                            if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
+                                standardized_tool_calls.append({
+                                    "name": tool_call["name"],
+                                    "input": tool_call["arguments"]
+                                })
+                        # 添加换行（仅限chat接口）
+                        if not content.endswith('\n'):
+                            content += '\n'
+                        return content, standardized_tool_calls
 
                     # Extract content and thinking field from OpenAI response
                     message = response.choices[0].message
@@ -3672,12 +4663,19 @@ class ToolExecutor:
                         content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                     # Check for hallucination pattern in non-streaming response
-                        if "**LLM Called Following Tools in this round" in content:
-                            # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
-                            return content, []
+                    if "**LLM Called Following Tools in this round" in content:
+                        # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
+                        # 添加换行（仅限chat接口）
+                        if not content.endswith('\n'):
+                            content += '\n'
+                        return content, []
 
                 # Parse tool calls from the response content
                 tool_calls = self.parse_tool_calls(content)
+                
+                # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
+                if tool_calls and len(tool_calls) > 1:
+                    tool_calls = [tool_calls[0]]
                 
                 # Convert tool calls to standard format for compatibility
                 standardized_tool_calls = []
@@ -3688,6 +4686,9 @@ class ToolExecutor:
                             "input": tool_call["arguments"]  # Use "input" format like Anthropic
                         })
                 
+                # 添加换行（仅限chat接口）
+                if not content.endswith('\n'):
+                    content += '\n'
                 return content, standardized_tool_calls
                 
             except Exception as e:
@@ -3801,13 +4802,13 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        content += text
-                                                        # 检测幻觉模式（检查累积的content而不是单个text块）
-                                                        if "**LLM Called Following Tools in this round" in content:
+                                                        # 检测幻觉模式
+                                                        if "**LLM Called Following Tools in this round" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
                                                         printer.write(text)
+                                                        content += text
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
                                                 # 继续处理其他事件
@@ -3850,13 +4851,12 @@ class ToolExecutor:
                                     # 尝试回退到text_stream
                                     try:
                                         for text in stream.text_stream:
-                                            content += text
-                                            # 检测幻觉模式（检查累积的content而不是单个text块）
-                                            if "**LLM Called Following Tools in this round" in content:
+                                            if "**LLM Called Following Tools in this round" in text:
                                                 print_current("\n🚨 Hallucination detected, stopping conversation")
                                                 hallucination_detected = True
                                                 break
                                             printer.write(text)
+                                            content += text
                                     except Exception as fallback_error:
                                         print_error(f"Text streaming also failed: {fallback_error}")
                                         break
@@ -4040,9 +5040,10 @@ class ToolExecutor:
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
             try:
                 if self.streaming:
-                    # 简化的OpenAI流式处理逻辑 - 只处理message部分，工具调用从最终响应中读取
+                    # 流式处理逻辑 - 在接收到完整工具调用块后立即停止
                     content = ""
                     tool_calls = []
+                    tool_calls_buffer = {}  # 用于收集增量式的工具调用信息
                     
                     with streaming_context(show_start_message=False) as printer:
                         # 显示LLM开始说话的emoji
@@ -4059,57 +5060,64 @@ class ToolExecutor:
                             stream=True
                         )
 
-                        for chunk in response:
-                            if chunk.choices and len(chunk.choices) > 0:
-                                delta = chunk.choices[0].delta
-                                
-                                # 只处理文本内容的流式输出
-                                if delta.content is not None:
-                                    # 检测幻觉模式
-                                    #if "**LLM Called Following Tools in this round" in delta.content:
-                                    #    print_current("\n🚨 Hallucination Detected, stop chat")
-                                    #    hallucination_detected = True
-                                    #    break
-
-                                    printer.write(delta.content)
-                                    content += delta.content
-                            
-                            # 检查是否是最后一个chunk
-                            if (chunk.choices and len(chunk.choices) > 0 and 
-                                chunk.choices[0].finish_reason is not None):
-                                break
+                        try:
+                            for chunk in response:
+                                if chunk.choices and len(chunk.choices) > 0:
+                                    delta = chunk.choices[0].delta
+                                    finish_reason = chunk.choices[0].finish_reason
+                                    
+                                    # 处理文本内容的流式输出
+                                    if delta.content is not None:
+                                        printer.write(delta.content)
+                                        content += delta.content
+                                    
+                                    # 处理工具调用的增量更新
+                                    if delta.tool_calls:
+                                        for tool_call_delta in delta.tool_calls:
+                                            idx = tool_call_delta.index
+                                            if idx not in tool_calls_buffer:
+                                                tool_calls_buffer[idx] = {
+                                                    "id": "",
+                                                    "type": "function",
+                                                    "function": {
+                                                        "name": "",
+                                                        "arguments": ""
+                                                    }
+                                                }
+                                            
+                                            # 累积工具调用信息
+                                            if tool_call_delta.id:
+                                                tool_calls_buffer[idx]["id"] = tool_call_delta.id
+                                            if tool_call_delta.function:
+                                                if tool_call_delta.function.name:
+                                                    tool_calls_buffer[idx]["function"]["name"] = tool_call_delta.function.name
+                                                if tool_call_delta.function.arguments:
+                                                    tool_calls_buffer[idx]["function"]["arguments"] += tool_call_delta.function.arguments
+                                    
+                                    # 一旦检测到工具调用完成，立即停止接收
+                                    if finish_reason == "tool_calls":
+                                        print_current("\n🛑 检测到完整工具调用块，停止接收")
+                                        break
+                                    
+                                    # 检查是否是其他原因的结束
+                                    if finish_reason is not None:
+                                        break
+                        finally:
+                            # 显式关闭streaming连接，通知服务器停止生成
+                            # 这确保了服务器端能够感知到客户端已停止接收
+                            if hasattr(response, 'close'):
+                                try:
+                                    response.close()
+                                    print_debug("🔌 已显式关闭streaming连接")
+                                except Exception as e:
+                                    print_debug(f"⚠️ 关闭streaming连接时出错: {e}")
                         
                         print_current("")
-                        
-                        # 如果检测到幻觉，提前返回
-                        #if hallucination_detected:
-                        #    return content, []
                     
-                    # 从最终响应中读取工具调用信息
-                    try:
-                        # 重新获取完整响应以获取工具调用
-                        final_response = self.client.chat.completions.create(
-                            model=self.model,
-                            messages=api_messages,
-                            tools=tools,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            temperature=0.7,
-                            top_p=0.8
-                        )
-                        
-                        # 提取工具调用
-                        raw_tool_calls = final_response.choices[0].message.tool_calls or []
-                        for tool_call in raw_tool_calls:
-                            tool_calls.append({
-                                "id": tool_call.id,
-                                "type": tool_call.type,
-                                "function": {
-                                    "name": tool_call.function.name,
-                                    "arguments": tool_call.function.arguments
-                                }
-                            })
-                    except Exception as e:
-                        print_error(f"Failed to get tool calls from final response: {e}")
+                    # 将缓冲区中的工具调用转换为列表
+                    if tool_calls_buffer:
+                        for idx in sorted(tool_calls_buffer.keys()):
+                            tool_calls.append(tool_calls_buffer[idx])
                     
                     # Execute tool calls
                     if tool_calls:
@@ -4161,17 +5169,6 @@ class ToolExecutor:
                     if hallucination_detected:
                         return content, []
 
-                    # Check for thinking field in final response for OpenAI o1 models
-                    try:
-                        final_message = final_response.choices[0].message
-                        thinking = getattr(final_message, 'thinking', None)
-                        if thinking and not content.startswith("## Thinking Process"):
-                            # Prepend thinking process if not already included
-                            content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
-                    except Exception as e:
-                        # If we can't get the thinking field, continue without it
-                        pass
-
                     # print_current("\n✅ Streaming completed")
                     return content, tool_calls
                 else:
@@ -4182,8 +5179,26 @@ class ToolExecutor:
                         tools=tools,
                         max_tokens=self._get_max_tokens_for_model(self.model),
                         temperature=0.7,
-                        top_p=0.8
+                        top_p=0.8,
+                        stream=False
                     )
+
+                    # Check if response is a Stream object (should not happen with stream=False)
+                    if hasattr(response, '__iter__') and not hasattr(response, 'choices'):
+                        # If we got a Stream object, consume it to get the actual response
+                        print_current("⚠️ Warning: Received Stream object despite stream=False. Converting to regular response...")
+                        content = ""
+                        tool_calls = []
+                        for chunk in response:
+                            if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                                delta = chunk.choices[0].delta
+                                if hasattr(delta, 'content') and delta.content is not None:
+                                    content += delta.content
+                                # Collect tool calls from chunks if present
+                                if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                                    for tc in delta.tool_calls:
+                                        tool_calls.append(tc)
+                        return content, tool_calls
 
                     # Extract content and thinking field from OpenAI response
                     message = response.choices[0].message
@@ -4444,13 +5459,13 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        content += text
-                                                        # 检测幻觉模式（检查累积的content而不是单个text块）
-                                                        if "**LLM Called Following Tools in this round" in content:
+                                                        # 检测幻觉模式
+                                                        if "**LLM Called Following Tools in this round" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
                                                         printer.write(text)
+                                                        content += text
                                                     
                                                     elif delta_type == "input_json_delta":
                                                         partial_json = getattr(delta, 'partial_json', '')
@@ -4526,13 +5541,12 @@ class ToolExecutor:
                                 # 尝试回退到text_stream
                                 try:
                                     for text in stream.text_stream:
-                                        content += text
-                                        # 检测幻觉模式（检查累积的content而不是单个text块）
-                                        if "**LLM Called Following Tools in this round" in content:
+                                        if "**LLM Called Following Tools in this round" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                             hallucination_detected = True
                                             break
                                         printer.write(text)
+                                        content += text
                                 except Exception as fallback_error:
                                     print_error(f"Text streaming also failed: {fallback_error}")
                                     break
@@ -5843,7 +6857,8 @@ class ToolExecutor:
                     messages=vision_messages,
                     max_tokens=self._get_max_tokens_for_model(self.model),
                     temperature=0.7,
-                    top_p=0.8
+                    top_p=0.8,
+                    stream=False
                 )
 
                 # Extract content and thinking field from OpenAI response

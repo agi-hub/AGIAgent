@@ -1036,9 +1036,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
     It communicates back to the main process via the queue.
     """
     try:
-        # 🚀 Send task_started event IMMEDIATELY to provide instant feedback (before any other operations)
-        output_queue.put({'event': 'task_started', 'data': {'message': '🚀 Task starting...'}})
-        
+
         # Get i18n texts for this process (after sending initial message)
         i18n = get_i18n_texts()
         
@@ -1338,8 +1336,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                     *lines, self.buffer = self.buffer.split('\n')
                     for line in lines:
                         if line.strip():
-                            # Filter code_edit content for GUI display
-                            filtered_line = self.filter_code_edit_content(line.strip())
+                            # Filter code_edit content for GUI display (preserve leading spaces)
+                            line_rstrip = line.rstrip()  # Only remove trailing spaces, preserve leading spaces
+                            filtered_line = self.filter_code_edit_content(line_rstrip)
                             
                             # Filter out redundant system messages that are already displayed in GUI
                             if self.should_filter_message(filtered_line):
@@ -1367,8 +1366,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             
             def final_flush(self):
                 if self.buffer.strip():
-                    # Filter out redundant system messages
-                    if self.should_filter_message(self.buffer.strip()):
+                    # Filter out redundant system messages (preserve leading spaces)
+                    buffer_rstrip = self.buffer.rstrip()  # Only remove trailing spaces, preserve leading spaces
+                    if self.should_filter_message(buffer_rstrip):
                         self.buffer = ""
                         return
                     
@@ -1387,7 +1387,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                     else:
                         message_type = self.socket_type
                     # Display warning and progress info as normal info
-                    self.q.put({'event': 'output', 'data': {'message': self.buffer.strip(), 'type': message_type}})
+                    self.q.put({'event': 'output', 'data': {'message': buffer_rstrip, 'type': message_type}})
                     self.buffer = ""
 
         original_stdout = sys.stdout

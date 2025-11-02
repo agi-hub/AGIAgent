@@ -1269,7 +1269,7 @@ Final result: {final_result}
         
         # Task execution completed
         #print_current(f"📁 All output files saved at: {os.path.abspath(self.out_dir)}")
-        print_current(f"💻 User files saved at: {os.path.abspath(workspace_dir)}")
+        # print_current(f"💻 User files saved at: {os.path.abspath(workspace_dir)}")
         
         print_current("🎉 Workflow completed!")
         finish_operation("Main Program Execution")

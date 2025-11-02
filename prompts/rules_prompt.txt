@@ -72,11 +72,11 @@ Immediately provide a detailed, comprehensive description of the image content i
 </image_processing>
 
 <task_execution_efficiency>
-Efficiency and Round Optimization:
-You MUST prioritize completing tasks in as few rounds as possible. To achieve this:
-1. **Maximize work per round**: Plan and execute multiple related actions in a single round rather than spreading them across multiple rounds.
-2. **Parallel tool usage**: When possible, call multiple tools simultaneously in one round to gather information, create files, or perform operations concurrently.
-3. **Complete related tasks together**: If a task involves multiple steps (e.g., creating files, running tests, generating documentation), try to complete all steps in one round.
+Tool Call Limitation:
+You MUST follow this strict rule for tool usage:
+1. **Single tool per round**: You can ONLY call ONE tool in each round. Do not call multiple tools simultaneously （only one JSON tool calling block）. 
+2. **Sequential execution**: Plan tasks to be executed sequentially across multiple rounds, with each round focusing on a single tool call.
+3. **Step-by-step approach**: Break down complex tasks into individual steps, executing one tool call per step.
 4. After reading large files, you should generate output in-time, otherwise the your memory will be substituted by a summary. Avoid reading or searching in multiple rounds without writing anything to file. 
 </task_execution_efficiency>
 
