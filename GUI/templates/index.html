@@ -1060,11 +1060,23 @@
 
         /* Responsive design for mobile devices */
         @media (max-width: 768px) {
+            html {
+                overflow-y: auto; /* 允许页面滚动 */
+                overflow-x: hidden;
+                height: auto; /* 允许页面可以很长 */
+                min-height: 100vh; /* 至少占满视口 */
+                -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+                scroll-behavior: smooth; /* 平滑滚动 */
+            }
+            
             body {
-                overflow: hidden;
-                height: 100vh;
+                overflow: visible; /* 允许页面滚动 */
+                height: auto; /* 允许页面可以很长 */
+                min-height: 100vh; /* 至少占满视口 */
                 display: flex;
                 flex-direction: column;
+                -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+                touch-action: pan-y; /* 优化触摸滚动 */
             }
             
             /* Header optimization */
@@ -1157,9 +1169,9 @@
             /* Container layout */
             .container {
                 flex-direction: column;
-                flex: 1;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
-                overflow-y: auto; /* 允许内容滚动 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
             }
             
             .sidebar {
@@ -1169,18 +1181,20 @@
                 border-left: none;
                 border-bottom: 1px solid #3e3e42;
                 order: 2;
-                overflow-y: auto;
-                max-height: 40vh; /* 限制最大高度为40%视口高度 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
+                max-height: none; /* 移除高度限制，让内容自然流动 */
             }
             
             .main-content {
                 padding: 10px;
+                padding-bottom: 20px; /* 增加底部padding，确保按钮可以通过滚动到达 */
                 min-width: unset;
                 order: 1;
-                flex: 1;
-                min-height: 0; /* 允许内容收缩 */
+                flex: none; /* 不占据固定空间，随内容自然增长 */
+                min-height: 0;
                 display: flex;
                 flex-direction: column;
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
             }
             
             /* Hide resizer on mobile */
@@ -1191,18 +1205,19 @@
             /* Chat container optimization */
             .chat-container {
                 margin-bottom: 10px;
-                flex: 1;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
+                max-height: none; /* 不限制最大高度，让内容自然流动 */
             }
             
             
             .chat-messages {
                 padding: 10px;
-                flex: 1;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
-                overflow-y: auto;
+                overflow: visible; /* 在手机端不内部滚动，让页面统一滚动 */
             }
             
             .message {
@@ -1215,6 +1230,8 @@
             .input-container {
                 padding: 10px;
                 flex-shrink: 0;
+                position: relative; /* 确保按钮区域可见 */
+                /* 移除margin-top: auto，让按钮区域在内容流中自然显示 */
             }
             
             .input-group {
@@ -1264,10 +1281,10 @@
             }
             
             .directory-list {
-                flex: 1;
-                min-height: 200px; /* 增加目录列表最小高度 */
-                max-height: calc(60vh - 80px); /* 匹配新的sidebar最大高度 */
-                overflow-y: auto;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
+                min-height: 200px; /* 保留最小高度，确保可见 */
+                max-height: none; /* 移除高度限制，让内容自然流动 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
                 padding: 8px;
             }
             
@@ -1295,8 +1312,8 @@
             }
             
             .file-tree {
-                max-height: 300px; /* 手机端也增加高度 */
-                overflow-y: auto;
+                max-height: none; /* 移除高度限制，让内容自然流动 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
             }
             
             .file-item {
@@ -1314,26 +1331,30 @@
             
             .main-content {
                 padding: 8px;
-                flex: 1;
+                padding-bottom: 20px; /* 增加底部padding，确保按钮可以通过滚动到达 */
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
             }
             
             .sidebar {
                 flex-shrink: 0;
-                max-height: 35vh; /* 小屏设备最大高度 */
+                max-height: none; /* 移除高度限制，让内容自然流动 */
             }
             
             .chat-container {
-                flex: 1;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
+                max-height: none; /* 不限制最大高度，让内容自然流动 */
             }
             
             .chat-messages {
                 padding: 8px;
-                flex: 1;
+                flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
+                overflow: visible; /* 在手机端不内部滚动，让页面统一滚动 */
             }
             
             .message {
@@ -1344,6 +1365,8 @@
             
             .input-container {
                 padding: 8px;
+                position: relative; /* 确保按钮区域可见 */
+                /* 移除margin-top: auto，让按钮区域在内容流中自然显示 */
             }
             
             #userInput {
@@ -1364,8 +1387,9 @@
             }
             
             .directory-list {
-                min-height: 150px; /* 增加小屏设备目录列表最小高度 */
-                max-height: calc(50vh - 60px); /* 匹配小屏sidebar最大高度 */
+                min-height: 150px; /* 保留最小高度，确保可见 */
+                max-height: none; /* 移除高度限制，让内容自然流动 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
                 padding: 6px;
             }
             
@@ -1392,8 +1416,8 @@
             }
             
             .file-tree {
-                max-height: 250px; /* 小屏设备也增加高度 */
-                overflow-y: auto;
+                max-height: none; /* 移除高度限制，让内容自然流动 */
+                overflow: visible; /* 移除滚动，让页面统一滚动 */
             }
             
             .file-item {
@@ -3246,7 +3270,7 @@
             
             const title = document.createElement('div');
             title.className = 'json-collapsible-title';
-            title.innerHTML = `<span class="json-collapsible-icon">▼</span><span>${escapeHtml(toolName || 'JSON输出')}</span>`;
+            title.innerHTML = `<span class="json-collapsible-icon">▼</span><span>${escapeHtml(toolName || '工具调用')}</span>`;
             
             header.appendChild(title);
             
@@ -3576,7 +3600,7 @@
                     jsonCollectingState.jsonContent = message + '\n';
                     
                     // 创建一个临时的折叠框（但先不显示内容，等待JSON开始）
-                    jsonCollectingState.jsonContainer = createJsonCollapsible('JSON输出');
+                    jsonCollectingState.jsonContainer = createJsonCollapsible('工具调用');
                     const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                     contentDiv.textContent = jsonCollectingState.jsonContent;
                     
@@ -3606,7 +3630,7 @@
                 jsonCollectingState.toolName = toolName;
                 
                 // 创建JSON折叠框
-                jsonCollectingState.jsonContainer = createJsonCollapsible(toolName || 'JSON输出');
+                jsonCollectingState.jsonContainer = createJsonCollapsible(toolName || '工具调用');
                 const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                 contentDiv.textContent = jsonCollectingState.jsonContent;
                 
@@ -3860,6 +3884,11 @@
                     });
                 }
                 
+                // 任务发送成功后立即清空输入框
+                userInput.value = '';
+                pendingUserInput = '';
+                resizeTextarea();
+                
             } catch (error) {
                 console.error('Configuration validation error:', error);
                 addMessage(`${I18N.config_error_title}: ${I18N.config_validation_failed}`, 'error');
@@ -4056,6 +4085,11 @@
                     type: 'selected',
                     gui_config: guiConfig
                 });
+                
+                // 任务发送成功后立即清空输入框
+                userInput.value = '';
+                pendingUserInput = '';
+                resizeTextarea();
                 
             } catch (error) {
                 console.error('Configuration validation error:', error);

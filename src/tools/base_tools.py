@@ -61,7 +61,6 @@ class BaseTools:
             # Only initialize code parser if we have a valid workspace_root
             # Don't create code index for project root directory
             if not self.workspace_root:
-                print_current("⚠️ No workspace_root specified, skipping code parser initialization")
                 self.code_parser = None
                 return
                 
@@ -74,8 +73,26 @@ class BaseTools:
             is_workspace_dir = workspace_name == "workspace"
             has_workspace_subdir = os.path.exists(os.path.join(workspace_path, "workspace"))
             
+            # Check if it's a parent directory containing multiple output_* subdirectories
+            # (This case doesn't need code parser, so we skip silently)
+            is_parent_of_outputs = False
             if not (is_workspace_dir or has_workspace_subdir):
-                print_current(f"⚠️ Workspace path '{workspace_path}' doesn't appear to be a valid workspace directory, skipping code parser initialization")
+                # Check if this is a parent directory containing output_* subdirectories
+                try:
+                    if os.path.isdir(workspace_path):
+                        subdirs = [d for d in os.listdir(workspace_path) 
+                                 if os.path.isdir(os.path.join(workspace_path, d)) 
+                                 and d.startswith('output_')]
+                        if len(subdirs) > 0:
+                            is_parent_of_outputs = True
+                except (OSError, PermissionError):
+                    pass
+            
+            if not (is_workspace_dir or has_workspace_subdir):
+                # Only print warning if it's not a parent of output directories
+                # (parent directories are expected and don't need code parser)
+                if not is_parent_of_outputs:
+                    print_current(f"⚠️ Workspace path '{workspace_path}' doesn't appear to be a valid workspace directory, skipping code parser initialization")
                 self.code_parser = None
                 return
             

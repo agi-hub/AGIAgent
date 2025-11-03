@@ -30,7 +30,7 @@ import logging
 import time
 import threading
 from datetime import datetime
-from .print_system import print_system, print_current, print_system, print_error
+from .print_system import print_system, print_current, print_debug, print_error
 
 # Configure logging BEFORE importing jieba to suppress debug output
 logging.basicConfig(level=logging.WARNING)

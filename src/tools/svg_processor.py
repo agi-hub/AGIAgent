@@ -155,12 +155,17 @@ class SVGProcessor:
             # Generate a unique ID for this SVG block based on content hash
             svg_hash = hashlib.md5(svg_code.encode('utf-8')).hexdigest()[:8]
             
+            # Extract caption from following comment
+            following_content = content[end_pos:end_pos+200]  # Check next 200 chars
+            caption = self._extract_caption_from_comment(following_content)
+            
             svg_blocks.append({
                 'id': svg_hash,
                 'svg_code': svg_code,
                 'full_block': full_block,
                 'start_pos': start_pos,
                 'end_pos': end_pos,
+                'caption': caption,
                 'is_corrected': False
             })
         
@@ -183,12 +188,17 @@ class SVGProcessor:
                 # Generate a unique ID for this SVG block based on content hash
                 svg_hash = hashlib.md5(svg_code.encode('utf-8')).hexdigest()[:8]
                 
+                # Extract caption from following comment
+                following_content = corrected_content[end_pos:end_pos+200]  # Check next 200 chars
+                caption = self._extract_caption_from_comment(following_content)
+                
                 svg_blocks.append({
                     'id': svg_hash,
                     'svg_code': svg_code,
                     'full_block': full_block,
                     'start_pos': start_pos,
                     'end_pos': end_pos,
+                    'caption': caption,
                     'is_corrected': True,
                     'original_content': content,
                     'corrected_content': corrected_content
@@ -196,6 +206,27 @@ class SVGProcessor:
         
         print_debug(f"📊 Found {len(svg_blocks)} SVG code blocks")
         return svg_blocks
+    
+    def _extract_caption_from_comment(self, content: str) -> Optional[str]:
+        """
+        Extract figure caption from comment following SVG block
+        
+        Args:
+            content: Content following the SVG block
+            
+        Returns:
+            Caption text if found, None otherwise
+        """
+        # Look for the figure caption comment pattern: <!-- caption -->
+        # Match the first HTML comment that doesn't contain system keywords
+        caption_match = re.search(r'<!--\s*([^-]+?)\s*-->', content.strip(), re.IGNORECASE)
+        if caption_match:
+            caption = caption_match.group(1).strip()
+            # Filter out common system comments that shouldn't be used as captions
+            system_comments = ['the_figure_caption', 'Available formats', 'Source code file', 'SVG processing failed']
+            if not any(sys_comment in caption for sys_comment in system_comments):
+                return caption
+        return None
     
     def _apply_svg_error_tolerance(self, content: str) -> str:
         """
@@ -568,12 +599,14 @@ class SVGProcessor:
             Updated markdown content
         """
         updated_content = content
+        base_content_for_search = content
         
         # Check if any blocks were corrected and use the corrected content as base
         corrected_blocks = [r for r in processing_results if r['block'].get('is_corrected', False)]
         if corrected_blocks:
             # Use the corrected content from the first corrected block as our base
             updated_content = corrected_blocks[0]['block']['corrected_content']
+            base_content_for_search = corrected_blocks[0]['block']['corrected_content']
             print_debug("📝 Using error-corrected content as base for updates")
         
         # Sort ALL results by start position in reverse order to avoid position shifts
@@ -584,20 +617,43 @@ class SVGProcessor:
             block = result['block']
             svg_id = result['id']
             full_block = block['full_block']
+            caption = block.get('caption')
             
+            # Build replacement pattern that includes following comment if caption exists
+            # This ensures we replace both the SVG block and the comment in one operation
+            replacement_pattern = full_block
+            if caption:
+                # Check if there's a comment immediately following the SVG block
+                end_pos = block['end_pos']
+                # Use the base content for search (corrected or original)
+                following_text = base_content_for_search[end_pos:end_pos+300]  # Check next 300 chars
+                # Match comment with the caption, allowing for whitespace
+                comment_match = re.search(
+                    r'\s*\n\s*<!--\s*' + re.escape(caption) + r'\s*-->\s*\n',
+                    following_text,
+                    re.IGNORECASE | re.MULTILINE
+                )
+                if comment_match:
+                    # Include the comment in the pattern to be replaced
+                    replacement_pattern = full_block + comment_match.group(0)
+                    print_debug(f"📝 Found caption comment for SVG block {svg_id}, will be removed")
+            
+            # Determine replacement content
             if result['status'] == 'success':
                 # Successful SVG processing - use SVG image
                 svg_file = result.get('svg_file', result['png_file'].replace('.png', '.svg'))
-                alt_text = f"SVG图表 {svg_id}"
+                # Use caption if available, otherwise use default
+                alt_text = caption if caption else f"SVG图表 {svg_id}"
                 replacement = f"![{alt_text}]({svg_file})"
-                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link")
+                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (caption: {alt_text})")
                 
             elif result.get('svg_file'):
                 # PNG conversion failed but SVG file exists - use SVG image directly
                 svg_file = result['svg_file']
-                alt_text = f"SVG图表 {svg_id}"
+                # Use caption if available, otherwise use default
+                alt_text = caption if caption else f"SVG图表 {svg_id}"
                 replacement = f"![{alt_text}]({svg_file})"
-                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (PNG conversion failed)")
+                print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (PNG conversion failed, caption: {alt_text})")
                 
             else:
                 # Complete failure - use error comment
@@ -605,8 +661,8 @@ class SVGProcessor:
                 replacement = f"<!-- SVG processing failed: {error} -->"
                 print_debug(f"🔄 Replaced SVG block {svg_id} with error comment")
             
-            # Replace the original SVG code block
-            updated_content = updated_content.replace(full_block, replacement, 1)
+            # Replace the SVG code block (and comment if included)
+            updated_content = updated_content.replace(replacement_pattern, replacement, 1)
         
         # Final cleanup: Remove orphaned ``` markers left after SVG replacement
         # This single pattern handles: ``` after images, at end of file, or standalone

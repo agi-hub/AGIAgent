@@ -24,13 +24,13 @@ def read_routine_content(routine_file: str) -> Optional[str]:
         if os.path.exists(routine_file):
             with open(routine_file, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
-            print(f"📋 Loaded routine file: {routine_file}")
+            #print(f"📋 Loaded routine file: {routine_file}")
             return content
         else:
-            print(f"⚠️ Warning: Routine file not found: {routine_file}")
+            #print(f"⚠️ Warning: Routine file not found: {routine_file}")
             return None
     except Exception as e:
-        print(f"❌ Error reading routine file {routine_file}: {e}")
+        #print(f"❌ Error reading routine file {routine_file}: {e}")
         return None
 
 def format_routine_for_single_task(routine_content: str) -> str:

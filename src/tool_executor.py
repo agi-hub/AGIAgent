@@ -68,8 +68,8 @@ from utils.cacheeff import (
 from utils.parse import (
     fix_json_escapes,
     smart_escape_quotes_in_json_values,
+    fix_json_string_values_robust,
     rebuild_json_structure,
-    fix_long_json_with_code,
     parse_python_params_manually,
     convert_parameter_value,
     generate_tools_prompt_from_json,
@@ -1927,55 +1927,20 @@ class ToolExecutor:
     
     def _ensure_first_json_block_complete(self, content: str) -> str:
         """
-        确保第一个```json块是完整的（有闭合的```）
-        如果不完整，尝试找到第一个完整的JSON对象并补全闭合标记
+        简化版本：确保第一个```json块有闭合的```标记
+        不做复杂的修复，只做基本检查，将修复交给parse_tool_calls处理
         
         Args:
             content: 响应内容
             
         Returns:
-            str: 确保第一个JSON块完整的内容
+            str: 确保第一个JSON块有闭合标记的内容（如果缺失则补全），否则返回原内容
         """
         json_block_marker = '```json'
         first_pos = content.find(json_block_marker)
+        
+        # 如果没有找到```json标记，直接返回原内容，让parse_tool_calls处理
         if first_pos == -1:
-            # 如果没有找到```json标记，尝试查找JSON对象
-            # 这可能是因为内容被截断了
-            json_start = content.find('{')
-            if json_start != -1:
-                # 尝试找到完整的JSON对象
-                brace_count = 0
-                json_end_pos = -1
-                in_string = False
-                escape_next = False
-                
-                for i in range(json_start, len(content)):
-                    char = content[i]
-                    if escape_next:
-                        escape_next = False
-                        continue
-                    
-                    if char == '\\':
-                        escape_next = True
-                        continue
-                    
-                    if char == '"':
-                        in_string = not in_string
-                        continue
-                    
-                    if not in_string:
-                        if char == '{':
-                            brace_count += 1
-                        elif char == '}':
-                            brace_count -= 1
-                            if brace_count == 0:
-                                json_end_pos = i + 1
-                                break
-                
-                if json_end_pos > json_start:
-                    # 找到了完整的JSON对象，添加```json标记
-                    complete_content = content[:json_start] + json_block_marker + '\n' + content[json_start:json_end_pos] + '\n```'
-                    return complete_content
             return content
         
         # 找到第一个```json块的开始位置
@@ -1984,88 +1949,13 @@ class ToolExecutor:
         # 查找第一个```json块的结束位置（闭合的```）
         first_block_end = content.find('```', json_start)
         
-        if first_block_end == -1:
-            # 第一个块没有闭合，需要找到第一个完整的JSON对象
-            json_content = content[json_start:].strip()
-            
-            # 跳过开头的空白字符和换行
-            json_content = json_content.lstrip()
-            
-            # 尝试找到第一个完整的JSON对象（从第一个{到匹配的}）
-            brace_count = 0
-            json_end_pos = -1
-            in_string = False
-            escape_next = False
-            
-            for i, char in enumerate(json_content):
-                if escape_next:
-                    escape_next = False
-                    continue
-                
-                if char == '\\':
-                    escape_next = True
-                    continue
-                
-                if char == '"':
-                    in_string = not in_string
-                    continue
-                
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            json_end_pos = i + 1
-                            break
-            
-            if json_end_pos > 0:
-                # 找到了完整的JSON对象，补全闭合标记
-                complete_content = content[:json_start] + json_content[:json_end_pos] + '\n```'
-                return complete_content
-            else:
-                # 如果找不到完整的JSON对象，尝试使用原始内容（可能已经包含了部分JSON）
-                # 这种情况下，parse_tool_calls可能需要更宽松的解析
-                return content
-        
-        # 如果第一个块已经完整闭合，验证JSON内容是否有效
+        # 如果第一个块已经完整闭合，直接返回
         if first_block_end != -1:
-            json_content_raw = content[json_start:first_block_end]
-            json_content = json_content_raw.strip()
-            try:
-                test_json = json.loads(json_content)
-            except json.JSONDecodeError as e:
-                # JSON内容无效，尝试修复
-                try:
-                    # 尝试使用修复函数修复JSON
-                    fixed_json = smart_escape_quotes_in_json_values(json_content)
-                    test_json = json.loads(fixed_json)
-                    # 更新内容中的JSON部分（保持原有的空白字符格式）
-                    leading_ws_len = len(json_content_raw) - len(json_content_raw.lstrip())
-                    trailing_ws_len = len(json_content_raw) - len(json_content_raw.rstrip())
-                    leading_ws = json_content_raw[:leading_ws_len] if leading_ws_len > 0 else ''
-                    trailing_ws = json_content_raw[-trailing_ws_len:] if trailing_ws_len > 0 else ''
-                    content = content[:json_start] + leading_ws + fixed_json + trailing_ws + content[first_block_end:]
-                except (json.JSONDecodeError, Exception):
-                    # 修复也失败，尝试使用长JSON修复器
-                    try:
-                        fixed_json = fix_long_json_with_code(json_content)
-                        test_json = json.loads(fixed_json)
-                        # 修复成功，更新内容但不打印警告
-                        # 更新内容中的JSON部分（保持原有的空白字符格式）
-                        leading_ws_len = len(json_content_raw) - len(json_content_raw.lstrip())
-                        trailing_ws_len = len(json_content_raw) - len(json_content_raw.rstrip())
-                        leading_ws = json_content_raw[:leading_ws_len] if leading_ws_len > 0 else ''
-                        trailing_ws = json_content_raw[-trailing_ws_len:] if trailing_ws_len > 0 else ''
-                        content = content[:json_start] + leading_ws + fixed_json + trailing_ws + content[first_block_end:]
-                    except (json.JSONDecodeError, Exception):
-                        # 所有修复尝试都失败，打印警告但保持原样返回，让parse_tool_calls尝试修复
-                        print_current(f"⚠️ Warning: First JSON block content is invalid: {str(e)[:200]}")
-                        print_current(f"JSON content snippet (first 500 chars): {json_content[:500]}...")
-                        print_current(f"JSON content snippet (last 500 chars): {json_content[-500:] if len(json_content) > 500 else json_content}...")
-                        print_current(f"💡 Will attempt to fix during parsing...")
+            return content
         
-        return content
+        # 如果第一个块没有闭合，简单补全闭合标记（不做复杂的JSON验证）
+        # 只查找第一个匹配的```来闭合，如果找不到就原样返回让parse_tool_calls处理
+        return content + '\n```'
     
     def _get_content_before_second_json(self, content: str) -> str:
         """
@@ -2091,6 +1981,110 @@ class ToolExecutor:
         
         return result
     
+    def _extract_json_block_robust(self, content: str, start_marker: str = '```json') -> Optional[str]:
+        """
+        更健壮地提取JSON块，处理嵌套的```标记和不完整的JSON块。
+        
+        Args:
+            content: 要提取的内容
+            start_marker: JSON块开始标记，默认为'```json'
+            
+        Returns:
+            提取的JSON字符串，如果提取失败返回None
+        """
+        json_start = content.find(start_marker)
+        if json_start == -1:
+            return None
+        
+        # 从标记后开始查找JSON内容
+        json_content_start = json_start + len(start_marker)
+        
+        # 使用栈来匹配```标记，处理嵌套情况
+        # 首先找到第一个```作为开始
+        current_pos = json_content_start
+        depth = 0
+        json_content_end = -1
+        
+        # 查找JSON块的结束标记```
+        # 优化：对于tool_name/parameters格式，可以利用结尾的 }\n} 模式
+        # 先尝试找到最后一个```（JSON块的真正结束）
+        last_triple_backtick = content.rfind('```', json_content_start)
+        if last_triple_backtick > json_content_start:
+            # 检查这个位置之前是否有 }\n} 模式（说明这是JSON的结束）
+            before_marker = content[max(0, last_triple_backtick-10):last_triple_backtick]
+            if '}\n}' in before_marker or '}\n  }' in before_marker:
+                # 这很可能是JSON块的结束标记
+                json_content_end = last_triple_backtick
+            else:
+                # 继续使用原来的逻辑查找
+                i = current_pos
+                while i < len(content) - 2:
+                    if content[i:i+3] == '```':
+                        # 检查这是否是开始标记（前面没有内容或是换行）
+                        if i == json_content_start or content[i-1] in ['\n', '\r']:
+                            # 这是结束标记
+                            json_content_end = i
+                            break
+                    i += 1
+        else:
+            # 使用原来的逻辑
+            i = current_pos
+            while i < len(content) - 2:
+                if content[i:i+3] == '```':
+                    # 检查这是否是开始标记（前面没有内容或是换行）
+                    if i == json_content_start or content[i-1] in ['\n', '\r']:
+                        # 这是结束标记
+                        json_content_end = i
+                        break
+                i += 1
+        
+        if json_content_end == -1:
+            # 没有找到结束标记，可能JSON块不完整
+            # 尝试找到最后一个完整的JSON对象或数组
+            remaining = content[json_content_start:].strip()
+            # 尝试找到最后一个完整的 } 或 ]
+            brace_count = 0
+            bracket_count = 0
+            in_string = False
+            escape_next = False
+            last_valid_pos = -1
+            
+            for i, char in enumerate(remaining):
+                if escape_next:
+                    escape_next = False
+                    continue
+                    
+                if char == '\\':
+                    escape_next = True
+                    continue
+                    
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                    
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and bracket_count == 0:
+                            last_valid_pos = i + 1
+                    elif char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if brace_count == 0 and bracket_count == 0:
+                            last_valid_pos = i + 1
+            
+            if last_valid_pos > 0:
+                return remaining[:last_valid_pos].strip()
+            # 如果找不到完整的JSON，返回剩余内容（让JSON解析器尝试处理）
+            return remaining
+        
+        # 提取JSON内容
+        json_content = content[json_content_start:json_content_end].strip()
+        return json_content
+    
     def parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
         """
         Parse multiple tool calls from the model's response.
@@ -2103,6 +2097,7 @@ class ToolExecutor:
         """
         
         # Debug mode, save raw content for analysis
+        debug_info = []
         if self.debug_mode:
             # Check for common tool call format markers
             has_function_calls = '<function_calls>' in content
@@ -2110,55 +2105,66 @@ class ToolExecutor:
             has_function_call = '<function_call>' in content
             has_json_block = '```json' in content
             has_tool_calls_json = '"tool_calls"' in content
+            debug_info.append(f"Markers: json_block={has_json_block}, tool_calls_json={has_tool_calls_json}, function_calls={has_function_calls}")
         
         all_tool_calls = []
         
 
+        # Try OpenAI-style tool calls format with improved JSON extraction
         openai_json_pattern = r'```json\s*\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}\s*```'
         openai_json_match = re.search(openai_json_pattern, content, re.DOTALL)
-        if openai_json_match:
+        if openai_json_match or '```json' in content and '"tool_calls"' in content:
             try:
-                # Extract the full JSON structure
-                json_start = content.find('```json')
-                json_end = content.find('```', json_start + 7) + 3
-                if json_start != -1 and json_end > json_start:
-                    json_block = content[json_start + 7:json_end - 3].strip()
+                # Use robust extraction method
+                json_block = self._extract_json_block_robust(content, '```json')
+                if not json_block:
+                    if self.debug_mode:
+                        debug_info.append("Failed to extract JSON block with ```json marker")
+                    raise ValueError("Could not extract JSON block")
+                
+                # Try to parse JSON directly without complex escape fixing
+                try:
+                    tool_calls_data = json.loads(json_block)
                     
-                    # Try to parse JSON directly without complex escape fixing
+                    if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
+                        for i, tool_call in enumerate(tool_calls_data['tool_calls']):
+                            if isinstance(tool_call, dict) and 'function' in tool_call:
+                                function_data = tool_call['function']
+                                if 'name' in function_data and 'arguments' in function_data:
+                                    arguments = function_data['arguments']
+                                    # If arguments is a string (JSON), parse it
+                                    if isinstance(arguments, str):
+                                        try:
+                                            arguments = json.loads(arguments)
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    all_tool_calls.append({
+                                        "name": function_data['name'],
+                                        "arguments": arguments
+                                    })
+                    
+                    # If we found OpenAI-style tool calls, return them
+                    if all_tool_calls:
+                        return all_tool_calls
+                except json.JSONDecodeError as e:
+                    error_msg = f"Failed to parse JSON block: {str(e)[:200]}"
+                    if self.debug_mode:
+                        debug_info.append(f"OpenAI JSON parse error: {error_msg}")
+                        debug_info.append(f"JSON block length: {len(json_block)}, first 200 chars: {json_block[:200]}")
+                    print_current(error_msg)
+                    # Try to fix JSON containing SVG/XML content or other complex content
                     try:
-                        tool_calls_data = json.loads(json_block)
+                        # Try fixing with smart quote escaping (handles SVG XML with quotes)
+                        fixed_json = smart_escape_quotes_in_json_values(json_block)
+                        if fixed_json == json_block:
+                            # If fix didn't change anything, try other methods
+                            if self.debug_mode:
+                                debug_info.append("smart_escape_quotes_in_json_values didn't modify JSON")
+                        tool_calls_data = json.loads(fixed_json)
                         
                         if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
                             for i, tool_call in enumerate(tool_calls_data['tool_calls']):
-                                if isinstance(tool_call, dict) and 'function' in tool_call:
-                                    function_data = tool_call['function']
-                                    if 'name' in function_data and 'arguments' in function_data:
-                                        arguments = function_data['arguments']
-                                        # If arguments is a string (JSON), parse it
-                                        if isinstance(arguments, str):
-                                            try:
-                                                arguments = json.loads(arguments)
-                                            except json.JSONDecodeError:
-                                                pass
-                                        
-                                        all_tool_calls.append({
-                                            "name": function_data['name'],
-                                            "arguments": arguments
-                                        })
-                        
-                        # If we found OpenAI-style tool calls, return them
-                        if all_tool_calls:
-                            return all_tool_calls
-                    except json.JSONDecodeError as e:
-                        print_current(f"Failed to parse JSON block: {str(e)[:200]}")
-                        # Try to fix JSON containing SVG/XML content or other complex content
-                        try:
-                            # Try fixing with smart quote escaping (handles SVG XML with quotes)
-                            fixed_json = smart_escape_quotes_in_json_values(json_block)
-                            tool_calls_data = json.loads(fixed_json)
-                            
-                            if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
-                                for i, tool_call in enumerate(tool_calls_data['tool_calls']):
                                     if isinstance(tool_call, dict) and 'function' in tool_call:
                                         function_data = tool_call['function']
                                         if 'name' in function_data and 'arguments' in function_data:
@@ -2174,42 +2180,22 @@ class ToolExecutor:
                                                 "arguments": arguments
                                             })
                             
-                            if all_tool_calls:
-                                print_current("✅ Successfully parsed JSON after applying quote escaping fixes")
-                                return all_tool_calls
-                        except (json.JSONDecodeError, Exception) as fix_error:
-                            # Try one more time with long JSON fixer (handles code blocks)
-                            try:
-                                fixed_json = fix_long_json_with_code(json_block)
-                                tool_calls_data = json.loads(fixed_json)
-                                
-                                if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
-                                    for i, tool_call in enumerate(tool_calls_data['tool_calls']):
-                                        if isinstance(tool_call, dict) and 'function' in tool_call:
-                                            function_data = tool_call['function']
-                                            if 'name' in function_data and 'arguments' in function_data:
-                                                arguments = function_data['arguments']
-                                                if isinstance(arguments, str):
-                                                    try:
-                                                        arguments = json.loads(arguments)
-                                                    except json.JSONDecodeError:
-                                                        pass
-                                                
-                                                all_tool_calls.append({
-                                                    "name": function_data['name'],
-                                                    "arguments": arguments
-                                                })
-                                
-                                if all_tool_calls:
-                                    print_current("✅ Successfully parsed JSON after applying long JSON fixes")
-                                    return all_tool_calls
-                            except (json.JSONDecodeError, Exception) as final_error:
-                                if self.debug_mode:
-                                    print_current(f"⚠️ All JSON fix attempts failed. Original error: {str(e)[:200]}, Fix error: {str(final_error)[:200]}")
+                        if all_tool_calls:
+                            print_current("✅ Successfully parsed JSON after applying quote escaping fixes")
+                            return all_tool_calls
+                    except (json.JSONDecodeError, Exception) as fix_error:
+                        error_msg = f"⚠️ All JSON fix attempts failed. Original: {str(e)[:200]}, Fix: {str(fix_error)[:200]}"
+                        if self.debug_mode:
+                            debug_info.append(error_msg)
+                            print_current(f"⚠️ {error_msg}")
+                        else:
+                            print_current(f"⚠️ {error_msg}")
 
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError, Exception) as e:
+                error_msg = f"Failed to parse OpenAI-style JSON tool calls: {str(e)[:200]}"
                 if self.debug_mode:
-                    print_current(f"Failed to parse OpenAI-style JSON tool calls: {e}")
+                    debug_info.append(error_msg)
+                    print_current(error_msg)
         
         # Also try to parse direct JSON tool calls without ```json wrapper
         direct_json_pattern = r'\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}'
@@ -2269,34 +2255,8 @@ class ToolExecutor:
                         print_current("✅ Successfully parsed direct JSON after applying quote escaping fixes")
                         return all_tool_calls
                 except (json.JSONDecodeError, Exception) as fix_error:
-                    # Try one more time with long JSON fixer (handles code blocks)
-                    try:
-                        fixed_json = fix_long_json_with_code(json_str)
-                        tool_calls_data = json.loads(fixed_json)
-                        
-                        if isinstance(tool_calls_data, dict) and 'tool_calls' in tool_calls_data:
-                            for tool_call in tool_calls_data['tool_calls']:
-                                if isinstance(tool_call, dict) and 'function' in tool_call:
-                                    function_data = tool_call['function']
-                                    if 'name' in function_data and 'arguments' in function_data:
-                                        arguments = function_data['arguments']
-                                        if isinstance(arguments, str):
-                                            try:
-                                                arguments = json.loads(arguments)
-                                            except json.JSONDecodeError:
-                                                pass
-                                        
-                                        all_tool_calls.append({
-                                            "name": function_data['name'],
-                                            "arguments": arguments
-                                        })
-                        
-                        if all_tool_calls:
-                            print_current("✅ Successfully parsed direct JSON after applying long JSON fixes")
-                            return all_tool_calls
-                    except (json.JSONDecodeError, Exception) as final_error:
-                        if self.debug_mode:
-                            print_current(f"⚠️ All direct JSON fix attempts failed. Original error: {str(e)[:200]}, Fix error: {str(final_error)[:200]}")
+                    if self.debug_mode:
+                        print_current(f"⚠️ All direct JSON fix attempts failed. Original error: {str(e)[:200]}, Fix error: {str(fix_error)[:200]}")
         
         # Continue with existing XML parsing logic...
         # Try to parse individual <function_call> tags (single format)
@@ -2361,59 +2321,59 @@ class ToolExecutor:
         
         # NEW: Support for multiple independent JSON tool calls (like our new format)
         # Look for multiple ```json blocks with tool_name format
-        multiple_json_pattern = r'```json\s*(.*?)\s*```'
-        multiple_json_matches = re.findall(multiple_json_pattern, content, re.DOTALL)
-        if multiple_json_matches:
-            for json_str in multiple_json_matches:
-                try:
-                    json_str = json_str.strip()
-                    tool_data = json.loads(json_str)
-                    
-                    if isinstance(tool_data, dict):
-                        # Check if it's our new tool_name format
-                        if 'tool_name' in tool_data and 'parameters' in tool_data:
-                            all_tool_calls.append({
-                                "name": tool_data["tool_name"],
-                                "arguments": tool_data["parameters"]
-                            })
-                        # Check if it's the old name format (backward compatibility)
-                        elif 'name' in tool_data and 'parameters' in tool_data:
-                            all_tool_calls.append({
-                                "name": tool_data["name"],
-                                "arguments": tool_data["parameters"]
-                            })
-                        # Check if it's content format
-                        elif 'name' in tool_data and 'content' in tool_data:
-                            all_tool_calls.append({
-                                "name": tool_data["name"],
-                                "arguments": tool_data["content"]
-                            })
-                except json.JSONDecodeError as e:
-                    # Try to fix JSON containing unescaped newlines or quotes
+        # Use improved extraction for each block
+        if '```json' in content:
+            # Try to extract all JSON blocks using robust method
+            json_blocks = []
+            search_start = 0
+            while True:
+                remaining_content = content[search_start:]
+                json_block = self._extract_json_block_robust(remaining_content, '```json')
+                if json_block:
+                    json_blocks.append(json_block)
+                    # Find the position of this block in original content
+                    block_start = content.find('```json', search_start)
+                    if block_start == -1:
+                        break
+                    block_end = content.find('```', block_start + 7)
+                    if block_end == -1:
+                        # No closing marker, break
+                        break
+                    search_start = block_end + 3
+                else:
+                    break
+            
+            if json_blocks:
+                # Process each extracted JSON block
+                for json_block in json_blocks:
                     try:
-                        fixed_json = smart_escape_quotes_in_json_values(json_str)
-                        tool_data = json.loads(fixed_json)
+                        json_str = json_block.strip()
+                        tool_data = json.loads(json_str)
                         
                         if isinstance(tool_data, dict):
+                            # Check if it's our new tool_name format
                             if 'tool_name' in tool_data and 'parameters' in tool_data:
                                 all_tool_calls.append({
                                     "name": tool_data["tool_name"],
                                     "arguments": tool_data["parameters"]
                                 })
+                            # Check if it's the old name format (backward compatibility)
                             elif 'name' in tool_data and 'parameters' in tool_data:
                                 all_tool_calls.append({
                                     "name": tool_data["name"],
                                     "arguments": tool_data["parameters"]
                                 })
+                            # Check if it's content format
                             elif 'name' in tool_data and 'content' in tool_data:
                                 all_tool_calls.append({
                                     "name": tool_data["name"],
                                     "arguments": tool_data["content"]
                                 })
-                    except (json.JSONDecodeError, Exception):
-                        # If fix also fails, try long JSON fixer (handles code blocks)
+                    except json.JSONDecodeError as e:
+                        # Try to fix JSON containing unescaped newlines or quotes
                         try:
-                            fixed_json = fix_long_json_with_code(json_str)
+                            # 首先尝试使用正则表达式方法
+                            fixed_json = smart_escape_quotes_in_json_values(json_str)
                             tool_data = json.loads(fixed_json)
                             
                             if isinstance(tool_data, dict):
@@ -2432,28 +2392,56 @@ class ToolExecutor:
                                         "name": tool_data["name"],
                                         "arguments": tool_data["content"]
                                     })
-                        except (json.JSONDecodeError, Exception):
-                            continue
+                        except (json.JSONDecodeError, Exception) as fix_e:
+                            # 如果正则方法失败，尝试使用更可靠的字符级解析方法
+                            try:
+                                fixed_json_robust = fix_json_string_values_robust(json_str)
+                                if fixed_json_robust != json_str:
+                                    tool_data = json.loads(fixed_json_robust)
+                                    if isinstance(tool_data, dict):
+                                        if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["tool_name"],
+                                                "arguments": tool_data["parameters"]
+                                            })
+                                        elif 'name' in tool_data and 'parameters' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["parameters"]
+                                            })
+                                        elif 'name' in tool_data and 'content' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["content"]
+                                            })
+                            except (json.JSONDecodeError, Exception) as robust_fix_e:
+                                if self.debug_mode:
+                                    debug_info.append(f"Failed to parse JSON block: {str(fix_e)[:100]}, robust fix also failed: {str(robust_fix_e)[:100]}")
+                                else:
+                                    pass  # 静默失败，继续尝试其他方法
             
-            # If we found any tool calls through multiple JSON blocks, return them
-            if all_tool_calls:
-                return all_tool_calls
+                # If we found any tool calls through multiple JSON blocks, return them
+                if all_tool_calls:
+                    if self.debug_mode:
+                        print_current(f"✅ Successfully parsed {len(all_tool_calls)} tool calls from JSON blocks")
+                    return all_tool_calls
         
         # Fallback: try to parse single JSON format with nested content structure (like in the logs)
-        json_pattern = r'```json\s*(.*?)\s*```'
-        json_match = re.search(json_pattern, content, re.DOTALL)
-        if json_match:
-            try:
-                json_str = json_match.group(1).strip()
-                tool_data = json.loads(json_str)
-                
-                # Handle nested structure like {"name": "edit_file", "content": {...}}
-                if isinstance(tool_data, dict):
-                    if 'name' in tool_data and 'content' in tool_data:
-                        return [{
-                            "name": tool_data["name"],
-                            "arguments": tool_data["content"]
-                        }]
+        # Use robust extraction method
+        if '```json' in content and not all_tool_calls:
+            json_block = self._extract_json_block_robust(content, '```json')
+            if json_block:
+                try:
+                    json_str = json_block.strip()
+                    tool_data = json.loads(json_str)
+                    
+                    # Handle nested structure like {"name": "edit_file", "content": {...}}
+                    if isinstance(tool_data, dict):
+                        if 'name' in tool_data and 'content' in tool_data:
+                            return [{
+                                "name": tool_data["name"],
+                                "arguments": tool_data["content"]
+                            }]
                     # Check if it's a valid tool call format with tool_name and parameters (new JSON format)
                     elif 'tool_name' in tool_data and 'parameters' in tool_data:
                         return [{
@@ -2500,62 +2488,11 @@ class ToolExecutor:
                                 "name": inferred_tool,
                                 "arguments": tool_data
                             }]
-            except json.JSONDecodeError as e:
-                # Try to fix JSON containing unescaped newlines or quotes
-                try:
-                    fixed_json = smart_escape_quotes_in_json_values(json_str)
-                    tool_data = json.loads(fixed_json)
-                    
-                    if isinstance(tool_data, dict):
-                        if 'name' in tool_data and 'content' in tool_data:
-                            return [{
-                                "name": tool_data["name"],
-                                "arguments": tool_data["content"]
-                            }]
-                        elif 'tool_name' in tool_data and 'parameters' in tool_data:
-                            return [{
-                                "name": tool_data["tool_name"],
-                                "arguments": tool_data["parameters"]
-                            }]
-                        elif 'name' in tool_data and 'parameters' in tool_data:
-                            return [{
-                                "name": tool_data["name"],
-                                "arguments": tool_data["parameters"]
-                            }]
-                        else:
-                            # Try to infer tool name from parameters
-                            text_before_json = content[:content.find('```json')]
-                            tool_names = list(self.tool_map.keys())
-                            inferred_tool = None
-                            
-                            for tool_name in tool_names:
-                                if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
-                                    inferred_tool = tool_name
-                                    break
-                            
-                            if not inferred_tool:
-                                if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
-                                    inferred_tool = 'read_file'
-                                elif 'relative_workspace_path' in tool_data:
-                                    inferred_tool = 'list_dir'
-                                elif 'query' in tool_data and 'target_directories' in tool_data:
-                                    inferred_tool = 'workspace_search'
-                                elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
-                                    inferred_tool = 'grep_search'
-                                elif 'command' in tool_data and 'is_background' in tool_data:
-                                    inferred_tool = 'run_terminal_cmd'
-                                elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
-                                    inferred_tool = 'edit_file'
-                            
-                            if inferred_tool:
-                                return [{
-                                    "name": inferred_tool,
-                                    "arguments": tool_data
-                                }]
-                except (json.JSONDecodeError, Exception):
-                    # If fix also fails, try long JSON fixer (handles code blocks)
+                except json.JSONDecodeError as e:
+                    # Try to fix JSON containing unescaped newlines or quotes
                     try:
-                        fixed_json = fix_long_json_with_code(json_str)
+                        # 首先尝试使用正则表达式方法
+                        fixed_json = smart_escape_quotes_in_json_values(json_str)
                         tool_data = json.loads(fixed_json)
                         
                         if isinstance(tool_data, dict):
@@ -2574,38 +2511,60 @@ class ToolExecutor:
                                     "name": tool_data["name"],
                                     "arguments": tool_data["parameters"]
                                 }]
-                            else:
-                                # Try to infer tool name from parameters
-                                text_before_json = content[:content.find('```json')]
-                                tool_names = list(self.tool_map.keys())
-                                inferred_tool = None
-                                
-                                for tool_name in tool_names:
-                                    if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
-                                        inferred_tool = tool_name
-                                        break
-                                
-                                if not inferred_tool:
-                                    if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
-                                        inferred_tool = 'read_file'
-                                    elif 'relative_workspace_path' in tool_data:
-                                        inferred_tool = 'list_dir'
-                                    elif 'query' in tool_data and 'target_directories' in tool_data:
-                                        inferred_tool = 'workspace_search'
-                                    elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
-                                        inferred_tool = 'grep_search'
-                                    elif 'command' in tool_data and 'is_background' in tool_data:
-                                        inferred_tool = 'run_terminal_cmd'
-                                    elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
-                                        inferred_tool = 'edit_file'
-                                
-                                if inferred_tool:
-                                    return [{
-                                        "name": inferred_tool,
-                                        "arguments": tool_data
-                                    }]
                     except (json.JSONDecodeError, Exception):
-                        pass
+                        # 如果正则方法失败，尝试使用更可靠的字符级解析方法
+                        try:
+                            fixed_json_robust = fix_json_string_values_robust(json_str)
+                            if fixed_json_robust != json_str:
+                                tool_data = json.loads(fixed_json_robust)
+                                if isinstance(tool_data, dict):
+                                    if 'name' in tool_data and 'content' in tool_data:
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["content"]
+                                        }]
+                                    elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                                        return [{
+                                            "name": tool_data["tool_name"],
+                                            "arguments": tool_data["parameters"]
+                                        }]
+                                    elif 'name' in tool_data and 'parameters' in tool_data:
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["parameters"]
+                                        }]
+                        except (json.JSONDecodeError, Exception):
+                            pass  # 继续到下一个修复尝试
+                    except Exception as fix_e2:
+                        if self.debug_mode:
+                            debug_info.append(f"JSON fix attempt in single block also failed: {str(fix_e2)[:100]}")
+                except (json.JSONDecodeError, Exception) as e:
+                    if self.debug_mode:
+                        debug_info.append(f"Single JSON fallback failed: {str(e)[:100]}")
+                    # Try to fix it
+                    try:
+                        fixed_json = smart_escape_quotes_in_json_values(json_str)
+                        tool_data = json.loads(fixed_json)
+                        if isinstance(tool_data, dict):
+                            if 'name' in tool_data and ('parameters' in tool_data or 'content' in tool_data):
+                                if 'name' in tool_data and 'content' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["content"]
+                                    }]
+                                elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["tool_name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                    except Exception as fix_e:
+                        if self.debug_mode:
+                            debug_info.append(f"JSON fix attempt also failed: {str(fix_e)[:100]}")
         
         # Try to parse JSON array format (AGIAgent's chat-based tool calls)
         try:
@@ -2664,9 +2623,75 @@ class ToolExecutor:
                             "name": tool_data["tool_name"],
                             "arguments": tool_data["parameters"]
                         }]
-        except json.JSONDecodeError:
-            pass
-    
+        except json.JSONDecodeError as e:
+            if self.debug_mode:
+                debug_info.append(f"JSON array parse failed: {str(e)[:100]}")
+        
+        # If all parsing attempts failed, log detailed debug info
+        if not all_tool_calls:
+            # Check if we have JSON blocks but couldn't parse them
+            has_json_markers = '```json' in content or ('{' in content and '}' in content)
+            if has_json_markers and self.debug_mode:
+                debug_msg = f"⚠️ Failed to parse tool calls. Debug info: {'; '.join(debug_info)}"
+                debug_msg += f"\nContent length: {len(content)}"
+                debug_msg += f"\nContent preview (first 500 chars): {content[:500]}"
+                debug_msg += f"\nContent preview (last 500 chars): {content[-500:] if len(content) > 500 else content}"
+                print_current(debug_msg)
+            elif has_json_markers:
+                # Even in non-debug mode, log a warning if we expected to find JSON
+                print_current(f"⚠️ Warning: Found JSON markers but failed to parse tool calls. Content length: {len(content)}")
+                # Try one last aggressive attempt: look for any JSON-like structure
+                try:
+                    # Try to find and extract any dictionary-like structure
+                    brace_start = content.find('{')
+                    if brace_start != -1:
+                        # Try to find matching closing brace
+                        brace_count = 0
+                        in_string = False
+                        escape_next = False
+                        brace_end = -1
+                        for i in range(brace_start, len(content)):
+                            char = content[i]
+                            if escape_next:
+                                escape_next = False
+                                continue
+                            if char == '\\':
+                                escape_next = True
+                                continue
+                            if char == '"' and not escape_next:
+                                in_string = not in_string
+                                continue
+                            if not in_string:
+                                if char == '{':
+                                    brace_count += 1
+                                elif char == '}':
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        brace_end = i + 1
+                                        break
+                        
+                        if brace_end > brace_start:
+                            potential_json = content[brace_start:brace_end]
+                            try:
+                                fixed = smart_escape_quotes_in_json_values(potential_json)
+                                tool_data = json.loads(fixed)
+                                if isinstance(tool_data, dict):
+                                    # Try to infer what this is
+                                    if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                        return [{
+                                            "name": tool_data["tool_name"],
+                                            "arguments": tool_data["parameters"]
+                                        }]
+                                    elif 'name' in tool_data and ('parameters' in tool_data or 'content' in tool_data):
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data.get("parameters", tool_data.get("content", {}))
+                                        }]
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+        
         return []
 
 
@@ -4114,14 +4139,40 @@ class ToolExecutor:
                                 
                                 try:
                                     for text in stream.text_stream:
-                                        # Check for hallucination pattern
-                                        if "**LLM Called Following Tools in this round" in text:
-                                            print_current("\n🚨 Hallucination Detected, stop chat")
-                                            hallucination_detected = True
-                                            break
-                                        
                                         buffer += text
                                         content += text
+                                        
+                                        # Check for hallucination patterns - strict match (检查整个 content，避免打印幻觉字符串)
+                                        hallucination_patterns = [
+                                            "LLM Called Following Tools in this round",
+                                            "**Tool Execution Results:**"
+                                        ]
+                                        hallucination_detected_flag = False
+                                        hallucination_start = -1
+                                        for pattern in hallucination_patterns:
+                                            if pattern in content:
+                                                hallucination_start = content.find(pattern)
+                                                hallucination_detected_flag = True
+                                                break
+                                        
+                                        if hallucination_detected_flag:
+                                            print_debug("\n🚨 Hallucination Detected, stop chat")
+                                            hallucination_detected = True
+                                            # 截断 buffer 和 content 到幻觉位置之前，避免打印幻觉字符串
+                                            if hallucination_start > 0:
+                                                content = content[:hallucination_start].rstrip()
+                                                # 检查 buffer 中是否已经包含了幻觉字符串
+                                                if len(buffer) > len(content) - total_printed:
+                                                    # buffer 中包含幻觉字符串，需要截断
+                                                    buffer = content[total_printed:] if len(content) > total_printed else ""
+                                                else:
+                                                    # buffer 还没有包含幻觉字符串，保持原样
+                                                    pass
+                                            else:
+                                                # 幻觉字符串在开头，清空 buffer 和 content
+                                                buffer = ""
+                                                content = ""
+                                            break
                                         
                                         # 当缓冲区达到最小大小时，打印缓冲区内容
                                         # 但需要检查是否已经包含了第二个```json（如果检测到工具调用）
@@ -4258,7 +4309,7 @@ class ToolExecutor:
                                     if not standardized_tool_calls:
                                         print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
                                         print_current(f"Content for parsing length: {len(content_for_parsing)}")
-                                        print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                        #print_current(f"Content snippet: {content_for_parsing[:500]}...")
                                     
                                     # 添加换行（仅限chat接口）
                                     if not content_for_parsing.endswith('\n'):
@@ -4285,8 +4336,8 @@ class ToolExecutor:
                             if content_block.type == "text":
                                 content += content_block.text
 
-                        # Check for hallucination pattern in non-streaming response
-                        if "**LLM Called Following Tools in this round" in content:
+                        # Check for hallucination patterns in non-streaming response - strict match
+                        if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
                             # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
                             # 添加换行（仅限chat接口）
                             if not content.endswith('\n'):
@@ -4330,42 +4381,61 @@ class ToolExecutor:
                                     if chunk.choices and len(chunk.choices) > 0:
                                         delta = chunk.choices[0].delta
                                         if delta.content is not None:
-                                            # Check for hallucination pattern
-                                            if "**LLM Called Following Tools in this round" in delta.content:
-                                                # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
-                                                hallucination_detected = True
-                                                break
-                                            
                                             buffer += delta.content
                                             content += delta.content
                                             
-                                            # 当缓冲区达到最小大小时，打印缓冲区内容
-                                            # 但需要检查是否已经包含了第二个```json（如果检测到工具调用）
-                                            if len(buffer) >= min_buffer_size:
-                                                # 检查是否应该提前截断（如果已经检测到第二个工具调用）
-                                                if self._is_complete_json_tool_call(content):
-                                                    # 找到第二个```json的位置
-                                                    content_to_print = self._get_content_before_second_json(content)
-                                                    # 只打印到第二个```json之前的内容
-                                                    if len(content_to_print) < total_printed + len(buffer):
-                                                        # 需要截断
-                                                        to_print = content_to_print[total_printed:]
-                                                        if to_print:
-                                                            printer.write(to_print)
-                                                            total_printed = len(content_to_print)
-                                                        buffer = ""
-                                                        json_block_detected = True
-                                                        break
-                                                else:
-                                                    # 正常打印
-                                                    printer.write(buffer)
-                                                    total_printed += len(buffer)
-                                                    buffer = ""
+                                            # 在缓冲区逻辑中统一检测幻觉模式和工具调用
+                                            # 检测幻觉模式（优先于工具调用检测）
+                                            # 严格匹配两个幻觉标志：
+                                            # 1. "LLM Called Following Tools in this round" (8个单词)
+                                            # 2. "**Tool Execution Results:**"
+                                            hallucination_patterns = [
+                                                "LLM Called Following Tools in this round",
+                                                "**Tool Execution Results:**"
+                                            ]
+                                            hallucination_detected_flag = False
+                                            hallucination_start = -1
+                                            for pattern in hallucination_patterns:
+                                                if pattern in content:
+                                                    hallucination_start = content.find(pattern)
+                                                    hallucination_detected_flag = True
+                                                    break
                                             
-                                            # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
+                                            if hallucination_detected_flag:
+                                                print_debug("\n🚨 Hallucination Detected, stop chat")
+                                                hallucination_detected = True
+                                                # 截断内容到幻觉开始位置，避免打印幻觉字符串
+                                                if hallucination_start > 0:
+                                                    content_to_print = content[:hallucination_start].rstrip()
+                                                    # 打印幻觉之前的内容（如果还有未打印的）
+                                                    remaining_to_print = content_to_print[total_printed:]
+                                                    if remaining_to_print:
+                                                        printer.write(remaining_to_print)
+                                                    content = content_to_print
+                                                buffer = ""
+                                                break
+                                            
+                                            # 检测工具调用：检查是否已经包含了第二个```json
                                             if self._is_complete_json_tool_call(content):
+                                                # 找到第二个```json的位置
+                                                content_to_print = self._get_content_before_second_json(content)
+                                                # 打印到第二个```json之前的内容（如果还有未打印的）
+                                                if len(content_to_print) > total_printed:
+                                                    remaining_to_print = content_to_print[total_printed:]
+                                                    if remaining_to_print:
+                                                        printer.write(remaining_to_print)
+                                                    total_printed = len(content_to_print)
+                                                # 更新content为截断后的内容
+                                                content = content_to_print
+                                                buffer = ""
                                                 json_block_detected = True
                                                 break
+                                            
+                                            # 当缓冲区达到最小大小时，打印缓冲区内容
+                                            if len(buffer) >= min_buffer_size:
+                                                printer.write(buffer)
+                                                total_printed += len(buffer)
+                                                buffer = ""
                             except Exception as e:
                                 # 捕获流式处理中的异常
                                 stream_error_occurred = True
@@ -4391,23 +4461,9 @@ class ToolExecutor:
                                     # 如果没有接收到任何内容，重新抛出异常
                                     raise Exception(f"OpenAI API streaming failed: {stream_error_message}")
                             
-                            # 处理剩余缓冲区和截断逻辑
-                            if json_block_detected:
-                                # 找到第二个```json的位置
-                                content_to_print = self._get_content_before_second_json(content)
-                                
-                                # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
-                                remaining_buffer = content_to_print[total_printed:]
-                                if remaining_buffer:
-                                    printer.write(remaining_buffer)
-                                
-                                # 不打印buffer中第二个```json之后的内容
-                                buffer = ""
-                                
-                                # 保存content_to_print用于后续解析
-                                content = content_to_print
-                            else:
-                                # 没有检测到工具调用，打印剩余缓冲区
+                            # 处理剩余缓冲区（如果循环内没有检测到特殊模式）
+                            if not hallucination_detected and not json_block_detected:
+                                # 没有检测到幻觉或工具调用，打印剩余缓冲区
                                 if buffer:
                                     printer.write(buffer)
                             
@@ -4424,12 +4480,9 @@ class ToolExecutor:
                             
                             if json_block_detected:
                                 # 检测到第二个工具调用，只解析第一个
-                                # 首先获取截取到第二个JSON块之前的内容
-                                content_before_second = self._get_content_before_second_json(content)
-                                
+                                # content已经在循环内部被截断到第二个JSON块之前
                                 # 确保用于解析的content包含完整的第一个工具调用
-                                # 即使被截断了，也要确保第一个JSON块是完整的
-                                content_for_parsing = self._ensure_first_json_block_complete(content_before_second)
+                                content_for_parsing = self._ensure_first_json_block_complete(content)
                                 
                                 # Parse tool calls from the accumulated content
                                 tool_calls = self.parse_tool_calls(content_for_parsing)
@@ -4453,7 +4506,7 @@ class ToolExecutor:
                                 if not standardized_tool_calls and tool_calls:
                                     print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
                                     print_current(f"Content for parsing length: {len(content_for_parsing)}")
-                                    print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                    #print_current(f"Content snippet: {content_for_parsing[:500]}...")
                                 
                                 # 添加换行（仅限chat接口）
                                 if not content_for_parsing.endswith('\n'):
@@ -4486,7 +4539,7 @@ class ToolExecutor:
                                 if not standardized_tool_calls:
                                     print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
                                     print_current(f"Content for parsing length: {len(content_for_parsing)}")
-                                    print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                    #print_current(f"Content snippet: {content_for_parsing[:500]}...")
                                 
                                 # 添加换行（仅限chat接口）
                                 if not content_for_parsing.endswith('\n'):
@@ -4577,8 +4630,8 @@ class ToolExecutor:
                         # Combine thinking and content with clear separation
                         content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
-                    # Check for hallucination pattern in non-streaming response
-                    if "**LLM Called Following Tools in this round" in content:
+                    # Check for hallucination patterns in non-streaming response - strict match
+                    if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
                         # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
                         # 添加换行（仅限chat接口）
                         if not content.endswith('\n'):
@@ -4717,8 +4770,8 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        # 检测幻觉模式
-                                                        if "**LLM Called Following Tools in this round" in text:
+                                                        # 检测幻觉模式 - 严格匹配两个标志
+                                                        if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
@@ -4766,7 +4819,7 @@ class ToolExecutor:
                                     # 尝试回退到text_stream
                                     try:
                                         for text in stream.text_stream:
-                                            if "**LLM Called Following Tools in this round" in text:
+                                            if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                 print_current("\n🚨 Hallucination detected, stopping conversation")
                                                 hallucination_detected = True
                                                 break
@@ -5125,9 +5178,22 @@ class ToolExecutor:
                         # Combine thinking and content with clear separation
                         content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
-                    # Check for hallucination pattern in non-streaming response
-                    if "**LLM Called Following Tools in this round" in content:
-                        print_current("\n🚨 Hallucination Detected, stop chat")
+                    # Check for hallucination patterns in non-streaming response - strict match
+                    if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
+                        print_debug("\n🚨 Hallucination Detected, stop chat")
+                        # 截断内容到幻觉位置之前，避免打印幻觉字符串
+                        hallucination_patterns = [
+                            "LLM Called Following Tools in this round",
+                            "**Tool Execution Results:**"
+                        ]
+                        hallucination_start = len(content)
+                        for pattern in hallucination_patterns:
+                            if pattern in content:
+                                hallucination_start = min(hallucination_start, content.find(pattern))
+                        if hallucination_start > 0:
+                            content = content[:hallucination_start].rstrip()
+                        else:
+                            content = ""
                         return content, []
 
                     raw_tool_calls = response.choices[0].message.tool_calls or []
@@ -5374,8 +5440,8 @@ class ToolExecutor:
                                                     if delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
-                                                        # 检测幻觉模式
-                                                        if "**LLM Called Following Tools in this round" in text:
+                                                        # 检测幻觉模式 - 严格匹配两个标志
+                                                        if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
                                                             break
@@ -5456,7 +5522,7 @@ class ToolExecutor:
                                 # 尝试回退到text_stream
                                 try:
                                     for text in stream.text_stream:
-                                        if "**LLM Called Following Tools in this round" in text:
+                                        if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                             hallucination_detected = True
                                             break
@@ -5569,9 +5635,22 @@ class ToolExecutor:
                                 "input": content_block.input
                             })
 
-                    # Check for hallucination pattern in non-streaming response
-                    if "**LLM Called Following Tools in this round" in content:
-                        print_current("\n🚨 Hallucination Detected, stop chat")
+                    # Check for hallucination patterns in non-streaming response - strict match
+                    if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
+                        print_debug("\n🚨 Hallucination Detected, stop chat")
+                        # 截断内容到幻觉位置之前，避免打印幻觉字符串
+                        hallucination_patterns = [
+                            "LLM Called Following Tools in this round",
+                            "**Tool Execution Results:**"
+                        ]
+                        hallucination_start = len(content)
+                        for pattern in hallucination_patterns:
+                            if pattern in content:
+                                hallucination_start = min(hallucination_start, content.find(pattern))
+                        if hallucination_start > 0:
+                            content = content[:hallucination_start].rstrip()
+                        else:
+                            content = ""
                         return content, []
 
                     return content, tool_calls

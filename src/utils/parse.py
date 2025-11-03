@@ -195,6 +195,253 @@ def smart_escape_quotes_in_json_values(json_str: str) -> str:
             return json_str
 
 
+def fix_json_string_values_robust(json_str: str) -> str:
+    """
+    使用字符级状态机修复JSON字符串值，更可靠地处理超长和复杂嵌套的字符串。
+    
+    特殊优化：对于tool_name/parameters格式的JSON，利用结尾的 }\n} 模式来
+    更准确地判断字符串值的结束位置。
+    
+    这个函数使用逐字符解析的方式，比正则表达式更可靠，特别是对于：
+    - 包含大量未转义换行符的长字符串
+    - 包含XML/SVG代码的字符串
+    - 包含引号、大括号等特殊字符的字符串
+    
+    Args:
+        json_str: 可能包含未转义字符的JSON字符串
+        
+    Returns:
+        修复后的JSON字符串
+    """
+    if not json_str:
+        return json_str
+    
+    # 首先尝试直接解析，如果成功则无需修复
+    try:
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError as e:
+        # 检查是否是控制字符错误（换行符等未转义）
+        error_msg = str(e).lower()
+        if 'control character' not in error_msg:
+            # 如果不是控制字符错误，可能无法通过简单修复解决
+            pass
+        # 继续处理，尝试修复
+    
+    # 特殊优化：对于tool_name/parameters格式，先尝试直接修复code_edit字段
+    # 利用结尾的 }\n} 模式来定位值结束位置
+    # 策略：找到最后的}，然后在它之前找引号
+    if '"code_edit": "' in json_str:
+        code_edit_marker = '"code_edit": "'
+        code_start = json_str.find(code_edit_marker) + len(code_edit_marker)
+        
+        # 找到最后的}（JSON对象结束）
+        last_brace = json_str.rfind('}')
+        if last_brace > code_start:
+            # 在最后的}之前找引号（code_edit值的结束引号）
+            quote_end_pos = json_str.rfind('"', code_start, last_brace)
+            if quote_end_pos > code_start:
+                value_content = json_str[code_start:quote_end_pos]
+                # 转义控制字符，但要小心处理已经转义的字符
+                # 策略：只转义未转义的控制字符
+                fixed_value = []
+                i = 0
+                while i < len(value_content):
+                    char = value_content[i]
+                    if char == '\\' and i + 1 < len(value_content):
+                        # 已经是转义字符，保留
+                        fixed_value.append(char)
+                        fixed_value.append(value_content[i+1])
+                        i += 2
+                    elif char == '"':
+                        # 未转义的引号，需要转义
+                        fixed_value.append('\\"')
+                        i += 1
+                    elif ord(char) < 32:  # 控制字符
+                        # 转义控制字符
+                        if char == '\n':
+                            fixed_value.append('\\n')
+                        elif char == '\r':
+                            fixed_value.append('\\r')
+                        elif char == '\t':
+                            fixed_value.append('\\t')
+                        elif char == '\b':
+                            fixed_value.append('\\b')
+                        elif char == '\f':
+                            fixed_value.append('\\f')
+                        else:
+                            fixed_value.append(f'\\u{ord(char):04x}')
+                        i += 1
+                    else:
+                        fixed_value.append(char)
+                        i += 1
+                
+                fixed_value_str = ''.join(fixed_value)
+                
+                # 还需要转义未转义的引号
+                # 但要小心：已经转义的引号（\"）不需要再转义
+                # 简单策略：在字符串值中，所有未转义的引号都需要转义
+                # 但我们已经转义了反斜杠，所以需要考虑
+                # 更好的方法：在字符级处理时就已经处理了引号，这里只需要处理控制字符
+                
+                # 尝试解析修复后的JSON
+                test_json = json_str[:code_start] + fixed_value_str + json_str[quote_end_pos:]
+                try:
+                    json.loads(test_json)
+                    return test_json
+                except json.JSONDecodeError as e:
+                    # 如果还有引号问题，使用通用逻辑继续修复
+                    # 但至少控制字符已经修复了
+                    json_str = test_json  # 使用部分修复的JSON继续
+                    pass  # 继续使用通用逻辑
+    
+    result = []
+    i = 0
+    in_string = False
+    escape_next = False
+    string_start_pos = -1
+    
+    while i < len(json_str):
+        char = json_str[i]
+        
+        # 处理转义字符
+        if escape_next:
+            escape_next = False
+            result.append(char)
+            i += 1
+            continue
+        
+        if char == '\\':
+            escape_next = True
+            result.append(char)
+            i += 1
+            continue
+        
+        # 处理字符串开始/结束
+        if char == '"':
+            if not in_string:
+                # 字符串开始
+                in_string = True
+                string_start_pos = len(result)
+                result.append(char)
+            else:
+                # 检查是否是字符串结束
+                # 策略：向前查看最近的字符，向后查看后续字符
+                # 如果前面是空白或标点，后面跟着逗号、右括号等，可能是字符串结束
+                # 如果前后都是普通字符（中英文、数字），则是字符串内部的引号
+                
+                # 向前查看（跳过空白）
+                prev_pos = i - 1
+                while prev_pos >= 0 and json_str[prev_pos] in ' \t\n\r':
+                    prev_pos -= 1
+                prev_char = json_str[prev_pos] if prev_pos >= 0 else None
+                
+                # 向后查看（跳过空白）
+                next_pos = i + 1
+                while next_pos < len(json_str) and json_str[next_pos] in ' \t\n\r':
+                    next_pos += 1
+                next_char = json_str[next_pos] if next_pos < len(json_str) else None
+                
+                # 判断逻辑：
+                # 1. 特殊优化：对于tool_name/parameters格式的JSON，结尾通常是 }\n}
+                #    如果引号后面跟着 }\n} 模式，几乎肯定是字符串结束
+                # 2. 如果后面是明确的结束标记（, } ]），且前面不是普通字符，则是字符串结束
+                # 3. 如果后面跟着普通字符（字母、数字、中文等），则是字符串内部的引号
+                # 4. 如果后面是引号，更可能是字符串内部的引号（需要转义）
+                
+                is_string_end = False
+                
+                # 特殊检查：看后面是否有 }\n} 或 "\n  }\n}" 模式（这是我们的JSON格式特征）
+                # 对于tool_name/parameters格式，code_edit字段的值通常以 "\n  }\n}" 结尾
+                remaining = json_str[i+1:]
+                # 检查多种可能的结尾模式
+                remaining_stripped = remaining.lstrip(' \t\n\r')
+                # 模式1: 引号后直接是 }\n}
+                if remaining_stripped.startswith('}\n}') or remaining_stripped.startswith('}\n  }'):
+                    is_string_end = True
+                # 模式2: 引号后是换行，然后是 }\n}
+                elif remaining.startswith('\n  }\n}') or remaining.startswith('\n}\n}') or remaining.startswith(' \n  }\n}'):
+                    is_string_end = True
+                # 模式3: 检查是否是 "\n  }\n}" 完整模式（最典型的情况）
+                elif i + 1 < len(json_str):
+                    # 查看引号后面最多20个字符，看是否有 }\n} 模式
+                    lookahead = json_str[i+1:min(i+21, len(json_str))]
+                    # 查找 }\n} 或 }\n  } 模式
+                    if ('}\n}' in lookahead or '}\n  }' in lookahead) and not ('"' in lookahead[:lookahead.find('}')]):
+                        # 如果找到了结尾模式，且之间没有其他引号，说明这是字符串结束
+                        is_string_end = True
+                elif next_char is None:
+                    # 到达末尾，字符串结束
+                    is_string_end = True
+                elif next_char in ',}]':
+                    # 后面是结束标记，但需要更仔细地判断
+                    # 如果前面是普通字符（字母、数字、中文等），说明这是字符串内部的引号
+                    # 如果前面是空白、换行、引号等，可能是字符串结束
+                    if prev_char:
+                        # 检查前一个字符是否是普通文本字符
+                        # 如果是中文字符、字母、数字等，说明引号在字符串内部
+                        if (prev_char.isalnum() or 
+                            '\u4e00' <= prev_char <= '\u9fff' or  # 中文字符范围
+                            prev_char in '，。！？；：、'):
+                            # 前面是普通字符，这是字符串内部的引号，需要转义
+                            is_string_end = False
+                        else:
+                            # 前面是标点或空白，可能是字符串结束
+                            is_string_end = True
+                    else:
+                        # 没有前一个字符，可能是字符串结束
+                        is_string_end = True
+                elif next_char == '"':
+                    # 后面是引号，可能是 "key": "value"，但更可能是字符串内部的引号
+                    is_string_end = False
+                else:
+                    # 后面跟着其他字符，肯定是字符串内部的引号
+                    is_string_end = False
+                
+                if is_string_end:
+                    in_string = False
+                    result.append(char)
+                else:
+                    # 这是字符串内部的引号，需要转义
+                    result.append('\\"')
+            i += 1
+            continue
+        
+        # 在字符串内部，转义特殊字符
+        if in_string:
+            # 转义所有控制字符（JSON不允许未转义的控制字符）
+            if char == '\n':
+                result.append('\\n')
+            elif char == '\t':
+                result.append('\\t')
+            elif char == '\r':
+                result.append('\\r')
+            elif char == '\b':
+                result.append('\\b')
+            elif char == '\f':
+                result.append('\\f')
+            elif ord(char) < 32:  # 所有控制字符（ASCII < 32）都需要转义
+                # JSON中控制字符必须转义为 \uXXXX 格式
+                result.append(f'\\u{ord(char):04x}')
+            else:
+                result.append(char)
+        else:
+            # 不在字符串中，保持原样
+            result.append(char)
+        
+        i += 1
+    
+    fixed_json = ''.join(result)
+    
+    # 验证修复后的JSON是否有效
+    try:
+        json.loads(fixed_json)
+        return fixed_json
+    except json.JSONDecodeError:
+        # 如果修复后仍然无效，返回原字符串让其他方法处理
+        return json_str
+
+
 def rebuild_json_structure(json_str: str) -> str:
     """
     Last resort method to rebuild JSON structure from malformed JSON.
@@ -240,188 +487,6 @@ def rebuild_json_structure(json_str: str) -> str:
     
     # If rebuild failed, return original
     return json_str
-
-
-def fix_long_json_with_code(json_str: str) -> str:
-    """
-    Specialized method to fix long JSON strings that contain code, 
-    particularly for edit_file tool calls.
-    
-    Args:
-        json_str: Long JSON string that may contain code
-        
-    Returns:
-        Fixed JSON string
-    """
-    try:
-        # First, try to identify and fix the specific structure for edit_file
-        # Common pattern: {"target_file": "...", "edit_mode": "...", "code_edit": "...long code..."}
-        
-        # Strategy: Find the main structure and carefully parse each field
-        fixed_json = json_str.strip()
-        
-        # Remove any trailing/leading whitespace and ensure proper braces
-        if not fixed_json.startswith('{'):
-            fixed_json = '{' + fixed_json
-        if not fixed_json.endswith('}'):
-            fixed_json = fixed_json + '}'
-        
-        # Look for the pattern of edit_file parameters and fix them systematically
-        # Pattern 1: Fix space between values and next keys (most common issue)
-        # This handles: "value" "next_key" -> "value", "next_key"
-        
-        # Be more aggressive with comma insertion for known tool patterns
-        edit_file_fixes = [
-            # target_file followed by edit_mode
-            (r'("target_file":\s*"[^"]*")\s+("edit_mode")', r'\1, \2'),
-            # edit_mode followed by code_edit  
-            (r'("edit_mode":\s*"[^"]*")\s+("code_edit")', r'\1, \2'),
-            # Any quoted value followed by a key (more general)
-            (r'(":\s*"[^"]*(?:\\.[^"]*)*")\s+("[\w_]+"\s*:)', r'\1, \2'),
-            # Handle boolean/number values followed by keys
-            (r'(":\s*(?:true|false|\d+))\s+("[\w_]+"\s*:)', r'\1, \2'),
-        ]
-        
-        for pattern, replacement in edit_file_fixes:
-            old_json = fixed_json
-            fixed_json = re.sub(pattern, replacement, fixed_json, flags=re.DOTALL)
-        
-        # Try to validate and return
-        try:
-            json.loads(fixed_json)
-            return fixed_json
-        except json.JSONDecodeError:
-            # If still failing, try more aggressive fixes
-            pass
-        
-        # Fallback: Try to extract and rebuild key-value pairs manually
-        # First, check if this is a tool call format with tool_name and parameters
-        tool_name_match = re.search(r'"tool_name":\s*"([^"]*)"', fixed_json)
-        tool_name = tool_name_match.group(1) if tool_name_match else None
-        
-        # Check if parameters structure exists
-        parameters_match = re.search(r'"parameters":\s*\{', fixed_json)
-        has_parameters_wrapper = parameters_match is not None
-        
-        # Extract parameters content (may be nested)
-        if has_parameters_wrapper:
-            # Find the parameters object boundaries
-            params_start = fixed_json.find('"parameters":')
-            if params_start != -1:
-                # Find the opening brace after "parameters":
-                brace_start = fixed_json.find('{', params_start)
-                if brace_start != -1:
-                    # Count braces to find matching closing brace
-                    brace_count = 0
-                    params_end = brace_start
-                    for i in range(brace_start, len(fixed_json)):
-                        char = fixed_json[i]
-                        if char == '{':
-                            brace_count += 1
-                        elif char == '}':
-                            brace_count -= 1
-                            if brace_count == 0:
-                                params_end = i + 1
-                                break
-                    params_content = fixed_json[brace_start:params_end]
-                else:
-                    params_content = None
-            else:
-                params_content = None
-        else:
-            params_content = fixed_json  # The whole JSON is the parameters
-        
-        # Extract individual parameter fields
-        pairs = {}
-        
-        # Extract target_file
-        target_match = re.search(r'"target_file":\s*"([^"]*)"', params_content if params_content else fixed_json)
-        if target_match:
-            pairs['target_file'] = target_match.group(1)
-        
-        # Extract edit_mode  
-        mode_match = re.search(r'"edit_mode":\s*"([^"]*)"', params_content if params_content else fixed_json)
-        if mode_match:
-            pairs['edit_mode'] = mode_match.group(1)
-        
-        # Extract code_edit (this is the tricky one with potentially long content)
-        # First, try to find code_edit field position
-        code_edit_pattern = r'"code_edit":\s*"'
-        code_edit_match = re.search(code_edit_pattern, params_content if params_content else fixed_json, re.DOTALL)
-        
-        if code_edit_match:
-            # Find the start position after the opening quote
-            start_pos = code_edit_match.end() - 1  # Position of the opening quote
-            search_text = params_content if params_content else fixed_json
-            
-            # Try to find the matching closing quote, handling escaped quotes
-            # But also handle cases where newlines are not escaped
-            # Strategy: find the closing quote that's followed by } or comma or end of string
-            # Look for pattern: " followed by whitespace and } or comma
-            end_pattern = r'"\s*[,}]'
-            end_match = re.search(end_pattern, search_text[start_pos + 1:], re.DOTALL)
-            
-            if end_match:
-                # Found a closing quote followed by } or comma
-                end_pos = start_pos + 1 + end_match.start()
-                code_content = search_text[start_pos + 1:end_pos]
-                # Unescape the content properly (handle already escaped characters)
-                pairs['code_edit'] = code_content
-            else:
-                # No matching quote found, extract everything until the end or next field
-                # Look for the next field pattern or end of JSON
-                next_field_pattern = r'\s*"[\w_]+"\s*:'
-                next_field_match = re.search(next_field_pattern, search_text[start_pos + 1:], re.DOTALL)
-                if next_field_match:
-                    end_pos = start_pos + 1 + next_field_match.start()
-                    code_content = search_text[start_pos + 1:end_pos].rstrip().rstrip('"')
-                    pairs['code_edit'] = code_content
-                else:
-                    # Extract until the end, removing trailing quote if present
-                    code_content = search_text[start_pos + 1:].rstrip().rstrip('"').rstrip('}')
-                    pairs['code_edit'] = code_content
-        
-        # If we found the key components, rebuild the JSON
-        if len(pairs) >= 2:  # At least target_file and one other parameter
-            # Properly escape the code_edit content if it exists
-            if 'code_edit' in pairs:
-                # Re-escape any unescaped characters in the code
-                code = pairs['code_edit']
-                code = code.replace('\\', '\\\\').replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r').replace('"', '\\"')
-                pairs['code_edit'] = code
-            
-            # Rebuild the parameters JSON
-            rebuilt_parts = []
-            for key, value in pairs.items():
-                rebuilt_parts.append(f'"{key}": "{value}"')
-            
-            rebuilt_params_json = '{' + ', '.join(rebuilt_parts) + '}'
-            
-            # Rebuild the full tool call JSON if tool_name was found
-            if tool_name:
-                rebuilt_json = f'{{"tool_name": "{tool_name}", "parameters": {rebuilt_params_json}}}'
-            else:
-                # If no tool_name found, infer from parameters
-                # Common patterns: edit_file has target_file and edit_mode/code_edit
-                if 'target_file' in pairs and ('edit_mode' in pairs or 'code_edit' in pairs):
-                    tool_name = 'edit_file'
-                    rebuilt_json = f'{{"tool_name": "{tool_name}", "parameters": {rebuilt_params_json}}}'
-                else:
-                    # Just return parameters if we can't infer tool_name
-                    rebuilt_json = rebuilt_params_json
-            
-            # Validate the rebuilt JSON
-            try:
-                json.loads(rebuilt_json)
-                return rebuilt_json
-            except json.JSONDecodeError:
-                pass
-        
-        # If all else fails, return the input with basic comma fixes
-        return fixed_json
-        
-    except Exception as e:
-        return json_str
 
 
 def parse_python_params_manually(params_str: str) -> Dict[str, Any]:
@@ -704,6 +769,5 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
 _fix_json_escapes = fix_json_escapes
 _smart_escape_quotes_in_json_values = smart_escape_quotes_in_json_values  
 _rebuild_json_structure = rebuild_json_structure
-_fix_long_json_with_code = fix_long_json_with_code
 _parse_python_params_manually = parse_python_params_manually
 _convert_parameter_value = convert_parameter_value 
