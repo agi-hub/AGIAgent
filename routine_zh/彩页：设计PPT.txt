@@ -1,3 +1,0 @@
-请基于Pandoc+reveal.js撰写图文并茂的PPT。Pandoc可以采用专有的markdown格式设计PPT，请遵守。
-请使用reveal.js样式，先从https://github.com/hakimel/reveal.js拉取代码
-之后使用pandoc -t revealjs -s demo.md -o demo.html

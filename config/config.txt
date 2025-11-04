@@ -4,8 +4,8 @@ LANG=zh
 
 # GUI API configuration
 api_key=your key
-api_base=https://open.bigmodel.cn/api/coding/paas/v4
-model=glm-4.5
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.6
 max_tokens=16384
 
 # OpenAI API configuration 
