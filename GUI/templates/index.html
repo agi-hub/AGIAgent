@@ -2300,10 +2300,10 @@
             <div class="api-key-group">
                 <label for="routineSelect">
                     <i class="fas fa-file-text"></i>
-                    {{ i18n.get('routine_file', '指导文件' if lang == 'zh' else 'Routine File') }}
+                    {{ i18n.get('routine_file', '任务类型' if lang == 'zh' else 'Task Type') }}
                 </label>
                 <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 180px;">
-                    <option value="">{{ i18n.get('no_routine', '无' if lang == 'zh' else 'None') }}</option>
+                    <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
                 </select>
             </div>
             <div class="api-key-group">
