@@ -644,7 +644,7 @@ class SVGProcessor:
                 svg_file = result.get('svg_file', result['png_file'].replace('.png', '.svg'))
                 # Use caption if available, otherwise use default
                 alt_text = caption if caption else f"SVG图表 {svg_id}"
-                replacement = f"![{alt_text}]({svg_file})"
+                replacement = f"![{alt_text}]({svg_file})\n"
                 print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (caption: {alt_text})")
                 
             elif result.get('svg_file'):
@@ -652,7 +652,7 @@ class SVGProcessor:
                 svg_file = result['svg_file']
                 # Use caption if available, otherwise use default
                 alt_text = caption if caption else f"SVG图表 {svg_id}"
-                replacement = f"![{alt_text}]({svg_file})"
+                replacement = f"![{alt_text}]({svg_file})\n"
                 print_debug(f"🔄 Replaced SVG block {svg_id} with SVG image link (PNG conversion failed, caption: {alt_text})")
                 
             else:

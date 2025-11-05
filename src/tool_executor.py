@@ -1556,7 +1556,7 @@ class ToolExecutor:
                                         getattr(self, '_tools_executed_in_stream', False))
                 
                 if tools_already_executed:
-                    print_current("✅ Tools were already executed during streaming - collecting results for response formatting")
+                    #print_current("✅ Tools were already executed during streaming - collecting results for response formatting")
                     # For streaming execution, we still need to format the response properly
                     # but skip actual execution since it was done during streaming
                     all_tool_results = getattr(self, '_streaming_tool_results', [])
@@ -1572,6 +1572,9 @@ class ToolExecutor:
                     pass
                     #print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
 
+                    # 添加换行（仅限chat based接口，在工具执行之前）
+                    if self.use_chat_based_tools:
+                        print_current("")
                     
                     # Print tool calls for terminal display with better formatting
                     if tool_calls_formatted:
@@ -1588,13 +1591,13 @@ class ToolExecutor:
                 
                 # Only execute tools if they weren't already executed during streaming
                 if not tools_already_executed:
-                    print_current(f"🚀 Starting execution of {len(tool_calls)} tool calls...")
+                    #print_current(f"🚀 Starting execution of {len(tool_calls)} tool calls...")
                     for i, tool_call in enumerate(tool_calls, 1):
                         # Handle standard format tool calls (both OpenAI and Anthropic)
                         try:
                             tool_name = self._get_tool_name_from_call(tool_call)
                             tool_params = self._get_tool_params_from_call(tool_call)
-                            print_current(f"🔧 Executing tool {i}/{len(tool_calls)}: {tool_name}")
+                            print_current(f"🔧 Executing tool {tool_name}")
                         except Exception as e:
                             print_current(f"❌ Failed to extract tool name/params from tool_call {i}: {e}")
                             print_current(f"Tool call structure: {tool_call}")
@@ -1865,37 +1868,91 @@ class ToolExecutor:
                 print_current(f"⚠️ Warning: Failed to check terminate messages: {e}")
             return None
     
-    def _is_complete_json_tool_call(self, content: str) -> bool:
+    def _has_complete_json_tool_call(self, content: str) -> bool:
         """
-        检测content中是否包含完整的工具调用
-        策略：检测是否有第二个```json块，并且第一个```json块已经完整闭合
-        如果有第二个```json块且第一个块已完整，则说明有多个工具调用需要截断
+        检测content中是否包含完整的工具调用（支持带```json标记和不带标记的纯JSON格式）
         
         Args:
             content: 累积的响应内容
             
         Returns:
-            bool: 如果检测到第二个```json块且第一个块已完整返回True
+            bool: 如果检测到完整的工具调用JSON返回True
         """
-        # 查找第一个```json块
+        # 首先检查是否有```json标记的格式
         json_block_marker = '```json'
-        first_pos = content.find(json_block_marker)
-        if first_pos == -1:
-            return False
+        if json_block_marker in content:
+            first_pos = content.find(json_block_marker)
+            json_start = first_pos + len(json_block_marker)
+            first_block_end = content.find('```', json_start)
+            
+            # 如果第一个块没有闭合，不要停止（可能还在接收中）
+            if first_block_end == -1:
+                return False
+            
+            # 查找第二个```json块（必须在第一个块之后）
+            second_pos = content.find(json_block_marker, first_block_end + 3)
+            # 如果找到第二个```json块，且第一个块已完整，说明有多个工具调用，需要截断
+            return second_pos != -1
         
-        # 检查第一个JSON块是否已经完整闭合
-        json_start = first_pos + len(json_block_marker)
-        first_block_end = content.find('```', json_start)
+        # 如果没有```json标记，检查是否是纯JSON格式的工具调用
+        # 查找 "tool_name" 和 "parameters" 字段
+        if '"tool_name"' in content and '"parameters"' in content:
+            # 尝试找到第一个完整的JSON对象（以{开始，以}结束）
+            try:
+                brace_start = content.find('{')
+                if brace_start != -1:
+                    # 尝试找到匹配的闭合括号
+                    brace_count = 0
+                    in_string = False
+                    escape_next = False
+                    brace_end = -1
+                    
+                    for i in range(brace_start, len(content)):
+                        char = content[i]
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == '\\':
+                            escape_next = True
+                            continue
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    brace_end = i + 1
+                                    break
+                    
+                    if brace_end > brace_start:
+                        # 检查是否包含tool_name和parameters
+                        json_str = content[brace_start:brace_end]
+                        if '"tool_name"' in json_str and '"parameters"' in json_str:
+                            # 尝试解析JSON验证其有效性
+                            try:
+                                import json
+                                tool_data = json.loads(json_str)
+                                if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    # 检查是否有第二个工具调用
+                                    remaining_content = content[brace_end:]
+                                    if '"tool_name"' in remaining_content and '"parameters"' in remaining_content:
+                                        return True  # 有多个工具调用
+                                    return True  # 至少有一个完整的工具调用
+                            except:
+                                pass
+            except:
+                pass
         
-        # 如果第一个块没有闭合，不要停止（可能还在接收中）
-        if first_block_end == -1:
-            return False
-        
-        # 查找第二个```json块（必须在第一个块之后）
-        second_pos = content.find(json_block_marker, first_block_end + 3)
-        
-        # 如果找到第二个```json块，且第一个块已完整，说明有多个工具调用，需要截断
-        return second_pos != -1
+        return False
+    
+    def _is_complete_json_tool_call(self, content: str) -> bool:
+        """
+        检测content中是否包含完整的工具调用（兼容性方法，调用新的检测方法）
+        """
+        return self._has_complete_json_tool_call(content)
     
     def _find_second_json_block_start(self, content: str) -> int:
         """
@@ -4197,10 +4254,55 @@ class ToolExecutor:
                                                 total_printed += len(buffer)
                                                 buffer = ""
                                         
-                                        # 检测工具调用：只要检测到 "tool_name" 出现两次就停止
-                                        if self._is_complete_json_tool_call(content):
+                                        # 检测工具调用：检查是否包含完整的工具调用JSON（支持带```json标记和不带标记的纯JSON）
+                                        if self._has_complete_json_tool_call(content):
                                             json_block_detected = True
                                             break
+                                        
+                                        # 额外检查：如果检测到纯JSON格式的工具调用（不带```json标记），也停止接收
+                                        if '"tool_name"' in content and '"parameters"' in content:
+                                            # 检查是否已经有一个完整的JSON对象
+                                            try:
+                                                brace_start = content.find('{')
+                                                if brace_start != -1:
+                                                    brace_count = 0
+                                                    in_string = False
+                                                    escape_next = False
+                                                    brace_end = -1
+                                                    
+                                                    for i in range(brace_start, len(content)):
+                                                        char = content[i]
+                                                        if escape_next:
+                                                            escape_next = False
+                                                            continue
+                                                        if char == '\\':
+                                                            escape_next = True
+                                                            continue
+                                                        if char == '"' and not escape_next:
+                                                            in_string = not in_string
+                                                            continue
+                                                        if not in_string:
+                                                            if char == '{':
+                                                                brace_count += 1
+                                                            elif char == '}':
+                                                                brace_count -= 1
+                                                                if brace_count == 0:
+                                                                    brace_end = i + 1
+                                                                    break
+                                                    
+                                                    if brace_end > brace_start:
+                                                        json_str = content[brace_start:brace_end]
+                                                        if '"tool_name"' in json_str and '"parameters"' in json_str:
+                                                            try:
+                                                                import json
+                                                                tool_data = json.loads(json_str)
+                                                                if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+                                                                    json_block_detected = True
+                                                                    break
+                                                            except:
+                                                                pass
+                                            except:
+                                                pass
                                 except Exception as e:
                                     # 捕获流式处理中的异常
                                     stream_error_occurred = True
@@ -4248,14 +4350,55 @@ class ToolExecutor:
                                     return content, []
                                 
                                 # 检查是否有工具调用（即使只有一个）
-                                # 查找第一个```json块
+                                # 查找第一个```json块或纯JSON格式的工具调用
                                 has_json_block = '```json' in content
+                                # 也检查纯JSON格式（不带```json标记）
+                                has_plain_json_tool_call = ('"tool_name"' in content and '"parameters"' in content) and not has_json_block
                                 
                                 if json_block_detected:
                                     # 检测到第二个工具调用，只解析第一个
                                     # 确保用于解析的content包含完整的第一个工具调用
                                     # 即使被截断了，也要确保第一个JSON块是完整的
-                                    content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    if has_json_block:
+                                        content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    else:
+                                        # 纯JSON格式：找到第一个完整的JSON对象并截断
+                                        try:
+                                            brace_start = content.find('{')
+                                            if brace_start != -1:
+                                                brace_count = 0
+                                                in_string = False
+                                                escape_next = False
+                                                brace_end = -1
+                                                
+                                                for i in range(brace_start, len(content)):
+                                                    char = content[i]
+                                                    if escape_next:
+                                                        escape_next = False
+                                                        continue
+                                                    if char == '\\':
+                                                        escape_next = True
+                                                        continue
+                                                    if char == '"' and not escape_next:
+                                                        in_string = not in_string
+                                                        continue
+                                                    if not in_string:
+                                                        if char == '{':
+                                                            brace_count += 1
+                                                        elif char == '}':
+                                                            brace_count -= 1
+                                                            if brace_count == 0:
+                                                                brace_end = i + 1
+                                                                break
+                                                
+                                                if brace_end > brace_start:
+                                                    content_for_parsing = content[:brace_end]
+                                                else:
+                                                    content_for_parsing = content
+                                            else:
+                                                content_for_parsing = content
+                                        except:
+                                            content_for_parsing = content
                                     
                                     # Parse tool calls from the accumulated content
                                     tool_calls = self.parse_tool_calls(content_for_parsing)
@@ -4282,10 +4425,14 @@ class ToolExecutor:
                                     if not content_for_parsing.endswith('\n'):
                                         content_for_parsing += '\n'
                                     return content_for_parsing, standardized_tool_calls
-                                elif has_json_block:
+                                elif has_json_block or has_plain_json_tool_call:
                                     # 只有一个工具调用，正常解析并返回
-                                    # 确保JSON块完整
-                                    content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    # 确保JSON块完整（如果使用```json标记）
+                                    if has_json_block:
+                                        content_for_parsing = self._ensure_first_json_block_complete(content)
+                                    else:
+                                        # 纯JSON格式，直接使用content
+                                        content_for_parsing = content
                                     
                                     # Parse tool calls from the accumulated content
                                     tool_calls = self.parse_tool_calls(content_for_parsing)
@@ -4309,7 +4456,8 @@ class ToolExecutor:
                                     if not standardized_tool_calls:
                                         print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
                                         print_current(f"Content for parsing length: {len(content_for_parsing)}")
-                                        #print_current(f"Content snippet: {content_for_parsing[:500]}...")
+                                        if self.debug_mode:
+                                            print_current(f"Content snippet: {content_for_parsing[:500]}...")
                                     
                                     # 添加换行（仅限chat接口）
                                     if not content_for_parsing.endswith('\n'):
@@ -5063,9 +5211,9 @@ class ToolExecutor:
                                                     tool_calls_buffer[idx]["function"]["arguments"] += tool_call_delta.function.arguments
                                     
                                     # 一旦检测到工具调用完成，立即停止接收
-                                    if finish_reason == "tool_calls":
-                                        print_current("\n🛑 检测到完整工具调用块，停止接收")
-                                        break
+                                    #if finish_reason == "tool_calls":
+                                    #    print_current("\n🛑 检测到完整工具调用块，停止接收")
+                                    #    break
                                     
                                     # 检查是否是其他原因的结束
                                     if finish_reason is not None:

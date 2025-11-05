@@ -574,6 +574,14 @@ class FileSystemTools:
                         'message': f'SVG processing error: {e}'
                     }
             
+            # Validate and comment out invalid local image links after Mermaid/SVG processing
+            # This is done after image conversion to check all final image references
+            if target_file.lower().endswith('.md'):
+                try:
+                    self._validate_and_comment_invalid_images(file_path)
+                except Exception as e:
+                    print_debug(f"⚠️ Error validating images: {e}")
+            
             # Ensure markdown file ends with proper newlines after image processing
             # This is important because Mermaid/SVG processors may rewrite the file
             if target_file.lower().endswith('.md'):
@@ -2806,6 +2814,67 @@ class FileSystemTools:
 
         except Exception as e:
             print_debug(f"⚠️ Failed to convert image paths in {md_file_path}: {str(e)}")
+
+    def _validate_and_comment_invalid_images(self, md_file_path: str) -> None:
+        """
+        Check all image links in markdown file and comment out invalid local images.
+        
+        Args:
+            md_file_path: Path to the markdown file to process
+        """
+        try:
+            from pathlib import Path
+
+            # Read the markdown file
+            with open(md_file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Pattern to match markdown image references: ![alt](path)
+            image_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+            
+            md_dir = Path(md_file_path).parent
+            content_changed = False
+            invalid_count = 0
+
+            def validate_and_replace(match):
+                nonlocal content_changed, invalid_count
+                alt_text = match.group(1)
+                image_path = match.group(2).strip()
+                
+                # Skip non-local images (http, https, ftp, data URIs)
+                if image_path.startswith(('http://', 'https://', 'ftp://', 'data:')):
+                    return match.group(0)  # Return original unchanged
+                
+                # Build full image path
+                if os.path.isabs(image_path):
+                    full_image_path = Path(image_path)
+                else:
+                    # Relative path: resolve relative to markdown file directory
+                    full_image_path = (md_dir / image_path).resolve()
+                
+                # Check if file exists
+                if not full_image_path.exists():
+                    invalid_count += 1
+                    content_changed = True
+                    print_debug(f"⚠️ Local image not found: {image_path} (resolved to: {full_image_path}), commenting out")
+                    # Convert to HTML comment
+                    return f'<!-- ![{alt_text}]({image_path}) -->'
+                
+                return match.group(0)  # Return original unchanged
+            
+            # Apply validation to all image references
+            validated_content = re.sub(image_pattern, validate_and_replace, content)
+            
+            # Write back only if content changed
+            if content_changed:
+                with open(md_file_path, 'w', encoding='utf-8') as f:
+                    f.write(validated_content)
+                print_debug(f"📝 Commented out {invalid_count} invalid local image(s) in: {os.path.basename(md_file_path)}")
+            else:
+                print_debug(f"✅ All local images validated successfully in: {os.path.basename(md_file_path)}")
+
+        except Exception as e:
+            print_debug(f"⚠️ Error validating images in {md_file_path}: {str(e)}")
 
 
 
