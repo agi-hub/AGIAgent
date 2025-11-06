@@ -573,6 +573,10 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
+        .json-collapsible-title span {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
         .json-collapsible-icon {
             transition: transform 0.3s ease;
             font-size: 12px;
@@ -586,7 +590,8 @@
             padding: 12px 16px;
             border-top: 1px solid rgba(25, 135, 84, 0.3);
             color: #cccccc;
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: inherit;
             white-space: pre-wrap;
             word-break: break-all;
             overflow-wrap: anywhere;
@@ -3088,6 +3093,8 @@
                 if (data.success) {
                     selectedDirectory = data.dir_name;
                     taskMode = 'selected';
+                    // 将新创建的目录添加到展开列表中，使其自动展开
+                    expandedDirectories.add(data.dir_name);
                     addMessage(data.message, 'success');
                     refreshDirectories();
                     // 启动文件监测
@@ -5821,11 +5828,14 @@
             
             loadingTask.promise.then(function(pdf) {
                 const container = document.getElementById('pdfContainer');
+                // 移除顶部圆角，确保导航栏完全贴到顶部
+                container.style.borderTopLeftRadius = '0';
+                container.style.borderTopRightRadius = '0';
                 container.innerHTML = '';
                 
                 // 创建页面导航
                 const nav = document.createElement('div');
-                nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;';
+                nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px);';
                 const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                 const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                 
@@ -5869,11 +5879,14 @@
                     
                     simpleLoadingTask.promise.then(function(pdf) {
                         const container = document.getElementById('pdfContainer');
+                        // 移除顶部圆角，确保导航栏完全贴到顶部
+                        container.style.borderTopLeftRadius = '0';
+                        container.style.borderTopRightRadius = '0';
                         container.innerHTML = '';
                         
                         // 创建页面导航
                         const nav = document.createElement('div');
-                        nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10;';
+                        nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px);';
                         const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                         const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                         

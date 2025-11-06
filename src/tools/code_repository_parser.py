@@ -1508,11 +1508,11 @@ class CodeRepositoryParser:
                             print_system("📁 Code index initialized for empty workspace")
                         else:
                             # Has code files but no segments - need to rebuild
-                            print_current("⚠️ No code segments found in database, rebuilding index...")
+                            print_debug("⚠️ No code segments found in database, rebuilding index...")
                             initialization_success = self._rebuild_code_index(db_path)
                     else:
                         initialization_success = True
-                        print_current(f"📚 Code index loaded successfully: {len(self.code_segments)} code segments available")
+                        print_debug(f"📚 Code index loaded successfully: {len(self.code_segments)} code segments available")
                     
                 except Exception as e:
                     print_system(f"⚠️ Failed to load code index database: {e}, will recreate")
