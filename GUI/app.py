@@ -1801,8 +1801,18 @@ def queue_reader_thread(session_id):
 @app.route('/')
 def index():
     """Main page"""
+    # Support language switching via URL parameter
+    lang_param = request.args.get('lang')
+    if lang_param and lang_param in ('zh', 'en'):
+        current_lang = lang_param
+    else:
+        current_lang = get_language()
+    
     i18n = get_i18n_texts()
-    current_lang = get_language()
+    # Override i18n if language is specified via URL
+    if lang_param and lang_param in ('zh', 'en'):
+        i18n = I18N_TEXTS.get(lang_param, I18N_TEXTS['en'])
+    
     mcp_servers = get_mcp_servers_config()
     return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers)
 
@@ -3508,8 +3518,13 @@ def get_routine_files():
         routine_files = []
         workspace_dir = os.getcwd()
         
-        # 根据语言配置选择routine文件夹
-        current_lang = get_language()
+        # 根据URL参数或语言配置选择routine文件夹
+        lang_param = request.args.get('lang')
+        if lang_param and lang_param in ('zh', 'en'):
+            current_lang = lang_param
+        else:
+            current_lang = get_language()
+        
         if current_lang == 'zh':
             routine_dir = os.path.join(workspace_dir, 'routine_zh')
         else:

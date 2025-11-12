@@ -9,35 +9,269 @@
     <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
     <!-- Custom Prism.js override styles for better visibility -->
     <style>
-        /* Override Prism.js with dark theme for code preview */
+        /* ============================================
+           CSS Color Variables - Theme System
+           ============================================ */
+        :root {
+            /* Dark Theme (Default) */
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #2d2d30;
+            --bg-tertiary: #252526;
+            --bg-input: #1e1e1e;
+            --bg-container: #1e1e1e;
+            --bg-sidebar: #252526;
+            --bg-chat: #1e1e1e;
+            --bg-chat-header: #2d2d30;
+            --bg-input-container: #2d2d30;
+            --bg-user-auth: #2d2d30;
+            --bg-main: #252526;
+            --bg-message-user: #0e639c;
+            --bg-message-system: #264f78;
+            --bg-message-info: #1a1a1a;
+            --bg-message-error: #5a1d1d;
+            --bg-message-success: #0f5132;
+            --bg-json-collapsible: #0f5132;
+            --bg-directory-item: #1e1e1e;
+            --bg-directory-item-hover: #2d2d30;
+            --bg-directory-item-expanded: #0f3460;
+            --bg-directory-item-selected: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
+            --bg-directory-item-last: #0f3460;
+            --bg-file-tree: #1e1e1e;
+            --bg-upload-area: #1e1e1e;
+            --bg-upload-area-hover: #2d2d30;
+            --bg-upload-btn: #007acc;
+            --bg-upload-btn-hover: #005a9e;
+            --bg-progress-bar: #3e3e42;
+            --bg-progress-fill: #007acc;
+            --bg-send-button: rgba(74, 144, 226, 0.8);
+            --bg-send-button-hover: rgba(53, 122, 189, 0.9);
+            --bg-send-button-disabled: #3e3e42;
+            --bg-scroll-hint: #007acc;
+            --bg-scroll-hint-hover: #005a9e;
+            
+            --text-primary: #cccccc;
+            --text-secondary: #9cdcfe;
+            --text-tertiary: #569cd6;
+            --text-header: #cccccc;
+            --text-header-title: #569cd6;
+            --text-label: #cccccc;
+            --text-placeholder: #6a6a6a;
+            --text-user: white;
+            --text-system: #9cdcfe;
+            --text-info: #cccccc;
+            --text-error: #f48771;
+            --text-success: #75b798;
+            --text-json-title: #75b798;
+            --text-json-content: #cccccc;
+            --text-directory-name: #cccccc;
+            --text-directory-info: #9cdcfe;
+            --text-file-item: #ffffff;
+            --text-file-item-directory: #9cdcfe;
+            --text-upload-hint: #9cdcfe;
+            --text-progress: #9cdcfe;
+            
+            --border-primary: #3e3e42;
+            --border-secondary: #3e3e42;
+            --border-focus: #007acc;
+            --border-resizer: #3e3e42;
+            --border-resizer-hover: #569cd6;
+            --border-resizer-active: #007acc;
+            --border-message-system: #007acc;
+            --border-message-info: #569cd6;
+            --border-message-error: #f14c4c;
+            --border-message-success: #198754;
+            --border-json-collapsible: #198754;
+            --border-directory-item: #3e3e42;
+            --border-directory-item-hover: #569cd6;
+            --border-directory-item-expanded: #007acc;
+            --border-directory-item-selected: #007acc;
+            --border-directory-item-last: #569cd6;
+            --border-file-tree: #3e3e42;
+            --border-upload-area: #569cd6;
+            --border-upload-area-hover: #007acc;
+            
+            --color-accent: #569cd6;
+            --color-accent-hover: #007acc;
+            --color-action-btn: #9cdcfe;
+            --color-action-btn-hover: #569cd6;
+            --color-rename-btn: #ffc107;
+            --color-delete-btn: #ff6b6b;
+            --color-connect-success: #28a745;
+            --color-connect-success-hover: #218838;
+            --color-connect-disabled: #6c757d;
+            --color-connect-disabled-hover: #5a6268;
+            
+            --shadow-focus: rgba(0, 122, 204, 0.2);
+            --shadow-directory-selected: rgba(0, 122, 204, 0.3);
+            --shadow-scroll-hint: rgba(0, 122, 204, 0.4);
+            --shadow-scroll-hint-hover: rgba(0, 122, 204, 0.6);
+            
+            --resizer-indicator: rgba(255, 255, 255, 0.3);
+            --resizer-indicator-hover: rgba(255, 255, 255, 0.6);
+            
+            /* Code syntax highlighting colors for dark theme */
+            --code-text: #ffffff;
+            --code-bg: #1e1e1e;
+            --code-border: #404040;
+            --code-inline-bg: #2d2d2d;
+            --code-comment: #6a9955;
+            --code-punctuation: #d4d4d4;
+            --code-property: #569cd6;
+            --code-number: #b5cea8;
+            --code-string: #ce9178;
+            --code-operator: #d4d4d4;
+            --code-keyword: #c586c0;
+            --code-function: #dcdcaa;
+            --code-variable: #9cdcfe;
+        }
+        
+        [data-theme="light"] {
+            /* Light Theme */
+            --bg-primary: #ffffff;
+            --bg-secondary: #e8eaed;
+            --bg-tertiary: #f3f3f3;
+            --bg-input: #ffffff;
+            --bg-container: #ffffff;
+            --bg-sidebar: #fafafa;
+            --bg-chat: #ffffff;
+            --bg-chat-header: #e8eaed;
+            --bg-input-container: #e8eaed;
+            --bg-user-auth: #e8eaed;
+            --bg-main: #f3f3f3;
+            --bg-message-user: #b3d9ff;
+            --bg-message-system: #cfe8fc;
+            --bg-message-info: #e8eaed;
+            --bg-message-error: #ffeef0;
+            --bg-message-success: #c3f0d3;
+            --bg-json-collapsible: #c3f0d3;
+            --bg-directory-item: #f5f5f0;
+            --bg-directory-item-hover: #e8eaed;
+            --bg-directory-item-expanded: #b3d9ff;
+            --bg-directory-item-selected: linear-gradient(135deg, #0366d6 0%, #005cc5 100%);
+            --bg-directory-item-last: #b3d9ff;
+            --bg-file-tree: #ffffff;
+            --bg-upload-area: #ffffff;
+            --bg-upload-area-hover: #e8eaed;
+            --bg-upload-btn: #0366d6;
+            --bg-upload-btn-hover: #005cc5;
+            --bg-progress-bar: #d0d7de;
+            --bg-progress-fill: #0366d6;
+            --bg-send-button: rgba(3, 102, 214, 0.9);
+            --bg-send-button-hover: rgba(3, 102, 214, 1);
+            --bg-send-button-disabled: #d0d7de;
+            --bg-scroll-hint: #0366d6;
+            --bg-scroll-hint-hover: #005cc5;
+            
+            --text-primary: #24292e;
+            --text-secondary: #0366d6;
+            --text-tertiary: #0366d6;
+            --text-header: #24292e;
+            --text-header-title: #0366d6;
+            --text-label: #24292e;
+            --text-placeholder: #6a737d;
+            --text-user: #1a1a1a;
+            --text-system: #0052a3;
+            --text-info: #24292e;
+            --text-error: #d73a49;
+            --text-success: #1a6b2d;
+            --text-json-title: #1a6b2d;
+            --text-json-content: #24292e;
+            --text-directory-name: #24292e;
+            --text-directory-info: #0366d6;
+            --text-file-item: #24292e;
+            --text-file-item-directory: #0366d6;
+            --text-upload-hint: #0366d6;
+            --text-progress: #0366d6;
+            
+            --border-primary: #d0d7de;
+            --border-secondary: #d0d7de;
+            --border-focus: #0366d6;
+            --border-resizer: #d0d7de;
+            --border-resizer-hover: #0366d6;
+            --border-resizer-active: #005cc5;
+            --border-message-system: #0366d6;
+            --border-message-info: #0366d6;
+            --border-message-error: #d73a49;
+            --border-message-success: #22863a;
+            --border-json-collapsible: #22863a;
+            --border-directory-item: #d0d7de;
+            --border-directory-item-hover: #0366d6;
+            --border-directory-item-expanded: #0366d6;
+            --border-directory-item-selected: #0366d6;
+            --border-directory-item-last: #0366d6;
+            --border-file-tree: #d0d7de;
+            --border-upload-area: #0366d6;
+            --border-upload-area-hover: #005cc5;
+            
+            --color-accent: #0366d6;
+            --color-accent-hover: #005cc5;
+            --color-action-btn: #0366d6;
+            --color-action-btn-hover: #0366d6;
+            --color-rename-btn: #ffc107;
+            --color-delete-btn: #d73a49;
+            --color-connect-success: #28a745;
+            --color-connect-success-hover: #218838;
+            --color-connect-disabled: #6c757d;
+            --color-connect-disabled-hover: #5a6268;
+            
+            --shadow-focus: rgba(3, 102, 214, 0.2);
+            --shadow-directory-selected: rgba(3, 102, 214, 0.3);
+            --shadow-scroll-hint: rgba(3, 102, 214, 0.4);
+            --shadow-scroll-hint-hover: rgba(3, 102, 214, 0.6);
+            
+            --resizer-indicator: rgba(0, 0, 0, 0.3);
+            --resizer-indicator-hover: rgba(0, 0, 0, 0.6);
+            
+            /* Code syntax highlighting colors for light theme */
+            --code-text: #1a1a1a;
+            --code-bg: #ffffff;
+            --code-border: #d0d0d0;
+            --code-inline-bg: #f5f5f5;
+            --code-comment: #6a9955;
+            --code-punctuation: #586069;
+            --code-property: #005cc5;
+            --code-number: #005cc5;
+            --code-string: #032f62;
+            --code-operator: #586069;
+            --code-keyword: #d73a49;
+            --code-function: #6f42c1;
+            --code-variable: #e36209;
+        }
+
+        /* Light theme specific styles - transparent borders for dividers */
+        [data-theme="light"] .sidebar {
+            border-left: 1px solid transparent;
+        }
+        
+        /* Override Prism.js with theme-aware code preview */
         .preview-modal code[class*="language-"],
         .preview-modal pre[class*="language-"] {
-            color: #ffffff !important;
-            background: #1e1e1e !important;
+            color: var(--code-text) !important;
+            background: var(--code-bg) !important;
             font-weight: normal !important;
         }
         
         .preview-modal pre[class*="language-"] {
-            background: #1e1e1e !important;
-            border: 1px solid #404040 !important;
+            background: var(--code-bg) !important;
+            border: 1px solid var(--code-border) !important;
         }
         
         .preview-modal :not(pre) > code[class*="language-"] {
-            background: #2d2d2d !important;
-            color: #ffffff !important;
+            background: var(--code-inline-bg) !important;
+            color: var(--code-text) !important;
             font-weight: normal !important;
         }
         
-        /* Syntax highlighting tokens with vibrant colors for dark theme */
+        /* Syntax highlighting tokens with theme-aware colors */
         .preview-modal .token.comment,
         .preview-modal .token.prolog,
         .preview-modal .token.doctype,
         .preview-modal .token.cdata {
-            color: #6a9955 !important;
+            color: var(--code-comment) !important;
         }
         
         .preview-modal .token.punctuation {
-            color: #d4d4d4 !important;
+            color: var(--code-punctuation) !important;
         }
         
         .preview-modal .token.property,
@@ -45,12 +279,12 @@
         .preview-modal .token.constant,
         .preview-modal .token.symbol,
         .preview-modal .token.deleted {
-            color: #569cd6 !important;
+            color: var(--code-property) !important;
         }
         
         .preview-modal .token.boolean,
         .preview-modal .token.number {
-            color: #b5cea8 !important;
+            color: var(--code-number) !important;
         }
         
         .preview-modal .token.selector,
@@ -59,7 +293,7 @@
         .preview-modal .token.char,
         .preview-modal .token.builtin,
         .preview-modal .token.inserted {
-            color: #ce9178 !important;
+            color: var(--code-string) !important;
         }
         
         .preview-modal .token.operator,
@@ -67,24 +301,24 @@
         .preview-modal .token.url,
         .preview-modal .language-css .token.string,
         .preview-modal .style .token.string {
-            color: #d4d4d4 !important;
+            color: var(--code-operator) !important;
         }
         
         .preview-modal .token.atrule,
         .preview-modal .token.attr-value,
         .preview-modal .token.keyword {
-            color: #c586c0 !important;
+            color: var(--code-keyword) !important;
         }
         
         .preview-modal .token.function,
         .preview-modal .token.class-name {
-            color: #dcdcaa !important;
+            color: var(--code-function) !important;
         }
         
         .preview-modal .token.regex,
         .preview-modal .token.important,
         .preview-modal .token.variable {
-            color: #9cdcfe !important;
+            color: var(--code-variable) !important;
         }
         
         .preview-modal .token.important,
@@ -223,10 +457,10 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #1e1e1e;
+            background: var(--bg-primary);
             height: 100vh;
             overflow: hidden;
-            color: #cccccc;
+            color: var(--text-primary);
             /* zoom: 0.9; */ /* 暂时禁用zoom，使用transform替代 */
             display: flex;
             flex-direction: column;
@@ -236,14 +470,14 @@
 
         /* User authentication area styles */
         .user-auth-area {
-            background: #2d2d30;
-            border-bottom: 1px solid #3e3e42;
+            background: var(--bg-user-auth);
+            border-bottom: 1px solid var(--border-primary);
             padding: 10px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 20px;
             min-height: 50px;
             flex-shrink: 0;
         }
@@ -252,8 +486,8 @@
             display: flex;
             align-items: center;
             gap: 15px;
-            flex: 1;
-            min-width: 300px;
+            flex: 0 0 auto;
+            min-width: auto;
         }
 
         .logo-group {
@@ -265,6 +499,8 @@
             display: flex;
             align-items: center;
             gap: 15px;
+            flex: 0 0 auto;
+            margin-left: auto;
         }
 
         .api-key-group {
@@ -274,30 +510,30 @@
         }
 
         .api-key-group label {
-            color: #cccccc;
+            color: var(--text-label);
             font-size: 0.9em;
             white-space: nowrap;
         }
 
         .api-key-input {
             padding: 6px 12px;
-            border: 1px solid #3e3e42;
+            border: 1px solid var(--border-primary);
             border-radius: 4px;
-            background: #1e1e1e;
-            color: #cccccc;
+            background: var(--bg-input);
+            color: var(--text-primary);
             font-size: 0.9em;
-            width: 200px;
+            width: 160px;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
         }
 
         .api-key-input:focus {
             outline: none;
-            border-color: #007acc;
-            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
         }
 
         .api-key-input::placeholder {
-            color: #6a6a6a;
+            color: var(--text-placeholder);
         }
 
         /* 覆盖浏览器自动填充的浅色背景 */
@@ -305,9 +541,9 @@
         .api-key-input:-webkit-autofill:hover,
         .api-key-input:-webkit-autofill:focus,
         .api-key-input:-webkit-autofill:active {
-            -webkit-box-shadow: 0 0 0px 1000px #1e1e1e inset !important;
-            -webkit-text-fill-color: #cccccc !important;
-            box-shadow: 0 0 0px 1000px #1e1e1e inset !important;
+            -webkit-box-shadow: 0 0 0px 1000px var(--bg-input) inset !important;
+            -webkit-text-fill-color: var(--text-primary) !important;
+            box-shadow: 0 0 0px 1000px var(--bg-input) inset !important;
             transition: background-color 5000s ease-in-out 0s;
         }
 
@@ -347,12 +583,125 @@
             opacity: 0.6;
         }
 
+        .lang-toggle-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 50px;
+            height: 36px;
+            font-weight: 500;
+        }
+
+        .lang-toggle-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--border-focus);
+            color: var(--color-accent);
+        }
+
+        .lang-toggle-btn:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
+        }
+
+        .theme-toggle-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+        }
+
+        .theme-toggle-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--border-focus);
+            color: var(--color-accent);
+        }
+
+        .theme-toggle-btn:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
+        }
+
+        .logo-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: var(--text-header-title);
+        }
+
+        .api-key-toggle-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 21px;
+            padding: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .api-key-toggle-btn:hover {
+            color: var(--color-accent);
+        }
+
+        .register-link {
+            padding: 6px 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            min-width: 50px;
+            height: 36px;
+            font-weight: 500;
+        }
+
+        .register-link:hover {
+            background: var(--bg-secondary);
+            border-color: var(--border-focus);
+            color: var(--color-accent);
+        }
+
+        .register-link:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
+        }
+
         .user-info {
             display: flex;
             align-items: center;
             gap: 8px;
             font-size: 0.85em;
-            color: #9cdcfe;
+            color: var(--text-secondary);
+        }
+
+        .action-buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .user-status {
@@ -366,7 +715,7 @@
             display: flex;
             flex: 1;
             min-height: 0;
-            background: #252526;
+            background: var(--bg-main);
             overflow: hidden;
         }
 
@@ -374,7 +723,8 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            padding: 20px;
+            padding: 15px;
+            padding-bottom: 10px;
             min-width: 400px;
             min-height: 0;
             overflow: hidden;
@@ -382,7 +732,7 @@
 
         #resizer {
             width: 5px;
-            background: #3e3e42;
+            background: var(--border-resizer);
             cursor: col-resize;
             flex-shrink: 0;
             transition: all 0.2s ease;
@@ -390,12 +740,12 @@
         }
 
         #resizer:hover {
-            background: #569cd6;
+            background: var(--border-resizer-hover);
             width: 6px;
         }
 
         #resizer:active {
-            background: #007acc;
+            background: var(--border-resizer-active);
             width: 6px;
         }
 
@@ -408,21 +758,42 @@
             transform: translate(-50%, -50%);
             width: 2px;
             height: 30px;
-            background: rgba(255, 255, 255, 0.3);
+            background: var(--resizer-indicator);
             border-radius: 1px;
             pointer-events: none;
             transition: all 0.2s ease;
         }
 
         #resizer:hover::before {
-            background: rgba(255, 255, 255, 0.6);
+            background: var(--resizer-indicator-hover);
             height: 40px;
+        }
+
+        #resizer.hidden {
+            width: 4px;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        #resizer.hidden:hover {
+            background: var(--border-primary);
+            color: var(--color-accent);
+        }
+
+        #resizer.hidden::before {
+            content: '';
+            display: none;
         }
 
         .sidebar {
             width: 400px;
-            background: #252526;
-            border-left: 1px solid #3e3e42;
+            background: var(--bg-sidebar);
+            border-left: 1px solid var(--border-primary);
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -433,31 +804,212 @@
         .header {
             text-align: center;
             margin-bottom: 15px;
-            color: #cccccc;
+            color: var(--text-header);
         }
 
         .header h1 {
             font-size: 1.2em;
             font-weight: 700;
             margin-bottom: 0;
-            color: #569cd6;
+            color: var(--text-header-title);
         }
 
         .header p {
             display: none;
         }
 
+        .chat-wrapper {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            gap: 0;
+            margin-bottom: 20px;
+        }
+
         .chat-container {
             flex: 1;
             min-height: 0;
-            background: #1e1e1e;
-            border: 1px solid #3e3e42;
+            background: var(--bg-container);
+            border: 1px solid var(--border-primary);
             border-radius: 8px;
-            margin-bottom: 20px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             position: relative;
+        }
+
+        .chat-header {
+            padding: 10px 15px;
+            background: var(--bg-chat-header);
+            border-bottom: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .chat-header i {
+            color: var(--color-accent);
+        }
+
+        .vertical-resizer {
+            width: 5px;
+            background: var(--border-resizer);
+            cursor: col-resize;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .vertical-resizer:hover {
+            background: var(--border-resizer-hover);
+            width: 6px;
+        }
+
+        .vertical-resizer:active {
+            background: var(--border-resizer-active);
+            width: 6px;
+        }
+
+        .vertical-resizer::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 30px;
+            background: var(--resizer-indicator);
+            border-radius: 1px;
+            pointer-events: none;
+            transition: all 0.2s ease;
+        }
+
+        .vertical-resizer:hover::before {
+            background: var(--resizer-indicator-hover);
+            height: 40px;
+        }
+
+        .detail-info-container {
+            width: 400px;
+            min-height: 0;
+            background: var(--bg-container);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: width 0.2s ease;
+        }
+
+        .detail-info-container.hidden {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+            border: none;
+            padding: 0;
+            margin: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .vertical-resizer.hidden {
+            width: 4px;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        .vertical-resizer.hidden:hover {
+            background: var(--border-primary);
+            color: var(--color-accent);
+        }
+
+        .vertical-resizer.hidden::before {
+            content: '';
+            display: none;
+        }
+
+        .vertical-resizer.hidden::after {
+            display: none;
+        }
+
+        .sidebar.hidden {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+            border: none;
+            padding: 0;
+            margin: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .detail-info-header {
+            padding: 10px 15px;
+            background: var(--bg-chat-header);
+            border-bottom: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            justify-content: space-between;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1em;
+        }
+
+        .detail-info-toggle-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+            margin-left: auto;
+        }
+
+        .detail-info-toggle-btn:hover {
+            background: rgba(156, 220, 254, 0.1);
+            color: var(--color-accent);
+        }
+
+
+        .detail-info-header i {
+            color: var(--color-accent);
+        }
+
+        .detail-info-messages {
+            flex: 1;
+            min-height: 0;
+            padding: 10px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.9em;
+            color: var(--text-primary);
+        }
+
+        .detail-info-message {
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-all;
+            overflow-wrap: anywhere;
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1em;
+            line-height: 1.4;
         }
 
 
@@ -469,7 +1021,8 @@
             min-height: 0;
             overflow-y: auto;
             padding: 20px;
-            background: #1e1e1e;
+            background: var(--bg-chat);
+            font-size: 0.9em;
         }
 
         .message {
@@ -489,6 +1042,7 @@
             word-break: break-all;
             overflow-wrap: anywhere;
             line-height: 1.4;
+            font-size: 1em;
         }
 
         @keyframes fadeIn {
@@ -497,52 +1051,58 @@
         }
 
         .message.user {
-            background: #0e639c;
-            color: white;
+            background: var(--bg-message-user);
+            color: var(--text-user);
             margin-left: auto;
             border-bottom-right-radius: 3px;
+            font-size: 1em;
         }
 
         .message.system {
-            background: #264f78;
-            color: #9cdcfe;
-            border-left: 3px solid #007acc;
+            background: var(--bg-message-system);
+            color: var(--text-system);
+            border-left: 3px solid var(--border-message-system);
             padding: 6px 8px !important;
             max-width: 95% !important;
             white-space: nowrap !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
+            font-size: 1em;
         }
 
         .message.info {
-            background: #1a1a1a;
-            color: #cccccc;
-            border-left: 3px solid #569cd6;
+            background: var(--bg-message-info);
+            color: var(--text-info);
+            border-left: 3px solid var(--border-message-info);
+            font-size: 1em;
         }
 
         .message.error {
-            background: #5a1d1d;
-            color: #f48771;
-            border-left: 3px solid #f14c4c;
+            background: var(--bg-message-error);
+            color: var(--text-error);
+            border-left: 3px solid var(--border-message-error);
+            font-size: 1em;
         }
 
         .message.success {
-            background: #0f5132;
-            color: #75b798;
-            border-left: 3px solid #198754;
+            background: var(--bg-message-success);
+            color: var(--text-success);
+            border-left: 3px solid var(--border-message-success);
+            font-size: 1em;
         }
 
         .message.normal {
             background: transparent;
-            color: #cccccc;
+            color: var(--text-primary);
             border: none;
             padding: 2px 0;
+            font-size: 1em;
         }
 
         /* JSON折叠框样式 */
         .json-collapsible {
-            background: #0f5132;
-            border: 2px solid #198754;
+            background: var(--bg-json-collapsible);
+            border: 2px solid var(--border-json-collapsible);
             border-radius: 6px;
             margin-bottom: 15px;
             max-width: 95%;
@@ -568,13 +1128,15 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #75b798;
+            color: var(--text-json-title);
             font-weight: 500;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1em;
         }
 
         .json-collapsible-title span {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1em;
         }
 
         .json-collapsible-icon {
@@ -589,9 +1151,9 @@
         .json-collapsible-content {
             padding: 12px 16px;
             border-top: 1px solid rgba(25, 135, 84, 0.3);
-            color: #cccccc;
+            color: var(--text-json-content);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: inherit;
+            font-size: 1em;
             white-space: pre-wrap;
             word-break: break-all;
             overflow-wrap: anywhere;
@@ -605,10 +1167,10 @@
         }
 
         .input-container {
-            background: #2d2d30;
-            border: 1px solid #3e3e42;
+            background: var(--bg-input-container);
+            border: 1px solid var(--border-primary);
             border-radius: 8px;
-            padding: 20px;
+            padding: 15px;
             flex-shrink: 0;
         }
 
@@ -632,17 +1194,17 @@
 
         #userInput {
             width: 100%;
-            min-height: 50px;
+            min-height: 60px;
             max-height: 120px;
             padding: 15px 20px;
-            border: 1px solid #3e3e42;
+            border: 1px solid var(--border-primary);
             border-radius: 6px;
             font-size: 16px;
             resize: vertical;
             transition: all 0.3s ease;
             font-family: inherit;
-            background: #1e1e1e;
-            color: #cccccc;
+            background: var(--bg-input);
+            color: var(--text-primary);
             overflow-y: auto;
         }
 
@@ -671,37 +1233,37 @@
 
         #userInput:focus {
             outline: none;
-            border-color: #007acc;
-            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
             overflow-y: auto;
         }
 
         #userInput::placeholder {
-            color: #6a6a6a;
+            color: var(--text-placeholder);
         }
 
         .send-button {
-            background: rgba(74, 144, 226, 0.8);
+            background: var(--bg-send-button);
             color: white;
             border: none;
             border-radius: 6px;
-            width: 50px;
-            height: 50px;
+            width: 40px;
+            height: 40px;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 14px;
         }
 
         .send-button:hover {
-            background: rgba(53, 122, 189, 0.9);
+            background: var(--bg-send-button-hover);
             transform: translateY(-1px);
         }
 
         .send-button:disabled {
-            background: #3e3e42;
+            background: var(--bg-send-button-disabled);
             cursor: not-allowed;
             transform: none;
         }
@@ -716,21 +1278,21 @@
             justify-content: space-between;
             align-items: center;
             padding: 15px 20px;
-            border-bottom: 1px solid #3e3e42;
-            background: #2d2d30;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
         }
 
         .sidebar-header h3 {
             margin: 0;
-            color: #cccccc;
+            color: var(--text-primary);
             font-size: 1.1em;
             font-weight: 500;
         }
 
         .sidebar-header .action-btn {
             background: transparent;
-            border: 1px solid #569cd6;
-            color: #569cd6;
+            border: 1px solid var(--color-accent);
+            color: var(--color-accent);
             padding: 6px 8px;
             border-radius: 4px;
             cursor: pointer;
@@ -739,7 +1301,7 @@
         }
 
         .sidebar-header .action-btn:hover:not(:disabled) {
-            background: #569cd6;
+            background: var(--color-accent);
             color: white;
         }
 
@@ -760,39 +1322,39 @@
         }
 
         .directory-item {
-            background: #1e1e1e;
+            background: var(--bg-directory-item);
             border-radius: 6px;
             margin-bottom: 12px;
             padding: 15px;
-            border: 1px solid #3e3e42;
+            border: 1px solid var(--border-directory-item);
             transition: all 0.3s ease;
             cursor: pointer;
         }
 
         .directory-item:hover {
-            background: #2d2d30;
-            border-color: #569cd6;
+            background: var(--bg-directory-item-hover);
+            border-color: var(--border-directory-item-hover);
         }
 
         .directory-item.expanded {
-            background: #0f3460;
-            border-color: #007acc;
+            background: var(--bg-directory-item-expanded);
+            border-color: var(--border-directory-item-expanded);
         }
 
         .directory-item.current {
-            background: #2d2d30;
-            color: #cccccc;
-            border-color: #3e3e42;
+            background: var(--bg-directory-item-hover);
+            color: var(--text-primary);
+            border-color: var(--border-primary);
             box-shadow: none;
         }
 
         .directory-item.current .directory-name,
         .directory-item.current .directory-info {
-            color: #cccccc;
+            color: var(--text-primary);
         }
 
         .directory-item.current .action-btn {
-            color: #9cdcfe;
+            color: var(--text-secondary);
         }
 
         .directory-item.current .action-btn:hover {
@@ -800,10 +1362,10 @@
         }
 
         .directory-item.selected {
-            background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
+            background: var(--bg-directory-item-selected);
             color: white;
-            border-color: #007acc;
-            box-shadow: 0 3px 10px rgba(0, 122, 204, 0.3);
+            border-color: var(--border-directory-item-selected);
+            box-shadow: 0 3px 10px var(--shadow-directory-selected);
         }
 
         .directory-item.selected .directory-name,
@@ -820,8 +1382,8 @@
         }
 
         .directory-item.last {
-            border: 2px solid #569cd6;
-            background: #0f3460;
+            border: 2px solid var(--border-directory-item-last);
+            background: var(--bg-directory-item-last);
         }
 
         .directory-header {
@@ -833,7 +1395,7 @@
 
         .directory-name {
             font-weight: 600;
-            color: #cccccc;
+            color: var(--text-directory-name);
             font-size: 0.9em;
             flex: 1;
             overflow: hidden;
@@ -851,7 +1413,7 @@
         .action-btn {
             background: none;
             border: none;
-            color: #9cdcfe;
+            color: var(--color-action-btn);
             cursor: pointer;
             padding: 5px;
             border-radius: 4px;
@@ -861,7 +1423,7 @@
 
         .action-btn:hover {
             background: rgba(156, 220, 254, 0.1);
-            color: #569cd6;
+            color: var(--color-action-btn-hover);
         }
 
         .rename-btn {
@@ -884,7 +1446,7 @@
 
         .directory-info {
             font-size: 0.85em;
-            color: #9cdcfe;
+            color: var(--text-directory-info);
             margin-bottom: 10px;
         }
 
@@ -892,8 +1454,8 @@
             display: none;
             margin-top: 8px; /* 从10px减少到8px */
             padding: 6px; /* 从10px减少到6px */
-            border-top: 1px solid #3e3e42;
-            background: #1e1e1e;
+            border-top: 1px solid var(--border-file-tree);
+            background: var(--bg-file-tree);
             border-radius: 4px;
             max-height: 400px; /* 增加高度以显示至少10个文件 */
             overflow-y: auto; /* 添加滚动条 */
@@ -934,7 +1496,7 @@
             padding: 2px 0; /* 从5px减少到2px */
             margin-left: 20px;
             font-size: 0.9em;
-            color: #ffffff;
+            color: var(--text-file-item);
             display: flex;
             align-items: center;
             gap: 6px; /* 从8px减少到6px */
@@ -950,15 +1512,15 @@
 
         .file-item.directory {
             font-weight: 500;
-            color: #9cdcfe;
+            color: var(--text-file-item-directory);
         }
 
         .file-item.previewable {
-            color: #ffffff;
+            color: var(--text-file-item);
         }
 
         .file-item.previewable:hover {
-            color: #ffffff;
+            color: var(--text-file-item);
             font-weight: 500;
         }
 
@@ -1042,7 +1604,7 @@
 
         .scrollbar-custom {
             scrollbar-width: thin;
-            scrollbar-color: #569cd6 #2d2d30;
+            scrollbar-color: var(--color-accent) var(--bg-secondary);
         }
 
         .scrollbar-custom::-webkit-scrollbar {
@@ -1050,17 +1612,17 @@
         }
 
         .scrollbar-custom::-webkit-scrollbar-track {
-            background: #2d2d30;
+            background: var(--bg-secondary);
             border-radius: 4px;
         }
 
         .scrollbar-custom::-webkit-scrollbar-thumb {
-            background: #569cd6;
+            background: var(--color-accent);
             border-radius: 4px;
         }
 
         .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-            background: #007acc;
+            background: var(--color-accent-hover);
         }
 
         /* Responsive design for mobile devices */
@@ -1126,6 +1688,20 @@
                 margin-left: 0 !important;
                 margin-top: 8px;
             }
+
+            .action-buttons-group {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                flex-wrap: nowrap;
+                width: 100%;
+            }
+
+            .action-buttons-group > div {
+                margin-left: 0 !important;
+            }
             
             .api-key-group {
                 flex-direction: column;
@@ -1143,11 +1719,17 @@
             }
             
             .api-key-input {
-                width: calc(100vw - 20px);
-                max-width: calc(100vw - 20px);
+                width: calc(100vw - 20px) !important;
+                max-width: calc(100vw - 20px) !important;
                 font-size: 16px; /* Prevent zoom on iOS */
                 padding: 6px 8px;
                 box-sizing: border-box;
+            }
+            
+            #routineSelect,
+            #modelSelect {
+                width: calc(100vw - 20px) !important;
+                max-width: calc(100vw - 20px) !important;
             }
             
             .connect-btn {
@@ -1192,7 +1774,7 @@
             
             .main-content {
                 padding: 10px;
-                padding-bottom: 20px; /* 增加底部padding，确保按钮可以通过滚动到达 */
+                padding-bottom: 10px; /* 增加底部padding，确保按钮可以通过滚动到达 */
                 min-width: unset;
                 order: 1;
                 flex: none; /* 不占据固定空间，随内容自然增长 */
@@ -1207,12 +1789,35 @@
                 display: none;
             }
             
+            /* Chat wrapper optimization */
+            .chat-wrapper {
+                flex-direction: column;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+
+            /* Hide vertical resizer on mobile */
+            .vertical-resizer {
+                display: none !important;
+            }
+
+            /* Detail info container on mobile */
+            .detail-info-container {
+                width: 100%;
+                order: 2;
+            }
+
+            .detail-info-container.hidden {
+                display: none;
+            }
+
             /* Chat container optimization */
             .chat-container {
-                margin-bottom: 10px;
+                margin-bottom: 0;
                 flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 display: flex;
+                order: 1;
                 flex-direction: column;
                 max-height: none; /* 不限制最大高度，让内容自然流动 */
             }
@@ -1336,7 +1941,7 @@
             
             .main-content {
                 padding: 8px;
-                padding-bottom: 20px; /* 增加底部padding，确保按钮可以通过滚动到达 */
+                padding-bottom: 10px; /* 增加底部padding，确保按钮可以通过滚动到达 */
                 flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 display: flex;
@@ -2297,7 +2902,7 @@
         <div class="user-auth-left">
             <div class="logo-group">
                 <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
-                <span style="font-size: 1.2em; font-weight: 700; color: #569cd6;">{{ i18n.app_title.replace(' GUI', '') }}</span>
+                <span class="logo-title">{{ i18n.app_title.replace(' GUI', '') }}</span>
             </div>
         </div>
         <div class="user-auth-right">
@@ -2307,7 +2912,7 @@
                     <i class="fas fa-file-text"></i>
                     {{ i18n.get('routine_file', '任务类型' if lang == 'zh' else 'Task Type') }}
                 </label>
-                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 180px;">
+                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 140px;">
                     <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
                 </select>
             </div>
@@ -2316,7 +2921,7 @@
                     <i class="fas fa-brain"></i>
                     {{ i18n.model_label }}
                 </label>
-                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 220px;">
+                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 140px;">
                     <option value="" disabled selected>{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
                 </select>
             </div>
@@ -2331,7 +2936,8 @@
                            title="{{ i18n.api_key_tooltip }}" 
                            style="padding-right: 40px;">
                     <button type="button" id="apiKeyToggle" onclick="togglePasswordVisibility('apiKeyInput')" 
-                            style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #9cdcfe; cursor: pointer; font-size: 21px; padding: 5px;" 
+                            class="api-key-toggle-btn"
+                            style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);" 
                             title="{{ '显示密码' if lang == 'zh' else 'Show password' }}">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -2345,11 +2951,17 @@
                 <span id="userStatusText">{{ i18n.user_disconnected }}</span>
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
-            <div style="margin-left: 15px;">
-                <a href="/register" style="color: #cccccc; text-decoration: none; font-size: 0.9em; padding: 5px 10px; border-radius: 4px; transition: all 0.3s ease;" onmouseover="this.style.color='#569cd6'; this.style.background='#3e3e42'" onmouseout="this.style.color='#cccccc'; this.style.background='transparent'">
+            <div class="action-buttons-group">
+                <a href="/register" class="register-link" title="{{ '注册账号' if lang == 'zh' else 'Register' }}">
                     <i class="fas fa-user-plus"></i>
-                    {{ '注册账号' if lang == 'zh' else 'Register' }}
+                    <span>{{ '注册' if lang == 'zh' else 'Register' }}</span>
                 </a>
+                <button id="langToggleBtn" class="lang-toggle-btn" title="{{ '切换语言' if lang == 'zh' else 'Switch Language' }}">
+                    <span id="langToggleText">{{ 'EN' if lang == 'zh' else '中文' }}</span>
+                </button>
+                <button id="themeToggleBtn" class="theme-toggle-btn" title="{{ '切换主题' if lang == 'zh' else 'Toggle Theme' }}">
+                    <i class="fas fa-moon"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -2361,26 +2973,49 @@
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
-            <div class="chat-container">
-                <div class="chat-messages scrollbar-custom" id="chatMessages">
-                    <div class="message system">
-                        <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
-                        {{ i18n.get('welcome_message', '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Agent! Please enter your requirements below, and the system will automatically process tasks for you.') }}
+            <div class="chat-wrapper">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <i class="fas fa-comments"></i>
+                        <span>{{ i18n.get('chat_window', '聊天窗口' if lang == 'zh' else 'Chat Window') }}</span>
+                    </div>
+                    <div class="chat-messages scrollbar-custom" id="chatMessages">
+                        <div class="message system">
+                            <strong><i class="fas fa-info-circle"></i> {{ i18n.get('system_message', '系统消息' if lang == 'zh' else 'System Message') }}</strong><br>
+                            {{ i18n.get('welcome_message', '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。' if lang == 'zh' else 'Welcome to AGI Agent! Please enter your requirements below, and the system will automatically process tasks for you.') }}
+                        </div>
+                    </div>
+                    
+                    <!-- Scroll to bottom button -->
+                    <button class="scroll-to-bottom-hint" id="scrollToBottomBtn" title="{{ i18n.get('scroll_to_bottom', '滚动到底部' if lang == 'zh' else 'Scroll to Bottom') }}">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    
+                    <!-- New message indicator -->
+                    <div class="new-message-indicator" id="newMessageIndicator">
+                        <i class="fas fa-bell"></i>
+                        <span id="newMessageCount">1</span> {{ i18n.get('new_messages', '条新消息' if lang == 'zh' else 'new messages') }}
+                    </div>
+                    
+
+                </div>
+                
+                <!-- Vertical Resizer between chat and detail info -->
+                <div class="vertical-resizer" id="verticalResizer"></div>
+                
+                <!-- Detail Info Window -->
+                <div class="detail-info-container" id="detailInfoContainer">
+                    <div class="detail-info-header">
+                        <i class="fas fa-info-circle"></i>
+                        <span>{{ i18n.get('tool_call_details', '工具调用细节' if lang == 'zh' else 'Tool Call Details') }}</span>
+                        <button class="detail-info-toggle-btn" id="detailInfoToggleBtn" title="{{ i18n.get('hide_detail_info', '隐藏' if lang == 'zh' else 'Hide') }}">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="detail-info-messages scrollbar-custom" id="detailInfoMessages">
+                        <!-- Detail messages will be added here -->
                     </div>
                 </div>
-                
-                <!-- Scroll to bottom button -->
-                <button class="scroll-to-bottom-hint" id="scrollToBottomBtn" title="{{ i18n.get('scroll_to_bottom', '滚动到底部' if lang == 'zh' else 'Scroll to Bottom') }}">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-                
-                <!-- New message indicator -->
-                <div class="new-message-indicator" id="newMessageIndicator">
-                    <i class="fas fa-bell"></i>
-                    <span id="newMessageCount">1</span> {{ i18n.get('new_messages', '条新消息' if lang == 'zh' else 'new messages') }}
-                </div>
-                
-
             </div>
 
             <div class="input-container">
@@ -2472,9 +3107,14 @@
             <div class="sidebar-header">
                 <i class="fas fa-folder-open"></i>
                 <h3>{{ i18n.get('workspace_title', '工作目录' if lang == 'zh' else 'Workspace') }}</h3>
-                <button class="action-btn" onclick="manualRefresh()" title="{{ i18n.refresh_tooltip }}">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="action-btn" onclick="manualRefresh()" title="{{ i18n.refresh_tooltip }}">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="detail-info-toggle-btn" id="sidebarToggleBtn" title="{{ i18n.get('hide_detail_info', '隐藏' if lang == 'zh' else 'Hide') }}">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
             
             <div class="loading" id="sidebarLoading">
@@ -3427,6 +4067,40 @@
         }
         
         /**
+         * 更新细节窗口显示JSON内容
+         * @param {string} jsonContent JSON内容
+         * @description 当日志打印窗口处于绿框打印状态（JSON收集）时，将JSON内容显示到细节窗口
+         */
+        function updateDetailInfoWithJson(jsonContent) {
+            const detailInfoMessages = document.getElementById('detailInfoMessages');
+            if (!detailInfoMessages) {
+                return;
+            }
+            
+            // 如果JSON内容为空，不添加
+            if (!jsonContent || !jsonContent.trim()) {
+                return;
+            }
+            
+            // 获取最后一个消息元素
+            let lastDetailMessage = detailInfoMessages.lastElementChild;
+            
+            // 如果存在最后一个消息元素且是detail-info-message，更新内容
+            if (lastDetailMessage && lastDetailMessage.classList.contains('detail-info-message')) {
+                lastDetailMessage.textContent = jsonContent;
+            } else {
+                // 创建新的消息元素
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'detail-info-message';
+                messageDiv.textContent = jsonContent;
+                detailInfoMessages.appendChild(messageDiv);
+            }
+            
+            // 自动滚动到底部（已禁用）
+            // detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+        }
+
+        /**
          * 立即添加消息（不使用批处理）
          * @param {string} message 消息内容
          * @param {string} type 消息类型
@@ -3478,6 +4152,9 @@
                         }
                     }
                     
+                    // 更新细节窗口显示JSON内容
+                    updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                    
                     // 检查JSON是否结束（括号匹配）
                     if (jsonCollectingState.braceCount === 0) {
                         // JSON结构完成，但可能还有结束标记```，等待下一个消息
@@ -3519,6 +4196,9 @@
                                 contentDiv.textContent = jsonCollectingState.jsonContent;
                             }
                         }
+                        
+                        // 更新细节窗口显示完整的JSON内容
+                        updateDetailInfoWithJson(jsonCollectingState.jsonContent);
                         
                         // 完成收集，重置状态
                         resetJsonCollectingState();
@@ -3571,6 +4251,9 @@
                             }
                         }
                     }
+                    
+                    // 更新细节窗口显示JSON内容
+                    updateDetailInfoWithJson(jsonCollectingState.jsonContent);
                     
                     // 如果JSON已经完成（单行完整JSON），检查是否需要等待结束标记
                     if (jsonCollectingState.braceCount === 0) {
@@ -3667,6 +4350,9 @@
                 
                 // 添加到聊天窗口
                 chatMessages.appendChild(jsonCollectingState.jsonContainer);
+                
+                // 更新细节窗口显示JSON内容
+                updateDetailInfoWithJson(jsonCollectingState.jsonContent);
                 
                 // 如果JSON已经完成（单行完整JSON），检查是否需要等待结束标记
                 if (jsonCollectingState.braceCount === 0) {
@@ -3974,6 +4660,13 @@
                 // Reset message tracking variables
                 lastMessageType = null;
                 lastMessageDiv = null;
+                lastMessageContent = null;
+                
+                // 清空细节信息窗口
+                const detailInfoMessages = document.getElementById('detailInfoMessages');
+                if (detailInfoMessages) {
+                    detailInfoMessages.innerHTML = '';
+                }
                 
                 // Reset scroll state
                 autoScrollEnabled = true;
@@ -9257,6 +9950,11 @@
             }
             
             initResizer();
+            initVerticalResizer();
+            initDetailInfoToggle();
+            initSidebarToggle();
+            initLangToggle();
+            initThemeToggle();
             
             // 动态调整容器高度（稍微延迟确保DOM完全渲染）
             setTimeout(function() {
@@ -9344,7 +10042,23 @@
          * 加载routine文件列表
          */
         function loadRoutineFiles() {
-            fetch('/api/routine-files')
+            // 获取当前语言（从URL参数或localStorage）
+            const urlParams = new URLSearchParams(window.location.search);
+            let currentLang = urlParams.get('lang');
+            
+            if (!currentLang) {
+                currentLang = localStorage.getItem('preferred_lang');
+            }
+            
+            if (!currentLang) {
+                const htmlLang = document.documentElement.getAttribute('lang');
+                currentLang = (htmlLang && htmlLang.startsWith('zh')) ? 'zh' : 'en';
+            }
+            
+            // 构建API URL，包含语言参数
+            const apiUrl = '/api/routine-files' + (currentLang ? '?lang=' + currentLang : '');
+            
+            fetch(apiUrl)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
@@ -9359,7 +10073,8 @@
                             option.textContent = file.name;
                             // 为workspace文件添加特殊标识
                             if (file.type === 'workspace_file') {
-                                option.textContent = file.name + ' (工作区)';
+                                const workspaceLabel = currentLang === 'zh' ? ' (工作区)' : ' (Workspace)';
+                                option.textContent = file.name + workspaceLabel;
                             }
                             routineSelect.appendChild(option);
                         });
@@ -9778,6 +10493,325 @@
                 // 移除视觉反馈
                 resizer.style.background = '';
             }
+        }
+
+        function initVerticalResizer() {
+            const verticalResizer = document.getElementById('verticalResizer');
+            const chatContainer = document.querySelector('.chat-container');
+            const detailInfoContainer = document.getElementById('detailInfoContainer');
+            let isResizing = false;
+            let startX = 0;
+            let startChatWidth = 0;
+            let startDetailWidth = 0;
+
+            if (!verticalResizer || !chatContainer || !detailInfoContainer) return;
+
+            verticalResizer.addEventListener('mousedown', function(e) {
+                // 如果分隔板处于隐藏状态，不响应拖动
+                if (verticalResizer.classList.contains('hidden')) {
+                    return;
+                }
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                const chatWrapper = document.querySelector('.chat-wrapper');
+                const chatWrapperWidth = chatWrapper.offsetWidth;
+                startChatWidth = chatContainer.offsetWidth;
+                startDetailWidth = detailInfoContainer.offsetWidth;
+                
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                
+                // 添加视觉反馈
+                verticalResizer.style.background = '#007acc';
+            });
+
+            function handleMouseMove(e) {
+                if (!isResizing) return;
+                e.preventDefault();
+                
+                const dx = e.clientX - startX; // 向右拖拽为正值
+                const chatWrapper = document.querySelector('.chat-wrapper');
+                const chatWrapperWidth = chatWrapper.offsetWidth;
+                
+                // 计算新的宽度
+                const newChatWidth = startChatWidth + dx;
+                const newDetailWidth = startDetailWidth - dx;
+                
+                // 限制最小宽度
+                const minChatWidth = 300;
+                const minDetailWidth = 200;
+                const maxDetailWidth = 800;
+                
+                if (newChatWidth >= minChatWidth && newDetailWidth >= minDetailWidth && newDetailWidth <= maxDetailWidth) {
+                    chatContainer.style.flex = '0 0 ' + newChatWidth + 'px';
+                    detailInfoContainer.style.width = newDetailWidth + 'px';
+                }
+            }
+
+            function handleMouseUp(e) {
+                if (!isResizing) return;
+                e.preventDefault();
+                
+                isResizing = false;
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                // 移除视觉反馈
+                verticalResizer.style.background = '';
+            }
+        }
+
+        function initDetailInfoToggle() {
+            const toggleBtn = document.getElementById('detailInfoToggleBtn');
+            const detailInfoContainer = document.getElementById('detailInfoContainer');
+            const verticalResizer = document.getElementById('verticalResizer');
+            const chatContainer = document.querySelector('.chat-container');
+            
+            if (!toggleBtn || !detailInfoContainer || !verticalResizer) return;
+
+            // 保存调整后的宽度值，以便在显示时恢复
+            let savedChatWidth = null;
+            let savedDetailWidth = null;
+
+            function hideDetailInfo() {
+                // 保存当前的宽度设置（如果存在）
+                if (chatContainer && chatContainer.style.flex) {
+                    const flexMatch = chatContainer.style.flex.match(/(\d+)px/);
+                    if (flexMatch) {
+                        savedChatWidth = flexMatch[1];
+                    }
+                }
+                if (detailInfoContainer && detailInfoContainer.style.width) {
+                    const widthMatch = detailInfoContainer.style.width.match(/(\d+)px/);
+                    if (widthMatch) {
+                        savedDetailWidth = widthMatch[1];
+                    }
+                }
+                
+                // 重置chatContainer的flex样式，让它自动填充空间
+                if (chatContainer) {
+                    chatContainer.style.flex = '';
+                }
+                
+                // 清除detailInfoContainer的内联宽度样式，让CSS的width:0生效
+                if (detailInfoContainer) {
+                    detailInfoContainer.style.width = '';
+                }
+                
+                detailInfoContainer.classList.add('hidden');
+                verticalResizer.classList.add('hidden');
+                verticalResizer.style.cursor = 'pointer';
+            }
+
+            function showDetailInfo() {
+                detailInfoContainer.classList.remove('hidden');
+                verticalResizer.classList.remove('hidden');
+                verticalResizer.style.cursor = 'col-resize';
+                
+                // 如果之前保存了宽度值，恢复它们
+                if (savedChatWidth && chatContainer) {
+                    chatContainer.style.flex = '0 0 ' + savedChatWidth + 'px';
+                }
+                if (savedDetailWidth && detailInfoContainer) {
+                    detailInfoContainer.style.width = savedDetailWidth + 'px';
+                }
+            }
+
+            toggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (detailInfoContainer.classList.contains('hidden')) {
+                    showDetailInfo();
+                } else {
+                    hideDetailInfo();
+                }
+            });
+
+            // 当分隔板处于隐藏状态时，点击分隔板可以显示细节信息框
+            verticalResizer.addEventListener('click', function(e) {
+                if (verticalResizer.classList.contains('hidden')) {
+                    e.preventDefault();
+                    showDetailInfo();
+                }
+            });
+        }
+
+        function initSidebarToggle() {
+            const toggleBtn = document.getElementById('sidebarToggleBtn');
+            const sidebar = document.getElementById('sidebar');
+            const resizer = document.getElementById('resizer');
+            
+            if (!toggleBtn || !sidebar || !resizer) return;
+
+            const icon = toggleBtn.querySelector('i');
+            
+            // 保存调整后的宽度值，以便在显示时恢复
+            let savedSidebarWidth = null;
+
+            function hideSidebar() {
+                // 保存当前的宽度设置（如果存在）
+                if (sidebar && sidebar.style.width) {
+                    const widthMatch = sidebar.style.width.match(/(\d+)px/);
+                    if (widthMatch) {
+                        savedSidebarWidth = widthMatch[1];
+                    }
+                }
+                
+                sidebar.classList.add('hidden');
+                resizer.classList.add('hidden');
+                resizer.style.cursor = 'pointer';
+                
+                // 更新图标方向
+                if (icon) {
+                    icon.className = 'fas fa-chevron-left';
+                }
+                toggleBtn.title = (I18N && I18N.lang === 'zh') ? '显示' : 'Show';
+            }
+
+            function showSidebar() {
+                sidebar.classList.remove('hidden');
+                resizer.classList.remove('hidden');
+                resizer.style.cursor = 'col-resize';
+                
+                // 如果之前保存了宽度值，恢复它
+                if (savedSidebarWidth && sidebar) {
+                    sidebar.style.width = savedSidebarWidth + 'px';
+                }
+                
+                // 更新图标方向
+                if (icon) {
+                    icon.className = 'fas fa-chevron-right';
+                }
+                toggleBtn.title = (I18N && I18N.lang === 'zh') ? '隐藏' : 'Hide';
+            }
+
+            toggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (sidebar.classList.contains('hidden')) {
+                    showSidebar();
+                } else {
+                    hideSidebar();
+                }
+            });
+
+            // 当分隔板处于隐藏状态时，点击分隔板可以显示工作目录
+            resizer.addEventListener('click', function(e) {
+                if (resizer.classList.contains('hidden')) {
+                    e.preventDefault();
+                    showSidebar();
+                }
+            });
+        }
+
+        /**
+         * 初始化语言切换功能
+         */
+        function initLangToggle() {
+            const langToggleBtn = document.getElementById('langToggleBtn');
+            const langToggleText = document.getElementById('langToggleText');
+            if (!langToggleBtn || !langToggleText) return;
+
+            // 从URL参数或localStorage读取当前语言
+            const urlParams = new URLSearchParams(window.location.search);
+            let currentLang = urlParams.get('lang');
+            
+            if (currentLang) {
+                // 如果URL中有语言参数，保存到localStorage
+                localStorage.setItem('preferred_lang', currentLang);
+            } else {
+                // 从localStorage读取保存的语言
+                currentLang = localStorage.getItem('preferred_lang');
+            }
+            
+            // 如果没有保存的语言，从页面数据属性获取
+            if (!currentLang) {
+                const htmlLang = document.documentElement.getAttribute('lang');
+                if (htmlLang && htmlLang.startsWith('zh')) {
+                    currentLang = 'zh';
+                } else {
+                    currentLang = 'en';
+                }
+                // 保存到localStorage
+                localStorage.setItem('preferred_lang', currentLang);
+            }
+
+            // 更新按钮文本
+            if (currentLang === 'zh') {
+                langToggleText.textContent = 'EN';
+            } else {
+                langToggleText.textContent = '中文';
+            }
+
+            // 切换语言
+            langToggleBtn.addEventListener('click', function() {
+                // 重新获取当前语言（从URL参数或localStorage）
+                const urlParams = new URLSearchParams(window.location.search);
+                let currentLang = urlParams.get('lang');
+                
+                if (!currentLang) {
+                    currentLang = localStorage.getItem('preferred_lang');
+                }
+                
+                if (!currentLang) {
+                    const htmlLang = document.documentElement.getAttribute('lang');
+                    currentLang = (htmlLang && htmlLang.startsWith('zh')) ? 'zh' : 'en';
+                }
+                
+                const newLang = currentLang === 'zh' ? 'en' : 'zh';
+                
+                // 保存到localStorage
+                localStorage.setItem('preferred_lang', newLang);
+                
+                // 重新加载页面并带上语言参数
+                const url = new URL(window.location.href);
+                url.searchParams.set('lang', newLang);
+                window.location.href = url.toString();
+            });
+        }
+
+        /**
+         * 初始化主题切换功能
+         */
+        function initThemeToggle() {
+            const themeToggleBtn = document.getElementById('themeToggleBtn');
+            if (!themeToggleBtn) return;
+
+            // 从localStorage读取保存的主题，默认为dark
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            const html = document.documentElement;
+            
+            // 应用保存的主题
+            if (savedTheme === 'light') {
+                html.setAttribute('data-theme', 'light');
+                themeToggleBtn.querySelector('i').className = 'fas fa-sun';
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                themeToggleBtn.querySelector('i').className = 'fas fa-moon';
+            }
+
+            // 切换主题
+            themeToggleBtn.addEventListener('click', function() {
+                const currentTheme = html.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                // 更新主题
+                html.setAttribute('data-theme', newTheme);
+                
+                // 更新图标
+                const icon = themeToggleBtn.querySelector('i');
+                if (newTheme === 'light') {
+                    icon.className = 'fas fa-sun';
+                } else {
+                    icon.className = 'fas fa-moon';
+                }
+                
+                // 保存到localStorage
+                localStorage.setItem('theme', newTheme);
+            });
         }
 
         // 手动刷新目录 - 保持展开状态和滚动位置
