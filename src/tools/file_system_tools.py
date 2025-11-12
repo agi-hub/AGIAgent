@@ -26,6 +26,7 @@ import time
 import shutil
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple, Union
+from src.config_loader import load_config
 
 # Import Mermaid processor for handling charts in markdown files
 
@@ -2285,12 +2286,12 @@ class FileSystemTools:
 
     def _convert_markdown_to_formats(self, file_path: str, target_file: str, format_type: str = 'both') -> Dict[str, Any]:
         """
-        Convert Markdown files to Word and PDF formats
+        Convert Markdown files to Word, PDF, and LaTeX formats
         
         Args:
             file_path: Absolute path of Markdown file
             target_file: Relative path of Markdown file
-            format_type: Format to convert ('word', 'pdf', or 'both')
+            format_type: Format to convert ('word', 'pdf', 'latex', or 'both')
             
         Returns:
             Dictionary containing conversion results
@@ -2299,13 +2300,45 @@ class FileSystemTools:
         from pathlib import Path
         
         try:
+            # Load configuration to check auto-conversion settings
+            config = load_config()
+            
+            # Get auto-conversion settings (default to True for word/pdf for backward compatibility, False for latex)
+            auto_convert_word = config.get('auto_convert_to_word', 'True').lower() == 'true'
+            auto_convert_pdf = config.get('auto_convert_to_pdf', 'True').lower() == 'true'
+            auto_convert_latex = config.get('auto_convert_to_latex', 'False').lower() == 'true'
+            
+            # If format_type is 'both', check individual config settings
+            # Otherwise, respect the format_type parameter
+            if format_type == 'both':
+                # Determine which formats to generate based on config
+                should_generate_word = auto_convert_word
+                should_generate_pdf = auto_convert_pdf
+                should_generate_latex = auto_convert_latex
+            else:
+                # When format_type is specified, use it but still check config
+                should_generate_word = (format_type == 'word' and auto_convert_word)
+                should_generate_pdf = (format_type == 'pdf' and auto_convert_pdf)
+                should_generate_latex = (format_type == 'latex' and auto_convert_latex)
+            
+            # If no formats should be generated, return early
+            if not (should_generate_word or should_generate_pdf or should_generate_latex):
+                print_debug(f"ℹ️ Auto-conversion disabled for all formats, skipping conversion")
+                return {
+                    'status': 'skipped',
+                    'markdown_file': target_file,
+                    'message': 'Auto-conversion disabled for all formats',
+                    'conversions': {}
+                }
+            
             md_path = Path(file_path)
             base_name = md_path.stem
             output_dir = md_path.parent
             
-            # Generate output filename
+            # Generate output filenames
             word_file = output_dir / f"{base_name}.docx"
             pdf_file = output_dir / f"{base_name}.pdf"
+            latex_file = output_dir / f"{base_name}.tex"
             
             conversion_results = {
                 'status': 'success',
@@ -2318,7 +2351,7 @@ class FileSystemTools:
 
             # Special handling for Windows PDF conversion: check for existing docx and convert directly
             import platform
-            if platform.system() == 'Windows' and format_type == 'pdf':
+            if platform.system() == 'Windows' and should_generate_pdf:
                 print_debug(f"🔍 Windows system detected, checking for existing Word document: {word_file.name}")
                 if word_file.exists():
                     print_debug(f"✅ Found existing Word document: {word_file.name}, converting directly to PDF")
@@ -2464,7 +2497,7 @@ class FileSystemTools:
                                 print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
 
             # Convert to Word document
-            if format_type in ['word', 'both']:
+            if should_generate_word:
                 print_debug(f"📄 Converting Markdown to Word document: {word_file.name}")
                 temp_files = []  # Track temporary files for cleanup
 
@@ -2552,7 +2585,7 @@ class FileSystemTools:
 
                         # 在 Windows 系统上使用 pywin32 从 docx 生成 PDF
                         pdf_already_converted = False
-                        if format_type in ['pdf', 'both']:
+                        if should_generate_pdf:
                             try:
                                 pdf_conversion_result = self._word_to_pdf(str(word_file), str(pdf_file))
                                 if pdf_conversion_result['status'] == 'success':
@@ -2601,7 +2634,7 @@ class FileSystemTools:
                             print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
             
             # Convert to PDF document (synchronous execution)
-            if format_type in ['pdf', 'both'] and not pdf_already_converted:
+            if should_generate_pdf and not pdf_already_converted:
                 print_debug(f"📄 Starting Markdown to PDF conversion: {pdf_file.name}")
                 try:
                     # Use trans_md_to_pdf.py script to convert to PDF
@@ -2616,6 +2649,9 @@ class FileSystemTools:
                             pdf_file.name
                             ]
                         
+                        print_debug(f"🔧 PDF conversion command: {' '.join(cmd)}")
+                        print_debug(f"🔧 Working directory: {output_dir}")
+                        
                         # Execute command synchronously in markdown file directory
                         result = subprocess.run(
                             cmd,
@@ -2626,6 +2662,13 @@ class FileSystemTools:
                             cwd=str(output_dir),
                             timeout=120  # 2 minutes timeout
                         )
+                        
+                        # Log command output for debugging
+                        if result.stdout:
+                            print_debug(f"📋 PDF conversion stdout: {result.stdout}")
+                        if result.stderr:
+                            print_debug(f"⚠️ PDF conversion stderr: {result.stderr}")
+                        print_debug(f"📊 PDF conversion return code: {result.returncode}")
                         
                         # Check if PDF file was generated
                         if pdf_file.exists():
@@ -2639,10 +2682,24 @@ class FileSystemTools:
                             }
                             print_debug(f"✅ PDF document conversion successful: {pdf_file.name} ({file_size / 1024:.1f} KB)")
                         else:
-                            error_msg = result.stderr if result.stderr else 'PDF file not generated'
+                            # Build comprehensive error message
+                            error_parts = []
+                            if result.returncode != 0:
+                                error_parts.append(f"Return code: {result.returncode}")
+                            if result.stderr:
+                                error_parts.append(f"stderr: {result.stderr}")
+                            if result.stdout:
+                                error_parts.append(f"stdout: {result.stdout}")
+                            if not error_parts:
+                                error_parts.append("PDF file not generated (unknown error)")
+                            
+                            error_msg = " | ".join(error_parts)
                             conversion_results['conversions']['pdf'] = {
                                 'status': 'failed',
-                                'error': error_msg
+                                'error': error_msg,
+                                'return_code': result.returncode,
+                                'stdout': result.stdout if result.stdout else None,
+                                'stderr': result.stderr if result.stderr else None
                             }
                             print_debug(f"❌ PDF conversion failed: {error_msg}")
                             
@@ -2665,6 +2722,103 @@ class FileSystemTools:
                         'error': f'Failed to convert PDF: {str(e)}'
                     }
                     print_debug(f"❌ Failed to convert PDF: {str(e)}")
+            
+            # Convert to LaTeX document
+            if should_generate_latex:
+                print_debug(f"📄 Starting Markdown to LaTeX conversion: {latex_file.name}")
+                try:
+                    # Use trans_md_to_pdf.py script to convert to LaTeX
+                    # Resolve path: file_system_tools.py is in src/tools/, so parent.parent is src/, then utils/
+                    current_file = Path(__file__).resolve()
+                    trans_script = current_file.parent.parent / "utils" / "trans_md_to_pdf.py"
+                    
+                    if trans_script.exists():
+                        import sys
+                        cmd = [
+                            sys.executable,  # Use current Python interpreter
+                            str(trans_script),
+                            md_path.name,  # Use filename instead of full path
+                            latex_file.name,  # Use filename instead of full path
+                            '--latex'  # Add LaTeX flag
+                        ]
+                        
+                        print_debug(f"🔧 LaTeX conversion command: {' '.join(cmd)}")
+                        print_debug(f"🔧 Working directory: {output_dir}")
+                        
+                        # Execute command synchronously in markdown file directory
+                        result = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            errors='ignore',
+                            cwd=str(output_dir),
+                            timeout=120  # 2 minutes timeout
+                        )
+                        
+                        # Log command output for debugging
+                        if result.stdout:
+                            print_debug(f"📋 LaTeX conversion stdout: {result.stdout}")
+                        if result.stderr:
+                            print_debug(f"⚠️ LaTeX conversion stderr: {result.stderr}")
+                        print_debug(f"📊 LaTeX conversion return code: {result.returncode}")
+                        
+                        # Check if LaTeX file was generated
+                        if latex_file.exists():
+                            file_size = latex_file.stat().st_size
+                            conversion_results['conversions']['latex'] = {
+                                'status': 'success',
+                                'file': str(latex_file.relative_to(self.workspace_root)),
+                                'size': file_size,
+                                'size_kb': f"{file_size / 1024:.1f} KB",
+                                'method': 'trans_md_to_pdf_script'
+                            }
+                            print_debug(f"✅ LaTeX document conversion successful: {latex_file.name} ({file_size / 1024:.1f} KB)")
+                        else:
+                            # Build comprehensive error message
+                            error_parts = []
+                            if result.returncode != 0:
+                                error_parts.append(f"Return code: {result.returncode}")
+                            if result.stderr:
+                                error_parts.append(f"stderr: {result.stderr}")
+                            if result.stdout:
+                                error_parts.append(f"stdout: {result.stdout}")
+                            if not error_parts:
+                                error_parts.append("LaTeX file not generated (unknown error)")
+                            
+                            error_msg = " | ".join(error_parts)
+                            conversion_results['conversions']['latex'] = {
+                                'status': 'failed',
+                                'error': error_msg,
+                                'return_code': result.returncode,
+                                'stdout': result.stdout if result.stdout else None,
+                                'stderr': result.stderr if result.stderr else None
+                            }
+                            print_debug(f"❌ LaTeX conversion failed: {error_msg}")
+                            
+                    else:
+                        print_debug(f"⚠️ trans_md_to_pdf.py script not found at: {trans_script}, skipping LaTeX conversion")
+                        conversion_results['conversions']['latex'] = {
+                            'status': 'skipped',
+                            'error': f'trans_md_to_pdf.py script not found at {trans_script}'
+                        }
+                            
+                except subprocess.TimeoutExpired:
+                    conversion_results['conversions']['latex'] = {
+                        'status': 'failed',
+                        'error': 'LaTeX conversion timeout (exceeded 2 minutes)'
+                    }
+                    print_debug(f"❌ LaTeX conversion timeout")
+                except Exception as e:
+                    import traceback
+                    error_trace = traceback.format_exc()
+                    conversion_results['conversions']['latex'] = {
+                        'status': 'failed',
+                        'error': f'Failed to convert LaTeX: {str(e)}',
+                        'traceback': error_trace
+                    }
+                    print_debug(f"❌ Failed to convert LaTeX: {str(e)}")
+                    print_debug(f"❌ Traceback: {error_trace}")
             
             # Check conversion results
             successful_conversions = sum(1 for conv in conversion_results['conversions'].values() 

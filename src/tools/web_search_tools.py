@@ -64,6 +64,31 @@ def is_claude_model(model: str) -> bool:
     return "claude" in model.lower() or "anthropic" in model.lower()
 
 
+# Check if Playwright is available
+def _check_playwright_available():
+    """Check if playwright is available for browser automation"""
+    try:
+        import playwright
+        # Also check if browser is installed by trying to import sync_api
+        from playwright.sync_api import sync_playwright
+        return True
+    except ImportError:
+        return False
+    except Exception:
+        # Handle other errors (like GLIBC issues)
+        return False
+
+# Cache the playwright availability check result
+_PLAYWRIGHT_AVAILABLE = None
+
+def is_playwright_available():
+    """Check if playwright is available (cached result)"""
+    global _PLAYWRIGHT_AVAILABLE
+    if _PLAYWRIGHT_AVAILABLE is None:
+        _PLAYWRIGHT_AVAILABLE = _check_playwright_available()
+    return _PLAYWRIGHT_AVAILABLE
+
+
 # Dynamically import Anthropic
 def get_anthropic_client():
     """Dynamically import and return Anthropic client class"""
@@ -700,6 +725,23 @@ Please create a detailed, structured analysis that preserves important informati
         """
         Search the web for real-time information using Playwright.
         """
+        # Check if Playwright is available before proceeding
+        if not is_playwright_available():
+            print_current("❌ Playwright is not installed or not available")
+            print_current("💡 Install with: pip install playwright && playwright install chromium")
+            return {
+                'status': 'failed',
+                'search_term': search_term,
+                'results': [{
+                    'title': 'Playwright not available',
+                    'url': '',
+                    'snippet': 'Playwright library is not installed. Run: pip install playwright && playwright install chromium',
+                    'content': ''
+                }],
+                'timestamp': datetime.datetime.now().isoformat(),
+                'error': 'playwright_not_installed'
+            }
+        
         # Store current search term for LLM filtering
         self._current_search_term = search_term
         
@@ -726,15 +768,9 @@ Please create a detailed, structured analysis that preserves important informati
         
         browser = None
         try:
-            # Try to import Playwright with better error handling
-            try:
-                from playwright.sync_api import sync_playwright
-                import urllib.parse
-            except ImportError as e:
-                raise ImportError(f"Failed to import Playwright: {e}")
-            except Exception as e:
-                # Handle any other import-related errors (like GLIBC issues during import)
-                raise Exception(f"Playwright import/initialization error: {e}")
+            # Import Playwright (already checked availability above)
+            from playwright.sync_api import sync_playwright
+            import urllib.parse
             
             results = []
             
@@ -1323,22 +1359,6 @@ Please create a detailed, structured analysis that preserves important informati
                 result_data['files_notice'] = "\n".join(file_notice_parts)
             
             return result_data
-            
-        except ImportError as import_error:
-            print_current(f"Playwright not installed: {import_error}")
-            print_current("Install with: pip install playwright && playwright install chromium")
-            return {
-                'status': 'failed',
-                'search_term': search_term,
-                'results': [{
-                    'title': 'Playwright not available',
-                    'url': '',
-                    'snippet': 'Playwright library is not installed. Run: pip install playwright && playwright install chromium',
-                    'content': ''
-                }],
-                'timestamp': datetime.datetime.now().isoformat(),
-                'error': 'playwright_not_installed'
-            }
         
         except Exception as playwright_error:
             # Handle Playwright browser launch errors (including GLIBC issues)
@@ -1769,6 +1789,11 @@ Please create a detailed, structured analysis that preserves important informati
         Returns:
             Updated result dictionary with content
         """
+        # Check if Playwright is available before proceeding
+        if not is_playwright_available():
+            result['content'] = "Playwright not available. Install with: pip install playwright && playwright install chromium"
+            return result
+        
         from playwright.sync_api import sync_playwright
         
         target_url = result.get('_internal_url') or result.get('url', '')
@@ -2470,6 +2495,18 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current(f"⚠️ Cannot set signal handler (not in main thread): {e}")
                 old_handler = None
         
+        # Check if Playwright is available before proceeding
+        if not is_playwright_available():
+            print_current("❌ Playwright is not installed or not available")
+            print_current("💡 Install with: pip install playwright && playwright install chromium")
+            return {
+                'status': 'failed',
+                'url': url,
+                'content': 'Playwright not available. Install with: pip install playwright && playwright install chromium',
+                'error': 'playwright_not_installed',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        
         try:
             from playwright.sync_api import sync_playwright
             
@@ -2756,6 +2793,18 @@ Please create a detailed, structured analysis that preserves important informati
             except ValueError as e:
                 print_current(f"⚠️ Cannot set signal handler (not in main thread): {e}")
                 old_handler = None
+        
+        # Check if Playwright is available before proceeding
+        if not is_playwright_available():
+            print_current("❌ Playwright is not installed or not available")
+            print_current("💡 Install with: pip install playwright && playwright install chromium")
+            return {
+                'status': 'failed',
+                'query': query,
+                'error': 'Playwright not installed',
+                'suggestion': 'Install with: pip install playwright && playwright install chromium',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
         
         browser = None
         try:

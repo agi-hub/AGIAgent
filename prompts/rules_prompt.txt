@@ -54,8 +54,8 @@ For Report Generation Tasks:
    ```svg (or ```mermaid)
       ...
    ```
-   <!-- the_example_diagram_caption -->
-   Do not add additional figure caption in text.
+   <!-- the_diagram_caption -->
+   You should fill a caption in the above domain and do not add additional figure caption in text.
    Rich SVG diagrams and rich mermaid chart types are encouraged (such as Flowcharts, Class, Quadrant, Radar, Sankey, Timeline). Don't use mermaid TD type or TB type, and using LR instead. 
    Use style notation to draw colorful and beautiful diagram, limit to at most five colors. 
    For SVG diagram, avoid overlapped text box, avoid lines over text, draw larger text box to ensure text can be included, draw small arrow. Avoid using special svg flags in text such as >, <, &.

@@ -710,6 +710,11 @@ class MermaidProcessor:
         Returns:
             Tuple of (svg_success, png_success)
         """
+        # Check if Playwright is available before proceeding
+        if not PLAYWRIGHT_AVAILABLE:
+            print(f"❌ Playwright not available")
+            return False, False
+        
         # 直接使用 Playwright 方法
         return self._generate_mermaid_image_playwright(mermaid_code, svg_path, png_path)
     

@@ -215,14 +215,19 @@ def svg_to_pdf_filter(key, value, fmt, meta):
                 pdf_name = process_svg_file(src)
                 if pdf_name:
                     from pandocfilters import Str
-                    # Generate title based on filename
-                    title = generate_title_from_filename(src)
-                    if title:
-                        # Use filename as title
-                        return Image(['', [], []], [Str(title)], [pdf_name, "fig:"])
-                    else:
-                        # SHA-encoded filename
+                    # Use alt text if available and meaningful, otherwise fall back to filename
+                    if alt and alt.strip() and not alt.strip().startswith('svg_'):
+                        # Use alt text from HTML img tag as caption
                         return Image(['', [], []], [Str(alt)], [pdf_name, "fig:"])
+                    else:
+                        # Fall back to filename-based title
+                        title = generate_title_from_filename(src)
+                        if title:
+                            # Use filename as title
+                            return Image(['', [], []], [Str(title)], [pdf_name, "fig:"])
+                        else:
+                            # SHA-encoded filename, use alt if available
+                            return Image(['', [], []], [Str(alt)] if alt else [Str("Figure")], [pdf_name, "fig:"])
     
     # Process standard Image element
     if key == 'Image' and fmt in ['latex', 'beamer']:
@@ -268,14 +273,32 @@ def svg_to_pdf_filter(key, value, fmt, meta):
                     if os.path.exists(temp_svg):
                         os.remove(temp_svg)
             
-            # Generate title based on filename
-            filename_title = generate_title_from_filename(src)
-            if filename_title:
-                # Use filename as title
-                return Image(attrs, [{"t": "Str", "c": filename_title}], [pdf_name, "fig:"])
+            # Use alt text from markdown as caption if available and meaningful
+            # alt is a list of inline elements, convert to string
+            alt_text = ""
+            if alt and len(alt) > 0:
+                # Extract text from alt inline elements
+                alt_parts = []
+                for inline in alt:
+                    if isinstance(inline, dict) and inline.get('t') == 'Str':
+                        alt_parts.append(inline.get('c', ''))
+                    elif isinstance(inline, str):
+                        alt_parts.append(inline)
+                alt_text = ''.join(alt_parts).strip()
+            
+            # Use alt text if available and meaningful, otherwise fall back to filename
+            if alt_text and not alt_text.startswith('svg_'):
+                # Use alt text from markdown as caption
+                return Image(attrs, alt, [pdf_name, "fig:"])
             else:
-                # SHA-encoded filename
-                return Image(attrs, alt, [pdf_name, title])
+                # Fall back to filename-based title
+                filename_title = generate_title_from_filename(src)
+                if filename_title:
+                    # Use filename as title
+                    return Image(attrs, [{"t": "Str", "c": filename_title}], [pdf_name, "fig:"])
+                else:
+                    # SHA-encoded filename, use alt if available
+                    return Image(attrs, alt, [pdf_name, title])
 
 
 if __name__ == "__main__":

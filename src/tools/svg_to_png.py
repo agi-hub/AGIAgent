@@ -17,6 +17,19 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.png_cropper import PNGCropper
 
+def _check_playwright_available():
+    """Check if playwright is available for browser automation"""
+    try:
+        import playwright
+        from playwright.sync_api import sync_playwright
+        return True
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+PLAYWRIGHT_AVAILABLE = _check_playwright_available()
+
 class EnhancedSVGToPNGConverter:
     def __init__(self):
         self.chinese_fonts = [
@@ -110,6 +123,11 @@ class EnhancedSVGToPNGConverter:
     
     def convert_with_playwright(self, svg_path: Path, png_path: Path) -> bool:
         """Use Playwright for conversion, ensure font rendering is correct"""
+        # Check if Playwright is available before proceeding
+        if not PLAYWRIGHT_AVAILABLE:
+            print("❌ Playwright not installed")
+            return False
+        
         try:
             from playwright.sync_api import sync_playwright
             
@@ -242,9 +260,9 @@ class EnhancedSVGToPNGConverter:
             enhanced_svg_path = svg_path
         
         # Try different conversion methods
-        conversion_methods = [
-            ("Playwright", lambda: self.convert_with_playwright(enhanced_svg_path, png_path))
-        ]
+        conversion_methods = []
+        if PLAYWRIGHT_AVAILABLE:
+            conversion_methods.append(("Playwright", lambda: self.convert_with_playwright(enhanced_svg_path, png_path)))
         
         success = False
         error_details = []

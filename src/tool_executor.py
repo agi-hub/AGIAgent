@@ -4257,6 +4257,14 @@ class ToolExecutor:
                                         # 检测工具调用：检查是否包含完整的工具调用JSON（支持带```json标记和不带标记的纯JSON）
                                         if self._has_complete_json_tool_call(content):
                                             json_block_detected = True
+                                            # 在break之前，先打印buffer中工具调用之前的内容
+                                            # 找到第二个```json的位置，只打印到那里之前的内容
+                                            content_to_print = self._get_content_before_second_json(content)
+                                            remaining_to_print = content_to_print[total_printed:]
+                                            if remaining_to_print:
+                                                printer.write(remaining_to_print)
+                                                total_printed = len(content_to_print)
+                                            buffer = ""
                                             break
                                         
                                         # 额外检查：如果检测到纯JSON格式的工具调用（不带```json标记），也停止接收
@@ -4298,6 +4306,14 @@ class ToolExecutor:
                                                                 tool_data = json.loads(json_str)
                                                                 if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
                                                                     json_block_detected = True
+                                                                    # 在break之前，先打印buffer中工具调用之前的内容
+                                                                    # 找到JSON对象开始的位置，只打印到那里之前的内容
+                                                                    text_before_json = content[:brace_start].rstrip()
+                                                                    remaining_to_print = text_before_json[total_printed:]
+                                                                    if remaining_to_print:
+                                                                        printer.write(remaining_to_print)
+                                                                        total_printed = len(text_before_json)
+                                                                    buffer = ""
                                                                     break
                                                             except:
                                                                 pass
@@ -4327,15 +4343,31 @@ class ToolExecutor:
                                 
                                 # 处理剩余缓冲区和截断逻辑
                                 if json_block_detected:
-                                    # 找到第二个```json的位置
-                                    content_to_print = self._get_content_before_second_json(content)
+                                    # 检查是否有```json标记
+                                    has_json_block = '```json' in content
+                                    if has_json_block:
+                                        # 找到第二个```json的位置
+                                        content_to_print = self._get_content_before_second_json(content)
+                                        
+                                        # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
+                                        remaining_buffer = content_to_print[total_printed:]
+                                        if remaining_buffer:
+                                            printer.write(remaining_buffer)
+                                            total_printed = len(content_to_print)
+                                    else:
+                                        # 纯JSON格式：找到第一个JSON对象开始的位置
+                                        try:
+                                            brace_start = content.find('{')
+                                            if brace_start != -1:
+                                                text_before_json = content[:brace_start].rstrip()
+                                                remaining_buffer = text_before_json[total_printed:]
+                                                if remaining_buffer:
+                                                    printer.write(remaining_buffer)
+                                                    total_printed = len(text_before_json)
+                                        except:
+                                            pass
                                     
-                                    # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
-                                    remaining_buffer = content_to_print[total_printed:]
-                                    if remaining_buffer:
-                                        printer.write(remaining_buffer)
-                                    
-                                    # 不打印buffer中第二个```json之后的内容
+                                    # 不打印buffer中工具调用之后的内容
                                     buffer = ""
                                 else:
                                     # 没有检测到工具调用，打印剩余缓冲区

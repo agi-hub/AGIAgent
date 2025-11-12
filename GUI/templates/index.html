@@ -4498,19 +4498,43 @@
                     if (data.success) {
                         // 清空列表并渲染新数据（数据准备好后一次性更新）
                         directoryList.innerHTML = '';
-                        // 恢复展开状态
-                        expandedDirectories = currentExpanded;
+                        // 恢复展开状态 - 只保留仍然存在的目录
+                        const validExpanded = new Set();
+                        const directoryNames = new Set(data.directories.map(dir => dir.name));
+                        currentExpanded.forEach(dirName => {
+                            if (directoryNames.has(dirName)) {
+                                validExpanded.add(dirName);
+                            }
+                        });
+                        expandedDirectories = validExpanded;
                         renderDirectories(data.directories);
 
-                        // 恢复滚动位置
+                        // 恢复滚动位置和展开状态
                         setTimeout(() => {
                             directoryList.scrollTop = currentScrollTop;
 
-                            // 恢复每个展开目录的文件树滚动位置
-                            Object.keys(fileTreeScrollPositions).forEach(dirName => {
+                            // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
+                            validExpanded.forEach(dirName => {
                                 const treeElement = document.getElementById(`tree-${dirName}`);
-                                if (treeElement && fileTreeScrollPositions[dirName] !== undefined) {
-                                    treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                if (treeElement) {
+                                    // 确保展开状态正确应用
+                                    if (!treeElement.classList.contains('show')) {
+                                        treeElement.classList.add('show');
+                                    }
+                                    const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
+                                    if (directoryItem && !directoryItem.classList.contains('expanded')) {
+                                        directoryItem.classList.add('expanded');
+                                    }
+                                    // 恢复滚动位置
+                                    if (fileTreeScrollPositions[dirName] !== undefined) {
+                                        treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                    }
+                                    // 更新按钮图标
+                                    const button = directoryItem ? directoryItem.querySelector('.directory-actions button:first-child') : null;
+                                    const icon = button ? button.querySelector('i') : null;
+                                    if (icon) {
+                                        icon.className = 'fas fa-chevron-up';
+                                    }
                                 }
                             });
                         }, 0);
@@ -9796,19 +9820,43 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // 恢复展开状态
-                    expandedDirectories = currentExpanded;
+                    // 恢复展开状态 - 只保留仍然存在的目录
+                    const validExpanded = new Set();
+                    const directoryNames = new Set(data.directories.map(dir => dir.name));
+                    currentExpanded.forEach(dirName => {
+                        if (directoryNames.has(dirName)) {
+                            validExpanded.add(dirName);
+                        }
+                    });
+                    expandedDirectories = validExpanded;
                     renderDirectories(data.directories);
 
-                    // 恢复滚动位置
+                    // 恢复滚动位置和展开状态
                     setTimeout(() => {
                         directoryList.scrollTop = currentScrollTop;
 
-                        // 恢复每个展开目录的文件树滚动位置
-                        Object.keys(fileTreeScrollPositions).forEach(dirName => {
+                        // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
+                        validExpanded.forEach(dirName => {
                             const treeElement = document.getElementById(`tree-${dirName}`);
-                            if (treeElement && fileTreeScrollPositions[dirName] !== undefined) {
-                                treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                            if (treeElement) {
+                                // 确保展开状态正确应用
+                                if (!treeElement.classList.contains('show')) {
+                                    treeElement.classList.add('show');
+                                }
+                                const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
+                                if (directoryItem && !directoryItem.classList.contains('expanded')) {
+                                    directoryItem.classList.add('expanded');
+                                }
+                                // 恢复滚动位置
+                                if (fileTreeScrollPositions[dirName] !== undefined) {
+                                    treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                }
+                                // 更新按钮图标
+                                const button = directoryItem ? directoryItem.querySelector('.directory-actions button:first-child') : null;
+                                const icon = button ? button.querySelector('i') : null;
+                                if (icon) {
+                                    icon.className = 'fas fa-chevron-up';
+                                }
                             }
                         });
                     }, 0);

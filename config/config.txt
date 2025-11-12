@@ -239,3 +239,12 @@ enable_jieba=True
 # Set to True to disable emoji display
 emoji_disabled=False
 
+# Markdown file auto-conversion configuration
+# Controls whether to automatically convert markdown files to Word, PDF, and LaTeX formats after editing
+# When enabled (True), the corresponding format will be automatically generated when a markdown file is edited
+# When disabled (False), the format will not be automatically generated
+# Default: True for Word and PDF (backward compatibility), False for LaTeX
+auto_convert_to_word=True
+auto_convert_to_pdf=True
+auto_convert_to_latex=False
+
