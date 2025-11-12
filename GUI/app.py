@@ -380,6 +380,7 @@ I18N_TEXTS = {
         'task_completed': '任务执行完成！',
         'task_completed_with_errors': '任务达到最大轮数，可能未完全完成',
         'task_failed': '任务执行失败',
+        'creating_directory': '正在自动创建新工作目录...',
         'directory_created': '已创建新工作目录',
         'directory_selected': '已选择目录',
         'directory_renamed': '目录重命名成功',
@@ -727,6 +728,7 @@ I18N_TEXTS = {
         'task_completed': 'Task completed successfully!',
         'task_completed_with_errors': 'Task reached maximum rounds, may not be fully completed',
         'task_failed': 'Task execution failed',
+        'creating_directory': 'Creating new workspace directory...',
         'directory_created': 'New workspace directory created',
         'directory_selected': 'Directory selected',
         'directory_renamed': 'Directory renamed successfully',
@@ -2894,7 +2896,10 @@ def handle_disconnect():
 @socketio.on('execute_task')
 def handle_execute_task(data):
     """Handle task execution request"""
-    i18n = get_i18n_texts()
+    # Get language from gui_config if available, otherwise use default
+    gui_config = data.get('gui_config', {})
+    user_lang = gui_config.get('language', get_language())
+    i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
     session_id = request.sid
     
     # Get user session
@@ -3096,7 +3101,7 @@ def handle_stop_task():
         emit('output', {'message': i18n['no_task_running'], 'type': 'info'}, room=session_id)
 
 @socketio.on('create_new_directory')
-def handle_create_new_directory():
+def handle_create_new_directory(data=None):
     """Handle create new directory request"""
     session_id = request.sid
     if session_id not in gui_instance.user_sessions:
@@ -3106,7 +3111,9 @@ def handle_create_new_directory():
     user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
     
     try:
-        i18n = get_i18n_texts()
+        # Get language from data if available, otherwise use default
+        user_lang = data.get('language', get_language()) if data else get_language()
+        i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_dir_name = f"output_{timestamp}"
         new_dir_path = os.path.join(user_base_dir, new_dir_name)

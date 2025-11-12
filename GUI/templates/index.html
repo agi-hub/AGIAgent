@@ -4537,7 +4537,7 @@
 
             // In new mode, automatically create new directory first
             if (taskMode === 'new') {
-                addMessage('正在自动创建新工作目录...', 'info');
+                addMessage(I18N.creating_directory || 'Creating new workspace directory...', 'info');
                 createNewDirectory();
                 // Store the message to be sent after directory creation
                 pendingUserInput = message;
@@ -4595,7 +4595,9 @@
                     model_api_base: result.config.api_base,
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
-                    selected_mcp_servers: getSelectedMCPServers()
+                    selected_mcp_servers: getSelectedMCPServers(),
+                    // Add language preference
+                    language: CURRENT_LANG
                 };
 
                 if (taskMode === 'selected' && selectedDirectory) {
@@ -4634,7 +4636,9 @@
                 return;
             }
             
-            socket.emit('create_new_directory');
+            socket.emit('create_new_directory', {
+                language: CURRENT_LANG
+            });
         }
 
         function clearChat() {
@@ -4817,7 +4821,9 @@
                     model_api_base: result.config.api_base,
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
-                    selected_mcp_servers: getSelectedMCPServers()
+                    selected_mcp_servers: getSelectedMCPServers(),
+                    // Add language preference
+                    language: CURRENT_LANG
                 };
 
                 socket.emit('execute_task', {
