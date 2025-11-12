@@ -1,4 +1,4 @@
-给文档配Mermaid图，采用Mermaid绘制，可以是思维导图、时序图、架构图、流程图、甘特图等Mermaid支持的图。
+给文档中加入mermaid图，按照markdown中加入mermaid图的格式书写，可以是思维导图、时序图、架构图、流程图、甘特图等Mermaid支持的图。
 配的图要位于images文件夹下。
 要求：至少使用mermaid绘制三张图。
 请将用户的已有文档转为markdown格式，或生成新的markdown文件，在这个markdown文件中绘图。
