@@ -2912,7 +2912,7 @@
                     <i class="fas fa-file-text"></i>
                     {{ i18n.get('routine_file', '任务类型' if lang == 'zh' else 'Task Type') }}
                 </label>
-                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 140px;">
+                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 270px;">
                     <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
                 </select>
             </div>
@@ -2960,7 +2960,7 @@
                     <span id="langToggleText">{{ 'EN' if lang == 'zh' else '中文' }}</span>
                 </button>
                 <button id="themeToggleBtn" class="theme-toggle-btn" title="{{ '切换主题' if lang == 'zh' else 'Toggle Theme' }}">
-                    <i class="fas fa-moon"></i>
+                    <i class="fas fa-sun"></i>
                 </button>
             </div>
         </div>
@@ -5573,7 +5573,7 @@
             console.log(`📊 Tree computed style:`, window.getComputedStyle(tree).display);
             
             if (isCurrentlyExpanded) {
-                // 收起
+                // 收起 - 不需要检查连接状态，因为这只是UI操作
                 tree.classList.remove('show');
                 expandedDirectories.delete(dirName);
                 if (directoryItem) {
@@ -5585,7 +5585,12 @@
                 console.log(`📥 Collapsed: ${dirName}`);
                 console.log(`📥 After collapse - display:`, window.getComputedStyle(tree).display);
             } else {
-                // 展开
+                // 展开 - 需要检查连接状态
+                if (!isConnected) {
+                    addMessage(`⚠️ ${I18N.please_connect}`, 'warning');
+                    return false;
+                }
+                
                 tree.classList.add('show');
                 expandedDirectories.add(dirName);
                 if (directoryItem) {
@@ -5635,7 +5640,7 @@
             console.log(`📊 Sub-directory current state: ${subDirId} expanded = ${isCurrentlyExpanded}`);
             
             if (isCurrentlyExpanded) {
-                // 收起子文件夹
+                // 收起子文件夹 - 不需要检查连接状态，因为这只是UI操作
                 subTree.classList.remove('show');
                 expandedSubDirectories.delete(subDirId);
                 if (icon) {
@@ -5643,7 +5648,12 @@
                 }
                 console.log(`📥 Collapsed sub-directory: ${subDirId}`);
             } else {
-                // 展开子文件夹
+                // 展开子文件夹 - 需要检查连接状态
+                if (!isConnected) {
+                    addMessage(`⚠️ ${I18N.please_connect}`, 'warning');
+                    return false;
+                }
+                
                 subTree.classList.add('show');
                 expandedSubDirectories.add(subDirId);
                 if (icon) {
@@ -10793,10 +10803,10 @@
             // 应用保存的主题
             if (savedTheme === 'light') {
                 html.setAttribute('data-theme', 'light');
-                themeToggleBtn.querySelector('i').className = 'fas fa-sun';
+                themeToggleBtn.querySelector('i').className = 'fas fa-moon';
             } else {
                 html.setAttribute('data-theme', 'dark');
-                themeToggleBtn.querySelector('i').className = 'fas fa-moon';
+                themeToggleBtn.querySelector('i').className = 'fas fa-sun';
             }
 
             // 切换主题
@@ -10807,12 +10817,12 @@
                 // 更新主题
                 html.setAttribute('data-theme', newTheme);
                 
-                // 更新图标
+                // 更新图标（显示点击后会切换到的主题图标）
                 const icon = themeToggleBtn.querySelector('i');
                 if (newTheme === 'light') {
-                    icon.className = 'fas fa-sun';
-                } else {
                     icon.className = 'fas fa-moon';
+                } else {
+                    icon.className = 'fas fa-sun';
                 }
                 
                 // 保存到localStorage
