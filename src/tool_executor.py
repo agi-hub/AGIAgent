@@ -4260,10 +4260,12 @@ class ToolExecutor:
                                             # 在break之前，先打印buffer中工具调用之前的内容
                                             # 找到第二个```json的位置，只打印到那里之前的内容
                                             content_to_print = self._get_content_before_second_json(content)
+                                            # 计算需要打印的内容：从total_printed到content_to_print的末尾
                                             remaining_to_print = content_to_print[total_printed:]
                                             if remaining_to_print:
                                                 printer.write(remaining_to_print)
                                                 total_printed = len(content_to_print)
+                                            # 清空buffer，因为已经打印了所有应该打印的内容
                                             buffer = ""
                                             break
                                         
@@ -4309,10 +4311,12 @@ class ToolExecutor:
                                                                     # 在break之前，先打印buffer中工具调用之前的内容
                                                                     # 找到JSON对象开始的位置，只打印到那里之前的内容
                                                                     text_before_json = content[:brace_start].rstrip()
+                                                                    # 计算需要打印的内容：从total_printed到brace_start之前
                                                                     remaining_to_print = text_before_json[total_printed:]
                                                                     if remaining_to_print:
                                                                         printer.write(remaining_to_print)
                                                                         total_printed = len(text_before_json)
+                                                                    # 清空buffer，因为已经打印了所有应该打印的内容
                                                                     buffer = ""
                                                                     break
                                                             except:

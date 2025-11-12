@@ -3838,7 +3838,7 @@
         // Input handling
         async function sendMessage(planMode = false) {
             const message = userInput.value.trim();
-            if (!message || isTaskRunning || !socket || !isConnected) return;
+            if (isTaskRunning || !socket || !isConnected) return;
 
             // 保存当前输入内容，以防出错时需要恢复
             pendingUserInput = message;
@@ -4068,7 +4068,7 @@
 
         async function executeSelectedTask() {
             const message = userInput.value.trim();
-            if (!message || isTaskRunning) return;
+            if (isTaskRunning) return;
 
             // 保存当前输入内容，以防出错时需要恢复
             pendingUserInput = message;
@@ -4105,7 +4105,10 @@
                 }
                 
                 // Configuration is valid, proceed with execution
-                addMessage(message, 'user');
+                // Only display user message if it's not empty
+                if (message) {
+                    addMessage(message, 'user');
+                }
 
                 // Get GUI configuration options
                 const guiConfig = {
@@ -9689,22 +9692,21 @@
 
         /**
          * 应用用户保存的Markdown显示模式偏好
+         * 默认显示预览模式，不再自动切换到源码模式
          */
         function applyMarkdownModePreference() {
-            const savedMode = localStorage.getItem('markdownDisplayMode');
+            // 默认显示预览模式，不应用之前保存的源码模式偏好
+            // 用户可以通过按钮手动切换到源码模式
+            const previewDiv = document.getElementById('markdownPreview');
+            const sourceDiv = document.getElementById('markdownSource');
+            const toggleBtn = document.getElementById('markdownToggleBtn');
             
-            // 默认为预览模式，如果用户之前选择了源码模式，则切换到源码模式
-            if (savedMode === 'source') {
-                const previewDiv = document.getElementById('markdownPreview');
-                const sourceDiv = document.getElementById('markdownSource');
-                const toggleBtn = document.getElementById('markdownToggleBtn');
-                
-                if (previewDiv && sourceDiv && toggleBtn) {
-                    previewDiv.style.display = 'none';
-                    sourceDiv.style.display = 'block';
-                    toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> 预览模式';
-                    toggleBtn.title = '切换到预览模式';
-                }
+            if (previewDiv && sourceDiv && toggleBtn) {
+                // 确保默认显示预览模式
+                previewDiv.style.display = 'block';
+                sourceDiv.style.display = 'none';
+                toggleBtn.innerHTML = '<i class="fas fa-eye"></i> ' + (I18N.source_mode || 'Source Mode');
+                toggleBtn.title = I18N.toggle_to_source_title || 'Switch to source mode';
             }
         }
 

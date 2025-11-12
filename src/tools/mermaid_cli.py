@@ -399,8 +399,9 @@ class MermaidProcessor:
                     print_current(f"📝 Auto-corrected {len(incomplete_matches)} incomplete Mermaid block(s) in file")
             
             # Now extract all Mermaid code blocks with optional following caption from the (potentially corrected) content
-            # Match: ```mermaid\n{code}\n``` followed by optional whitespace and comment
-            pattern = re.compile(r'```mermaid\n(.*?)\n```(\s*<!--[^>]*-->)?', re.DOTALL)
+            # Match: ```mermaid\n{code}\n``` followed by optional whitespace, newline, and comment
+            # The comment can be on the same line or on a new line after ```
+            pattern = re.compile(r'```mermaid\n(.*?)\n```(\s*(?:\n\s*)?<!--[^>]*-->)?', re.DOTALL)
             matches = list(pattern.finditer(content))
             
             if not matches:
@@ -480,11 +481,22 @@ class MermaidProcessor:
                         # Generate appropriate alt text based on caption from comment
                         # Extract caption from comment for alt text
                         def extract_caption_from_comment_for_alt(content: str) -> Optional[str]:
-                            caption_match = re.search(r'<!--\s*([^-]+?)\s*-->', content.strip(), re.IGNORECASE)
+                            if not content:
+                                return None
+                            # Strip whitespace and newlines, then search for comment
+                            content_cleaned = content.strip()
+                            caption_match = re.search(r'<!--\s*([^-]+?)\s*-->', content_cleaned, re.IGNORECASE | re.DOTALL)
                             if caption_match:
                                 caption = caption_match.group(1).strip()
+                                # Filter out system comments and placeholder text
                                 system_comments = ['the_figure_caption', 'Available formats', 'Source code file']
-                                if not any(sys_comment in caption for sys_comment in system_comments):
+                                # Also filter out placeholder patterns like "the_diagram_caption", "the_example_diagram_caption"
+                                placeholder_patterns = ['the_diagram_caption', 'the_example_diagram_caption', 'the_figure_caption']
+                                if caption and not any(sys_comment in caption for sys_comment in system_comments):
+                                    # Check if it's a placeholder (contains "the_" and "caption")
+                                    if 'the_' in caption.lower() and 'caption' in caption.lower():
+                                        # It's a placeholder, don't use it
+                                        return None
                                     return caption
                             return None
                         

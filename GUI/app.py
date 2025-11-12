@@ -2899,9 +2899,7 @@ def handle_execute_task(data):
         return
 
     user_requirement = data.get('requirement', '')
-    if not user_requirement.strip():
-        emit('error', {'message': i18n['error_no_requirement']}, room=session_id)
-        return
+    # Allow empty requirement to start the program
     
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
     plan_mode = data.get('plan_mode', False)  # Whether to use plan mode (task decomposition)

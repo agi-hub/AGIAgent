@@ -2308,18 +2308,19 @@ class FileSystemTools:
             auto_convert_pdf = config.get('auto_convert_to_pdf', 'True').lower() == 'true'
             auto_convert_latex = config.get('auto_convert_to_latex', 'False').lower() == 'true'
             
-            # If format_type is 'both', check individual config settings
-            # Otherwise, respect the format_type parameter
+            # If format_type is 'both', check individual config settings (for auto-conversion)
+            # When format_type is explicitly specified ('word', 'pdf', 'latex'), ignore config and force conversion
+            # This allows manual conversion requests to work even when auto-conversion is disabled
             if format_type == 'both':
-                # Determine which formats to generate based on config
+                # Determine which formats to generate based on config (auto-conversion mode)
                 should_generate_word = auto_convert_word
                 should_generate_pdf = auto_convert_pdf
                 should_generate_latex = auto_convert_latex
             else:
-                # When format_type is specified, use it but still check config
-                should_generate_word = (format_type == 'word' and auto_convert_word)
-                should_generate_pdf = (format_type == 'pdf' and auto_convert_pdf)
-                should_generate_latex = (format_type == 'latex' and auto_convert_latex)
+                # When format_type is explicitly specified, ignore config and force conversion (manual request)
+                should_generate_word = (format_type == 'word')
+                should_generate_pdf = (format_type == 'pdf')
+                should_generate_latex = (format_type == 'latex')
             
             # If no formats should be generated, return early
             if not (should_generate_word or should_generate_pdf or should_generate_latex):
