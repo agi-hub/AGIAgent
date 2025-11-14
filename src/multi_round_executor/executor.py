@@ -25,13 +25,12 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_truncation_length, get_summary_history, get_enable_round_sync, get_sync_round, get_summary_trigger_length
+from config_loader import get_model, get_truncation_length, get_summary_history, get_enable_round_sync, get_sync_round
 from src.tools.print_system import print_current, print_current, print_current, print_debug
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
 from .debug_recorder import DebugRecorder
 from .task_checker import TaskChecker
-from src.utils.cacheeff import estimate_token_count
 import re
 import json
 
@@ -670,92 +669,6 @@ class MultiRoundTaskExecutor:
                             # If no older records to compress, keep all records as-is
                         except Exception as e:
                             print_debug(f"⚠️ Simple history compression failed: {e}")
-                    
-                    # Check token count and apply aggressive compression if needed
-                    try:
-                        # Estimate total token count for the message that will be sent
-                        # Build a sample message to estimate tokens
-                        sample_user_message = self.executor._build_new_user_message(
-                            current_prompt, history_for_llm, task_round
-                        )
-                        system_prompt = self.executor.load_system_prompt()
-                        
-                        # Estimate tokens for system prompt and user message
-                        import re
-                        has_images = bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', str(sample_user_message)))
-                        user_tokens = estimate_token_count(str(sample_user_message), has_images=has_images, model=self.executor.model)
-                        system_tokens = estimate_token_count(system_prompt, has_images=False, model=self.executor.model)
-                        total_estimated_tokens = user_tokens + system_tokens
-                        
-                        # Maximum token limit: convert summary_trigger_length (characters) to tokens
-                        # summary_trigger_length is in characters, we need to estimate equivalent tokens
-                        summary_trigger_chars = get_summary_trigger_length()
-                        # Create a dummy text with trigger_length characters to estimate tokens accurately
-                        # This accounts for the model's tokenization (different for English/Chinese/code)
-                        dummy_text = "x" * summary_trigger_chars
-                        estimated_trigger_tokens = estimate_token_count(dummy_text, has_images=False, model=self.executor.model)
-                        # The limit should account for: history tokens (from trigger) + system prompt + margin
-                        # Add system prompt tokens and a safety margin (10000 tokens) to stay well below API limits
-                        max_tokens_limit = estimated_trigger_tokens + system_tokens + 10000
-                        
-                        if total_estimated_tokens > max_tokens_limit:
-                            excess_tokens = total_estimated_tokens - max_tokens_limit
-                            excess_ratio = excess_tokens / total_estimated_tokens
-                            
-                            print_current(f"⚠️ Estimated tokens ({total_estimated_tokens:,}) exceed limit ({max_tokens_limit:,})")
-                            print_current(f"   Excess: {excess_tokens:,} tokens ({excess_ratio*100:.1f}%)")
-                            print_current(f"   Applying aggressive compression...")
-                            
-                            # Apply aggressive compression
-                            if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor:
-                                # Calculate target compression ratio (need to reduce by excess_ratio + some margin)
-                                target_compression_ratio = excess_ratio + 0.1  # Add 10% margin
-                                
-                                # Re-compress with target ratio
-                                if len(history_for_llm) > 2:
-                                    records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
-                                    recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
-                                    
-                                    if records_to_compress:
-                                        compressed_older_records = self.executor.simple_compressor.compress_history(
-                                            records_to_compress, 
-                                            target_compression_ratio=target_compression_ratio
-                                        )
-                                        history_for_llm = compressed_older_records + recent_records_to_keep
-                                
-                                # If still too large, remove more history records
-                                iteration = 0
-                                max_iterations = 5
-                                while total_estimated_tokens > max_tokens_limit and iteration < max_iterations:
-                                    iteration += 1
-                                    
-                                    # Remove older records, keep only recent ones
-                                    # Progressively reduce: keep last 5, then 3, then 2, then 1
-                                    keep_count = max(1, 5 - iteration)
-                                    if len(history_for_llm) > keep_count:
-                                        history_for_llm = history_for_llm[-keep_count:]
-                                        print_current(f"   Iteration {iteration}: Keeping only last {keep_count} history records")
-                                        
-                                        # Re-estimate
-                                        sample_user_message = self.executor._build_new_user_message(
-                                            current_prompt, history_for_llm, task_round
-                                        )
-                                        has_images = bool(re.search(r'[A-Za-z0-9+/]{100,}={0,2}', str(sample_user_message)))
-                                        user_tokens = estimate_token_count(str(sample_user_message), has_images=has_images, model=self.executor.model)
-                                        total_estimated_tokens = user_tokens + system_tokens
-                                    else:
-                                        break
-                                
-                                if total_estimated_tokens <= max_tokens_limit:
-                                    print_current(f"✅ Compression successful: {total_estimated_tokens:,} tokens (within limit)")
-                                else:
-                                    print_current(f"⚠️ Still exceeds limit after aggressive compression: {total_estimated_tokens:,} tokens")
-                                    # Last resort: keep only the most recent record
-                                    if len(history_for_llm) > 1:
-                                        history_for_llm = history_for_llm[-1:]
-                                        print_current(f"   Last resort: Keeping only the most recent history record")
-                    except Exception as e:
-                        print_debug(f"⚠️ Token estimation/compression check failed: {e}")
                 
                 # 🔧 Ensure correct agent_id is set in agent context before executing subtask
                 current_agent_id = get_current_agent_id()
