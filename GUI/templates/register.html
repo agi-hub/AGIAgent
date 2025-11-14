@@ -14,37 +14,34 @@
 
         body {
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'SimSun', sans-serif;
-            background: #000000;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e8f0f5 50%, #f5f9fc 100%);
             background-image:
-                radial-gradient(circle at 25% 25%, #001122 0%, transparent 50%),
-                radial-gradient(circle at 75% 75%, #001122 0%, transparent 50%),
-                linear-gradient(45deg, #000000 25%, transparent 25%),
-                linear-gradient(-45deg, #000000 25%, transparent 25%),
-                linear-gradient(45deg, transparent 75%, #000000 75%),
-                linear-gradient(-45deg, transparent 75%, #000000 75%);
-            background-size: 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px;
+                radial-gradient(circle at 20% 30%, rgba(64, 150, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(100, 200, 255, 0.06) 0%, transparent 50%),
+                linear-gradient(0deg, transparent 24%, rgba(100, 150, 255, 0.03) 25%, rgba(100, 150, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(100, 150, 255, 0.03) 75%, rgba(100, 150, 255, 0.03) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(100, 150, 255, 0.03) 25%, rgba(100, 150, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(100, 150, 255, 0.03) 75%, rgba(100, 150, 255, 0.03) 76%, transparent 77%, transparent);
+            background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
-            color: #00ffff;
+            color: #1a4d7a;
         }
 
         .register-container {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
-            border: 2px solid #004080;
-            border-radius: 0px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 50%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
             box-shadow:
-                0 0 20px rgba(0, 64, 128, 0.3),
-                inset 0 0 20px rgba(0, 64, 128, 0.1);
+                0 8px 32px rgba(64, 150, 255, 0.15),
+                0 2px 8px rgba(0, 0, 0, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
             padding: 40px;
             width: 100%;
             max-width: 500px;
             position: relative;
-            image-rendering: pixelated;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: crisp-edges;
+            backdrop-filter: blur(10px);
         }
 
         .logo-section {
@@ -64,48 +61,13 @@
         }
 
         .logo {
-            width: 80px;
-            height: 80px;
+            width: 160px;
+            height: 160px;
             object-fit: contain;
-            filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+            filter: drop-shadow(0 3px 8px rgba(64, 150, 255, 0.3));
             image-rendering: pixelated;
             image-rendering: -moz-crisp-edges;
             image-rendering: crisp-edges;
-        }
-
-        .logo-text-container {
-            position: relative;
-            display: inline-block;
-            width: 120px; /* 固定宽度 */
-            text-align: left;
-        }
-
-        .logo-text {
-            font-size: 16px;
-            font-weight: bold;
-            color: #00ffff;
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
-            text-transform: uppercase;
-            white-space: nowrap;
-            display: inline-block;
-            position: relative;
-        }
-
-        .logo-text::after {
-            content: '|';
-            font-size: 16px;
-            font-weight: bold;
-            color: #00ffff;
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
-            animation: blink 1s infinite;
-            position: absolute;
-            right: -8px;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
         }
 
         .title-section {
@@ -115,17 +77,17 @@
         .title {
             font-size: 24px;
             font-weight: bold;
-            color: #0088ff;
+            color: #1a4d7a;
             margin-bottom: 8px;
-            text-shadow: 0 0 15px rgba(0, 136, 255, 0.6);
+            text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
             letter-spacing: 1px;
             text-transform: uppercase;
         }
 
         .subtitle {
-            color: #0066cc;
+            color: #5a8db8;
             font-size: 14px;
-            text-shadow: 0 0 5px rgba(0, 102, 204, 0.4);
+            text-shadow: none;
         }
 
         .form-group {
@@ -136,9 +98,9 @@
             display: block;
             font-size: 14px;
             font-weight: bold;
-            color: #0088ff;
+            color: #1a4d7a;
             margin-bottom: 8px;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
             letter-spacing: 1px;
             text-transform: uppercase;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
@@ -147,61 +109,61 @@
         .form-input {
             width: 100%;
             padding: 12px 16px;
-            border: 2px solid #004080;
-            border-radius: 0px;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
             font-size: 16px;
             font-family: 'Courier New', monospace;
             transition: all 0.3s ease;
-            background: #000000;
-            color: #00ffff;
-            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+            background: #ffffff;
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .form-input:focus {
             outline: none;
-            border-color: #004080;
-            background: #001111;
+            border-color: #4096ff;
+            background: #ffffff;
             box-shadow:
-                0 0 15px rgba(0, 64, 128, 0.5),
-                inset 0 0 15px rgba(0, 64, 128, 0.3);
+                0 0 0 3px rgba(64, 150, 255, 0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .form-input.error {
-            border-color: #ff0040;
-            box-shadow: 0 0 10px rgba(255, 0, 64, 0.5);
+            border-color: #ff4757;
+            box-shadow: 0 0 0 3px rgba(255, 71, 87, 0.1);
         }
 
         .form-textarea {
             width: 100%;
             padding: 12px 16px;
-            border: 2px solid #004080;
-            border-radius: 0px;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
             font-size: 14px;
             font-family: 'Courier New', monospace;
             min-height: 80px;
             resize: vertical;
             transition: all 0.3s ease;
-            background: #000000;
-            color: #00ffff;
-            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+            background: #ffffff;
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .form-textarea:focus {
             outline: none;
-            border-color: #004080;
-            background: #001111;
+            border-color: #4096ff;
+            background: #ffffff;
             box-shadow:
-                0 0 15px rgba(0, 64, 128, 0.5),
-                inset 0 0 15px rgba(0, 64, 128, 0.3);
+                0 0 0 3px rgba(64, 150, 255, 0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .register-btn {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #001122 0%, #002244 50%, #001122 100%);
-            color: #0088ff;
-            border: 2px solid #004080;
-            border-radius: 0px;
+            background: linear-gradient(135deg, #4096ff 0%, #2979ff 50%, #4096ff 100%);
+            color: #ffffff;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
             font-size: 16px;
             font-weight: bold;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
@@ -210,16 +172,16 @@
             margin-top: 10px;
             text-transform: uppercase;
             letter-spacing: 2px;
-            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            box-shadow: 0 4px 12px rgba(64, 150, 255, 0.3);
+            text-shadow: none;
         }
 
         .register-btn:hover {
-            background: linear-gradient(135deg, #002244 0%, #004466 50%, #002244 100%);
+            background: linear-gradient(135deg, #2979ff 0%, #1e6fff 50%, #2979ff 100%);
             box-shadow:
-                0 0 20px rgba(0, 64, 128, 0.6),
-                inset 0 0 10px rgba(0, 64, 128, 0.2);
-            transform: translateY(-1px);
+                0 6px 20px rgba(64, 150, 255, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
         }
 
         .register-btn:disabled {
@@ -233,9 +195,9 @@
             display: none;
             text-align: center;
             margin-top: 10px;
-            color: #0088ff;
+            color: #4096ff;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .loading.show {
@@ -243,21 +205,21 @@
         }
 
         .error-message {
-            color: #0088ff;
+            color: #ff4757;
             font-size: 14px;
             margin-top: 5px;
             display: none;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .success-message {
-            color: #0088ff;
+            color: #2ed573;
             font-size: 14px;
             margin-top: 5px;
             display: none;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .back-link {
@@ -266,66 +228,67 @@
         }
 
         .back-link a {
-            color: #0088ff;
+            color: #4096ff;
             text-decoration: none;
             font-size: 14px;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
             text-transform: uppercase;
             letter-spacing: 1px;
-            border: 1px solid #004080;
+            border: 1px solid rgba(64, 150, 255, 0.3);
             padding: 8px 16px;
+            border-radius: 6px;
             transition: all 0.3s ease;
         }
 
         .back-link a:hover {
-            background: rgba(0, 64, 128, 0.1);
-            box-shadow: 0 0 10px rgba(0, 64, 128, 0.5);
+            background: rgba(64, 150, 255, 0.1);
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.2);
             text-decoration: none;
         }
 
         .api-key-result {
-            background: linear-gradient(135deg, #001122 0%, #002244 100%);
-            border: 2px solid #004080;
-            border-radius: 0px;
+            background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
             padding: 20px;
             margin-top: 20px;
             display: none;
             box-shadow:
-                0 0 20px rgba(0, 64, 128, 0.3),
-                inset 0 0 10px rgba(0, 64, 128, 0.1);
+                0 4px 16px rgba(64, 150, 255, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
         }
 
         .api-key-result h3 {
-            color: #0088ff;
+            color: #1a4d7a;
             margin-bottom: 10px;
             font-size: 18px;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 10px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
 
         .api-key-display {
-            background: #000000;
-            border: 1px solid #004080;
+            background: #f0f4f8;
+            border: 1px solid rgba(64, 150, 255, 0.3);
             padding: 12px;
-            border-radius: 0px;
+            border-radius: 8px;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
             font-size: 14px;
             word-break: break-all;
             margin: 10px 0;
-            color: #0088ff;
-            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
-            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+            text-shadow: none;
         }
 
         .copy-btn {
-            background: linear-gradient(135deg, #001122 0%, #002244 100%);
-            color: #0088ff;
-            border: 2px solid #004080;
+            background: linear-gradient(135deg, #4096ff 0%, #2979ff 100%);
+            color: #ffffff;
+            border: 2px solid rgba(64, 150, 255, 0.3);
             padding: 8px 16px;
-            border-radius: 0px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
@@ -333,36 +296,37 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             transition: all 0.3s ease;
-            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
-            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.3);
+            text-shadow: none;
         }
 
         .copy-btn:hover {
-            background: linear-gradient(135deg, #002244 0%, #004466 100%);
+            background: linear-gradient(135deg, #2979ff 0%, #1e6fff 100%);
             box-shadow:
-                0 0 20px rgba(0, 64, 128, 0.6),
-                inset 0 0 10px rgba(0, 64, 128, 0.2);
+                0 4px 12px rgba(64, 150, 255, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
         }
 
         .captcha-instruction {
             font-size: 14px;
-            color: #0088ff;
+            color: #5a8db8;
             margin-bottom: 8px;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+            text-shadow: none;
         }
 
         .captcha-text {
             font-size: 18px;
-            color: #0088ff;
+            color: #1a4d7a;
             margin-bottom: 12px;
             padding: 10px;
-            background: linear-gradient(135deg, #001122 0%, #002244 100%);
-            border: 2px solid #004080;
-            border-radius: 0px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
             text-align: center;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            box-shadow: 0 0 10px rgba(0, 64, 128, 0.3);
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.15);
         }
 
         .agreement-container {
@@ -371,33 +335,33 @@
             gap: 10px;
             margin-bottom: 20px;
             padding: 15px;
-            background: linear-gradient(135deg, #001122 0%, #002244 100%);
-            border: 2px solid #004080;
-            border-radius: 0px;
-            box-shadow: inset 0 0 10px rgba(0, 64, 128, 0.2);
+            background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .agreement-checkbox {
             width: 18px;
             height: 18px;
             margin-top: 2px;
-            accent-color: #0088ff;
+            accent-color: #4096ff;
             cursor: pointer;
         }
 
         .agreement-text {
             font-size: 14px;
-            color: #00ffff;
+            color: #1a4d7a;
             line-height: 1.5;
             font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
-            text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);
+            text-shadow: none;
         }
 
         .agreement-link {
-            color: #0088ff;
+            color: #4096ff;
             text-decoration: none;
             font-weight: bold;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .agreement-link:hover {
@@ -412,24 +376,25 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(5px);
         }
 
         .modal-content {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
-            border: 2px solid #004080;
-            border-radius: 0px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 50%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
             box-shadow:
-                0 0 30px rgba(0, 64, 128, 0.5),
-                inset 0 0 30px rgba(0, 64, 128, 0.1);
+                0 8px 32px rgba(64, 150, 255, 0.2),
+                0 2px 8px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
             margin: 5% auto;
             padding: 30px;
             width: 90%;
             max-width: 600px;
             max-height: 80vh;
             overflow-y: auto;
-            color: #00ffff;
+            color: #1a4d7a;
             position: relative;
         }
 
@@ -439,14 +404,14 @@
             align-items: center;
             margin-bottom: 20px;
             padding-bottom: 15px;
-            border-bottom: 2px solid #004080;
+            border-bottom: 2px solid rgba(64, 150, 255, 0.3);
         }
 
         .modal-title {
             font-size: 24px;
             font-weight: bold;
-            color: #0088ff;
-            text-shadow: 0 0 10px rgba(0, 136, 255, 0.8);
+            color: #1a4d7a;
+            text-shadow: none;
             margin: 0;
             text-transform: uppercase;
             letter-spacing: 2px;
@@ -455,7 +420,7 @@
         .close-modal {
             background: none;
             border: none;
-            color: #0088ff;
+            color: #4096ff;
             font-size: 28px;
             cursor: pointer;
             padding: 0;
@@ -465,28 +430,27 @@
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
-            text-shadow: 0 0 5px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .close-modal:hover {
-            color: #ff0040;
-            text-shadow: 0 0 10px rgba(255, 0, 64, 0.8);
+            color: #ff4757;
             transform: rotate(90deg);
         }
 
         .modal-body {
             font-size: 14px;
             line-height: 1.6;
-            color: #00ffff;
-            text-shadow: 0 0 2px rgba(0, 136, 255, 0.3);
+            color: #1a4d7a;
+            text-shadow: none;
         }
 
         .modal-body h3 {
-            color: #0088ff;
+            color: #1a4d7a;
             margin-top: 20px;
             margin-bottom: 10px;
             font-size: 18px;
-            text-shadow: 0 0 8px rgba(0, 136, 255, 0.6);
+            text-shadow: none;
         }
 
         .modal-body p {
@@ -496,16 +460,17 @@
         /* Desktop styles - horizontal layout */
         @media (min-width: 769px) {
             body {
-                background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px, 30px 30px, 30px 30px;
+                background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
                 font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
             }
 
             .register-container {
                 max-width: 600px;
-                border: 3px solid #004080;
+                border: 3px solid rgba(64, 150, 255, 0.3);
                 box-shadow:
-                    0 0 30px rgba(0, 64, 128, 0.4),
-                    inset 0 0 30px rgba(0, 64, 128, 0.15);
+                    0 12px 40px rgba(64, 150, 255, 0.2),
+                    0 4px 12px rgba(0, 0, 0, 0.1),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9);
             }
 
             .logo-section {
@@ -519,9 +484,9 @@
             }
 
             .logo {
-                width: 100px;
-                height: 100px;
-                filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.8));
+                width: 200px;
+                height: 200px;
+                filter: drop-shadow(0 4px 12px rgba(64, 150, 255, 0.4));
             }
 
             .logo-text-container {
@@ -531,7 +496,7 @@
             .logo-text {
                 font-size: 18px;
                 font-weight: bold;
-                text-shadow: 0 0 15px rgba(0, 255, 255, 1);
+                text-shadow: 0 2px 8px rgba(64, 150, 255, 0.3);
             }
 
             .title-section {
@@ -541,19 +506,19 @@
             .title {
                 font-size: 28px;
                 margin-bottom: 12px;
-                text-shadow: 0 0 20px rgba(0, 136, 255, 0.8);
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
             }
 
             .subtitle {
                 font-size: 16px;
-                text-shadow: 0 0 10px rgba(0, 102, 204, 0.6);
+                text-shadow: none;
             }
         }
 
         /* Tablet styles */
         @media (max-width: 768px) and (min-width: 481px) {
             body {
-                background-size: 25px 25px, 25px 25px, 25px 25px, 25px 25px, 25px 25px, 25px 25px;
+                background-size: 100% 100%, 100% 100%, 35px 35px, 35px 35px;
                 font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
             }
 
@@ -568,9 +533,9 @@
             }
 
             .logo {
-                width: 90px;
-                height: 90px;
-                filter: drop-shadow(0 0 12px rgba(0, 255, 255, 0.6));
+                width: 180px;
+                height: 180px;
+                filter: drop-shadow(0 3px 10px rgba(64, 150, 255, 0.3));
             }
 
             .logo-text-container {
@@ -579,19 +544,19 @@
 
             .logo-text {
                 font-size: 17px;
-                text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
+                text-shadow: 0 2px 6px rgba(64, 150, 255, 0.3);
             }
 
             .title {
                 font-size: 26px;
-                text-shadow: 0 0 18px rgba(0, 136, 255, 0.7);
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
             }
         }
 
         /* Mobile styles - vertical layout */
         @media (max-width: 480px) {
             body {
-                background-size: 15px 15px, 15px 15px, 15px 15px, 15px 15px, 15px 15px, 15px 15px;
+                background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
                 font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
             }
 
@@ -614,7 +579,7 @@
             .logo {
                 width: 120px;
                 height: 120px;
-                filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.7));
+                filter: drop-shadow(0 4px 12px rgba(64, 150, 255, 0.3));
             }
 
             .logo-text-container {
@@ -624,7 +589,7 @@
             .logo-text {
                 font-size: 18px;
                 font-weight: bold;
-                text-shadow: 0 0 12px rgba(0, 255, 255, 0.9);
+                text-shadow: 0 2px 6px rgba(64, 150, 255, 0.3);
             }
 
             .title-section {
@@ -634,12 +599,12 @@
             .title {
                 font-size: 22px;
                 margin-bottom: 10px;
-                text-shadow: 0 0 15px rgba(0, 136, 255, 0.7);
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
             }
 
             .subtitle {
                 font-size: 15px;
-                text-shadow: 0 0 8px rgba(0, 102, 204, 0.5);
+                text-shadow: none;
             }
 
             .agreement-container {
@@ -663,9 +628,6 @@
             <div class="logo-section">
                 <div class="logo-container">
                     <img src="{{ url_for('static', filename='logo.png') }}" alt="AGI Agent Logo" class="logo">
-                    <div class="logo-text-container">
-                        <span class="logo-text" id="typewriter-text"></span>
-                    </div>
                 </div>
                 <div class="title-section">
                     <h1 class="title">{{ '用户注册' if lang == 'zh' else 'User Registration' }}</h1>
@@ -686,6 +648,7 @@
                  data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
                  data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
                  data-copied="{{ '已复制！' if lang == 'zh' else 'Copied!' }}"
+                 data-copy-failed="{{ '复制失败，请手动复制API密钥' if lang == 'zh' else 'Copy failed, please manually copy the API key' }}"
                  data-registration-success="{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}"
                  data-user-exists="{{ '用户已存在' if lang == 'zh' else 'User Already Exists' }}"
                  data-existing-user-message="{{ '该用户已注册，以下是您的API密钥' if lang == 'zh' else 'This user is already registered. Here is your API key' }}">
@@ -738,13 +701,13 @@
             <p id="resultMessage">{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}</p>
             <div class="api-key-display" id="apiKeyDisplay"></div>
             <button class="copy-btn" id="copyBtn">{{ '复制密钥' if lang == 'zh' else 'Copy Key' }}</button>
-            <p id="warningMessage" style="margin-top: 15px; font-size: 12px; color: #0088ff; font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif; text-shadow: 0 0 3px rgba(0, 136, 255, 0.4);">
-                {{ '⚠️ 请务必保存此密钥，丢失后无法找回！' if lang == 'zh' else '⚠️ Please save this key securely. It cannot be recovered if lost!' }}
+            <p id="warningMessage" style="margin-top: 15px; font-size: 12px; color: #ff6b6b; font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif; text-shadow: none;">
+                {{ '⚠️ 请务必保存此密钥，丢失后请重新用相同用户名和手机号注册！' if lang == 'zh' else '⚠️ Please save this key securely. It cannot be recovered if lost!' }}
             </p>
         </div>
 
         <div class="back-link">
-            <a href="/">{{ '返回登录' if lang == 'zh' else 'Back to Login' }}</a>
+            <a href="/" id="backLink">{{ '返回登录' if lang == 'zh' else 'Back to Login' }}</a>
         </div>
     </div>
 
@@ -777,7 +740,7 @@
                 <h3>{{ '7. 适用法律' if lang == 'zh' else '7. Applicable Law' }}</h3>
                 <p>{{ '本协议受相关法律法规管辖。如有争议，应通过友好协商解决。' if lang == 'zh' else 'This agreement is governed by relevant laws and regulations. Disputes should be resolved through friendly negotiation.' }}</p>
 
-                <p style="margin-top: 20px; font-weight: bold; color: #0088ff;">
+                <p style="margin-top: 20px; font-weight: bold; color: #4096ff;">
                     {{ '请仔细阅读以上条款，注册即表示您同意并接受这些条款。' if lang == 'zh' else 'Please read the above terms carefully. Registration means you agree to and accept these terms.' }}
                 </p>
             </div>
@@ -799,49 +762,11 @@
                 registrationFailed: i18nData.getAttribute('data-registration-failed'),
                 networkError: i18nData.getAttribute('data-network-error'),
                 copied: i18nData.getAttribute('data-copied'),
+                copyFailed: i18nData.getAttribute('data-copy-failed'),
                 registrationSuccess: i18nData.getAttribute('data-registration-success'),
                 userExists: i18nData.getAttribute('data-user-exists'),
                 existingUserMessage: i18nData.getAttribute('data-existing-user-message')
             };
-
-            // 打字机效果
-            const typewriterText = document.getElementById('typewriter-text');
-            const fullText = 'AGI Agent';
-            let currentIndex = 0;
-            let isDeleting = false;
-
-            function typeWriter() {
-                if (!isDeleting) {
-                    // 正在打字
-                    typewriterText.textContent = fullText.substring(0, currentIndex + 1);
-                    currentIndex++;
-
-                    if (currentIndex === fullText.length) {
-                        // 打字完成，等待一段时间后开始删除
-                        setTimeout(() => {
-                            isDeleting = true;
-                        }, 2000);
-                    }
-                } else {
-                    // 正在删除
-                    typewriterText.textContent = fullText.substring(0, currentIndex);
-                    currentIndex--;
-
-                    if (currentIndex === 0) {
-                        // 删除完成，重新开始打字
-                        isDeleting = false;
-                        setTimeout(typeWriter, 500);
-                        return;
-                    }
-                }
-
-                // 根据当前状态设置打字速度
-                const typingSpeed = isDeleting ? 100 : 200;
-                setTimeout(typeWriter, typingSpeed);
-            }
-
-            // 开始打字机效果
-            setTimeout(typeWriter, 1000);
 
             const form = document.getElementById('registerForm');
             const registerBtn = document.getElementById('registerBtn');
@@ -849,6 +774,8 @@
             const apiKeyResult = document.getElementById('apiKeyResult');
             const apiKeyDisplay = document.getElementById('apiKeyDisplay');
             const copyBtn = document.getElementById('copyBtn');
+            const backLink = document.getElementById('backLink');
+            let registeredApiKey = null;
 
             // Form validation
             function validateForm() {
@@ -970,6 +897,14 @@
                     const result = await response.json();
 
                     if (result.success) {
+                        // Save the API key to sessionStorage for secure transfer to login page
+                        registeredApiKey = result.api_key;
+                        try {
+                            sessionStorage.setItem('registered_api_key', registeredApiKey);
+                        } catch (e) {
+                            console.error('Failed to save API key to sessionStorage:', e);
+                        }
+                        
                         // Show success result
                         apiKeyDisplay.textContent = result.api_key;
                         apiKeyResult.style.display = 'block';
@@ -995,17 +930,64 @@
                         }
 
                         // Setup copy functionality
-                        copyBtn.addEventListener('click', function() {
-                            navigator.clipboard.writeText(result.api_key).then(function() {
-                                const originalText = copyBtn.textContent;
-                                copyBtn.textContent = i18n.copied;
-                                copyBtn.style.background = '#17a2b8';
-                                setTimeout(() => {
-                                    copyBtn.textContent = originalText;
-                                    copyBtn.style.background = '#28a745';
-                                }, 2000);
-                            });
+                        // Remove any existing event listeners by cloning the button
+                        const newCopyBtn = copyBtn.cloneNode(true);
+                        copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+                        
+                        newCopyBtn.addEventListener('click', function() {
+                            const apiKey = result.api_key;
+                            const originalText = newCopyBtn.textContent;
+                            
+                            // Try modern clipboard API first
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(apiKey).then(function() {
+                                    newCopyBtn.textContent = i18n.copied;
+                                    newCopyBtn.style.background = '#17a2b8';
+                                    setTimeout(() => {
+                                        newCopyBtn.textContent = originalText;
+                                        newCopyBtn.style.background = '';
+                                    }, 2000);
+                                }).catch(function(err) {
+                                    console.error('Clipboard API failed:', err);
+                                    // Fallback to traditional method
+                                    fallbackCopy(apiKey, newCopyBtn, originalText);
+                                });
+                            } else {
+                                // Fallback to traditional method
+                                fallbackCopy(apiKey, newCopyBtn, originalText);
+                            }
                         });
+                        
+                        // Fallback copy function using execCommand
+                        function fallbackCopy(text, button, originalText) {
+                            const textArea = document.createElement('textarea');
+                            textArea.value = text;
+                            textArea.style.position = 'fixed';
+                            textArea.style.left = '-999999px';
+                            textArea.style.top = '-999999px';
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            
+                            try {
+                                const successful = document.execCommand('copy');
+                                if (successful) {
+                                    button.textContent = i18n.copied;
+                                    button.style.background = '#17a2b8';
+                                    setTimeout(() => {
+                                        button.textContent = originalText;
+                                        button.style.background = '';
+                                    }, 2000);
+                                } else {
+                                    alert(i18n.copyFailed);
+                                }
+                            } catch (err) {
+                                console.error('Fallback copy failed:', err);
+                                alert(i18n.copyFailed);
+                            } finally {
+                                document.body.removeChild(textArea);
+                            }
+                        }
                     } else {
                         alert(result.error || i18n.registrationFailed);
                     }

@@ -42,7 +42,7 @@ from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
 from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
 from src.tools.mcp_client import safe_cleanup_mcp_client
-from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format
+from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length
 from src.tools.message_system import get_message_router
 
 # Initialize logger
@@ -372,7 +372,15 @@ class ToolExecutor:
         if not self.summary_history:
             try:
                 from tools.simple_history_compressor import SimpleHistoryCompressor
-                self.simple_compressor = SimpleHistoryCompressor()
+                # Load compression settings from config
+                min_length = get_compression_min_length()
+                head_length = get_compression_head_length()
+                tail_length = get_compression_tail_length()
+                self.simple_compressor = SimpleHistoryCompressor(
+                    min_length=min_length,
+                    head_length=head_length,
+                    tail_length=tail_length
+                )
             except ImportError as e:
                 print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
                 self.simple_compressor = None
@@ -3156,7 +3164,7 @@ class ToolExecutor:
                 if tool_name == "read_file" and "end_line_one_indexed" in filtered_params:
                     # Map end_line_one_indexed to end_line_one_indexed_inclusive
                     filtered_params["end_line_one_indexed_inclusive"] = filtered_params.pop("end_line_one_indexed")
-                    print_current("Mapped end_line_one_indexed parameter to end_line_one_indexed_inclusive")
+                    #print_current("Mapped end_line_one_indexed parameter to end_line_one_indexed_inclusive")
                 
                 # Robustness handling: auto-correct wrong parameter names for edit_file and read_file
                 if tool_name in ["edit_file", "read_file"]:

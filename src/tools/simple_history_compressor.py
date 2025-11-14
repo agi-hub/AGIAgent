@@ -17,10 +17,11 @@ class SimpleHistoryCompressor:
     """A simple history compressor that compresses history records by truncating long field contents."""
     
     def __init__(self, 
-                 min_length: int = 1000,
-                 head_length: int = 200,
-                 tail_length: int = 200,
-                 ellipsis: str = "\n...[omitted {} chars]...\n"):
+                 min_length: int = 500,
+                 head_length: int = 100,
+                 tail_length: int = 100,
+                 ellipsis: str = "\n...[omitted {} chars]...\n",
+                 aggressive_mode: bool = False):
         """
         Initialize the simple history compressor.
         
@@ -29,18 +30,28 @@ class SimpleHistoryCompressor:
             head_length: Number of characters to keep at the beginning.
             tail_length: Number of characters to keep at the end.
             ellipsis: Ellipsis format, {} will be replaced by the number of omitted characters.
+            aggressive_mode: If True, use more aggressive compression (lower thresholds, smaller head/tail).
         """
-        self.min_length = min_length
-        self.head_length = head_length
-        self.tail_length = tail_length
+        if aggressive_mode:
+            # More aggressive compression settings
+            self.min_length = min(min_length, 200)
+            self.head_length = min(head_length, 50)
+            self.tail_length = min(tail_length, 50)
+        else:
+            self.min_length = min_length
+            self.head_length = head_length
+            self.tail_length = tail_length
         self.ellipsis = ellipsis
+        self.aggressive_mode = aggressive_mode
         
-    def compress_history(self, task_history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def compress_history(self, task_history: List[Dict[str, Any]], target_compression_ratio: float = None) -> List[Dict[str, Any]]:
         """
         Compress the history records.
         
         Args:
             task_history: The original list of history records.
+            target_compression_ratio: Optional target compression ratio (0.0-1.0). If provided, 
+                                     will iteratively compress until target is reached.
             
         Returns:
             The compressed list of history records.
@@ -68,7 +79,40 @@ class SimpleHistoryCompressor:
             
             # Count the number of compressed fields
             compressed_fields_count += self._count_compressed_fields(record, compressed_record)
-    
+        
+        # If target compression ratio is specified and not achieved, apply more aggressive compression
+        if target_compression_ratio is not None and total_original_chars > 0:
+            current_ratio = 1.0 - (total_compressed_chars / total_original_chars)
+            if current_ratio < target_compression_ratio:
+                # Apply more aggressive compression iteratively
+                iteration = 0
+                max_iterations = 5
+                while current_ratio < target_compression_ratio and iteration < max_iterations:
+                    iteration += 1
+                    # Temporarily reduce head/tail lengths for more aggressive compression
+                    original_head = self.head_length
+                    original_tail = self.tail_length
+                    original_min = self.min_length
+                    
+                    # Progressively reduce lengths
+                    self.head_length = max(20, int(self.head_length * 0.7))
+                    self.tail_length = max(20, int(self.tail_length * 0.7))
+                    self.min_length = max(100, int(self.min_length * 0.7))
+                    
+                    # Re-compress
+                    compressed_history = []
+                    total_compressed_chars = 0
+                    for record in task_history:
+                        compressed_record = self._compress_single_record(record.copy())
+                        compressed_history.append(compressed_record)
+                        total_compressed_chars += self._calculate_record_size(compressed_record)
+                    
+                    current_ratio = 1.0 - (total_compressed_chars / total_original_chars) if total_original_chars > 0 else 0
+                    
+                    # Restore original values
+                    self.head_length = original_head
+                    self.tail_length = original_tail
+                    self.min_length = original_min
         
         return compressed_history
     

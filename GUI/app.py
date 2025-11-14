@@ -337,7 +337,7 @@ I18N_TEXTS = {
         'page_title': f'{APP_NAME}',
         'app_title': f'{APP_NAME}',
         'app_subtitle': '',
-        'connected': f'已连接到 {APP_NAME}',
+        'connected': f'已连接 {APP_NAME}',
         
         # Button text
         'execute_direct': '直接执行',
@@ -573,7 +573,7 @@ I18N_TEXTS = {
         'usage_instructions': '使用说明',
         'office_instruction_1': '点击"下载文件"按钮将文件保存到本地',
         'office_instruction_2': '使用Microsoft Office、WPS或其他兼容软件打开',
-        'office_instruction_3': '支持.doc、.docx、.xls、.xlsx、.ppt、.pptx等格式',
+        'office_instruction_3': '',
         'office_offline_note': '为了支持离线部署，云存储预览功能已被移除。请下载文件到本地查看。',
         'source_mode': '源码模式',
         'preview_mode': '预览模式',
@@ -922,7 +922,7 @@ I18N_TEXTS = {
         'usage_instructions': 'Usage Instructions',
         'office_instruction_1': 'Click the "Download File" button to save the file locally',
         'office_instruction_2': 'Open with Microsoft Office, WPS, or other compatible software',
-        'office_instruction_3': 'Supports .doc, .docx, .xls, .xlsx, .ppt, .pptx and other formats',
+        'office_instruction_3': '',
         'office_offline_note': 'To support offline deployment, cloud storage preview functionality has been removed. Please download files for local viewing.',
         'source_mode': 'Source Mode',
         'preview_mode': 'Preview Mode',
@@ -1091,11 +1091,38 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                 routine_file = None
 
         # Model configuration from GUI
-        selected_model = gui_config.get('selected_model', 'claude-sonnet-4')
+        selected_model = gui_config.get('selected_model')
         model_api_key = gui_config.get('model_api_key')
         model_api_base = gui_config.get('model_api_base')
         
-
+        # 如果前端没有提供 api_key 和 api_base（内置配置），从服务器端读取
+        # 对于内置配置，前端不会发送 api_key 和 api_base，需要从服务器端读取
+        if not model_api_key or not model_api_base:
+            from src.config_loader import get_gui_config
+            gui_config_from_server = get_gui_config()
+            
+            # 如果服务器端有配置，就使用它
+            if gui_config_from_server.get('api_key') and gui_config_from_server.get('api_base'):
+                if not model_api_key:
+                    model_api_key = gui_config_from_server.get('api_key')
+                if not model_api_base:
+                    model_api_base = gui_config_from_server.get('api_base')
+                # 如果 selected_model 为空、None、空字符串或为默认值，使用服务器端的模型名称
+                if not selected_model or selected_model == '' or selected_model == 'claude-sonnet-4':
+                    selected_model = gui_config_from_server.get('model', selected_model or 'claude-sonnet-4')
+        
+        # 验证配置是否完整
+        if not model_api_key or not model_api_base or not selected_model:
+            missing_items = []
+            if not model_api_key:
+                missing_items.append('API Key')
+            if not model_api_base:
+                missing_items.append('API Base')
+            if not selected_model:
+                missing_items.append('模型名称')
+            error_msg = f"配置信息不完整：缺少 {', '.join(missing_items)}。请检查 config/config.txt 中的 GUI API 配置部分。"
+            output_queue.put({'event': 'error', 'data': {'message': error_msg}})
+            return
         
         # Create a temporary configuration that overrides config.txt for GUI mode
         # We'll use environment variables to pass these settings to the AGIAgent system
@@ -1340,6 +1367,10 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             
             def write(self, message):
                 self.buffer += message
+                
+                # Check if buffer contains \r (carriage return) indicating progress bar update
+                has_carriage_return = '\r' in self.buffer
+                
                 if '\n' in self.buffer:
                     *lines, self.buffer = self.buffer.split('\n')
                     for line in lines:
@@ -1366,8 +1397,43 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                                 message_type = 'info'
                             else:
                                 message_type = self.socket_type
+                            
+                            # Detect if this is a progress bar update (contains \r)
+                            is_update = '\r' in line
+                            # Remove \r from the message for display
+                            filtered_line = filtered_line.replace('\r', '')
+                            
                             # Display warning and progress info as normal info
-                            self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type}})
+                            self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type, 'is_update': is_update}})
+                elif has_carriage_return and self.buffer:
+                    # Handle progress bar update without newline (buffer ends with \r)
+                    # Clean the buffer: remove \r and trailing whitespace
+                    buffer_clean = self.buffer.replace('\r', '').rstrip()
+                    if buffer_clean:
+                        # Filter code_edit content
+                        filtered_line = self.filter_code_edit_content(buffer_clean)
+                        
+                        # Filter out redundant system messages
+                        if not self.should_filter_message(filtered_line):
+                            # Check if it's warning or progress info
+                            line_lower = filtered_line.lower()
+                            if ('warning' in line_lower or
+                                'progress' in line_lower or
+                                'processing files' in line_lower or
+                                filtered_line.startswith('Processing files:') or
+                                'userwarning' in line_lower or
+                                'warnings.warn' in line_lower or
+                                '⚠️' in filtered_line or
+                                filtered_line.startswith('W: ') or
+                                'W: ' in filtered_line):
+                                message_type = 'info'
+                            else:
+                                message_type = self.socket_type
+                            
+                            # This is definitely an update (has \r)
+                            self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type, 'is_update': True}})
+                        # Clear buffer after processing update
+                        self.buffer = ""
 
             def flush(self):
                 pass
@@ -1394,8 +1460,14 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                         message_type = 'info'
                     else:
                         message_type = self.socket_type
+                    
+                    # Detect if this is a progress bar update (contains \r)
+                    is_update = '\r' in self.buffer
+                    # Remove \r from the message for display
+                    buffer_rstrip = buffer_rstrip.replace('\r', '')
+                    
                     # Display warning and progress info as normal info
-                    self.q.put({'event': 'output', 'data': {'message': buffer_rstrip, 'type': message_type}})
+                    self.q.put({'event': 'output', 'data': {'message': buffer_rstrip, 'type': message_type, 'is_update': is_update}})
                     self.buffer = ""
 
         original_stdout = sys.stdout
@@ -3070,8 +3142,8 @@ def handle_get_metrics():
         emit('error', {'message': f'Failed to get performance metrics: {str(e)}'}, room=session_id)
 
 @socketio.on('stop_task')
-def handle_stop_task():
-    """Handle stop task request"""
+def handle_stop_task(data=None):
+    """Handle stop task request with force option"""
     i18n = get_i18n_texts()
     session_id = request.sid
     
@@ -3080,9 +3152,12 @@ def handle_stop_task():
     
     user_session = gui_instance.user_sessions[session_id]
     
+    # Check if force stop is requested
+    force_stop = False
+    if data and isinstance(data, dict):
+        force_stop = data.get('force', False)
+    
     if user_session.current_process and user_session.current_process.is_alive():
-        pass
-
         # 🔧 Fix: save current conversation to history when stopping task
         if hasattr(user_session, '_current_task_requirement'):
             user_session.add_to_conversation_history(
@@ -3091,7 +3166,44 @@ def handle_stop_task():
             )
             delattr(user_session, '_current_task_requirement')
 
-        user_session.current_process.terminate()
+        try:
+            if force_stop:
+                # Force kill the process immediately
+                user_session.current_process.kill()
+                emit('output', {'message': '🛑 强制停止任务中...', 'type': 'warning'}, room=session_id)
+            else:
+                # Try graceful termination first
+                user_session.current_process.terminate()
+                emit('output', {'message': '⏹️ 正在停止任务...', 'type': 'info'}, room=session_id)
+                
+                # Wait a short time for graceful termination
+                import time
+                time.sleep(0.5)
+                
+                # If still alive after 0.5 seconds, force kill
+                if user_session.current_process.is_alive():
+                    user_session.current_process.kill()
+                    emit('output', {'message': '🛑 任务未响应，已强制停止', 'type': 'warning'}, room=session_id)
+        except Exception as e:
+            # If terminate/kill fails, try to find and kill child processes
+            try:
+                import psutil
+                import os
+                parent = psutil.Process(user_session.current_process.pid)
+                for child in parent.children(recursive=True):
+                    try:
+                        child.kill()
+                    except:
+                        pass
+                try:
+                    parent.kill()
+                except:
+                    pass
+            except:
+                pass
+            
+            emit('output', {'message': f'⚠️ 停止任务时出错: {str(e)}', 'type': 'error'}, room=session_id)
+        
         user_session.current_output_dir = None  # Clear current directory mark
 
         # 🔧 Fix: Clean up active task to prevent timeout detection
@@ -3106,13 +3218,22 @@ def handle_stop_task():
 def handle_create_new_directory(data=None):
     """Handle create new directory request"""
     session_id = request.sid
-    if session_id not in gui_instance.user_sessions:
-        return
-    
-    user_session = gui_instance.user_sessions[session_id]
-    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
     
     try:
+        # Check if session exists
+        if session_id not in gui_instance.user_sessions:
+            # Get language from data if available, otherwise use default
+            user_lang = data.get('language', get_language()) if data else get_language()
+            i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
+            emit('directory_created', {
+                'success': False,
+                'error': i18n.get('session_not_found', 'Session not found. Please reconnect.')
+            }, room=session_id)
+            return
+        
+        user_session = gui_instance.user_sessions[session_id]
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         # Get language from data if available, otherwise use default
         user_lang = data.get('language', get_language()) if data else get_language()
         i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
@@ -3139,8 +3260,10 @@ def handle_create_new_directory(data=None):
             'message': i18n['directory_created_with_workspace'].format(new_dir_name)
         }, room=session_id)
         
-        
     except Exception as e:
+        # Get language from data if available, otherwise use default
+        user_lang = data.get('language', get_language()) if data else get_language()
+        i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
         emit('directory_created', {
             'success': False,
             'error': str(e)
@@ -3580,7 +3703,7 @@ def get_routine_files():
 
 @app.route('/api/validate-config', methods=['POST'])
 def validate_config():
-    """Validate GUI configuration and return model-specific config"""
+    """Validate GUI configuration (without returning sensitive information)"""
     try:
         from src.config_loader import get_gui_config, validate_gui_config
         
@@ -3594,20 +3717,9 @@ def validate_config():
                 'error': i18n['config_missing']
             })
         
-        # 从配置对象中提取信息
-        api_key = model_config.get('api_key')
-        api_base = model_config.get('api_base')
+        config_value = model_config.get('value')
         model_name = model_config.get('model')
         max_tokens = model_config.get('max_tokens', 8192)
-        
-        # 验证必需字段
-        if not api_key or not api_base or not model_name:
-            if 'i18n' not in locals():
-                i18n = get_i18n_texts()
-            return jsonify({
-                'success': False,
-                'error': i18n['config_incomplete']
-            })
         
         # 验证max_tokens是有效的数字
         try:
@@ -3617,29 +3729,64 @@ def validate_config():
         except (ValueError, TypeError):
             max_tokens = 8192
         
-        # 对于配置中指定的模型，进行额外的配置文件验证
-        gui_config = get_gui_config()
-        config_model = gui_config.get('model', 'glm-4.5')
-        if model_config.get('value') == config_model:
-            # 读取GUI配置并验证
-            is_valid, error_message = validate_gui_config(gui_config)
+        # 如果是内置配置（不是 'custom'），从服务器端读取并验证
+        if config_value and config_value != 'custom':
+            gui_config = get_gui_config()
+            config_model = gui_config.get('model', 'glm-4.5')
             
-            if not is_valid:
+            # 验证模型名称是否存在
+            if not model_name:
+                # 如果前端没有提供模型名称，使用服务器端的模型名称
+                model_name = config_model
+            
+            if config_value == config_model:
+                # 读取GUI配置并验证
+                is_valid, error_message = validate_gui_config(gui_config)
+                
+                if not is_valid:
+                    return jsonify({
+                        'success': False,
+                        'error': error_message
+                    })
+            
+            # 验证模型名称是否存在
+            if not model_name:
+                i18n = get_i18n_texts()
                 return jsonify({
                     'success': False,
-                    'error': error_message
+                    'error': i18n['config_incomplete']
                 })
-        
-        # 返回验证后的配置
-        return jsonify({
-            'success': True,
-            'config': {
-                'api_key': api_key,
-                'api_base': api_base,
-                'model': model_name,
-                'max_tokens': max_tokens
-            }
-        })
+            
+            # 对于内置配置，只返回非敏感信息
+            return jsonify({
+                'success': True,
+                'config': {
+                    # 不返回 api_key 和 api_base，这些敏感信息只在发起任务时从服务器端读取
+                    'model': model_name,
+                    'max_tokens': max_tokens
+                }
+            })
+        else:
+            # 自定义配置：验证用户输入的配置
+            api_key = model_config.get('api_key')
+            api_base = model_config.get('api_base')
+            
+            # 验证必需字段
+            if not api_key or not api_base or not model_name:
+                i18n = get_i18n_texts()
+                return jsonify({
+                    'success': False,
+                    'error': i18n['config_incomplete']
+                })
+            
+            # 对于自定义配置，只返回非敏感信息（前端已经有完整配置）
+            return jsonify({
+                'success': True,
+                'config': {
+                    'model': model_name,
+                    'max_tokens': max_tokens
+                }
+            })
         
     except Exception as e:
         return jsonify({
@@ -3777,7 +3924,7 @@ def render_markdown():
 
 @app.route('/api/gui-configs', methods=['GET'])
 def get_gui_configs():
-    """Get available GUI model configurations"""
+    """Get available GUI model configurations (without sensitive information)"""
     try:
         from src.config_loader import get_gui_config
         
@@ -3785,14 +3932,14 @@ def get_gui_configs():
         gui_config = get_gui_config()
         
         # 返回固定的两个选项：从配置读取的模型 和自定义
+        # 注意：不返回 api_key 和 api_base，这些敏感信息只在发起任务时从服务器端读取
         i18n = get_i18n_texts()
         model_name = gui_config.get('model', 'glm-4.5')
         configs = [
             {
                 'value': model_name,
                 'label': model_name,
-                'api_key': gui_config.get('api_key', ''),
-                'api_base': gui_config.get('api_base', ''),
+                # 不返回 api_key 和 api_base，保护敏感信息
                 'model': gui_config.get('model', ''),
                 'max_tokens': gui_config.get('max_tokens', 8192),
                 'display_name': model_name
@@ -3800,8 +3947,6 @@ def get_gui_configs():
             {
                 'value': 'custom',
                 'label': i18n['custom_label'],
-                'api_key': '',
-                'api_base': '',
                 'model': '',
                 'max_tokens': 8192,
                 'display_name': i18n['custom_label']

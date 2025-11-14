@@ -438,6 +438,84 @@ def get_summary_max_length(config_file: str = "config/config.txt") -> int:
     
     return 5000  # Default summary max length
 
+def get_compression_min_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get compression min length from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Compression min length integer (default: 500)
+    """
+    config = load_config(config_file)
+    compression_min_length_str = config.get('compression_min_length')
+    
+    if compression_min_length_str:
+        try:
+            compression_min_length = int(compression_min_length_str)
+            if compression_min_length <= 0:
+                print(f"Warning: Invalid compression_min_length value '{compression_min_length_str}' in config file, must be positive integer, using default 500")
+                return 500
+            return compression_min_length
+        except ValueError:
+            print(f"Warning: Invalid compression_min_length value '{compression_min_length_str}' in config file, must be an integer, using default 500")
+            return 500
+    
+    return 500  # Default compression min length
+
+def get_compression_head_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get compression head length from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Compression head length integer (default: 100)
+    """
+    config = load_config(config_file)
+    compression_head_length_str = config.get('compression_head_length')
+    
+    if compression_head_length_str:
+        try:
+            compression_head_length = int(compression_head_length_str)
+            if compression_head_length <= 0:
+                print(f"Warning: Invalid compression_head_length value '{compression_head_length_str}' in config file, must be positive integer, using default 100")
+                return 100
+            return compression_head_length
+        except ValueError:
+            print(f"Warning: Invalid compression_head_length value '{compression_head_length_str}' in config file, must be an integer, using default 100")
+            return 100
+    
+    return 100  # Default compression head length
+
+def get_compression_tail_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get compression tail length from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Compression tail length integer (default: 100)
+    """
+    config = load_config(config_file)
+    compression_tail_length_str = config.get('compression_tail_length')
+    
+    if compression_tail_length_str:
+        try:
+            compression_tail_length = int(compression_tail_length_str)
+            if compression_tail_length <= 0:
+                print(f"Warning: Invalid compression_tail_length value '{compression_tail_length_str}' in config file, must be positive integer, using default 100")
+                return 100
+            return compression_tail_length
+        except ValueError:
+            print(f"Warning: Invalid compression_tail_length value '{compression_tail_length_str}' in config file, must be an integer, using default 100")
+            return 100
+    
+    return 100  # Default compression tail length
+
 def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
     """
     Get summary trigger length from configuration file

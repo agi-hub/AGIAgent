@@ -92,18 +92,93 @@ class TerminalTools:
         
         def read_stdout():
             try:
-                for line in iter(process.stdout.readline, ''):
-                    if line:
-                        stdout_queue.put(('stdout', line, time.time()))
+                # Use buffered reading to detect \r characters before readline processes them
+                buffer = ''
+                chunk_size = 1024
+                while True:
+                    chunk = process.stdout.read(chunk_size)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    
+                    # Process buffer for \r (carriage return) and \n (newline)
+                    while True:
+                        # Check for \r first (progress bar updates)
+                        if '\r' in buffer:
+                            # Find the position of \r
+                            cr_pos = buffer.find('\r')
+                            # Extract content before \r
+                            line = buffer[:cr_pos]
+                            # Remove any trailing \n
+                            line = line.rstrip('\n')
+                            if line.strip():
+                                # This is a progress bar update
+                                stdout_queue.put(('stdout', line + '\n', time.time(), True))
+                            # Remove processed part including \r
+                            buffer = buffer[cr_pos + 1:]
+                            continue
+                        
+                        # Check for \n (regular line ending)
+                        if '\n' in buffer:
+                            nl_pos = buffer.find('\n')
+                            line = buffer[:nl_pos]
+                            if line.strip():
+                                # Check if line looks like progress bar (contains progress indicators)
+                                is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                                stdout_queue.put(('stdout', line + '\n', time.time(), is_progress))
+                            buffer = buffer[nl_pos + 1:]
+                            continue
+                        
+                        # No more complete lines in buffer
+                        break
+                
+                # Process remaining buffer
+                if buffer.strip():
+                    # Check if remaining buffer looks like progress bar
+                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                    stdout_queue.put(('stdout', buffer + '\n', time.time(), is_progress))
                 process.stdout.close()
             except:
                 pass
         
         def read_stderr():
             try:
-                for line in iter(process.stderr.readline, ''):
-                    if line:
-                        stderr_queue.put(('stderr', line, time.time()))
+                # Use buffered reading to detect \r characters
+                buffer = ''
+                chunk_size = 1024
+                while True:
+                    chunk = process.stderr.read(chunk_size)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    
+                    # Process buffer for \r and \n
+                    while True:
+                        # Check for \r first (progress bar updates)
+                        if '\r' in buffer:
+                            cr_pos = buffer.find('\r')
+                            line = buffer[:cr_pos].rstrip('\n')
+                            if line.strip():
+                                stderr_queue.put(('stderr', line + '\n', time.time(), True))
+                            buffer = buffer[cr_pos + 1:]
+                            continue
+                        
+                        # Check for \n (regular line ending)
+                        if '\n' in buffer:
+                            nl_pos = buffer.find('\n')
+                            line = buffer[:nl_pos]
+                            if line.strip():
+                                is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                                stderr_queue.put(('stderr', line + '\n', time.time(), is_progress))
+                            buffer = buffer[nl_pos + 1:]
+                            continue
+                        
+                        break
+                
+                # Process remaining buffer
+                if buffer.strip():
+                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                    stderr_queue.put(('stderr', buffer + '\n', time.time(), is_progress))
                 process.stderr.close()
             except:
                 pass
@@ -128,11 +203,24 @@ class TerminalTools:
                 
                 try:
                     while True:
-                        output_type, line, timestamp = stdout_queue.get_nowait()
-                        line_clean = line.rstrip()
+                        item = stdout_queue.get_nowait()
+                        # Handle both old format (3 items) and new format (4 items with is_update)
+                        if len(item) == 4:
+                            output_type, line, timestamp, is_update = item
+                        else:
+                            output_type, line, timestamp = item
+                            is_update = False
+                        
+                        # Clean line: remove \r and trailing whitespace
+                        line_clean = line.replace('\r', '').rstrip()
                         stdout_lines.append(line_clean)
                         if line_clean:
-                            print_current(f"📤 {line_clean}")
+                            # If it's an update (progress bar), pass is_update flag to print_current
+                            if is_update:
+                                # For progress bar updates, use end='\r' to overwrite same line
+                                print_current(f"📤 {line_clean}", end='\r')
+                            else:
+                                print_current(f"📤 {line_clean}")
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -140,11 +228,24 @@ class TerminalTools:
                 
                 try:
                     while True:
-                        output_type, line, timestamp = stderr_queue.get_nowait()
-                        line_clean = line.rstrip()
+                        item = stderr_queue.get_nowait()
+                        # Handle both old format (3 items) and new format (4 items with is_update)
+                        if len(item) == 4:
+                            output_type, line, timestamp, is_update = item
+                        else:
+                            output_type, line, timestamp = item
+                            is_update = False
+                        
+                        # Clean line: remove \r and trailing whitespace
+                        line_clean = line.replace('\r', '').rstrip()
                         stderr_lines.append(line_clean)
                         if line_clean:
-                            print_current(f"⚠️  {line_clean}")
+                            # If it's an update (progress bar), pass is_update flag to print_current
+                            if is_update:
+                                # For progress bar updates, use end='\r' to overwrite same line
+                                print_current(f"⚠️  {line_clean}", end='\r')
+                            else:
+                                print_current(f"⚠️  {line_clean}")
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -181,21 +282,43 @@ class TerminalTools:
             
             try:
                 while True:
-                    output_type, line, timestamp = stdout_queue.get_nowait()
-                    line_clean = line.rstrip()
+                    item = stdout_queue.get_nowait()
+                    # Handle both old format (3 items) and new format (4 items with is_update)
+                    if len(item) == 4:
+                        output_type, line, timestamp, is_update = item
+                    else:
+                        output_type, line, timestamp = item
+                        is_update = False
+                    
+                    # Clean line: remove \r and trailing whitespace
+                    line_clean = line.replace('\r', '').rstrip()
                     stdout_lines.append(line_clean)
                     if line_clean:
-                        print_current(f"📤 {line_clean}")
+                        if is_update:
+                            print_current(f"📤 {line_clean}", end='\r')
+                        else:
+                            print_current(f"📤 {line_clean}")
             except queue.Empty:
                 pass
             
             try:
                 while True:
-                    output_type, line, timestamp = stderr_queue.get_nowait()
-                    line_clean = line.rstrip()
+                    item = stderr_queue.get_nowait()
+                    # Handle both old format (3 items) and new format (4 items with is_update)
+                    if len(item) == 4:
+                        output_type, line, timestamp, is_update = item
+                    else:
+                        output_type, line, timestamp = item
+                        is_update = False
+                    
+                    # Clean line: remove \r and trailing whitespace
+                    line_clean = line.replace('\r', '').rstrip()
                     stderr_lines.append(line_clean)
                     if line_clean:
-                        print_current(f"⚠️  {line_clean}")
+                        if is_update:
+                            print_current(f"⚠️  {line_clean}", end='\r')
+                        else:
+                            print_current(f"⚠️  {line_clean}")
             except queue.Empty:
                 pass
                 
@@ -434,16 +557,26 @@ class TerminalTools:
                     max_total_time = min(max_total_time, 180)
                     print_current(f"🖥️ Detected potential interactive/GUI program, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
+                # Special handling for pip install - use shorter timeout to avoid hanging
+                is_pip_install = 'pip install' in command.lower() or 'python -m pip install' in command.lower()
+                
+                if is_pip_install:
+                    # Set 2 minutes (120 seconds) timeout for pip install to avoid hanging
+                    timeout_inactive = 120
+                    max_total_time = 120
+                    print_current(f"⏱️  Detected pip install command, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                
                 long_running_indicators = [
                     'git clone', 'git fetch', 'git pull', 'git push',
-                    'npm install', 'pip install', 'yarn install',
+                    'npm install', 'yarn install',
                     'docker build', 'docker pull', 'docker push',
                     'wget', 'curl -O', 'scp', 'rsync',
                     'make', 'cmake', 'gcc', 'g++', 'javac',
-                    'python setup.py', 'python -m pip'
+                    'python setup.py'
                 ]
                 
-                is_potentially_long_running = any(indicator in command.lower() for indicator in long_running_indicators)
+                # Only apply long-running timeout if not pip install
+                is_potentially_long_running = not is_pip_install and any(indicator in command.lower() for indicator in long_running_indicators)
                 
                 if is_potentially_long_running:
                     timeout_inactive = max(timeout_inactive, 600)

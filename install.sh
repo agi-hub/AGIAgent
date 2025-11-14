@@ -460,7 +460,7 @@ print_usage() {
 # Main function
 main() {
     echo "=========================================="
-    echo "   AGIAgent Automated Installation Script"
+    echo "   Automated Installation Script"
     echo "=========================================="
     echo ""
     

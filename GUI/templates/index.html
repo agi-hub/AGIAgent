@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
 <head>
+    <!-- 在页面渲染前立即设置主题，避免闪烁 - 必须在所有CSS之前执行 -->
+    <script>
+        (function() {
+            // 从localStorage读取保存的主题，默认为light
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            // 立即设置主题属性，避免页面加载时的闪烁
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            // 立即设置html和body的背景色，避免闪屏（在CSS加载前就应用）
+            const bgColor = savedTheme === 'light' ? '#ffffff' : '#1e1e1e';
+            document.documentElement.style.backgroundColor = bgColor;
+            // 如果body已存在，立即设置；否则在DOMContentLoaded时设置
+            if (document.body) {
+                document.body.style.backgroundColor = bgColor;
+            } else {
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.style.backgroundColor = bgColor;
+                });
+            }
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ i18n.app_title.replace(' GUI', '') }}</title>
@@ -13,7 +33,7 @@
            CSS Color Variables - Theme System
            ============================================ */
         :root {
-            /* Dark Theme (Default) */
+            /* Dark Theme (Fallback) */
             --bg-primary: #1e1e1e;
             --bg-secondary: #2d2d30;
             --bg-tertiary: #252526;
@@ -33,9 +53,9 @@
             --bg-json-collapsible: #0f5132;
             --bg-directory-item: #1e1e1e;
             --bg-directory-item-hover: #2d2d30;
-            --bg-directory-item-expanded: #0f3460;
+            --bg-directory-item-expanded: #1e1e1e;
             --bg-directory-item-selected: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
-            --bg-directory-item-last: #0f3460;
+            --bg-directory-item-last: #1e1e1e;
             --bg-file-tree: #1e1e1e;
             --bg-upload-area: #1e1e1e;
             --bg-upload-area-hover: #2d2d30;
@@ -83,9 +103,9 @@
             --border-json-collapsible: #198754;
             --border-directory-item: #3e3e42;
             --border-directory-item-hover: #569cd6;
-            --border-directory-item-expanded: #007acc;
+            --border-directory-item-expanded: #3e3e42;
             --border-directory-item-selected: #007acc;
-            --border-directory-item-last: #569cd6;
+            --border-directory-item-last: #3e3e42;
             --border-file-tree: #3e3e42;
             --border-upload-area: #569cd6;
             --border-upload-area-hover: #007acc;
@@ -146,9 +166,9 @@
             --bg-json-collapsible: #c3f0d3;
             --bg-directory-item: #f5f5f0;
             --bg-directory-item-hover: #e8eaed;
-            --bg-directory-item-expanded: #b3d9ff;
+            --bg-directory-item-expanded: #f5f5f0;
             --bg-directory-item-selected: linear-gradient(135deg, #0366d6 0%, #005cc5 100%);
-            --bg-directory-item-last: #b3d9ff;
+            --bg-directory-item-last: #f5f5f0;
             --bg-file-tree: #ffffff;
             --bg-upload-area: #ffffff;
             --bg-upload-area-hover: #e8eaed;
@@ -186,7 +206,7 @@
             --border-primary: #d0d7de;
             --border-secondary: #d0d7de;
             --border-focus: #0366d6;
-            --border-resizer: #d0d7de;
+            --border-resizer: #f0f0f0;
             --border-resizer-hover: #0366d6;
             --border-resizer-active: #005cc5;
             --border-message-system: #0366d6;
@@ -196,9 +216,9 @@
             --border-json-collapsible: #22863a;
             --border-directory-item: #d0d7de;
             --border-directory-item-hover: #0366d6;
-            --border-directory-item-expanded: #0366d6;
+            --border-directory-item-expanded: #d0d7de;
             --border-directory-item-selected: #0366d6;
-            --border-directory-item-last: #0366d6;
+            --border-directory-item-last: #d0d7de;
             --border-file-tree: #d0d7de;
             --border-upload-area: #0366d6;
             --border-upload-area-hover: #005cc5;
@@ -219,8 +239,8 @@
             --shadow-scroll-hint: rgba(3, 102, 214, 0.4);
             --shadow-scroll-hint-hover: rgba(3, 102, 214, 0.6);
             
-            --resizer-indicator: rgba(0, 0, 0, 0.3);
-            --resizer-indicator-hover: rgba(0, 0, 0, 0.6);
+            --resizer-indicator: rgba(0, 0, 0, 0.15);
+            --resizer-indicator-hover: rgba(0, 0, 0, 0.3);
             
             /* Code syntax highlighting colors for light theme */
             --code-text: #1a1a1a;
@@ -453,6 +473,7 @@
         html {
             height: 100%;
             overflow: hidden;
+            background: var(--bg-primary);
         }
 
         body {
@@ -1179,7 +1200,7 @@
             gap: 10px;
             align-items: flex-end;
         }
-
+        
         .input-wrapper {
             flex: 1;
             position: relative;
@@ -1190,6 +1211,8 @@
             gap: 10px;
             flex-direction: row;
             align-items: center;
+            align-self: flex-start;
+            transform: translateY(8px);
         }
 
         #userInput {
@@ -1243,9 +1266,9 @@
         }
 
         .send-button {
-            background: var(--bg-send-button);
-            color: white;
-            border: none;
+            background: transparent;
+            border: 1px solid var(--color-accent);
+            color: var(--color-accent);
             border-radius: 6px;
             width: 40px;
             height: 40px;
@@ -1257,20 +1280,41 @@
             font-size: 14px;
         }
 
-        .send-button:hover {
-            background: var(--bg-send-button-hover);
+        .send-button:hover:not(:disabled) {
+            background: var(--color-accent);
+            color: white;
             transform: translateY(-1px);
         }
 
         .send-button:disabled {
-            background: var(--bg-send-button-disabled);
+            opacity: 0.6;
             cursor: not-allowed;
             transform: none;
         }
 
+        #sendButton {
+            background: var(--bg-send-button);
+            color: white;
+            border: none;
+        }
+
+        #sendButton:hover:not(:disabled) {
+            background: var(--bg-send-button-hover);
+        }
+
+        #stopButton {
+            background-color: #f44336 !important;
+            border: none !important;
+            color: white !important;
+        }
+
+        #stopButton:hover:not(:disabled) {
+            background-color: #d32f2f !important;
+        }
 
         #clearChatButton:hover:not(:disabled) {
-            background: #5a6268;
+            background: var(--color-accent);
+            color: white;
         }
 
         .sidebar-header {
@@ -2252,10 +2296,30 @@
             z-index: 2101;
         }
 
+        /* 配置窗口样式 - 类似预览窗口 */
+        #configModal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        #configModal .modal-content {
+            position: relative;
+            z-index: 2001;
+            max-width: 800px;
+            height: auto;
+            max-height: 90vh;
+        }
+
         .modal-content {
-            background-color: #2d2d30;
+            background-color: var(--bg-secondary);
             margin: 2% auto;
-            border: 1px solid #3e3e42;
+            border: 1px solid var(--border-primary);
             border-radius: 8px;
             width: 90%;
             max-width: 1200px;
@@ -2267,13 +2331,13 @@
         }
 
         .modal-header {
-            background: #007acc;
+            background: var(--color-accent);
             color: white;
             padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid var(--border-primary);
             flex-shrink: 0;
         }
 
@@ -2298,8 +2362,8 @@
             padding: 20px;
             flex: 1;
             overflow-y: auto;
-            background: #1e1e1e;
-            color: #cccccc;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 0;
         }
 
@@ -2437,29 +2501,29 @@
 
         /* Upload area styles */
         .upload-area {
-            border: 2px dashed #569cd6;
+            border: 2px dashed var(--border-upload-area);
             border-radius: 8px;
             padding: 40px 20px;
             text-align: center;
-            background: #1e1e1e;
+            background: var(--bg-upload-area);
             transition: all 0.3s ease;
             cursor: pointer;
         }
 
         .upload-area:hover {
-            border-color: #007acc;
-            background: #2d2d30;
+            border-color: var(--border-upload-area-hover);
+            background: var(--bg-upload-area-hover);
         }
 
         .upload-area.dragover {
-            border-color: #007acc;
-            background: #2d2d30;
+            border-color: var(--border-upload-area-hover);
+            background: var(--bg-upload-area-hover);
             transform: scale(1.02);
         }
 
         .upload-icon {
             font-size: 48px;
-            color: #569cd6;
+            color: var(--color-accent);
             margin-bottom: 20px;
         }
 
@@ -2470,12 +2534,12 @@
 
         .upload-hint {
             font-size: 21px !important;
-            color: #9cdcfe !important;
+            color: var(--text-upload-hint) !important;
             opacity: 0.8;
         }
 
         .upload-btn {
-            background: #007acc;
+            background: var(--bg-upload-btn);
             color: white;
             border: none;
             padding: 12px 24px;
@@ -2487,7 +2551,7 @@
         }
 
         .upload-btn:hover {
-            background: #005a9e;
+            background: var(--bg-upload-btn-hover);
         }
 
         /* Progress bar styles */
@@ -2498,14 +2562,14 @@
         .progress-bar {
             width: 100%;
             height: 8px;
-            background: #3e3e42;
+            background: var(--bg-progress-bar);
             border-radius: 4px;
             overflow: hidden;
         }
 
         .progress-fill {
             height: 100%;
-            background: #007acc;
+            background: var(--bg-progress-fill);
             width: 0%;
             transition: width 0.3s ease;
         }
@@ -2513,7 +2577,7 @@
         .progress-text {
             text-align: center;
             margin-top: 10px;
-            color: #9cdcfe;
+            color: var(--text-progress);
         }
 
         /* Upload result styles */
@@ -2962,6 +3026,9 @@
                 <button id="themeToggleBtn" class="theme-toggle-btn" title="{{ '切换主题' if lang == 'zh' else 'Toggle Theme' }}">
                     <i class="fas fa-sun"></i>
                 </button>
+                <button id="configToggleBtn" class="theme-toggle-btn" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
+                    <i class="fas fa-cog" id="configToggleIcon"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -3029,72 +3096,17 @@
                     </div>
                     <div class="button-row">
                         <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
-                            <i class="fas fa-paper-plane"></i>
+                            <i class="fas fa-arrow-up"></i>
                         </button>
-                        <button class="send-button" id="newTaskButton" style="background-color: rgba(82, 196, 26, 0.8);" title="{{ i18n.new_tooltip }}">
-                            <i class="fas fa-plus"></i>
-                        </button>
-                        <button class="send-button" id="configToggleBtn" style="background-color: rgba(255, 140, 0, 0.8);" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
-                            <i class="fas fa-cog" id="configToggleIcon"></i>
-                        </button>
-                        <button class="send-button" id="stopButton" style="display: none; background-color: #f44336;">
+                        <button class="send-button" id="stopButton" style="display: none;">
                             <i class="fas fa-stop"></i>
                         </button>
-                        <button class="send-button" id="clearChatButton" style="background-color: rgba(114, 46, 209, 0.8);" title="{{ i18n.clear_chat_tooltip }}">
-                            <i class="fas fa-broom"></i>
+                        <button class="send-button" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
+                            <i class="fas fa-paint-brush"></i>
                         </button>
                     </div>
                 </div>
                 
-                <!-- GUI Configuration Options -->
-                <div id="configContainer" class="config-container" style="margin-top: 10px; padding: 15px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; display: none;">
-                    <div style="margin-bottom: 10px; font-weight: 500; color: #cccccc; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-cog"></i>
-                        <span>{{ i18n.get('config_options', '配置选项' if lang == 'zh' else 'Configuration Options') }}</span>
-                    </div>
-                    <div class="config-options" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85em; justify-content: flex-start;">
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
-                            <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableMCP" style="margin: 0;">
-                            <span>{{ i18n.get('enable_mcp', '启动MCP' if lang == 'zh' else 'Enable MCP') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableJieba" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: #cccccc; cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enablePlanMode" style="margin: 0;">
-                            <span>{{ i18n.get('enable_plan_mode', '计划模式' if lang == 'zh' else 'Plan Mode') }}</span>
-                        </label>
-                    </div>
-
-                    <!-- MCP Server Selection (moved below all config options) -->
-                    <div id="mcpServerSelection" style="display: none; margin-top: 12px; padding: 8px; background: #1e1e1e; border-radius: 6px; border: 1px solid #3e3e42;">
-                        <label style="color: #cccccc; font-size: 0.9em; margin-bottom: 6px; display: block; font-weight: 500;">
-                            <i class="fas fa-server" style="margin-right: 6px;"></i>
-                            {{ '选择MCP服务器' if lang == 'zh' else 'Select MCP Servers' }}:
-                        </label>
-                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            {% for server_name, server_config in mcp_servers.items() %}
-                            <label class="mcp-option" style="display: flex; align-items: center; gap: 4px; color: #cccccc; cursor: pointer; font-size: 0.8em; padding: 4px 6px; border-radius: 4px; background: #2d2d30; border: 1px solid #3e3e42;">
-                                <input type="checkbox" class="mcp-server-checkbox" data-server="{{ server_name }}" style="margin: 0;">
-                                <span>{{ server_name.replace('-', ' ').replace('_', ' ').title() }}</span>
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
                 
                 
             </div>
@@ -3105,9 +3117,12 @@
 
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <i class="fas fa-folder-open"></i>
+                <i class="fas fa-folder-open" id="folderIconHint" style="cursor: pointer;" title="点击查看提示"></i>
                 <h3>{{ i18n.get('workspace_title', '工作目录' if lang == 'zh' else 'Workspace') }}</h3>
                 <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="action-btn" id="newTaskButton" title="{{ i18n.new_tooltip }}">
+                        <i class="fas fa-plus"></i>
+                    </button>
                     <button class="action-btn" onclick="manualRefresh()" title="{{ i18n.refresh_tooltip }}">
                         <i class="fas fa-sync-alt"></i>
                     </button>
@@ -3137,6 +3152,77 @@
             </div>
             <div class="modal-body">
                 <div id="previewContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="configModalTitle">{{ i18n.get('config_options', '配置选项' if lang == 'zh' else 'Configuration Options') }}</h3>
+                <span class="close" id="configModalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="configContainer" class="config-container" style="padding: 15px;">
+                    <div class="config-options" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85em; justify-content: flex-start;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
+                            <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
+                            <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
+                            <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enableMCP" style="margin: 0;">
+                            <span>{{ i18n.get('enable_mcp', '启动MCP' if lang == 'zh' else 'Enable MCP') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enableJieba" checked style="margin: 0;">
+                            <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                            <input type="checkbox" id="enablePlanMode" style="margin: 0;">
+                            <span>{{ i18n.get('enable_plan_mode', '计划模式' if lang == 'zh' else 'Plan Mode') }}</span>
+                        </label>
+                    </div>
+
+                    <!-- MCP Server Selection (moved below all config options) -->
+                    <div id="mcpServerSelection" style="display: none; margin-top: 12px; padding: 8px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-primary);">
+                        <label style="color: var(--text-primary); font-size: 0.9em; margin-bottom: 6px; display: block; font-weight: 500;">
+                            <i class="fas fa-server" style="margin-right: 6px;"></i>
+                            {{ '选择MCP服务器' if lang == 'zh' else 'Select MCP Servers' }}:
+                        </label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            {% for server_name, server_config in mcp_servers.items() %}
+                            <label class="mcp-option" style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); cursor: pointer; font-size: 0.8em; padding: 4px 6px; border-radius: 4px; background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <input type="checkbox" class="mcp-server-checkbox" data-server="{{ server_name }}" style="margin: 0;">
+                                <span>{{ server_name.replace('-', ' ').replace('_', ' ').title() }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folder Hint Modal -->
+    <div id="folderHintModal" class="modal">
+        <div class="modal-content" style="max-width: 500px; height: auto; max-height: 80vh;">
+            <div class="modal-header">
+                <h3 id="folderHintTitle">{{ '提示' if lang == 'zh' else 'Hint' }}</h3>
+                <span class="close" id="folderHintClose">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <p style="margin: 0; color: var(--text-primary); line-height: 1.6; font-size: 14px;">
+                    {{ '单击目标文件夹，呈现蓝色则代表为选中的文件夹，大模型将基于此文件夹读写文件' if lang == 'zh' else 'Click on the target folder. When it appears blue, it means the folder is selected. The large model will read and write files based on this folder.' }}
+                </p>
             </div>
         </div>
     </div>
@@ -3314,31 +3400,31 @@
             </div>
             <div class="modal-body" style="padding: 20px;">
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.custom_api_key_label }}</label>
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.custom_api_key_label }}</label>
                     <div style="position: relative;">
                         <input type="password" id="customApiKey" placeholder="{{ i18n.custom_api_key_placeholder }}" 
-                               style="width: 100%; padding: 10px 40px 10px 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
+                               style="width: 100%; padding: 10px 40px 10px 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: monospace;">
                         <button type="button" id="customApiKeyToggle" onclick="togglePasswordVisibility('customApiKey')" 
-                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #9cdcfe; cursor: pointer; font-size: 21px; padding: 5px;" 
+                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 21px; padding: 5px;" 
                                 title="{{ '显示密码' if lang == 'zh' else 'Show password' }}">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.custom_api_base_label }}</label>
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.custom_api_base_label }}</label>
                     <input type="text" id="customApiBase" placeholder="{{ i18n.custom_api_base_placeholder }}" 
-                           style="width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
+                           style="width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: monospace;">
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.custom_model_label }}</label>
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.custom_model_label }}</label>
                     <input type="text" id="customModel" placeholder="{{ i18n.custom_model_placeholder }}" 
-                           style="width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
+                           style="width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: monospace;">
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #cccccc; font-weight: 500;">{{ i18n.custom_max_tokens_label }}</label>
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.custom_max_tokens_label }}</label>
                     <input type="number" id="customMaxTokens" placeholder="{{ i18n.custom_max_tokens_placeholder }}" value="8192" min="1" max="1000000"
-                           style="width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-family: monospace;">
+                           style="width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: monospace;">
                 </div>
                 <div id="customConfigError" style="display: none; color: #ff6b6b; margin-bottom: 15px;">
                     <i class="fas fa-exclamation-triangle"></i> <span id="customConfigErrorText"></span>
@@ -3652,7 +3738,8 @@
             });
 
             socket.on('output', function(data) {
-                addMessage(data.message, data.type || 'info');
+                // Pass is_update flag to addMessage
+                addMessage(data.message, data.type || 'info', data.is_update || false);
                 
                 // 如果收到"没有任务运行"的消息，恢复到默认状态
                 if (data.message && (
@@ -3740,8 +3827,8 @@
                     // 启动文件监测
                     startFileMonitoring();
                     
-                    // 如果有待发送的消息，自动发送
-                    if (pendingUserInput) {
+                    // 如果有待发送的消息（包括空字符串），自动发送
+                    if (pendingUserInput !== null && pendingUserInput !== undefined) {
                         userInput.value = pendingUserInput;
                         // 延迟一点时间确保目录创建完成
                         setTimeout(() => {
@@ -3961,8 +4048,8 @@
             
             // 处理队列中的所有消息（使用addMessageImmediate以确保JSON检测正常工作）
             for (const messageData of messageBatchQueue) {
-                const { message, type } = messageData;
-                addMessageImmediate(message, type);
+                const { message, type, isUpdate } = messageData;
+                addMessageImmediate(message, type, isUpdate || false);
             }
             
             // 清空队列
@@ -4007,16 +4094,22 @@
             }, BATCH_DELAY);
         }
         
-        function addMessage(message, type = 'info') {
+        function addMessage(message, type = 'info', isUpdate = false) {
             const trimmedMessage = message.trim();
             const originalMessage = message; // 保存原始消息用于JSON检测
+            
+            // 如果是更新类型的消息（进度条更新），立即处理并更新最后一行
+            if (isUpdate) {
+                addMessageImmediate(message, type, isUpdate);
+                return;
+            }
             
             // 对于JSON标记相关的消息，需要先让JSON检测逻辑处理，但不显示
             // 检查是否是等待JSON结束或开始的状态
             if ((jsonCollectingState.waitingForJsonEnd || jsonCollectingState.waitingForJsonStart) && 
                 (trimmedMessage === '```' || trimmedMessage === '```json')) {
                 // 先让JSON检测逻辑处理原始消息（用于JSON状态管理）
-                addMessageImmediate(originalMessage, type);
+                addMessageImmediate(originalMessage, type, false);
                 return; // 不显示这些标记
             }
             
@@ -4025,7 +4118,7 @@
             if (trimmedMessage === '```' || trimmedMessage === '```xml' || trimmedMessage === '```json') {
                 // 让JSON检测逻辑处理（如果是```json或```，可能用于开始JSON收集）
                 if (trimmedMessage === '```json' || trimmedMessage === '```') {
-                    addMessageImmediate(originalMessage, type);
+                    addMessageImmediate(originalMessage, type, false);
                 }
                 return; // Don't display these lines
             }
@@ -4050,12 +4143,12 @@
             
             // 对于用户消息或重要消息，立即处理不进入批处理队列
             if (type === 'user' || type === 'system' || isBatchProcessing) {
-                addMessageImmediate(displayMessage, type);
+                addMessageImmediate(displayMessage, type, false);
                 return;
             }
             
             // 将消息添加到批处理队列（使用过滤后的消息）
-            messageBatchQueue.push({ message: displayMessage, type });
+            messageBatchQueue.push({ message: displayMessage, type, isUpdate: false });
             
             // 标记需要滚动（如果满足条件）
             if (shouldAutoScroll()) {
@@ -4064,6 +4157,22 @@
             
             // 调度批量处理
             scheduleBatchProcessing();
+        }
+        
+        /**
+         * 过滤JSON内容中的```标记
+         * @param {string} jsonContent JSON内容
+         * @returns {string} 过滤后的JSON内容
+         * @description 过滤掉```json和```标记，用于在显示JSON内容前清理
+         */
+        function filterJsonMarkers(jsonContent) {
+            if (!jsonContent) {
+                return jsonContent;
+            }
+            let filtered = jsonContent;
+            filtered = filtered.replace(/```json/g, '');
+            filtered = filtered.replace(/```/g, '');
+            return filtered;
         }
         
         /**
@@ -4082,17 +4191,20 @@
                 return;
             }
             
+            // 过滤掉 ```json 和 ``` 标记（在显示到细节窗口前）
+            const filteredContent = filterJsonMarkers(jsonContent);
+            
             // 获取最后一个消息元素
             let lastDetailMessage = detailInfoMessages.lastElementChild;
             
             // 如果存在最后一个消息元素且是detail-info-message，更新内容
             if (lastDetailMessage && lastDetailMessage.classList.contains('detail-info-message')) {
-                lastDetailMessage.textContent = jsonContent;
+                lastDetailMessage.textContent = filteredContent;
             } else {
                 // 创建新的消息元素
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'detail-info-message';
-                messageDiv.textContent = jsonContent;
+                messageDiv.textContent = filteredContent;
                 detailInfoMessages.appendChild(messageDiv);
             }
             
@@ -4106,8 +4218,38 @@
          * @param {string} type 消息类型
          * @description 用于处理用户消息、系统消息或批处理过程中的消息
          */
-        function addMessageImmediate(message, type = 'info') {
+        function addMessageImmediate(message, type = 'info', isUpdate = false) {
             const shouldScroll = shouldAutoScroll();
+            
+            // 如果是更新类型的消息（进度条更新），更新最后一行而不是添加新行
+            if (isUpdate) {
+                // 优先更新最后一条 info 类型的消息
+                if (lastMessageDiv && lastMessageDiv.parentNode === chatMessages &&
+                    lastMessageType === 'info' &&
+                    !lastMessageDiv.classList.contains('json-collapsible') &&
+                    !jsonCollectingState.isCollecting &&
+                    !jsonCollectingState.waitingForJsonEnd) {
+                    // 更新最后一条消息的内容
+                    const textSpan = lastMessageDiv.querySelector('.message-text');
+                    if (textSpan) {
+                        // 直接替换内容，不添加换行
+                        textSpan.textContent = message;
+                    } else {
+                        lastMessageDiv.textContent = message;
+                    }
+                    // 更新lastMessageContent
+                    lastMessageContent = message;
+                    // 不滚动，保持当前位置
+                    return;
+                } else if (!lastMessageDiv || lastMessageType !== 'info') {
+                    // 如果没有最后一条消息或最后一条不是 info 类型，创建新的消息
+                    // 但标记为更新类型，这样下次更新时可以更新这条消息
+                    // 继续执行下面的逻辑创建新消息
+                } else {
+                    // 其他情况，不更新，直接返回
+                    return;
+                }
+            }
             
             // 过滤掉 ```json 和 ``` 标记（在实际显示前）
             let filteredMessage = message;
@@ -4136,7 +4278,7 @@
                     if (jsonCollectingState.jsonContainer) {
                         const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                         if (contentDiv) {
-                            contentDiv.textContent = jsonCollectingState.jsonContent;
+                            contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
                         }
                         
                         // 如果还没有提取工具名称，尝试提取
@@ -4193,7 +4335,7 @@
                         if (jsonCollectingState.jsonContainer) {
                             const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                             if (contentDiv) {
-                                contentDiv.textContent = jsonCollectingState.jsonContent;
+                                contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
                             }
                         }
                         
@@ -4241,7 +4383,7 @@
                     if (jsonCollectingState.jsonContainer) {
                         const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                         if (contentDiv) {
-                            contentDiv.textContent = jsonCollectingState.jsonContent;
+                            contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
                         }
                         // 更新标题
                         if (toolName) {
@@ -4316,7 +4458,7 @@
                     // 创建一个临时的折叠框（但先不显示内容，等待JSON开始）
                     jsonCollectingState.jsonContainer = createJsonCollapsible(I18N.tool_call || '工具调用');
                     const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
-                    contentDiv.textContent = jsonCollectingState.jsonContent;
+                    contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
                     
                     chatMessages.appendChild(jsonCollectingState.jsonContainer);
                     lastMessageType = null;
@@ -4346,7 +4488,7 @@
                 // 创建JSON折叠框
                 jsonCollectingState.jsonContainer = createJsonCollapsible(toolName || (I18N.tool_call || '工具调用'));
                 const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
-                contentDiv.textContent = jsonCollectingState.jsonContent;
+                contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
                 
                 // 添加到聊天窗口
                 chatMessages.appendChild(jsonCollectingState.jsonContainer);
@@ -4591,14 +4733,22 @@
                     routine_file: document.getElementById('routineSelect').value,
                     // Add model configuration
                     selected_model: modelConfig.model,
-                    model_api_key: result.config.api_key,
-                    model_api_base: result.config.api_base,
+                    // 对于内置配置，不发送 api_key 和 api_base（后端会从服务器端读取）
+                    // 对于自定义配置，才发送用户输入的密钥
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
                     // Add language preference
                     language: CURRENT_LANG
                 };
+                
+                // 只有自定义配置才发送 api_key 和 api_base
+                // 通过检查 modelSelect 的值来判断是否为自定义配置
+                const modelSelect = document.getElementById('modelSelect');
+                if (modelSelect && modelSelect.value === 'custom' && modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    guiConfig.model_api_key = modelConfig.api_key;
+                    guiConfig.model_api_base = modelConfig.api_base;
+                }
 
                 if (taskMode === 'selected' && selectedDirectory) {
                     socket.emit('execute_task', {
@@ -4685,48 +4835,35 @@
         }
 
         /**
-         * 检查URL参数并自动登录
-         * 支持的URL参数：user, username, apikey, api_key
-         * 例如：http://localhost:5001/?user=testuser
-         *      http://localhost:5001/?apikey=abc123
+         * 检查sessionStorage中是否有注册后的API key
+         * 从注册页面跳转过来时，API key会保存在sessionStorage中
          */
-        function checkUrlAutoLogin() {
+        function checkRegisteredApiKey() {
             try {
-                const urlParams = new URLSearchParams(window.location.search);
-                let apiKey = null;
+                const registeredApiKey = sessionStorage.getItem('registered_api_key');
                 
-                // 检查多种可能的参数名
-                const possibleKeys = ['apikey', 'api_key', 'user', 'username', 'key'];
-                for (const key of possibleKeys) {
-                    if (urlParams.has(key)) {
-                        apiKey = urlParams.get(key);
-                        console.log(`🔑 Found URL parameter '${key}': ${apiKey.substring(0, 8)}...`);
-                        break;
-                    }
-                }
-                
-                if (apiKey) {
+                if (registeredApiKey) {
+                    console.log('🔑 Found registered API key in sessionStorage');
+                    
                     // 填入API Key输入框
-                    apiKeyInput.value = apiKey;
+                    apiKeyInput.value = registeredApiKey;
+                    
+                    // 清除sessionStorage中的API key（一次性使用）
+                    sessionStorage.removeItem('registered_api_key');
                     
                     // 延迟一点时间确保DOM完全加载
                     setTimeout(() => {
-                        console.log('🚀 Auto-connecting with URL parameter...');
-                        connectUser();
-                        
-                        // 显示自动登录提示
-                        setTimeout(() => {
-                            addMessage(`🔗 ${I18N.auto_login_from_url || '已通过URL参数自动登录'}`, 'info');
-                        }, 1000);
-                    }, 500);
+                        console.log('🚀 Auto-filling API key from registration...');
+                        // 不自动连接，只填入，让用户手动点击连接
+                    }, 100);
                     
-                    return true; // 返回true表示找到了参数并尝试自动登录
+                    return true; // 返回true表示找到了注册的API key
                 }
             } catch (error) {
-                console.error('❌ Error parsing URL parameters:', error);
+                console.error('❌ Error reading sessionStorage:', error);
             }
             
-            return false; // 返回false表示没有找到URL参数
+            return false; // 返回false表示没有找到注册的API key
         }
 
         /**
@@ -4817,14 +4954,22 @@
                     routine_file: document.getElementById('routineSelect').value,
                     // Add model configuration
                     selected_model: modelConfig.model,
-                    model_api_key: result.config.api_key,
-                    model_api_base: result.config.api_base,
+                    // 对于内置配置，不发送 api_key 和 api_base（后端会从服务器端读取）
+                    // 对于自定义配置，才发送用户输入的密钥
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
                     // Add language preference
                     language: CURRENT_LANG
                 };
+                
+                // 只有自定义配置才发送 api_key 和 api_base
+                // 通过检查 modelSelect 的值来判断是否为自定义配置
+                const modelSelect = document.getElementById('modelSelect');
+                if (modelSelect && modelSelect.value === 'custom' && modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    guiConfig.model_api_key = modelConfig.api_key;
+                    guiConfig.model_api_base = modelConfig.api_base;
+                }
 
                 socket.emit('execute_task', {
                     requirement: message,
@@ -4936,9 +5081,35 @@
 
         newTaskButton.addEventListener('click', createNewDirectory);
 
+        let stopButtonClickCount = 0;
+        let stopButtonTimeout = null;
+        
         stopButton.addEventListener('click', function() {
-            if (socket) {
-                socket.emit('stop_task');
+            if (socket && isTaskRunning) {
+                stopButtonClickCount++;
+                
+                // Clear previous timeout
+                if (stopButtonTimeout) {
+                    clearTimeout(stopButtonTimeout);
+                }
+                
+                if (stopButtonClickCount === 1) {
+                    // First click: try normal stop
+                    socket.emit('stop_task', { force: false });
+                    
+                    // Reset counter after 2 seconds
+                    stopButtonTimeout = setTimeout(() => {
+                        stopButtonClickCount = 0;
+                    }, 2000);
+                } else if (stopButtonClickCount >= 2) {
+                    // Second click (within 2 seconds): force stop
+                    stopButtonClickCount = 0;
+                    if (stopButtonTimeout) {
+                        clearTimeout(stopButtonTimeout);
+                        stopButtonTimeout = null;
+                    }
+                    socket.emit('stop_task', { force: true });
+                }
             }
         });
 
@@ -6189,7 +6360,7 @@
                 const escapedContent = escapeHtml(processedContent);
                 
                 previewContent.innerHTML = `
-                    <div class="markdown-toolbar-header" style="background: #2d2d30; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #9cdcfe; display: flex; justify-content: space-between; align-items: center;">
+                    <div class="markdown-toolbar-header" style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
                         <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: Markdown</span>
                         <div class="markdown-toolbar-buttons" style="display: flex; gap: 8px; align-items: center;">
                             <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.reload || 'Reload'}">
@@ -6241,11 +6412,11 @@
                 }, 100);
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                    <div style="background: var(--bg-secondary); padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: var(--text-primary);">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: PDF
                     </div>
-                    <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: visible; background: #f5f5f5;">
-                        <div style="text-align: center; padding: 20px;">
+                    <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid var(--border-primary); border-radius: 4px; overflow: visible; background: var(--bg-primary); margin-top: 0;">
+                        <div style="text-align: center; padding: 20px; color: var(--text-primary);">
                             <i class="fas fa-spinner fa-spin"></i> 正在加载PDF...
                         </div>
                     </div>
@@ -6564,20 +6735,22 @@
             
             loadingTask.promise.then(function(pdf) {
                 const container = document.getElementById('pdfContainer');
-                // 移除顶部圆角，确保导航栏完全贴到顶部
+                // 移除顶部圆角和边框，确保导航栏完全贴到顶部
                 container.style.borderTopLeftRadius = '0';
                 container.style.borderTopRightRadius = '0';
+                container.style.borderTop = 'none';
+                container.style.marginTop = '0';
                 container.innerHTML = '';
                 
                 // 创建页面导航
                 const nav = document.createElement('div');
-                nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px);';
+                nav.style.cssText = 'background: var(--bg-secondary); color: var(--text-primary); padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px); border-bottom: 1px solid var(--border-primary);';
                 const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                 const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                 
                 nav.innerHTML = `
                     <span id="pageInfo">${I18N.pdf_pages.replace('{pages}', pdf.numPages)}</span>
-                    <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 18px;">
+                    <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; border-radius: 3px; font-size: 18px; border: 1px solid var(--border-primary);">
                         <i class="fas fa-download"></i> ${I18N.download_pdf}
                     </a>
                 `;
@@ -6615,20 +6788,22 @@
                     
                     simpleLoadingTask.promise.then(function(pdf) {
                         const container = document.getElementById('pdfContainer');
-                        // 移除顶部圆角，确保导航栏完全贴到顶部
+                        // 移除顶部圆角和边框，确保导航栏完全贴到顶部
                         container.style.borderTopLeftRadius = '0';
                         container.style.borderTopRightRadius = '0';
+                        container.style.borderTop = 'none';
+                        container.style.marginTop = '0';
                         container.innerHTML = '';
                         
                         // 创建页面导航
                         const nav = document.createElement('div');
-                        nav.style.cssText = 'background: #333; color: white; padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px);';
+                        nav.style.cssText = 'background: var(--bg-secondary); color: var(--text-primary); padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px); border-bottom: 1px solid var(--border-primary);';
                         const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                         const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
                         
                         nav.innerHTML = `
                             <span id="pageInfo">${I18N.pdf_pages_simple.replace('{pages}', pdf.numPages)}</span>
-                            <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: #28a745; color: white; text-decoration: none; border-radius: 3px; font-size: 18px;">
+                            <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; border-radius: 3px; font-size: 18px; border: 1px solid var(--border-primary);">
                                 <i class="fas fa-download"></i> ${I18N.download_pdf}
                             </a>
                         `;
@@ -9950,14 +10125,14 @@
             updateUserStatus('disconnected', I18N.user_disconnected);
             enableUI(false);
             
-            // 检查URL参数并自动登录（优先级最高）
-            const urlAutoLogin = checkUrlAutoLogin();
+            // 检查sessionStorage中是否有注册后的API key（优先级最高）
+            const registeredKeyFilled = checkRegisteredApiKey();
             
-            // 如果没有URL参数，检查localStorage中的保存会话
-            if (!urlAutoLogin) {
+            // 如果没有注册的API key，检查localStorage中的保存会话
+            if (!registeredKeyFilled) {
                 const sessionRestored = checkSessionRestore();
                 
-                // 只有在没有自动登录和会话恢复时才设置输入框焦点
+                // 只有在没有自动填充和会话恢复时才设置输入框焦点
                 if (!sessionRestored && !isConnected) {
                     setTimeout(() => {
                         apiKeyInput.focus();
@@ -9971,6 +10146,7 @@
             initSidebarToggle();
             initLangToggle();
             initThemeToggle();
+            initFolderIconHint();
             
             // 动态调整容器高度（稍微延迟确保DOM完全渲染）
             setTimeout(function() {
@@ -10020,35 +10196,58 @@
          */
         function initConfigToggle() {
             const toggleBtn = document.getElementById('configToggleBtn');
-            const configContainer = document.getElementById('configContainer');
+            const configModal = document.getElementById('configModal');
+            const configModalClose = document.getElementById('configModalClose');
             const toggleIcon = document.getElementById('configToggleIcon');
             
-            let isConfigVisible = false;
+            if (!toggleBtn || !configModal || !configModalClose) return;
             
+            // 打开配置窗口
+            function openConfigModal() {
+                configModal.style.display = 'block';
+                toggleIcon.style.transform = 'rotate(180deg)';
+                toggleBtn.title = I18N.hide_config_options || '隐藏配置选项';
+            }
+            
+            // 关闭配置窗口
+            function closeConfigModal() {
+                configModal.style.display = 'none';
+                toggleIcon.style.transform = 'rotate(0deg)';
+                toggleBtn.title = I18N.show_config_options || '显示配置选项';
+            }
+            
+            // 点击配置按钮切换窗口
             toggleBtn.addEventListener('click', function() {
-                isConfigVisible = !isConfigVisible;
-                
-                if (isConfigVisible) {
-                    configContainer.style.display = 'block';
-                    toggleBtn.style.backgroundColor = 'rgba(255, 165, 0, 0.9)';
-                    toggleBtn.title = I18N.hide_config_options || '隐藏配置选项';
-                    toggleIcon.style.transform = 'rotate(180deg)';
+                if (configModal.style.display === 'block') {
+                    closeConfigModal();
                 } else {
-                    configContainer.style.display = 'none';
-                    toggleBtn.style.backgroundColor = 'rgba(255, 140, 0, 0.8)';
-                    toggleBtn.title = I18N.show_config_options || '显示配置选项';
-                    toggleIcon.style.transform = 'rotate(0deg)';
+                    openConfigModal();
                 }
-                
-                // 配置面板显示/隐藏后，重新计算容器高度
-                // 使用setTimeout确保DOM更新完成后再计算
-                setTimeout(function() {
-                    adjustContainerHeight();
-                }, 10);
+            });
+            
+            // 点击关闭按钮
+            configModalClose.addEventListener('click', function() {
+                closeConfigModal();
+            });
+            
+            // 点击窗口外部关闭
+            configModal.addEventListener('click', function(event) {
+                if (event.target === configModal) {
+                    closeConfigModal();
+                }
+            });
+            
+            // ESC键关闭
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && configModal.style.display === 'block') {
+                    closeConfigModal();
+                }
             });
             
             // 设置图标过渡效果
-            toggleIcon.style.transition = 'transform 0.3s ease';
+            if (toggleIcon) {
+                toggleIcon.style.transition = 'transform 0.3s ease';
+            }
             
             // 加载routine文件列表
             loadRoutineFiles();
@@ -10724,6 +10923,37 @@
         }
 
         /**
+         * 初始化文件夹图标提示功能
+         */
+        function initFolderIconHint() {
+            const folderIcon = document.getElementById('folderIconHint');
+            const folderHintModal = document.getElementById('folderHintModal');
+            const folderHintClose = document.getElementById('folderHintClose');
+            
+            if (!folderIcon || !folderHintModal) return;
+
+            // 点击图标显示提示
+            folderIcon.addEventListener('click', function(e) {
+                e.stopPropagation();
+                folderHintModal.style.display = 'block';
+            });
+
+            // 点击关闭按钮关闭提示
+            if (folderHintClose) {
+                folderHintClose.addEventListener('click', function() {
+                    folderHintModal.style.display = 'none';
+                });
+            }
+
+            // 点击模态框外部关闭提示
+            folderHintModal.addEventListener('click', function(e) {
+                if (e.target === folderHintModal) {
+                    folderHintModal.style.display = 'none';
+                }
+            });
+        }
+
+        /**
          * 初始化语言切换功能
          */
         function initLangToggle() {
@@ -10796,17 +11026,24 @@
             const themeToggleBtn = document.getElementById('themeToggleBtn');
             if (!themeToggleBtn) return;
 
-            // 从localStorage读取保存的主题，默认为dark
-            const savedTheme = localStorage.getItem('theme') || 'dark';
             const html = document.documentElement;
             
-            // 应用保存的主题
-            if (savedTheme === 'light') {
-                html.setAttribute('data-theme', 'light');
-                themeToggleBtn.querySelector('i').className = 'fas fa-moon';
+            // 读取当前主题（已经在head中设置过了，如果没有则从localStorage读取或默认为dark）
+            let currentTheme = html.getAttribute('data-theme');
+            if (!currentTheme) {
+                // 如果head中的脚本没有执行，这里作为后备
+                currentTheme = localStorage.getItem('theme') || 'dark';
+                html.setAttribute('data-theme', currentTheme);
+            }
+            
+            // 根据当前主题同步按钮图标
+            // 如果当前是light主题，显示月亮图标（表示点击后会切换到dark）
+            // 如果当前是dark主题，显示太阳图标（表示点击后会切换到light）
+            const icon = themeToggleBtn.querySelector('i');
+            if (currentTheme === 'light') {
+                icon.className = 'fas fa-moon';
             } else {
-                html.setAttribute('data-theme', 'dark');
-                themeToggleBtn.querySelector('i').className = 'fas fa-sun';
+                icon.className = 'fas fa-sun';
             }
 
             // 切换主题
@@ -11700,9 +11937,10 @@
                 return null;
             }
             
+            // 对于内置配置，api_key 和 api_base 不再从配置中返回（安全考虑）
+            // 这些信息只在后端任务执行时从服务器端读取
             return {
-                api_key: config.api_key,
-                api_base: config.api_base,
+                value: config.value,
                 model: config.model,
                 max_tokens: config.max_tokens || 8192,
                 display_name: config.display_name

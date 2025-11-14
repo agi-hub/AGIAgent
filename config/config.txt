@@ -3,10 +3,10 @@
 LANG=zh
 
 # GUI API configuration
-api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.6
-max_tokens=16384
+# api_key=your key
+# api_base=https://open.bigmodel.cn/api/anthropic
+# model=glm-4.6
+# max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
@@ -132,6 +132,13 @@ web_content_truncation_length=20000
 # 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
 # 4. Changes to configuration require program restart to take effect
 
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+summary_trigger_length=100000
+
 # History Summarization Configuration
 # Controls whether to use AI to summarize conversation history to reduce context length
 # When enabled, conversation history is summarized using the large model when it exceeds trigger length
@@ -145,21 +152,21 @@ summary_history=False
 # Higher values preserve more information but use more context
 summary_max_length=10000
 
-# Trigger length for conversation history summarization (in characters)
-# Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 50000-120000 characters
-# Lower values trigger summarization earlier, saving more context
-# Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=100000
+# Minimum content length to trigger compression (in characters) when summary_history=False
+# Content shorter than this will not be compressed
+# Lower values compress more aggressively, higher values preserve more content
+# Recommended values: 200-1000 characters
+compression_min_length=500
 
-# History summarization usage recommendations:
-# 1. Enable summary_history=True for long conversation sessions to control context length
-# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
-# 3. Adjust summary_max_length based on your model's context window and task complexity
-# 4. For critical tasks requiring full context, keep summary_history=False
-# 5. When enabled, the latest tool result is always preserved in full text
-# 6. Summarization only occurs when conversation exceeds trigger length, not every round
-# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities
+# Number of characters to keep at the beginning of compressed content when summary_history=False
+# Lower values compress more aggressively, higher values preserve more context
+# Recommended values: 50-200 characters
+compression_head_length=100
+
+# Number of characters to keep at the end of compressed content when summary_history=False
+# Lower values compress more aggressively, higher values preserve more context
+# Recommended values: 50-200 characters
+compression_tail_length=100
 
 # Simplified search result terminal output (default: True)
 # When enabled, workspace_search and web_search only display simplified result summaries in terminal
