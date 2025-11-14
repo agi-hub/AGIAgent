@@ -3511,6 +3511,7 @@
         let newMessageCount = 0; // New message counter
         let lastMessageTime = 0;
         let pendingUserInput = ''; // 保存等待执行的用户输入
+        let isCreatingDirectoryForTask = false; // 标记是否因为发送任务而创建目录
         
         // File monitoring variables
         let fileMonitoringTimer = null;
@@ -3827,18 +3828,24 @@
                     // 启动文件监测
                     startFileMonitoring();
                     
-                    // 如果有待发送的消息（包括空字符串），自动发送
-                    if (pendingUserInput !== null && pendingUserInput !== undefined) {
+                    // 只有当是因为发送任务而创建目录时，才自动发送任务
+                    // 如果用户直接点击新建工作目录按钮，不应该自动发送任务
+                    // 允许空消息也发送任务（pendingUserInput 可能是空字符串）
+                    if (isCreatingDirectoryForTask && pendingUserInput !== null && pendingUserInput !== undefined) {
                         userInput.value = pendingUserInput;
                         // 延迟一点时间确保目录创建完成
                         setTimeout(() => {
                             sendMessage(false);
                         }, 500);
-                        pendingUserInput = null; // 清空待发送消息
+                        pendingUserInput = ''; // 清空待发送消息
                     }
+                    // 重置标志
+                    isCreatingDirectoryForTask = false;
                 } else {
                     addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
-                    pendingUserInput = null; // 清空待发送消息
+                    pendingUserInput = ''; // 清空待发送消息
+                    // 重置标志
+                    isCreatingDirectoryForTask = false;
                 }
             });
 
@@ -4680,9 +4687,11 @@
             // In new mode, automatically create new directory first
             if (taskMode === 'new') {
                 addMessage(I18N.creating_directory || 'Creating new workspace directory...', 'info');
-                createNewDirectory();
+                // 标记是因为发送任务而创建目录
+                isCreatingDirectoryForTask = true;
                 // Store the message to be sent after directory creation
                 pendingUserInput = message;
+                createNewDirectory();
                 return;
             }
 
@@ -4783,7 +4792,13 @@
             // 检查guest用户权限
             if (isGuest) {
                 addMessage(I18N.guest_cannot_create, 'error');
+                isCreatingDirectoryForTask = false; // 重置标志
                 return;
+            }
+            
+            // 如果不是因为发送任务而创建目录（即用户直接点击新建工作目录按钮），清空待发送消息
+            if (!isCreatingDirectoryForTask) {
+                pendingUserInput = '';
             }
             
             socket.emit('create_new_directory', {
