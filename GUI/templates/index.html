@@ -738,6 +738,7 @@
             min-height: 0;
             background: var(--bg-main);
             overflow: hidden;
+            position: relative;
         }
 
         .main-content {
@@ -845,6 +846,56 @@
             display: flex;
             gap: 0;
             margin-bottom: 20px;
+            position: relative;
+        }
+
+        .floating-restore-tag {
+            position: absolute;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            background: var(--bg-container);
+            color: var(--text-primary);
+            font-size: 0.8em;
+            border-radius: 999px;
+            border: 1px solid var(--border-primary);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+            cursor: grab;
+            z-index: 5;
+            opacity: 0.9;
+            transition: box-shadow 0.2s ease, opacity 0.2s ease;
+        }
+
+        [data-theme="light"] .floating-restore-tag {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .floating-restore-tag:hover {
+            opacity: 1;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+        }
+
+        .floating-restore-tag.dragging {
+            cursor: grabbing;
+            opacity: 1;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+        }
+
+        .floating-restore-tag.visible {
+            display: inline-flex;
+        }
+
+        #detailInfoRestoreTag {
+            right: 16px;
+            top: 10px;
+            transform: none;
+        }
+
+        #sidebarRestoreTag {
+            right: 16px;
+            top: 10px;
+            transform: none;
         }
 
         .chat-container {
@@ -1363,6 +1414,13 @@
             overflow-y: auto;
             padding: 0;
             margin: 0;
+        }
+
+        .directory-placeholder {
+            padding: 24px 16px;
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.95em;
         }
 
         .directory-item {
@@ -3083,6 +3141,12 @@
                         <!-- Detail messages will be added here -->
                     </div>
                 </div>
+                <div class="floating-restore-tag" id="detailInfoRestoreTag" role="button"
+                     title="{{ i18n.get('show_tool_detail_panel', '显示工具调用' if lang == 'zh' else 'Show Tool Details') }}"
+                     aria-label="{{ i18n.get('show_tool_detail_panel', '显示工具调用' if lang == 'zh' else 'Show Tool Details') }}">
+                    <i class="fas fa-info-circle"></i>
+                    <span>{{ i18n.get('tool_detail_short_label', '工具细节' if lang == 'zh' else 'Tool Log') }}</span>
+                </div>
             </div>
 
             <div class="input-container">
@@ -3140,6 +3204,12 @@
             <div class="directory-list scrollbar-custom" id="directoryList">
                 <!-- Directory list will be dynamically generated through JavaScript -->
             </div>
+        </div>
+        <div class="floating-restore-tag" id="sidebarRestoreTag" role="button"
+             title="{{ i18n.get('show_workspace_panel', '显示工作目录' if lang == 'zh' else 'Show Workspace') }}"
+             aria-label="{{ i18n.get('show_workspace_panel', '显示工作目录' if lang == 'zh' else 'Show Workspace') }}">
+            <i class="fas fa-folder-open"></i>
+            <span>{{ i18n.get('workspace_title_short', '工作目录' if lang == 'zh' else 'Workspace') }}</span>
         </div>
     </div>
 
@@ -3456,10 +3526,17 @@
         let currentUserName = null;
         let isConnected = false;
         
+        const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
+        let isManualDisconnect = false;
+        let isAutoReconnectInProgress = false;
+        
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
             return io({
-                reconnection: false,  // 禁用自动重连
+                reconnection: true,
+                reconnectionAttempts: MAX_AUTO_RECONNECT_ATTEMPTS,
+                reconnectionDelay: 2000,
+                reconnectionDelayMax: 10000,
                 timeout: 60000,                 // 连接超时60秒
                 forceNew: true,
                 // 🔧 修复传输配置：优先使用WebSocket，fallback到polling
@@ -3504,6 +3581,7 @@
         let expandedSubDirectories = new Set(); // Save expanded subdirectory state
         let isUserScrolling = false; // Whether user is manually scrolling
         let autoScrollEnabled = true; // Whether auto-scroll is enabled
+        let detailInfoAutoScrollEnabled = false; // Whether auto-scroll is enabled for detail info messages
         let refreshTimeout = null; // Debounce timer
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
@@ -3556,6 +3634,7 @@
                 
                 // Disable UI controls
                 enableUI(false);
+                renderDisconnectedWorkspaceMessage();
             }
         }
         
@@ -3574,6 +3653,8 @@
         
         function connectUser() {
             const apiKey = apiKeyInput.value.trim();
+            isManualDisconnect = false;
+            isAutoReconnectInProgress = false;
             
             updateUserStatus('connecting', I18N.connecting);
             
@@ -3589,6 +3670,8 @@
         }
         
         function disconnectUser() {
+            isManualDisconnect = true;
+            isAutoReconnectInProgress = false;
             // 如果当前有任务在运行，先停止任务
             if (isTaskRunning && socket) {
                 socket.emit('stop_task');
@@ -3606,19 +3689,40 @@
                 socket.disconnect();
                 socket = null;
             }
-            
+            resetAfterDisconnect();
+            isManualDisconnect = false;
+        }
+        
+        function resetAfterDisconnect(removeSession = true) {
             currentUser = null;
             currentUserName = null;
+            isConnected = false;
+            isGuest = false;
+            selectedDirectory = null;
+            taskMode = 'new';
+            pendingUserInput = '';
+            isCreatingDirectoryForTask = false;
+            isAutoReconnectInProgress = false;
+            expandedDirectories = new Set();
+            collapsedSubDirectories = new Set();
+            expandedSubDirectories = new Set();
+            
             updateUserStatus('disconnected', I18N.user_disconnected);
             
-            // Clear saved session from localStorage
-            try {
-                localStorage.removeItem('agia_api_key');
-            } catch (error) {
-                // 静默处理错误
+            if (typeof setTaskRunning === 'function') {
+                setTaskRunning(false);
+            } else {
+                isTaskRunning = false;
             }
             
-            // Clear chat messages
+            if (removeSession) {
+                try {
+                    localStorage.removeItem('agia_api_key');
+                } catch (error) {
+                    // 静默处理错误
+                }
+            }
+            
             chatMessages.innerHTML = `
                 <div class="message system">
                     <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
@@ -3626,13 +3730,23 @@
                 </div>
             `;
             
-            // Clear directory list
             directoryList.innerHTML = '';
-            selectedDirectory = null;
-            taskMode = 'new';
             
-            // 停止文件监测
             stopFileMonitoring();
+        }
+        
+        function handleAutoReconnectFailure() {
+            if (socket) {
+                try {
+                    isManualDisconnect = true;
+                    socket.disconnect();
+                } catch (error) {
+                    // ignore
+                }
+                socket = null;
+            }
+            isManualDisconnect = false;
+            resetAfterDisconnect();
         }
 
         // File preview functionality
@@ -3659,6 +3773,7 @@
             if (!socket) return;
             
             socket.on('connect', function() {
+                isAutoReconnectInProgress = false;
                 // 等待status事件获取用户名，如果还没有获取到则暂时显示API Key
                 const identity = currentUser === 'default' ? I18N.default_user :
                     (currentUserName ? `${I18N.user_prefix}: ${currentUserName}` : `${I18N.user_prefix}: ${currentUser}`);
@@ -3679,6 +3794,9 @@
                 
                 // Refresh directories for this user
                 refreshDirectories();
+
+                // 连接成功后，确保任务发起按钮处于就绪状态
+                ensureTaskTriggerReady();
                 
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
@@ -3701,10 +3819,16 @@
             });
 
             socket.on('disconnect', function(reason) {
+                if (isManualDisconnect) {
+                    isManualDisconnect = false;
+                    return;
+                }
+                
+                isAutoReconnectInProgress = true;
                 updateUserStatus('disconnected', I18N.user_disconnected);
                 addMessage(`🔌 ${I18N.disconnected} (${reason})`, 'warning');
                 
-                                 // If task is running, give special prompt
+                // If task is running, give special prompt
                 if (isTaskRunning) {
                     addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
                 }
@@ -3718,8 +3842,37 @@
 
             
             socket.on('connect_error', function(error) {
-                updateUserStatus('error', '连接错误');
-                addMessage('连接错误: ' + error.message, 'error');
+                if (isAutoReconnectInProgress) {
+                    addMessage(`⚠️ ${(I18N.reconnect_error || '自动重连出错')}: ${error.message}`, 'warning');
+                    return;
+                }
+                updateUserStatus('error', I18N.connection_error || '连接错误');
+                addMessage(`${I18N.connection_error || '连接错误'}: ${error.message}`, 'error');
+            });
+
+            socket.on('reconnect_attempt', function(attemptNumber) {
+                isAutoReconnectInProgress = true;
+                const attempt = Math.min(attemptNumber || 1, MAX_AUTO_RECONNECT_ATTEMPTS);
+                addMessage(`🔁 ${(I18N.reconnect_attempt || '正在尝试重新连接')} (${attempt}/${MAX_AUTO_RECONNECT_ATTEMPTS})`, 'warning');
+                updateUserStatus('connecting', I18N.reconnecting || I18N.connecting);
+            });
+
+            socket.on('reconnect_error', function(error) {
+                if (!isAutoReconnectInProgress) return;
+                const errorMessage = error && error.message ? error.message : 'unknown error';
+                addMessage(`⚠️ ${(I18N.reconnect_error || '自动重连出错')}: ${errorMessage}`, 'warning');
+            });
+
+            socket.on('reconnect', function(attemptNumber) {
+                isAutoReconnectInProgress = false;
+                addMessage(I18N.reconnect_success || '已重新连接到服务器', 'success');
+                ensureTaskTriggerReady();
+            });
+
+            socket.on('reconnect_failed', function() {
+                isAutoReconnectInProgress = false;
+                addMessage(I18N.reconnect_failed_cleanup || '多次重连失败，已断开连接', 'error');
+                handleAutoReconnectFailure();
             });
 
             socket.on('task_started', function(data) {
@@ -3878,8 +4031,8 @@
         let messageBatchQueue = [];
         let batchProcessingTimer = null;
         let isBatchProcessing = false;
-        const BATCH_DELAY = 50; // 批量处理延迟时间(毫秒)
-        const MAX_BATCH_SIZE = 20; // 最大批处理消息数量
+        const BATCH_DELAY = 0; // 批量处理延迟时间(毫秒) - 改为0以实现立即处理
+        const MAX_BATCH_SIZE = 1; // 最大批处理消息数量 - 改为1以实现每条消息立即处理
         let batchScrollPending = false;
         
         /**
@@ -4090,6 +4243,19 @@
                 return;
             }
             
+            // 如果延迟为0，使用requestAnimationFrame立即处理，确保DOM更新后滚动
+            if (BATCH_DELAY === 0) {
+                if (batchProcessingTimer) {
+                    clearTimeout(batchProcessingTimer);
+                }
+                // 使用requestAnimationFrame确保在下一帧立即处理
+                requestAnimationFrame(() => {
+                    processBatchMessages();
+                    batchProcessingTimer = null;
+                });
+                return;
+            }
+            
             // 否则设置延迟处理
             if (batchProcessingTimer) {
                 clearTimeout(batchProcessingTimer);
@@ -4215,8 +4381,10 @@
                 detailInfoMessages.appendChild(messageDiv);
             }
             
-            // 自动滚动到底部（已禁用）
-            // detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+            // 自动滚动到底部（根据鼠标位置决定）
+            if (detailInfoAutoScrollEnabled) {
+                detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+            }
         }
 
         /**
@@ -4670,6 +4838,33 @@
             }
         }
 
+        function ensureTaskTriggerReady() {
+            if (!sendButton || !newTaskButton || !stopButton) {
+                return;
+            }
+
+            if (!isConnected) {
+                return;
+            }
+
+            const stopDisplay = typeof window !== 'undefined' && window.getComputedStyle
+                ? window.getComputedStyle(stopButton).display
+                : stopButton.style.display;
+
+            const sendHidden = sendButton.style.display === 'none';
+            const newHidden = newTaskButton.style.display === 'none';
+            const stopVisible = stopDisplay && stopDisplay !== 'none';
+            const sendDisabled = sendButton.disabled;
+            const newDisabled = newTaskButton.disabled;
+
+            if (!isTaskRunning && (sendHidden || newHidden || stopVisible || sendDisabled || newDisabled)) {
+                console.log('[UI] 恢复任务发起按钮到就绪状态');
+                setTaskRunning(false);
+                sendButton.disabled = false;
+                newTaskButton.disabled = false;
+            }
+        }
+
         // Input handling
         async function sendMessage(planMode = false) {
             const message = userInput.value.trim();
@@ -4831,6 +5026,9 @@
                 lastMessageDiv = null;
                 lastMessageContent = null;
                 
+                // 重置JSON收集状态
+                resetJsonCollectingState();
+                
                 // 清空细节信息窗口
                 const detailInfoMessages = document.getElementById('detailInfoMessages');
                 if (detailInfoMessages) {
@@ -4922,7 +5120,7 @@
             // 保存当前输入内容，以防出错时需要恢复
             pendingUserInput = message;
 
-            if (!selectedDirectory) {
+            if (!selectedDirectory && !ensureSelectedDirectoryFromUI()) {
                 addMessage(I18N.select_directory_first, 'error');
                 return;
             }
@@ -5032,6 +5230,29 @@
             startFileMonitoring();
             
             console.log(`✅ Directory selected: ${dirName}, mode: ${taskMode}`);
+        }
+
+        function getHighlightedDirectoryFromUI() {
+            const highlightedElement = document.querySelector('.directory-item.selected[data-dir]');
+            if (highlightedElement) {
+                return highlightedElement.getAttribute('data-dir');
+            }
+            return null;
+        }
+
+        function ensureSelectedDirectoryFromUI() {
+            if (selectedDirectory) {
+                return true;
+            }
+
+            const highlightedDir = getHighlightedDirectoryFromUI();
+            if (highlightedDir) {
+                console.log(`🔁 Restoring selected directory from UI highlight: ${highlightedDir}`);
+                selectDirectory(highlightedDir);
+                return true;
+            }
+
+            return false;
         }
 
         function selectAndToggleDirectory(dirName) {
@@ -5150,7 +5371,7 @@
         
         let autoScrollPending = false;
         let lastAutoScrollTime = 0;
-        const AUTO_SCROLL_THROTTLE_TIME = 150; // 自动滚动节流时间150ms
+        const AUTO_SCROLL_THROTTLE_TIME = 16; // 自动滚动节流时间16ms（约一帧时间），实现更及时的滚动
         
         // 节流的自动滚动函数
         function throttledAutoScroll(smooth = true) {
@@ -5304,6 +5525,27 @@
         document.getElementById('newMessageIndicator').addEventListener('click', () => {
             scrollToBottom(true);
         });
+        
+        /**
+         * 工具调用详细显示框的自动滚动控制
+         * @description 当鼠标移出框时启用自动滚动，鼠标移入框时禁用自动滚动
+         */
+        const detailInfoMessages = document.getElementById('detailInfoMessages');
+        if (detailInfoMessages) {
+            // 鼠标移出框时，启用自动滚动
+            detailInfoMessages.addEventListener('mouseleave', function() {
+                detailInfoAutoScrollEnabled = true;
+                console.log('🔄 Mouse left detail info box, enabling auto-scroll');
+                // 立即滚动到底部
+                detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+            });
+            
+            // 鼠标移入框时，禁用自动滚动（允许用户查看内容）
+            detailInfoMessages.addEventListener('mouseenter', function() {
+                detailInfoAutoScrollEnabled = false;
+                console.log('⏸️ Mouse entered detail info box, disabling auto-scroll');
+            });
+        }
         
         /**
          * 页面离开时清理批处理资源
@@ -5529,6 +5771,16 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        /**
+         * 显示未连接时的工作目录占位提示
+         */
+        function renderDisconnectedWorkspaceMessage() {
+            if (!directoryList) return;
+            directoryList.innerHTML = `
+                <div class="directory-placeholder">请先连接</div>
+            `;
         }
 
         function renderFileTree(files, dirName, indent = 0) {
@@ -10159,6 +10411,7 @@
             initVerticalResizer();
             initDetailInfoToggle();
             initSidebarToggle();
+            initFloatingRestoreTags();
             initLangToggle();
             initThemeToggle();
             initFolderIconHint();
@@ -10801,6 +11054,7 @@
             const detailInfoContainer = document.getElementById('detailInfoContainer');
             const verticalResizer = document.getElementById('verticalResizer');
             const chatContainer = document.querySelector('.chat-container');
+            const detailInfoRestoreTag = document.getElementById('detailInfoRestoreTag');
             
             if (!toggleBtn || !detailInfoContainer || !verticalResizer) return;
 
@@ -10836,6 +11090,10 @@
                 detailInfoContainer.classList.add('hidden');
                 verticalResizer.classList.add('hidden');
                 verticalResizer.style.cursor = 'pointer';
+                
+                if (detailInfoRestoreTag) {
+                    detailInfoRestoreTag.classList.add('visible');
+                }
             }
 
             function showDetailInfo() {
@@ -10849,6 +11107,10 @@
                 }
                 if (savedDetailWidth && detailInfoContainer) {
                     detailInfoContainer.style.width = savedDetailWidth + 'px';
+                }
+                
+                if (detailInfoRestoreTag) {
+                    detailInfoRestoreTag.classList.remove('visible');
                 }
             }
 
@@ -10868,12 +11130,25 @@
                     showDetailInfo();
                 }
             });
+
+            if (detailInfoRestoreTag) {
+                detailInfoRestoreTag.addEventListener('click', function(e) {
+                    if (detailInfoRestoreTag.dataset.justDragged === 'true') {
+                        e.preventDefault();
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showDetailInfo();
+                });
+            }
         }
 
         function initSidebarToggle() {
             const toggleBtn = document.getElementById('sidebarToggleBtn');
             const sidebar = document.getElementById('sidebar');
             const resizer = document.getElementById('resizer');
+            const sidebarRestoreTag = document.getElementById('sidebarRestoreTag');
             
             if (!toggleBtn || !sidebar || !resizer) return;
 
@@ -10892,8 +11167,17 @@
                 }
                 
                 sidebar.classList.add('hidden');
+                // 清除内联样式，确保CSS的hidden类生效
+                sidebar.style.width = '';
+                
                 resizer.classList.add('hidden');
                 resizer.style.cursor = 'pointer';
+                // 确保resizer在隐藏时宽度为0，避免空白区域
+                resizer.style.width = '0';
+                
+                if (sidebarRestoreTag) {
+                    sidebarRestoreTag.classList.add('visible');
+                }
                 
                 // 更新图标方向
                 if (icon) {
@@ -10906,10 +11190,16 @@
                 sidebar.classList.remove('hidden');
                 resizer.classList.remove('hidden');
                 resizer.style.cursor = 'col-resize';
+                // 恢复resizer的默认宽度
+                resizer.style.width = '';
                 
                 // 如果之前保存了宽度值，恢复它
                 if (savedSidebarWidth && sidebar) {
                     sidebar.style.width = savedSidebarWidth + 'px';
+                }
+                
+                if (sidebarRestoreTag) {
+                    sidebarRestoreTag.classList.remove('visible');
                 }
                 
                 // 更新图标方向
@@ -10935,6 +11225,125 @@
                     showSidebar();
                 }
             });
+
+            if (sidebarRestoreTag) {
+                sidebarRestoreTag.addEventListener('click', function(e) {
+                    if (sidebarRestoreTag.dataset.justDragged === 'true') {
+                        e.preventDefault();
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showSidebar();
+                });
+            }
+        }
+
+        function makeFloatingTagDraggable(tag, boundaryElement) {
+            if (!tag || !boundaryElement) return;
+
+            let isDragging = false;
+            let startX = 0;
+            let startY = 0;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            function pointerDown(e) {
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                const pointer = e.touches ? e.touches[0] : e;
+                startX = pointer.clientX;
+                startY = pointer.clientY;
+                isDragging = false;
+
+                document.addEventListener('mousemove', pointerMove);
+                document.addEventListener('mouseup', pointerUp);
+                document.addEventListener('touchmove', pointerMove, { passive: false });
+                document.addEventListener('touchend', pointerUp);
+                document.addEventListener('touchcancel', pointerUp);
+            }
+
+            function pointerMove(e) {
+                const pointer = e.touches ? e.touches[0] : e;
+                const dx = pointer.clientX - startX;
+                const dy = pointer.clientY - startY;
+
+                if (!isDragging) {
+                    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+                        return;
+                    }
+                    beginDrag(pointer);
+                }
+
+                e.preventDefault();
+                setPosition(pointer.clientX, pointer.clientY);
+            }
+
+            function beginDrag(pointer) {
+                isDragging = true;
+                const boundaryRect = boundaryElement.getBoundingClientRect();
+                const tagRect = tag.getBoundingClientRect();
+                offsetX = pointer.clientX - tagRect.left;
+                offsetY = pointer.clientY - tagRect.top;
+                tag.style.left = (tagRect.left - boundaryRect.left) + 'px';
+                tag.style.top = (tagRect.top - boundaryRect.top) + 'px';
+                tag.style.right = 'auto';
+                tag.classList.add('dragging');
+                document.body.style.userSelect = 'none';
+            }
+
+            function setPosition(clientX, clientY) {
+                const boundaryRect = boundaryElement.getBoundingClientRect();
+                let newLeft = clientX - boundaryRect.left - offsetX;
+                let newTop = clientY - boundaryRect.top - offsetY;
+
+                const maxLeft = boundaryRect.width - tag.offsetWidth;
+                const maxTop = boundaryRect.height - tag.offsetHeight;
+
+                newLeft = Math.min(Math.max(0, newLeft), Math.max(0, maxLeft));
+                newTop = Math.min(Math.max(0, newTop), Math.max(0, maxTop));
+
+                tag.style.left = newLeft + 'px';
+                tag.style.top = newTop + 'px';
+                tag.style.right = 'auto';
+            }
+
+            function pointerUp() {
+                document.removeEventListener('mousemove', pointerMove);
+                document.removeEventListener('mouseup', pointerUp);
+                document.removeEventListener('touchmove', pointerMove);
+                document.removeEventListener('touchend', pointerUp);
+                document.removeEventListener('touchcancel', pointerUp);
+
+                if (isDragging) {
+                    tag.classList.remove('dragging');
+                    document.body.style.userSelect = '';
+                    tag.dataset.justDragged = 'true';
+                    setTimeout(() => {
+                        if (tag.dataset.justDragged === 'true') {
+                            delete tag.dataset.justDragged;
+                        }
+                    }, 200);
+                }
+
+                isDragging = false;
+            }
+
+            tag.addEventListener('mousedown', pointerDown);
+            tag.addEventListener('touchstart', pointerDown, { passive: false });
+        }
+
+        function initFloatingRestoreTags() {
+            const detailTag = document.getElementById('detailInfoRestoreTag');
+            const sidebarTag = document.getElementById('sidebarRestoreTag');
+            const chatWrapper = document.querySelector('.chat-wrapper');
+            const container = document.querySelector('.container');
+
+            if (detailTag && chatWrapper) {
+                makeFloatingTagDraggable(detailTag, chatWrapper);
+            }
+            if (sidebarTag && container) {
+                makeFloatingTagDraggable(sidebarTag, container);
+            }
         }
 
         /**

@@ -50,7 +50,7 @@ For Report Generation Tasks:
 7. When you create or edit a markdown document, the system will automatically generate both Word (.docx) and PDF (.pdf) versions of the document, maintaining the same base filename (excluding extensions) for enhanced accessibility and sharing. 
 8. Include SVG diagrams (1st choice) or mermaid diagrams (2nd choice) in markdown document to visualize complex concepts and relationships。
    - Place diagrams immediately after introducing complex concepts
-   - Use proper SVG or mermaid syntax, and do add a diagram caption in the comment format after the diagram, for example: 
+   - Use proper SVG or mermaid syntax, and be sure to add a diagram caption directly after the diagram in the comment format. You should use the following template to insert the image part:
    ```svg (or ```mermaid)
       ...
    ```
