@@ -5221,6 +5221,10 @@ class ToolExecutor:
                         )
 
                         try:
+                            tool_calls_completed = False
+                            empty_chunks_after_tool_calls = 0
+                            max_empty_chunks = 3  # 允许在工具调用完成后最多接收3个空chunk来捕获后续文本
+                            
                             for chunk in response:
                                 if chunk.choices and len(chunk.choices) > 0:
                                     delta = chunk.choices[0].delta
@@ -5230,6 +5234,9 @@ class ToolExecutor:
                                     if delta.content is not None:
                                         printer.write(delta.content)
                                         content += delta.content
+                                        # 如果工具调用已完成但仍有文本内容，重置空chunk计数
+                                        if tool_calls_completed:
+                                            empty_chunks_after_tool_calls = 0
                                     
                                     # 处理工具调用的增量更新
                                     if delta.tool_calls:
@@ -5254,14 +5261,32 @@ class ToolExecutor:
                                                 if tool_call_delta.function.arguments:
                                                     tool_calls_buffer[idx]["function"]["arguments"] += tool_call_delta.function.arguments
                                     
-                                    # 一旦检测到工具调用完成，立即停止接收
-                                    #if finish_reason == "tool_calls":
-                                    #    print_current("\n🛑 检测到完整工具调用块，停止接收")
-                                    #    break
-                                    
-                                    # 检查是否是其他原因的结束
+                                    # 检查finish_reason
                                     if finish_reason is not None:
-                                        break
+                                        if finish_reason == "tool_calls":
+                                            # 工具调用完成，但可能还有后续文本，继续处理
+                                            tool_calls_completed = True
+                                            print_debug("🔧 工具调用完成，继续接收可能的后续文本...")
+                                        else:
+                                            # 其他结束原因（如"stop"），正常结束
+                                            print_debug(f"✅ 流式响应结束: {finish_reason}")
+                                            break
+                                    else:
+                                        # 如果没有finish_reason，检查是否在工具调用完成后收到空chunk
+                                        if tool_calls_completed:
+                                            # 检查当前chunk是否为空（没有内容和工具调用）
+                                            has_content = delta.content is not None and len(delta.content.strip()) > 0
+                                            has_tool_calls = delta.tool_calls is not None and len(delta.tool_calls) > 0
+                                            
+                                            if not has_content and not has_tool_calls:
+                                                empty_chunks_after_tool_calls += 1
+                                                # 如果连续收到多个空chunk，可能流已结束
+                                                if empty_chunks_after_tool_calls >= max_empty_chunks:
+                                                    print_debug(f"🔚 工具调用完成后收到{max_empty_chunks}个空chunk，结束接收")
+                                                    break
+                                            else:
+                                                # 有内容，重置计数
+                                                empty_chunks_after_tool_calls = 0
                         finally:
                             # 显式关闭streaming连接，通知服务器停止生成
                             # 这确保了服务器端能够感知到客户端已停止接收

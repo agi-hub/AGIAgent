@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request, abort, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sys
@@ -427,6 +427,7 @@ I18N_TEXTS = {
         'download_file': '下载文件',
         'office_preview_note': 'Office文档预览',
         'office_download_note': '下载文件: 下载到本地使用Office软件打开',
+        'drag_unselected_dir_warning': '请先选择此工作目录后再拖动',
         
         # Tool execution status
         'tool_running': '执行中',
@@ -782,6 +783,7 @@ I18N_TEXTS = {
         'download_file': 'Download File',
         'office_preview_note': 'Office Document Preview',
         'office_download_note': 'Download File: Download to local and open with Office software',
+        'drag_unselected_dir_warning': 'Please select this workspace directory first before dragging',
         
         # Tool execution status
         'tool_running': 'Running',
@@ -1049,7 +1051,7 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agia_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None):
+def execute_agia_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None, attached_files=None):
     """
     This function runs in a separate process.
     It cannot use the `socketio` object directly.
@@ -1082,6 +1084,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         enable_long_term_memory = gui_config.get('enable_long_term_memory', True)  # Default selection
         enable_mcp = gui_config.get('enable_mcp', False)
         enable_jieba = gui_config.get('enable_jieba', True)  # Default selection
+        
+        # Execution rounds configuration from GUI
+        execution_rounds = gui_config.get('execution_rounds', 50)  # Default to 50 if not provided
         
         # Routine file configuration from GUI
         routine_file = gui_config.get('routine_file')
@@ -1210,6 +1215,19 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
         
         # Use detailed_requirement if provided (contains conversation history)
         base_requirement = detailed_requirement if detailed_requirement else user_requirement
+        
+        # Process attached files - add file path references instead of content
+        if attached_files:
+            file_references = []
+            for file_info in attached_files:
+                file_path = file_info.get('path', '')
+                file_name = file_info.get('name', '')
+                reference = file_info.get('reference', '')
+                if file_path and file_name:
+                    file_references.append(f"\n\n--- 文件引用: {file_name} ---\n文件路径: {file_path}\n--- 文件引用结束: {file_name} ---\n")
+            
+            if file_references:
+                base_requirement = base_requirement + ''.join(file_references)
         
         # Helper function to format file size
         def format_size(size_bytes):
@@ -1492,7 +1510,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             sys.stdout = stdout_handler
             sys.stderr = stderr_handler
             
-            success = agia.run(user_requirement=final_requirement, loops=50)
+            success = agia.run(user_requirement=final_requirement, loops=execution_rounds)
             
             # Ensure important completion information is displayed
             workspace_dir = os.path.join(out_dir, "workspace")
@@ -1820,7 +1838,8 @@ def create_temp_session_id(request, api_key=None):
     """Create a temporary session ID for API calls with user isolation"""
     import hashlib
     api_key_hash = hashlib.sha256((api_key or "default").encode()).hexdigest()[:8]
-    return f"api_{request.remote_addr}_{api_key_hash}_{id(request)}"
+    # Use consistent session ID based on IP and API key, not request ID
+    return f"api_{request.remote_addr}_{api_key_hash}"
 
 def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
@@ -1982,7 +2001,20 @@ def download_directory(dir_name):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
-        dir_path = os.path.join(user_base_dir, secure_filename(dir_name))
+        # Security check: normalize path and prevent path traversal
+        # Don't use secure_filename as it destroys Chinese characters
+        normalized_dir_name = os.path.normpath(dir_name)
+        if '..' in normalized_dir_name or normalized_dir_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
+        dir_path = os.path.join(user_base_dir, normalized_dir_name)
+        
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_dir_path = os.path.realpath(dir_path)
+        if not real_dir_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
         if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
             return jsonify({'success': False, 'error': 'Directory not found'})
         
@@ -2132,6 +2164,7 @@ def get_file_content(file_path):
                 'success': True, 
                 'content': content, 
                 'type': 'html',
+                'file_path': file_path,  # Add file path for HTML preview
                 'size': gui_instance.format_size(file_size)
             })
         elif ext in ['.md', '.markdown']:
@@ -2352,7 +2385,6 @@ def get_file_content(file_path):
                     with open(full_path, 'rb') as f:
                         image_data = f.read()
                     
-                    from flask import Response
                     return Response(
                         image_data,
                         mimetype=mime_type,
@@ -2456,6 +2488,208 @@ def serve_pdf(file_path):
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/static-file/<path:file_path>')
+def serve_static_file(file_path):
+    """Serve static files for HTML preview (JS, CSS, images, etc.)"""
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            abort(403)
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            abort(404)
+        
+        # Get file extension and determine mimetype
+        _, ext = os.path.splitext(full_path.lower())
+        
+        # Define mimetypes for different file types
+        mimetype_map = {
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.html': 'text/html',
+            '.htm': 'text/html',
+            '.json': 'application/json',
+            '.xml': 'application/xml',
+            '.txt': 'text/plain',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml',
+            '.webp': 'image/webp',
+            '.ico': 'image/x-icon',
+            '.bmp': 'image/bmp',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            '.ttf': 'font/ttf',
+            '.eot': 'application/vnd.ms-fontobject',
+            '.otf': 'font/otf',
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.ogg': 'audio/ogg',
+            '.mp4': 'video/mp4',
+            '.webm': 'video/webm',
+            '.avi': 'video/x-msvideo',
+            '.mov': 'video/quicktime'
+        }
+        
+        mimetype = mimetype_map.get(ext, 'application/octet-stream')
+        
+        # For text-based files, try to read with UTF-8 encoding
+        if ext in ['.js', '.css', '.html', '.htm', '.json', '.svg', '.xml', '.txt']:
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                return Response(content, mimetype=mimetype, headers={
+                    'Cache-Control': 'no-cache',
+                    'Access-Control-Allow-Origin': '*'
+                })
+            except UnicodeDecodeError:
+                # Fallback to binary mode if UTF-8 fails
+                pass
+        
+        # For binary files or if UTF-8 failed, serve as binary
+        return send_file(full_path, mimetype=mimetype, as_attachment=False)
+        
+    except Exception as e:
+        print(f"Error serving static file {file_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        abort(500)
+
+@app.route('/api/html-preview/<path:file_path>')
+def serve_html_preview(file_path):
+    """Serve HTML file with proper base URL for relative resource loading"""
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            abort(403)
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            abort(404)
+        
+        # Read HTML content
+        with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+            html_content = f.read()
+        
+        # Get the directory of the HTML file for base URL
+        file_dir = os.path.dirname(file_path)
+        
+        # Inject base tag to handle relative paths
+        if file_dir:
+            # Ensure the base URL ends with a slash for proper relative path resolution
+            base_url = f"/api/static-file/{file_dir}/"
+        else:
+            base_url = "/api/static-file/"
+        
+        # Don't add API key to base URL as it doesn't work properly with relative paths
+        # Instead, we'll modify the HTML content to include API key in script/link tags
+        
+        # Process HTML content to add API key to relative resource URLs
+        import re
+        
+        # Function to add API key to relative URLs
+        def add_api_key_to_url(url):
+            if url.startswith(('http://', 'https://', '//', 'data:', 'javascript:', 'mailto:')):
+                return url  # Don't modify absolute URLs or special schemes
+            if url.startswith('/'):
+                return url  # Don't modify root-relative URLs
+            
+            # Add API key to relative URLs
+            separator = '&' if '?' in url else '?'
+            if api_key and api_key != 'default':
+                return f"{base_url}{url}{separator}api_key={api_key}"
+            else:
+                return f"{base_url}{url}"
+        
+        # Replace src attributes in script tags
+        html_content = re.sub(
+            r'(<script[^>]+src=")([^"]+)(")',
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        # Replace href attributes in link tags (CSS, etc.)
+        html_content = re.sub(
+            r'(<link[^>]+href=")([^"]+)(")',
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        # Replace src attributes in img tags
+        html_content = re.sub(
+            r'(<img[^>]+src=")([^"]+)(")',
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        # Also handle single quotes
+        html_content = re.sub(
+            r"(<script[^>]+src=')([^']+)(')",
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        html_content = re.sub(
+            r"(<link[^>]+href=')([^']+)(')",
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        html_content = re.sub(
+            r"(<img[^>]+src=')([^']+)(')",
+            lambda m: m.group(1) + add_api_key_to_url(m.group(2)) + m.group(3),
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        return Response(html_content, mimetype='text/html')
+        
+    except Exception as e:
+        print(f"Error serving HTML preview {file_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        abort(500)
 
 @app.route('/api/download-file/<path:file_path>')
 def download_file(file_path):
@@ -3006,6 +3240,7 @@ def handle_execute_task(data):
     plan_mode = data.get('plan_mode', False)  # Whether to use plan mode (task decomposition)
     selected_directory = data.get('selected_directory')  # Directory name from frontend
     gui_config = data.get('gui_config', {})  # GUI configuration options
+    attached_files = data.get('attached_files', [])  # Attached file information
     
     # Generate detailed requirement with conversation history for continuing tasks
     detailed_requirement = None
@@ -3081,7 +3316,7 @@ def handle_execute_task(data):
         # 🚀 Create and start process with highest priority (minimize delay)
         user_session.current_process = multiprocessing.Process(
             target=execute_agia_task_process_target,
-            args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id)
+            args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id, attached_files)
         )
         user_session.current_process.daemon = True
         user_session.current_process.start()
@@ -3193,7 +3428,7 @@ def handle_stop_task(data=None):
                 time.sleep(0.5)
                 
                 # If still alive after 0.5 seconds, force kill
-                if user_session.current_process.is_alive():
+                if user_session.current_process and user_session.current_process.is_alive():
                     user_session.current_process.kill()
                     emit('output', {'message': '🛑 任务未响应，已强制停止', 'type': 'warning'}, room=session_id)
         except Exception as e:
@@ -3201,16 +3436,17 @@ def handle_stop_task(data=None):
             try:
                 import psutil
                 import os
-                parent = psutil.Process(user_session.current_process.pid)
-                for child in parent.children(recursive=True):
+                if user_session.current_process and hasattr(user_session.current_process, 'pid'):
+                    parent = psutil.Process(user_session.current_process.pid)
+                    for child in parent.children(recursive=True):
+                        try:
+                            child.kill()
+                        except:
+                            pass
                     try:
-                        child.kill()
+                        parent.kill()
                     except:
                         pass
-                try:
-                    parent.kill()
-                except:
-                    pass
             except:
                 pass
             
@@ -3348,8 +3584,21 @@ def get_file_count(dir_name):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
+        # Security check: normalize path and prevent path traversal
+        # Don't use secure_filename as it destroys Chinese characters
+        normalized_dir_name = os.path.normpath(dir_name)
+        if '..' in normalized_dir_name or normalized_dir_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'}), 403
+        
         # Target directory path
-        target_dir = os.path.join(user_base_dir, secure_filename(dir_name))
+        target_dir = os.path.join(user_base_dir, normalized_dir_name)
+        
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_target_dir = os.path.realpath(target_dir)
+        if not real_target_dir.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'}), 403
+        
         if not os.path.exists(target_dir):
             return jsonify({
                 'success': False,
@@ -3401,8 +3650,21 @@ def upload_files(dir_name):
         if not files or all(f.filename == '' for f in files):
             return jsonify({'success': False, 'error': i18n['no_valid_files']})
         
+        # Security check: normalize path and prevent path traversal
+        # Don't use secure_filename as it destroys Chinese characters
+        normalized_dir_name = os.path.normpath(dir_name)
+        if '..' in normalized_dir_name or normalized_dir_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
         # Target directory path
-        target_dir = os.path.join(user_base_dir, secure_filename(dir_name))
+        target_dir = os.path.join(user_base_dir, normalized_dir_name)
+        
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_target_dir = os.path.realpath(target_dir)
+        if not real_target_dir.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
         if not os.path.exists(target_dir):
             return jsonify({'success': False, 'error': i18n['target_directory_not_exist']})
         
@@ -3498,8 +3760,14 @@ def rename_directory(old_name):
         if not new_name_safe:
             return jsonify({'success': False, 'error': 'Invalid directory name'})
         
+        # Security check: normalize old path and prevent path traversal
+        # Don't use secure_filename as it destroys Chinese characters
+        normalized_old_name = os.path.normpath(old_name)
+        if '..' in normalized_old_name or normalized_old_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
         # Build complete path
-        old_path = os.path.join(user_base_dir, secure_filename(old_name))
+        old_path = os.path.join(user_base_dir, normalized_old_name)
         new_path = os.path.join(user_base_dir, new_name_safe)
         
         # Debug info
@@ -3557,9 +3825,14 @@ def delete_directory(dir_name):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
-        # Security check directory name
-        safe_dir_name = secure_filename(dir_name)
-        target_dir = os.path.join(user_base_dir, safe_dir_name)
+        # Security check: normalize path and prevent path traversal
+        # Don't use secure_filename as it destroys Chinese characters
+        normalized_dir_name = os.path.normpath(dir_name)
+        if '..' in normalized_dir_name or normalized_dir_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'})
+        
+        # Construct target directory path (preserve Chinese characters)
+        target_dir = os.path.join(user_base_dir, normalized_dir_name)
         
         # Security check: ensure directory is within user's output directory
         real_output_dir = os.path.realpath(user_base_dir)

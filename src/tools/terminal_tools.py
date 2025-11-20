@@ -86,6 +86,7 @@ class TerminalTools:
         stderr_lines = []
         last_output_time = time.time()
         start_time = time.time()
+        last_progress_line = None  # Track last progress line to avoid duplicates
         
         stdout_queue = queue.Queue()
         stderr_queue = queue.Queue()
@@ -99,6 +100,9 @@ class TerminalTools:
                     chunk = process.stdout.read(chunk_size)
                     if not chunk:
                         break
+                    # Debug: track that we're receiving data
+                    if chunk.strip():
+                        stdout_queue.put(('debug', f"[DEBUG] Received stdout chunk: {len(chunk)} chars", time.time(), False))
                     buffer += chunk
                     
                     # Process buffer for \r (carriage return) and \n (newline)
@@ -122,10 +126,9 @@ class TerminalTools:
                         if '\n' in buffer:
                             nl_pos = buffer.find('\n')
                             line = buffer[:nl_pos]
-                            if line.strip():
-                                # Check if line looks like progress bar (contains progress indicators)
-                                is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
-                                stdout_queue.put(('stdout', line + '\n', time.time(), is_progress))
+                            # Always process the line, even if it's empty (to preserve formatting)
+                            is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta']) if line.strip() else False
+                            stdout_queue.put(('stdout', line + '\n', time.time(), is_progress))
                             buffer = buffer[nl_pos + 1:]
                             continue
                         
@@ -135,7 +138,7 @@ class TerminalTools:
                 # Process remaining buffer
                 if buffer.strip():
                     # Check if remaining buffer looks like progress bar
-                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta'])
                     stdout_queue.put(('stdout', buffer + '\n', time.time(), is_progress))
                 process.stdout.close()
             except:
@@ -150,6 +153,9 @@ class TerminalTools:
                     chunk = process.stderr.read(chunk_size)
                     if not chunk:
                         break
+                    # Debug: track that we're receiving data
+                    if chunk.strip():
+                        stderr_queue.put(('debug', f"[DEBUG] Received stderr chunk: {len(chunk)} chars", time.time(), False))
                     buffer += chunk
                     
                     # Process buffer for \r and \n
@@ -167,9 +173,9 @@ class TerminalTools:
                         if '\n' in buffer:
                             nl_pos = buffer.find('\n')
                             line = buffer[:nl_pos]
-                            if line.strip():
-                                is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
-                                stderr_queue.put(('stderr', line + '\n', time.time(), is_progress))
+                            # Always process the line, even if it's empty (to preserve formatting)
+                            is_progress = any(indicator in line for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta']) if line.strip() else False
+                            stderr_queue.put(('stderr', line + '\n', time.time(), is_progress))
                             buffer = buffer[nl_pos + 1:]
                             continue
                         
@@ -177,7 +183,7 @@ class TerminalTools:
                 
                 # Process remaining buffer
                 if buffer.strip():
-                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度'])
+                    is_progress = any(indicator in buffer for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta'])
                     stderr_queue.put(('stderr', buffer + '\n', time.time(), is_progress))
                 process.stderr.close()
             except:
@@ -211,16 +217,26 @@ class TerminalTools:
                             output_type, line, timestamp = item
                             is_update = False
                         
+                        # Handle debug messages
+                        if output_type == 'debug':
+                            print_current(line)  # Debug messages already formatted
+                            last_output_time = timestamp
+                            got_output = True
+                            continue
+                        
                         # Clean line: remove \r and trailing whitespace
                         line_clean = line.replace('\r', '').rstrip()
                         stdout_lines.append(line_clean)
-                        if line_clean:
-                            # If it's an update (progress bar), pass is_update flag to print_current
-                            if is_update:
-                                # For progress bar updates, use end='\r' to overwrite same line
-                                print_current(f"📤 {line_clean}", end='\r')
-                            else:
+                        # Always display the line, even if empty (to preserve formatting)
+                        if is_update:
+                            # For progress bar updates, avoid showing duplicate progress lines
+                            if line_clean != last_progress_line:
                                 print_current(f"📤 {line_clean}")
+                                last_progress_line = line_clean
+                        else:
+                            print_current(f"📤 {line_clean}")
+                            # Reset progress line tracking for non-progress output
+                            last_progress_line = None
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -236,16 +252,23 @@ class TerminalTools:
                             output_type, line, timestamp = item
                             is_update = False
                         
+                        # Handle debug messages
+                        if output_type == 'debug':
+                            print_current(line)  # Debug messages already formatted
+                            last_output_time = timestamp
+                            got_output = True
+                            continue
+                        
                         # Clean line: remove \r and trailing whitespace
                         line_clean = line.replace('\r', '').rstrip()
                         stderr_lines.append(line_clean)
-                        if line_clean:
-                            # If it's an update (progress bar), pass is_update flag to print_current
-                            if is_update:
-                                # For progress bar updates, use end='\r' to overwrite same line
-                                print_current(f"⚠️  {line_clean}", end='\r')
-                            else:
-                                print_current(f"⚠️  {line_clean}")
+                        # Always display the line, even if empty (to preserve formatting)
+                        if is_update:
+                            # For progress bar updates in GUI, don't use \r as it causes display issues
+                            # Just print normally to avoid overwriting previous lines
+                            print_current(f"⚠️  {line_clean}")
+                        else:
+                            print_current(f"⚠️  {line_clean}")
                         last_output_time = timestamp
                         got_output = True
                 except queue.Empty:
@@ -293,11 +316,12 @@ class TerminalTools:
                     # Clean line: remove \r and trailing whitespace
                     line_clean = line.replace('\r', '').rstrip()
                     stdout_lines.append(line_clean)
-                    if line_clean:
-                        if is_update:
-                            print_current(f"📤 {line_clean}", end='\r')
-                        else:
-                            print_current(f"📤 {line_clean}")
+                    # Always display the line, even if empty
+                    if is_update:
+                        # For progress bar updates in GUI, don't use \r as it causes display issues
+                        print_current(f"📤 {line_clean}")
+                    else:
+                        print_current(f"📤 {line_clean}")
             except queue.Empty:
                 pass
             
@@ -314,11 +338,12 @@ class TerminalTools:
                     # Clean line: remove \r and trailing whitespace
                     line_clean = line.replace('\r', '').rstrip()
                     stderr_lines.append(line_clean)
-                    if line_clean:
-                        if is_update:
-                            print_current(f"⚠️  {line_clean}", end='\r')
-                        else:
-                            print_current(f"⚠️  {line_clean}")
+                    # Always display the line, even if empty
+                    if is_update:
+                        # For progress bar updates in GUI, don't use \r as it causes display issues
+                        print_current(f"⚠️  {line_clean}")
+                    else:
+                        print_current(f"⚠️  {line_clean}")
             except queue.Empty:
                 pass
                 
@@ -354,7 +379,7 @@ class TerminalTools:
             r'\bapt\s+(?:install|upgrade|update)\b(?!.*-y)',  # apt without -y flag
             r'\byum\s+(?:install|update)\b(?!.*-y)',  # yum without -y flag
             r'\bdnf\s+(?:install|update)\b(?!.*-y)',  # dnf without -y flag
-            r'\bpip\s+install\b(?!.*--quiet)',  # pip install without --quiet
+            # Note: pip install is not interactive by default, so we don't detect it here
             r'\bgit\s+(?:push|pull)\b',  # git operations that might need credentials
             r'\bssh\b',  # ssh connections
             r'\bmysql\b',  # mysql client
@@ -383,9 +408,9 @@ class TerminalTools:
         if re.search(r'\bdnf\s+(?:install|update)\b(?!.*-y)', command, re.IGNORECASE):
             command = re.sub(r'\b(dnf\s+(?:install|update))\b', r'\1 -y', command, flags=re.IGNORECASE)
         
-        # Add --quiet flag to pip commands
-        if re.search(r'\bpip\s+install\b(?!.*--quiet)', command, re.IGNORECASE):
-            command = re.sub(r'\b(pip\s+install)\b', r'\1 --quiet', command, flags=re.IGNORECASE)
+        # Note: pip install is not truly interactive and doesn't need --quiet flag
+        # Removing --quiet allows users to see detailed installation progress
+        # If users want quiet mode, they can add --quiet flag explicitly
         
         return command
     
@@ -543,6 +568,9 @@ class TerminalTools:
                     'working_directory': self.workspace_root
                 }
             else:
+                # Initialize env variable to None - will be set if needed
+                env = None
+                
                 gui_indicators = [
                     'open ', 'start ', 'xdg-open', 'gnome-open', 'kde-open',
                     'firefox', 'chrome', 'safari', 'explorer',
@@ -557,14 +585,34 @@ class TerminalTools:
                     max_total_time = min(max_total_time, 180)
                     print_current(f"🖥️ Detected potential interactive/GUI program, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
-                # Special handling for pip install - use shorter timeout to avoid hanging
+                # Special handling for pip install - use 2 minutes timeout when no output
                 is_pip_install = 'pip install' in command.lower() or 'python -m pip install' in command.lower()
                 
                 if is_pip_install:
-                    # Set 2 minutes (120 seconds) timeout for pip install to avoid hanging
+                    # Use 2 minutes (120 seconds) timeout when no output
                     timeout_inactive = 120
-                    max_total_time = 120
-                    print_current(f"⏱️  Detected pip install command, using shorter timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    # Keep max_total_time at default or use a reasonable value
+                    if max_total_time < 600:
+                        max_total_time = 600  # 10 minutes maximum execution time
+                    print_current(f"⏱️  Detected pip install command, using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    
+                    # Ensure pip uses unbuffered output for better visibility
+                    # Set environment variables for unbuffered Python output
+                    if env is None:
+                        env = os.environ.copy()
+                    env['PIP_PROGRESS_BAR'] = 'on'
+                    env['FORCE_COLOR'] = '1'
+                    env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'  # Reduce noise
+                
+                # Special handling for Python programs - ensure output is visible
+                is_python_program = command.lower().startswith('python ') or 'python' in command.lower()
+                
+                if is_python_program:
+                    print_current(f"🐍 Detected Python program, ensuring unbuffered output")
+                    # Use shorter timeout for Python programs as they should produce output
+                    if timeout_inactive > 60:
+                        timeout_inactive = 60  # 1 minute timeout for Python programs
+                    print_current(f"⏱️  Using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 long_running_indicators = [
                     'git clone', 'git fetch', 'git pull', 'git push',
@@ -584,27 +632,45 @@ class TerminalTools:
                     #print_current(f"⏳ Detected potential long-running command, using longer timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 # For interactive commands, use special environment variables
-                env = None
+                # Initialize env if needed (for interactive commands or if already set by pip install)
                 if is_interactive:
                     # Always set noninteractive mode for automated execution
-                    env = os.environ.copy()
+                    if env is None:
+                        env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'  # For apt commands
                     env['NEEDRESTART_MODE'] = 'a'  # Auto restart services
                     #print_current("🔧 DEBUG: Set noninteractive environment for interactive command")
                 
-                process = subprocess.Popen(
-                    command,
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    stdin=subprocess.PIPE,  # Enable stdin for interactive input
-                    text=True,
-                    errors='ignore',
-                    bufsize=0,
-                    universal_newlines=True,
-                    cwd=self.workspace_root,
-                    env=env
-                )
+                # Always ensure proper encoding for all commands
+                if env is None:
+                    env = os.environ.copy()
+                # Force UTF-8 encoding and unbuffered output for all Python programs
+                env['PYTHONUNBUFFERED'] = '1'
+                env['PYTHONIOENCODING'] = 'utf-8'
+                # Set console encoding for Windows
+                if os.name == 'nt':  # Windows
+                    env['PYTHONLEGACYWINDOWSSTDIO'] = '1'
+                
+                # Ensure env is initialized before subprocess.Popen
+                # If env is still None, use current process environment (default behavior)
+                popen_kwargs = {
+                    'shell': True,
+                    'stdout': subprocess.PIPE,
+                    'stderr': subprocess.PIPE,
+                    'stdin': subprocess.PIPE,  # Enable stdin for interactive input
+                    'text': True,
+                    'encoding': 'utf-8',  # Explicitly set encoding
+                    'errors': 'replace',  # Replace invalid characters instead of ignoring
+                    'bufsize': 0,  # Unbuffered
+                    'universal_newlines': True,
+                    'cwd': self.workspace_root,
+                    'env': env  # Always pass env (now always initialized)
+                }
+                
+                process = subprocess.Popen(command, **popen_kwargs)
+                
+                # Add debug info for output capture
+                print_current(f"🔍 Process started with PID: {process.pid}")
                 
                 stdout, stderr, return_code, timed_out = self._read_process_output_with_timeout_and_input(
                     process, timeout_inactive, max_total_time

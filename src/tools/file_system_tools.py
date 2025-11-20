@@ -25,8 +25,10 @@ import threading
 import time
 import shutil
 import subprocess
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple, Union
 from src.config_loader import load_config
+from src.tools.agent_context import get_current_log_dir
 
 # Import Mermaid processor for handling charts in markdown files
 
@@ -231,6 +233,69 @@ class FileSystemTools:
         except Exception as e:
             print_debug(f"⚠️ Failed to create snapshot for {target_file}: {e}")
             return False
+
+    def _save_original_markdown_to_logs(self, file_path: str, target_file: str) -> Optional[str]:
+        """
+        Save the original markdown file to logs directory before image processing.
+        
+        Args:
+            file_path: Absolute path to the file to save
+            target_file: Relative path to the file (used for naming)
+            
+        Returns:
+            Path to the saved file if successful, None otherwise
+        """
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            return None
+        
+        try:
+            # Get logs directory
+            logs_dir = get_current_log_dir()
+            if not logs_dir:
+                # Fallback: use workspace_root parent directory + logs
+                parent_dir = os.path.dirname(self.workspace_root)
+                logs_dir = os.path.join(parent_dir, "logs")
+            
+            # Create logs directory if it doesn't exist
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Create a subdirectory for original markdown files
+            original_md_dir = os.path.join(logs_dir, "original_markdown")
+            os.makedirs(original_md_dir, exist_ok=True)
+            
+            # Get file name and extension
+            file_name = os.path.basename(target_file)
+            name_parts = file_name.rsplit('.', 1)
+            if len(name_parts) == 2:
+                base_name, extension = name_parts
+                extension = '.' + extension
+            else:
+                base_name = file_name
+                extension = '.md'  # Default to .md if no extension
+            
+            # Generate timestamp for unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # Include milliseconds
+            
+            # Create filename with timestamp
+            saved_filename = f"{base_name}_original_{timestamp}{extension}"
+            saved_path = os.path.join(original_md_dir, saved_filename)
+            
+            # Read and save the original content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                original_content = f.read()
+            
+            with open(saved_path, 'w', encoding='utf-8') as f:
+                f.write(original_content)
+            
+            # Make relative path for display
+            relative_saved_path = os.path.relpath(saved_path, logs_dir)
+            print_debug(f"💾 Saved original markdown file to logs: {relative_saved_path}")
+            
+            return saved_path
+            
+        except Exception as e:
+            print_debug(f"⚠️ Failed to save original markdown to logs for {target_file}: {e}")
+            return None
 
     def read_file(self, target_file: str, should_read_entire_file: bool = False, 
                  start_line_one_indexed: Optional[int] = None, end_line_one_indexed_inclusive: Optional[int] = None,
@@ -536,6 +601,14 @@ class FileSystemTools:
                         print_debug(f"📝 Applied bullet formatting preprocessing to markdown file")
                 except Exception as e:
                     print_debug(f"⚠️ Error during bullet formatting preprocessing: {e}")
+            
+            # Save original markdown file to logs before image processing
+            original_md_saved_path = None
+            if target_file.lower().endswith('.md'):
+                try:
+                    original_md_saved_path = self._save_original_markdown_to_logs(file_path, target_file)
+                except Exception as e:
+                    print_debug(f"⚠️ Error saving original markdown to logs: {e}")
             
             # Process Mermaid charts if this is a markdown file
             mermaid_result = None
@@ -2359,15 +2432,17 @@ class FileSystemTools:
                     try:
                         pdf_conversion_result = self._word_to_pdf(str(word_file), str(pdf_file))
                         if pdf_conversion_result['status'] == 'success':
-                            conversion_results['conversions']['pdf'] = {
-                                'status': 'success',
-                                'file': str(pdf_file.relative_to(self.workspace_root)),
-                                'size': pdf_conversion_result['size'],
-                                'size_kb': pdf_conversion_result['size_kb'],
-                                'method': 'pywin32_from_existing_docx'
-                            }
-                            print_debug(f"✅ PDF document conversion successful (via pywin32 from existing docx): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
-                            return conversion_results
+                                    conversion_results['conversions']['pdf'] = {
+                                        'status': 'success',
+                                        'file': str(pdf_file.relative_to(self.workspace_root)),
+                                        'size': pdf_conversion_result['size'],
+                                        'size_kb': pdf_conversion_result['size_kb'],
+                                        'method': 'pywin32_from_existing_docx'
+                                    }
+                                    print_debug(f"✅ PDF document conversion successful (via pywin32 from existing docx): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
+                                    # 额外清理一次临时文件，确保没有遗留
+                                    self._cleanup_word_temp_files(str(output_dir))
+                                    return conversion_results
                         elif pdf_conversion_result['status'] == 'skipped':
                             print_debug(f"ℹ️ Word to PDF conversion skipped: {pdf_conversion_result.get('message', 'Unknown reason')}")
                         else:
@@ -2470,6 +2545,8 @@ class FileSystemTools:
                                         'method': 'pywin32_from_generated_docx'
                                     }
                                     print_debug(f"✅ PDF document conversion successful (via pywin32 from generated docx): {pdf_file.name} ({pdf_conversion_result['size_kb']})")
+                                    # 额外清理一次临时文件，确保没有遗留
+                                    self._cleanup_word_temp_files(str(output_dir))
                                     return conversion_results
                                 else:
                                     print_debug(f"⚠️ Word to PDF conversion failed: {pdf_conversion_result.get('error', 'Unknown error')}")
@@ -2496,6 +2573,9 @@ class FileSystemTools:
                                     print_debug(f"🧹 Cleaned up temporary file: {temp_file}")
                             except Exception as e:
                                 print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
+                        
+                        # 清理Word生成的临时文件
+                        self._cleanup_word_temp_files(str(output_dir))
 
             # Convert to Word document
             if should_generate_word:
@@ -2633,6 +2713,9 @@ class FileSystemTools:
                                 print_debug(f"🧹 Cleaned up temporary file: {temp_file}")
                         except Exception as e:
                             print_debug(f"⚠️ Failed to clean up temporary file {temp_file}: {e}")
+                    
+                    # 清理Word生成的临时文件
+                    self._cleanup_word_temp_files(str(output_dir))
             
             # Convert to PDF document (synchronous execution)
             if should_generate_pdf and not pdf_already_converted:
@@ -2841,6 +2924,43 @@ class FileSystemTools:
                 'message': f'Error occurred during conversion: {str(e)}'
             }
 
+    def _cleanup_word_temp_files(self, directory: str) -> None:
+        """
+        清理Word应用程序生成的临时文件（以~开头的文件）
+        
+        Args:
+            directory: 要清理的目录路径
+        """
+        import os
+        import glob
+        
+        try:
+            # 查找以~开头的临时文件
+            temp_patterns = [
+                os.path.join(directory, '~$*'),  # Word临时文件
+                os.path.join(directory, '~*.tmp'),  # 通用临时文件
+                os.path.join(directory, '~*.docx'),  # Word临时文档
+                os.path.join(directory, '~*.doc'),   # Word临时文档
+            ]
+            
+            cleaned_files = []
+            for pattern in temp_patterns:
+                temp_files = glob.glob(pattern)
+                for temp_file in temp_files:
+                    try:
+                        if os.path.exists(temp_file) and os.path.isfile(temp_file):
+                            os.remove(temp_file)
+                            cleaned_files.append(temp_file)
+                            print_debug(f"🧹 Cleaned up Word temp file: {os.path.basename(temp_file)}")
+                    except Exception as e:
+                        print_debug(f"⚠️ Failed to clean up temp file {temp_file}: {e}")
+            
+            if cleaned_files:
+                print_debug(f"✅ Cleaned up {len(cleaned_files)} Word temporary files")
+            
+        except Exception as e:
+            print_debug(f"⚠️ Error during Word temp file cleanup: {e}")
+
     def _word_to_pdf(self, word_path: str, pdf_path: str) -> Dict[str, Any]:
         """
         将 Word 文档转换为 PDF（仅在 Windows 系统上使用 pywin32）
@@ -2865,6 +2985,9 @@ class FileSystemTools:
         try:
             # 尝试导入 pywin32
             import win32com.client
+
+            # 获取文档所在目录，用于后续清理临时文件
+            word_dir = os.path.dirname(os.path.abspath(word_path))
 
             # 启动 Word 应用
             word = win32com.client.Dispatch("Word.Application")
@@ -2909,6 +3032,11 @@ class FileSystemTools:
                     word.Quit()
                 except:
                     pass
+                
+                # 等待一小段时间确保Word完全关闭，然后清理临时文件
+                import time
+                time.sleep(0.5)  # 等待500毫秒
+                self._cleanup_word_temp_files(word_dir)
 
         except ImportError:
             print_debug("⚠️ pywin32 not available, skipping Word to PDF conversion")

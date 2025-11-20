@@ -1266,6 +1266,64 @@
             transform: translateY(8px);
         }
 
+
+        /* 配置页面中的执行轮次滑条样式 */
+        .config-rounds-slider {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-secondary);
+            outline: none;
+            border-radius: 3px;
+            appearance: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .config-rounds-slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--color-accent);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .config-rounds-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .config-rounds-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: var(--color-accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .config-rounds-slider::-moz-range-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .config-rounds-slider::-moz-range-track {
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            border: none;
+        }
+
+        .execution-rounds-config {
+            border-top: 1px solid var(--border-primary);
+            padding-top: 12px;
+            margin-top: 12px !important;
+        }
+
         #userInput {
             width: 100%;
             min-height: 60px;
@@ -1314,6 +1372,25 @@
 
         #userInput::placeholder {
             color: var(--text-placeholder);
+        }
+
+        #userInput.drag-over {
+            border-color: var(--color-accent);
+            background: var(--bg-input-container);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
+        }
+
+        .file-item-container.dragging {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .file-item-container[draggable="true"] {
+            cursor: default;
+        }
+
+        .file-item-container[draggable="true"]:hover {
+            background: var(--bg-directory-item-hover);
         }
 
         .send-button {
@@ -1951,6 +2028,7 @@
                 gap: 8px;
                 align-items: stretch;
             }
+
             
             .button-row {
                 flex-direction: row !important; /* 确保按钮行始终横排 */
@@ -3248,6 +3326,21 @@
                             <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
                         </label>
+                        
+                        <!-- 执行轮次配置 -->
+                        <div class="config-option execution-rounds-config" style="display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); flex: 1; min-width: 280px; margin-top: 12px;">
+                            <label for="configRoundsSlider" class="config-rounds-label" style="font-size: 0.9em; font-weight: 500;">
+                                {{ i18n.get('execution_rounds', '执行轮次' if lang == 'zh' else 'Execution Rounds') }}:
+                            </label>
+                            <div class="config-slider-wrapper" style="display: flex; align-items: center; gap: 12px;">
+                                <input type="range" id="configRoundsSlider" class="config-rounds-slider" min="1" max="200" value="50" 
+                                       style="flex: 1; height: 6px; background: var(--bg-secondary); outline: none; border-radius: 3px; appearance: none; cursor: pointer;">
+                                <span id="configRoundsValue" class="config-rounds-value" style="font-size: 0.9em; font-weight: 600; color: var(--text-primary); min-width: 35px; text-align: center; background: var(--bg-input); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary);">50</span>
+                            </div>
+                            <div class="config-rounds-description" style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">
+                                {{ i18n.get('execution_rounds_desc', '控制任务执行的轮次数量，范围1-200，典型值50' if lang == 'zh' else 'Controls the number of execution rounds for tasks, range 1-200, typical value 50') }}
+                            </div>
+                        </div>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableMCP" style="margin: 0;">
                             <span>{{ i18n.get('enable_mcp', '启动MCP' if lang == 'zh' else 'Enable MCP') }}</span>
@@ -4867,11 +4960,34 @@
 
         // Input handling
         async function sendMessage(planMode = false) {
-            const message = userInput.value.trim();
+            let message = userInput.value.trim();
             if (isTaskRunning || !socket || !isConnected) return;
 
+            // 处理@文件名引用，收集文件路径信息
+            let attachedFilePaths = [];
+            if (window.attachedFiles && window.attachedFiles.size > 0) {
+                const fileReferenceRegex = /@([^\s@]+)/g;
+                const fileReferences = message.match(fileReferenceRegex);
+                
+                if (fileReferences) {
+                    for (const ref of fileReferences) {
+                        const filePath = window.attachedFiles.get(ref);
+                        if (filePath) {
+                            attachedFilePaths.push({
+                                reference: ref,
+                                path: filePath,
+                                name: ref.substring(1) // 移除@符号
+                            });
+                        }
+                    }
+                }
+                
+                // 清空已处理的文件引用
+                window.attachedFiles.clear();
+            }
+
             // 保存当前输入内容，以防出错时需要恢复
-            pendingUserInput = message;
+            pendingUserInput = userInput.value.trim();
 
             // 检查guest用户权限
             if (isGuest) {
@@ -4927,6 +5043,10 @@
                     modeInfo = I18N.plan_mode_suffix;
                 }
 
+                // Get execution rounds from config slider
+                const configRoundsSlider = document.getElementById('configRoundsSlider');
+                const executionRounds = configRoundsSlider ? parseInt(configRoundsSlider.value) : 50;
+
                 // Get GUI configuration options
                 const guiConfig = {
                     enable_web_search: document.getElementById('enableWebSearch').checked,
@@ -4943,7 +5063,9 @@
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
                     // Add language preference
-                    language: CURRENT_LANG
+                    language: CURRENT_LANG,
+                    // Add execution rounds
+                    execution_rounds: executionRounds
                 };
                 
                 // 只有自定义配置才发送 api_key 和 api_base
@@ -4959,20 +5081,26 @@
                         requirement: message,
                         type: 'selected',
                         plan_mode: planMode,
-                        gui_config: guiConfig
+                        gui_config: guiConfig,
+                        attached_files: attachedFilePaths
                     });
                 } else {
                     socket.emit('execute_task', {
                         requirement: message,
                         type: 'continue',
                         plan_mode: planMode,
-                        gui_config: guiConfig
+                        gui_config: guiConfig,
+                        attached_files: attachedFilePaths
                     });
                 }
                 
                 // 任务发送成功后立即清空输入框
                 userInput.value = '';
                 pendingUserInput = '';
+                // 清空文件引用（已在sendMessage中处理并清空，这里确保清空）
+                if (window.attachedFiles) {
+                    window.attachedFiles.clear();
+                }
                 resizeTextarea();
                 
             } catch (error) {
@@ -5038,6 +5166,11 @@
                 // Reset scroll state
                 autoScrollEnabled = true;
                 updateAutoScrollIndicator();
+                
+                // Clear attached files
+                if (window.attachedFiles) {
+                    window.attachedFiles.clear();
+                }
                 
                 // Scroll to bottom
                 scrollToBottom(false);
@@ -5193,6 +5326,10 @@
                 // 任务发送成功后立即清空输入框
                 userInput.value = '';
                 pendingUserInput = '';
+                // 清空文件引用（已在sendMessage中处理并清空，这里确保清空）
+                if (window.attachedFiles) {
+                    window.attachedFiles.clear();
+                }
                 resizeTextarea();
                 
             } catch (error) {
@@ -5360,6 +5497,88 @@
         });
 
         userInput.addEventListener('input', resizeTextarea);
+
+        // File drag and drop functionality
+        let draggedFileInfo = null;
+
+        function handleFileDragStart(event, filePath, fileName, dirName) {
+            draggedFileInfo = { path: filePath, name: fileName, dirName: dirName };
+            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.setData('text/plain', `@${fileName}`);
+            // Add visual feedback
+            event.currentTarget.classList.add('dragging');
+        }
+
+        function handleFileDragEnd(event) {
+            event.currentTarget.classList.remove('dragging');
+        }
+
+        // Enable drag and drop on userInput
+        userInput.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+            userInput.classList.add('drag-over');
+        });
+
+        userInput.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Only remove drag-over if we're actually leaving the input area
+            if (!userInput.contains(e.relatedTarget)) {
+                userInput.classList.remove('drag-over');
+            }
+        });
+
+        userInput.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            userInput.classList.remove('drag-over');
+            
+            // Check if this is a file drag from workspace
+            if (draggedFileInfo) {
+                // Check if the file belongs to the selected directory
+                if (draggedFileInfo.dirName) {
+                    // If no directory is selected, or the file belongs to a different directory, show warning
+                    if (!selectedDirectory || draggedFileInfo.dirName !== selectedDirectory) {
+                        // Show warning message
+                        const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+                        const warningMsg = I18N.drag_unselected_dir_warning || '请先选择此工作目录后再拖动';
+                        alert(warningMsg);
+                        draggedFileInfo = null;
+                        return;
+                    }
+                }
+                
+                const fileReference = `@${draggedFileInfo.name}`;
+                const currentValue = userInput.value;
+                const cursorPos = userInput.selectionStart;
+                
+                // Insert file reference at cursor position
+                const newValue = currentValue.slice(0, cursorPos) + 
+                                (currentValue.slice(cursorPos - 1, cursorPos) !== ' ' && cursorPos > 0 ? ' ' : '') +
+                                fileReference + 
+                                (currentValue.slice(cursorPos, cursorPos + 1) !== ' ' && cursorPos < currentValue.length ? ' ' : '') +
+                                currentValue.slice(cursorPos);
+                
+                userInput.value = newValue;
+                
+                // Set cursor position after the inserted text
+                const newCursorPos = cursorPos + fileReference.length + 
+                                    (currentValue.slice(cursorPos - 1, cursorPos) !== ' ' && cursorPos > 0 ? 1 : 0) +
+                                    (currentValue.slice(cursorPos, cursorPos + 1) !== ' ' && cursorPos < currentValue.length ? 1 : 0);
+                userInput.setSelectionRange(newCursorPos, newCursorPos);
+                
+                // Store file reference for later processing
+                if (!window.attachedFiles) {
+                    window.attachedFiles = new Map();
+                }
+                window.attachedFiles.set(fileReference, draggedFileInfo.path);
+                
+                resizeTextarea();
+                draggedFileInfo = null;
+            }
+        });
 
         // Chat scroll behavior management
         let scrollTimeout;
@@ -5915,8 +6134,11 @@
                 } else {
                     // 文件
                     html = `
-                        <div class="${className}${previewClass}${grayedClass} file-item-container" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px;" 
+                        <div class="${className}${previewClass}${grayedClass} file-item-container" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;"
+                             draggable="true" 
+                             ondragstart="handleFileDragStart(event, '${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', '${dirName.replace(/'/g, "\\'")}')"
+                             ondragend="handleFileDragEnd(event)">
+                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px; cursor: default;" 
                                  ${isPreviewable ? `onclick="previewFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')"` : ''}>
                                 <i class="${icon}"></i>
                                 ${file.name}
@@ -6429,13 +6651,18 @@
                     });
                 }
                 
-                // 转义引号用于srcdoc
-                const escapedContent = processedContent.replace(/"/g, '&quot;');
+                // 使用新的HTML预览方式，支持相对路径资源加载
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                const previewUrl = `/api/html-preview/${file_path}${apiKeyParam}`;
+                
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: HTML
+                        <div style="margin-top: 5px; font-size: 14px; color: #888;">
+                            💡 现在支持加载同文件夹下的JS、CSS等资源文件
+                        </div>
                     </div>
-                    <iframe srcdoc="${escapedContent}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
+                    <iframe src="${previewUrl}" style="width: 100%; height: calc(90vh - 160px); border: none; border-radius: 4px; background: white;"></iframe>
                 `;
             } else if (type === 'markdown') {
                 // 处理转义字符
@@ -10351,6 +10578,32 @@
             }
         }
 
+        // 配置页面执行轮次滑条逻辑
+        const configRoundsSlider = document.getElementById('configRoundsSlider');
+        const configRoundsValue = document.getElementById('configRoundsValue');
+        
+        if (configRoundsSlider && configRoundsValue) {
+            // 初始化滑条值
+            configRoundsValue.textContent = configRoundsSlider.value;
+            
+            // 滑条值变化事件
+            configRoundsSlider.addEventListener('input', function() {
+                configRoundsValue.textContent = this.value;
+            });
+            
+            // 保存滑条值到localStorage
+            configRoundsSlider.addEventListener('change', function() {
+                localStorage.setItem('executionRounds', this.value);
+            });
+            
+            // 从localStorage恢复滑条值
+            const savedRounds = localStorage.getItem('executionRounds');
+            if (savedRounds && savedRounds >= 1 && savedRounds <= 200) {
+                configRoundsSlider.value = savedRounds;
+                configRoundsValue.textContent = savedRounds;
+            }
+        }
+
         // 键盘快捷键
         document.addEventListener('keydown', function(e) {
             // Ctrl+R 或 F5 刷新目录
@@ -11452,11 +11705,11 @@
 
             const html = document.documentElement;
             
-            // 读取当前主题（已经在head中设置过了，如果没有则从localStorage读取或默认为dark）
+            // 读取当前主题（已经在head中设置过了，如果没有则从localStorage读取或默认为light）
             let currentTheme = html.getAttribute('data-theme');
             if (!currentTheme) {
                 // 如果head中的脚本没有执行，这里作为后备
-                currentTheme = localStorage.getItem('theme') || 'dark';
+                currentTheme = localStorage.getItem('theme') || 'light';
                 html.setAttribute('data-theme', currentTheme);
             }
             
