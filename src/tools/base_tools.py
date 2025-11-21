@@ -194,7 +194,7 @@ class BaseTools:
         
         Args:
             query: The question to display to the user
-            timeout: Maximum time to wait for user response (default: 10 seconds)
+            timeout: Maximum time to wait for user response (default: 10 seconds, -1 to disable timeout)
             
         Returns:
             Dict containing the user's response or timeout indication

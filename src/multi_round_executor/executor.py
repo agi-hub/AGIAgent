@@ -72,7 +72,7 @@ class MultiRoundTaskExecutor:
         Initialize multi-round task executor
         
         Args:
-            subtask_loops: Number of rounds to execute for each subtask
+            subtask_loops: Number of rounds to execute for each subtask (-1 for infinite loop)
             logs_dir: Log directory path
             workspace_dir: Working directory for storing code files
             debug_mode: Whether to enable DEBUG mode
@@ -126,7 +126,8 @@ class MultiRoundTaskExecutor:
             streaming=streaming,
             MCP_config_file=MCP_config_file,
             prompts_folder=prompts_folder,
-            user_id=user_id
+            user_id=user_id,
+            subtask_loops=subtask_loops
         )
         
         # Initialize module components
@@ -371,8 +372,14 @@ class MultiRoundTaskExecutor:
             #print_current(f"✅ Task completed successfully")
             status = "completed"
         else:
-            print_current(f"⚠️ Task reached maximum rounds without explicit completion")
-            status = "max_rounds_reached"
+            # Check if we're in infinite loop mode
+            infinite_loop = (self.subtask_loops == -1)
+            if infinite_loop:
+                print_current(f"⚠️ Task execution stopped (infinite loop mode)")
+                status = "max_rounds_reached"  # Keep same status for compatibility
+            else:
+                print_current(f"⚠️ Task reached maximum rounds without explicit completion")
+                status = "max_rounds_reached"
         
         finish_operation(f"Execute task: {task_name} ({task_id})")
         
@@ -408,6 +415,8 @@ class MultiRoundTaskExecutor:
         """
         base_prompt = f"Task description: {task_desc}"
         max_rounds = self.subtask_loops
+        # Support infinite loop when subtask_loops is -1
+        infinite_loop = (self.subtask_loops == -1)
         task_round = 1  # Renamed from round_num to task_round for clarity
         task_completed = False
         # Sync barrier config
@@ -433,8 +442,11 @@ class MultiRoundTaskExecutor:
         except Exception:
             pass
         
-        while task_round <= max_rounds and not task_completed:
-            print_debug(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
+        while (infinite_loop or task_round <= max_rounds) and not task_completed:
+            if infinite_loop:
+                print_debug(f"\n🔄 Current round {task_round} / infinite loop mode")
+            else:
+                print_debug(f"\n🔄 Current round {task_round} / total rounds {max_rounds}")
 
             # Barrier check before executing this round
             # Changed to: When There is at Least One Started and Unfinished Non-manager Agent
@@ -729,7 +741,15 @@ class MultiRoundTaskExecutor:
                     task_completed = True  # Set task completion flag to ensure loop exit
                     break
                 # Check task completion
-                task_completed = self.task_checker.check_task_completion(result)
+                # In infinite loop mode, ignore TASK_COMPLETED flag
+                if infinite_loop:
+                    # In infinite loop mode, task is never considered completed by TASK_COMPLETED flag
+                    task_completed = False
+                    # Log if TASK_COMPLETED was detected but ignored
+                    if self.task_checker.check_task_completion(result):
+                        print_current(f"⚠️ TASK_COMPLETED flag detected but ignored in infinite loop mode")
+                else:
+                    task_completed = self.task_checker.check_task_completion(result)
                 
                 # Record debug information
                 self._record_debug_info(task_id, task_name, task_round, current_prompt, result, task_completed, len(task_history))
@@ -787,13 +807,16 @@ class MultiRoundTaskExecutor:
                     # 🔧 New: Round-level Fairness Scheduling
                     if round_scheduler and current_agent_id:
                         # Request Permission to Execute Next Round
-                        print_current(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/{max_rounds}")
+                        if infinite_loop:
+                            print_current(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/∞")
+                        else:
+                            print_current(current_agent_id, f"🎫 Requesting permission for round {task_round + 1}/{max_rounds}")
                         
                         # Call Round Scheduler
                         permission_granted = round_scheduler.request_next_round(
                             agent_id=current_agent_id,
                             current_round=task_round,
-                            max_rounds=max_rounds,
+                            max_rounds=max_rounds if not infinite_loop else float('inf'),
                             wait_timeout=60.0  # Wait 60 Seconds
                         )
                         

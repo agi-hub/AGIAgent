@@ -1374,7 +1374,7 @@ class AGIAgentClient:
                      Currently only supports single user message
                      Example: [{"role": "user", "content": "Build a calculator app"}]
             dir: Output directory for results (optional, will auto-generate if not provided)
-            loops: Maximum execution rounds per task (default: 50)
+             loops: Maximum execution rounds per task (default: 50, -1 for infinite loop)
             continue_mode: Whether to continue from previous execution (default: False)
             **kwargs: Additional parameters (reserved for future use)
             
@@ -1632,6 +1632,9 @@ Usage Examples:
   # Specify output directory and execution rounds
   python main.py --dir my_project --loops 5 "Requirement description"
   
+  # Infinite loop execution (until task completion or manual interruption)
+  python main.py --loops -1 "Requirement description"
+  
   # Use custom model configuration
   python main.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
         """
@@ -1658,7 +1661,7 @@ Usage Examples:
         "--loops", "-l",
         type=int,
         default=50,
-        help="Execution rounds for each subtask (default: 50)"
+        help="Execution rounds for each subtask (default: 50, -1 for infinite loop)"
     )
     
     parser.add_argument(

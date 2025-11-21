@@ -155,6 +155,23 @@
       "required": ["url"]
     }
   },
+  "talk_to_user": {
+    "description": "Display a question or message to the user and wait for keyboard input with timeout. This tool allows interactive communication with the user. In infinite loop mode, use timeout=-1 to disable timeout when notifying task completion.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The question or message to display to the user"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Maximum time to wait for user response in seconds (default: 10 seconds, -1 to disable timeout)"
+        }
+      },
+      "required": ["query"]
+    }
+  },
   "get_sensor_data": {
     "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
     "parameters": {

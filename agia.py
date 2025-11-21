@@ -365,6 +365,9 @@ Usage Examples:
   # Specify output directory and execution rounds
   python agia.py --dir my_project --loops 5 "Requirement description"
   
+  # Infinite loop execution (until task completion or manual interruption)
+  python agia.py --loops -1 "Requirement description"
+  
   # Use custom model configuration
   python agia.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
         """
@@ -391,7 +394,7 @@ Usage Examples:
         "--loops", "-l",
         type=int,
         default=50,
-        help="Execution rounds for each subtask (default: 50)"
+        help="Execution rounds for each subtask (default: 50, -1 for infinite loop)"
     )
     
     parser.add_argument(

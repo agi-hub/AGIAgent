@@ -169,7 +169,8 @@ class ToolExecutor:
                  interactive_mode: bool = False,
                  MCP_config_file: Optional[str] = None,
                  prompts_folder: Optional[str] = None,
-                 user_id: Optional[str] = None):
+                 user_id: Optional[str] = None,
+                 subtask_loops: Optional[int] = None):
         """
         Initialize the ToolExecutor
 
@@ -186,6 +187,7 @@ class ToolExecutor:
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             user_id: User ID for MCP knowledge base tools
+            subtask_loops: Number of subtask loops (-1 for infinite loop)
         """
         # Load API key from config/config.txt if not provided
         if api_key is None:
@@ -219,6 +221,9 @@ class ToolExecutor:
         self.summary_history = get_summary_history()
         self.summary_max_length = get_summary_max_length()
         self.summary_trigger_length = get_summary_trigger_length()
+        
+        # Store subtask loops information for infinite loop mode detection
+        self.subtask_loops = subtask_loops
         
         # Load simplified search output configuration from config/config.txt
         self.simplified_search_output = get_simplified_search_output()
@@ -1037,7 +1042,7 @@ class ToolExecutor:
             prompt_file: Path to the prompt file (legacy support)
             
         Returns:
-            The core system prompt text from system_prompt.txt
+            The core system prompt text from system_prompt.txt, modified for infinite loop mode if applicable
         """
         try:
             # Try to load system_prompt.txt first from custom prompts folder
@@ -1046,12 +1051,37 @@ class ToolExecutor:
             if os.path.exists(system_prompt_file):
                 with open(system_prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read().strip()
-                return system_prompt
             else:
                 # Fall back to single file approach
                 with open(prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read()
-                return system_prompt
+            
+            # Modify system prompt for infinite loop mode
+            infinite_loop_mode = (self.subtask_loops == -1)
+            if infinite_loop_mode:
+                # Replace the task completion section for infinite loop mode
+                task_completion_section = """## Task Completion Signal
+When you've fully completed a task and believe no further iterations are needed, you MUST send this singal to exit the task execution:
+TASK_COMPLETED: [Brief description of what was accomplished]
+Note: Don't send TASK_COMPLETED signal if you calls tools in the current round, you should wait and check the tool executing result in the next round and then send this signal.
+Do not do more than what the user requests, and do not do less than what the user requests. When a task is completed, stop immediately without unnecessary iterations or improvements.
+If the user is just greeting you, asking simple questions, or not assigning a specific task, please respond directly and finish the task using TASK_COMPLETED."""
+                
+                infinite_loop_section = """## Infinite Autonomous Loop Mode
+You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
+- The system will continue executing until the task is naturally completed
+- DO NOT use TASK_COMPLETED signal - it will not stop the execution in this mode
+- Focus on making continuous progress towards the goal through iterative improvements
+- When you have truly completed the task, use the talk_to_user tool to notify the user:
+  talk_to_user(query="TASK_COMPLETED: [Brief description of what was accomplished]", timeout=-1)
+- The timeout=-1 parameter disables the timeout, allowing the user to acknowledge completion
+- Continue working autonomously until you achieve the objective
+- Use tools and make changes as needed to move closer to the goal
+- Each iteration should build upon previous work and make meaningful progress"""
+                
+                system_prompt = system_prompt.replace(task_completion_section, infinite_loop_section)
+            
+            return system_prompt
                 
         except Exception as e:
             print_current(f"Error loading system prompt: {e}")
@@ -6473,7 +6503,27 @@ class ToolExecutor:
         message_parts.append("---")
         message_parts.append("")
         message_parts.append("## Execution Instructions:")
-        message_parts.append(f"This is round {execution_round} of task execution. Please continue with the task based on the above context and requirements.")
+        
+        # Check if we're in infinite loop mode
+        infinite_loop_mode = (self.subtask_loops == -1)
+        
+        if infinite_loop_mode:
+            message_parts.append(f"This is round {execution_round} of task execution in **INFINITE AUTONOMOUS LOOP MODE**.")
+            message_parts.append("")
+            message_parts.append("**IMPORTANT - INFINITE LOOP MODE INSTRUCTIONS:**")
+            message_parts.append("- You are currently running in infinite autonomous loop mode")
+            message_parts.append("- The system will continue executing until the task is naturally completed")
+            message_parts.append("- DO NOT use TASK_COMPLETED flag in this mode - it will not stop the execution")
+            message_parts.append("- When task is truly completed, use: talk_to_user(query=\"TASK_COMPLETED: [description]\", timeout=-1)")
+            message_parts.append("- The timeout=-1 parameter disables timeout for task completion notification")
+            message_parts.append("- Focus on making continuous progress towards the goal")
+            message_parts.append("- Use tools and make changes as needed to achieve the objective")
+            message_parts.append("")
+            message_parts.append("Please continue with the task based on the above context and requirements.")
+        else:
+            message_parts.append(f"This is round {execution_round} of task execution. Please continue with the task based on the above context and requirements.")
+            message_parts.append("")
+            message_parts.append("**TASK COMPLETION:** When you've fully completed the task, use TASK_COMPLETED: [description] to signal completion.")
         
         # Build final message
         combined_message = "\n".join(message_parts)

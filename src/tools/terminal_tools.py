@@ -438,13 +438,18 @@ class TerminalTools:
         
         Args:
             query: The question to display to the user
-            timeout: Maximum time to wait for user response (default: 10 seconds)
+            timeout: Maximum time to wait for user response (default: 10 seconds, -1 to disable timeout)
             
         Returns:
             Dict containing the user's response or timeout indication
         """
         print_current(f"❓ {query}")
-        print_current(f"⏱️  Waiting for user reply ({timeout}seconds)...")
+        
+        # Check if timeout is disabled
+        if timeout == -1:
+            print_current("⏱️  Waiting for user reply (no timeout)...")
+        else:
+            print_current(f"⏱️  Waiting for user reply ({timeout}seconds)...")
         
         # Create a queue to communicate between threads
         response_queue = queue.Queue()
@@ -470,7 +475,12 @@ class TerminalTools:
         
         # Wait for response or timeout
         try:
-            status, response = response_queue.get(timeout=timeout)
+            if timeout == -1:
+                # No timeout - wait indefinitely
+                status, response = response_queue.get()
+            else:
+                # Normal timeout behavior
+                status, response = response_queue.get(timeout=timeout)
             
             if status == 'success':
                 print_current(f"✅ User reply: {response}")
@@ -479,7 +489,7 @@ class TerminalTools:
                     'query': query,
                     'user_response': response,
                     'timeout': timeout,
-                    'response_time': 'within_timeout'
+                    'response_time': 'within_timeout' if timeout != -1 else 'no_timeout'
                 }
             else:
                 print_current(f"❌ Input error: {response}")
@@ -493,7 +503,7 @@ class TerminalTools:
                 }
                 
         except queue.Empty:
-            # Timeout occurred
+            # Timeout occurred (only possible when timeout != -1)
             print_current("⏰ User did not reply within specified time")
             return {
                 'status': 'failed',

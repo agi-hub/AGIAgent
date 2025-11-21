@@ -20,23 +20,6 @@
       "required": []
     }
   },
-  "talk_to_user": {
-    "description": "Display a question to the user and wait for keyboard input with timeout. This tool allows interactive communication with the user.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "The question to display to the user"
-        },
-        "timeout": {
-          "type": "integer",
-          "description": "Maximum time to wait for user response in seconds (default: 10 seconds)"
-        }
-      },
-      "required": ["query"]
-    }
-  },
   "file_search": {
     "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
     "parameters": {
