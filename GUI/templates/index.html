@@ -3622,6 +3622,8 @@
         const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
         let isManualDisconnect = false;
         let isAutoReconnectInProgress = false;
+        let heartbeatInterval = null;  // 心跳定时器
+        const HEARTBEAT_INTERVAL = 120000;  // 每2分钟发送一次心跳（120秒）
         
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
@@ -3787,6 +3789,9 @@
         }
         
         function resetAfterDisconnect(removeSession = true) {
+            // 停止心跳
+            stopHeartbeat();
+            
             currentUser = null;
             currentUserName = null;
             isConnected = false;
@@ -3861,6 +3866,44 @@
         
         let currentUploadDir = null;
         
+        // 心跳机制：定期发送心跳消息保持连接活跃
+        function startHeartbeat() {
+            // 清除可能存在的旧定时器
+            stopHeartbeat();
+            
+            // 如果socket未连接，不启动心跳
+            if (!socket || !socket.connected) {
+                return;
+            }
+            
+            // 立即发送一次心跳
+            sendHeartbeat();
+            
+            // 设置定时器，每2分钟发送一次心跳
+            heartbeatInterval = setInterval(function() {
+                if (socket && socket.connected && !isTaskRunning) {
+                    // 只在非任务执行状态下发送心跳，避免干扰任务执行
+                    sendHeartbeat();
+                }
+            }, HEARTBEAT_INTERVAL);
+        }
+        
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+        }
+        
+        function sendHeartbeat() {
+            if (socket && socket.connected) {
+                // 发送心跳消息，服务器会响应以保持连接活跃
+                socket.emit('heartbeat', {
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
         // Setup socket event listeners
         function setupSocketListeners() {
             if (!socket) return;
@@ -3891,6 +3934,9 @@
                 // 连接成功后，确保任务发起按钮处于就绪状态
                 ensureTaskTriggerReady();
                 
+                // 启动心跳机制，定期发送心跳消息保持连接活跃
+                startHeartbeat();
+                
                 // Ensure scroll to bottom after connection
                 setTimeout(() => {
                     scrollToBottom(false);
@@ -3912,6 +3958,9 @@
             });
 
             socket.on('disconnect', function(reason) {
+                // 停止心跳
+                stopHeartbeat();
+                
                 if (isManualDisconnect) {
                     isManualDisconnect = false;
                     return;
@@ -3966,6 +4015,11 @@
                 isAutoReconnectInProgress = false;
                 addMessage(I18N.reconnect_failed_cleanup || '多次重连失败，已断开连接', 'error');
                 handleAutoReconnectFailure();
+            });
+
+            socket.on('heartbeat_ack', function(data) {
+                // 心跳响应，连接正常，静默处理（不显示消息）
+                // 可以用于调试：console.log('Heartbeat acknowledged:', data);
             });
 
             socket.on('task_started', function(data) {

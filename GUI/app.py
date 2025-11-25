@@ -324,8 +324,10 @@ class ConcurrencyManager:
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
+# 调整心跳间隔为25秒，确保即使nginx的proxy_read_timeout为300秒也能保持连接
+# ping_timeout设置为ping_interval的3倍，确保有足够的容错时间
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
-                   ping_timeout=3600, ping_interval=60)  
+                   ping_timeout=75, ping_interval=25)  
 
 
 import logging
@@ -3212,6 +3214,17 @@ def handle_disconnect():
         metrics = gui_instance.concurrency_manager.get_metrics()
     else:
         pass
+
+@socketio.on('heartbeat')
+def handle_heartbeat(data):
+    """Handle heartbeat from client to keep connection alive"""
+    session_id = request.sid
+    # 更新会话的最后访问时间，防止会话超时
+    if session_id in gui_instance.user_sessions:
+        # 验证并更新会话，这会更新last_accessed时间
+        gui_instance.auth_manager.validate_session(session_id)
+    # 发送心跳响应，确认连接正常
+    emit('heartbeat_ack', {'timestamp': data.get('timestamp', 0), 'server_time': time.time()}, room=session_id)
 
 @socketio.on('execute_task')
 def handle_execute_task(data):
