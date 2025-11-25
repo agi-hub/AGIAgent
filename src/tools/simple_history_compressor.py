@@ -44,7 +44,7 @@ class SimpleHistoryCompressor:
         self.ellipsis = ellipsis
         self.aggressive_mode = aggressive_mode
         
-    def compress_history(self, task_history: List[Dict[str, Any]], target_compression_ratio: float = None) -> List[Dict[str, Any]]:
+    def compress_history(self, task_history: List[Dict[str, Any]], target_compression_ratio: float = None, trigger_length: int = None) -> List[Dict[str, Any]]:
         """
         Compress the history records.
         
@@ -52,12 +52,21 @@ class SimpleHistoryCompressor:
             task_history: The original list of history records.
             target_compression_ratio: Optional target compression ratio (0.0-1.0). If provided, 
                                      will iteratively compress until target is reached.
+            trigger_length: Optional trigger length threshold. If provided, compression will only 
+                          occur if total content length exceeds this threshold.
             
         Returns:
             The compressed list of history records.
         """
         if not task_history:
             return task_history
+        
+        # Check trigger length if provided
+        if trigger_length is not None:
+            total_length = sum(self._calculate_record_size(record) for record in task_history)
+            if total_length <= trigger_length:
+                # Content does not exceed trigger length, return original history
+                return task_history
             
         #print_current(f"🗜️ Starting simple history compression, original record count: {len(task_history)}")
         

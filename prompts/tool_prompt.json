@@ -240,5 +240,32 @@
       },
       "required": ["file_path"]
     }
+  },
+  "compress_history": {
+    "description": "Compress conversation history using AI summarization to reduce context length. This tool performs the same compression logic as the automatic compression triggered when summary_history=True and history exceeds summary_trigger_length, but allows the model to actively request compression when needed. Older conversation rounds are summarized into a concise summary, while recent rounds are kept uncompressed for detailed context.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "keep_recent_rounds": {
+          "type": "integer",
+          "description": "Number of recent conversation rounds to keep uncompressed (default: 2). Older rounds will be compressed into a summary.",
+          "default": 2
+        }
+      },
+      "required": []
+    }
+  },
+  "plan_tools": {
+    "description": "Plan and dynamically load tools for the next round based on a search query. This tool searches through all available tools in workspace/tool_pool.json using TFIDF matching, selects the TOP3 most relevant tools based on the query, and writes them to workspace/current_tool_list.json. These tools will be available in the next round of conversation. The current_tool_list.json file is automatically cleared after being loaded to prevent repeated loading.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query describing the type of tools needed for the next task. This should describe the functionality or purpose of the tools you need, e.g., 'image processing', 'data analysis', 'file manipulation', etc."
+        }
+      },
+      "required": ["query"]
+    }
   }
 } 

@@ -674,10 +674,20 @@ class MultiRoundTaskExecutor:
                             recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
                             
                             if records_to_compress:
-                                #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records, keeping {len(recent_records_to_keep)} recent records intact")
-                                compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress)
-                                # Combine compressed older records with uncompressed recent records
-                                history_for_llm = compressed_older_records + recent_records_to_keep
+                                # Calculate length of records to compress
+                                records_to_compress_length = sum(len(str(record.get("result", ""))) 
+                                                                 for record in records_to_compress)
+                                
+                                # Check trigger length (same as AI summarization)
+                                trigger_length = getattr(self.executor, 'summary_trigger_length', 20000) if hasattr(self.executor, 'summary_trigger_length') else 20000
+                                
+                                # Only compress if content exceeds trigger length
+                                if records_to_compress_length > trigger_length:
+                                    #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records ({records_to_compress_length} chars, exceeds trigger {trigger_length} chars), keeping {len(recent_records_to_keep)} recent records intact")
+                                    compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
+                                    # Combine compressed older records with uncompressed recent records
+                                    history_for_llm = compressed_older_records + recent_records_to_keep
+                                # If content doesn't exceed trigger length, keep all records as-is
                             # If no older records to compress, keep all records as-is
                         except Exception as e:
                             print_debug(f"⚠️ Simple history compression failed: {e}")

@@ -392,6 +392,27 @@ class ToolExecutor:
         else:
             self.simple_compressor = None
         
+        # Initialize history compression tools
+        try:
+            from tools.history_compression_tools import HistoryCompressionTools
+            self.history_compression_tools = HistoryCompressionTools(tool_executor=self)
+        except ImportError as e:
+            print_system(f"⚠️ Failed to import HistoryCompressionTools: {e}")
+            self.history_compression_tools = None
+        
+        # Initialize planning tools for dynamic tool loading
+        try:
+            from tools.planning_tools import PlanningTools
+            self.planning_tools = PlanningTools(workspace_root=self.workspace_dir)
+        except ImportError as e:
+            print_system(f"⚠️ Failed to import PlanningTools: {e}")
+            self.planning_tools = None
+        except Exception as e:
+            print_system(f"⚠️ Failed to initialize PlanningTools: {e}")
+            self.planning_tools = None
+        
+        # Store current task history reference for history compression tool
+        self._current_task_history = None
         
         # Helper function for disabled multi-agent tools
         def _multi_agent_disabled_error(*args, **kwargs):
@@ -419,6 +440,14 @@ class ToolExecutor:
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,  # Add document conversion tool
         }
+        
+        # Add history compression tool if available
+        if self.history_compression_tools:
+            self.tool_map["compress_history"] = self.history_compression_tools.compress_history
+        
+        # Add planning tool if available
+        if self.planning_tools:
+            self.tool_map["plan_tools"] = self.planning_tools.plan_tools
         
         # Add long-term memory tools if available
         if self.long_term_memory:
@@ -1440,6 +1469,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         # Initialize task history if not provided
         if task_history is None:
             task_history = []
+        
+        # Store current task history reference for history compression tool
+        self._current_task_history = task_history
         
         original_history_id = id(task_history)  # Track if we modify the history
         history_was_optimized = False
@@ -6241,6 +6273,58 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     
             except Exception as e:
                 print_debug(f"⚠️ Failed to load cli-mcp tool definitions: {e}")
+            
+            # 🔧 NEW: Load dynamic tools from current_tool_list.json
+            # Only load if we're actually reloading (not using cache)
+            # This prevents clearing the file if plan_tools just wrote to it in the same round
+            is_using_cache = not force_reload and self._tool_definitions_cache is not None and (
+                self._tool_definitions_cache_timestamp is not None and 
+                time.time() - self._tool_definitions_cache_timestamp < 60
+            )
+            
+            if not is_using_cache:
+                # We're reloading, so it's safe to load and clear current_tool_list.json
+                # But check if file was just written (within last 5 seconds) to avoid clearing it
+                try:
+                    current_tool_list_path = os.path.join(self.workspace_dir, "current_tool_list.json")
+                    if os.path.exists(current_tool_list_path):
+                        # Check file modification time - if modified within last 5 seconds, skip to avoid clearing
+                        # a file that was just written by plan_tools
+                        file_mtime = os.path.getmtime(current_tool_list_path)
+                        time_since_modification = time.time() - file_mtime
+                        
+                        if time_since_modification < 5:
+                            print_debug(f"ℹ️ current_tool_list.json was modified {time_since_modification:.2f} seconds ago, skipping to preserve it (likely just written by plan_tools)")
+                        else:
+                            try:
+                                with open(current_tool_list_path, 'r', encoding='utf-8') as f:
+                                    current_tool_list = json.load(f)
+                                
+                                # Check if file is not empty
+                                if current_tool_list and isinstance(current_tool_list, dict) and len(current_tool_list) > 0:
+                                    # Merge dynamic tools into tool definitions
+                                    tool_definitions.update(current_tool_list)
+                                    print_debug(f"✅ Loaded {len(current_tool_list)} dynamic tools from current_tool_list.json")
+                                    
+                                    # Clear the file after loading
+                                    with open(current_tool_list_path, 'w', encoding='utf-8') as f:
+                                        json.dump({}, f)
+                                    print_debug("✅ Cleared current_tool_list.json after loading")
+                                else:
+                                    # File is empty, skip
+                                    print_debug("ℹ️ current_tool_list.json is empty, skipping")
+                            except json.JSONDecodeError as e:
+                                print_debug(f"⚠️ Failed to parse current_tool_list.json: {e}")
+                            except Exception as e:
+                                print_debug(f"⚠️ Failed to load current_tool_list.json: {e}")
+                    else:
+                        # File doesn't exist, skip silently
+                        pass
+                except Exception as e:
+                    print_debug(f"⚠️ Error processing current_tool_list.json: {e}")
+            else:
+                # Using cache, skip loading current_tool_list.json to preserve it for next round
+                print_debug("ℹ️ Using cached tool definitions, skipping current_tool_list.json to preserve it for next round")
             
             # Cache the loaded tool definitions
             self._tool_definitions_cache = tool_definitions
