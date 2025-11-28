@@ -67,7 +67,8 @@ class MultiRoundTaskExecutor:
                  detailed_summary: bool = False,
                  interactive_mode: bool = False, streaming: bool = None,
                  MCP_config_file: str = None, prompts_folder: str = None,
-                 user_id: str = None):
+                 user_id: str = None,
+                 plan_mode: bool = False):
         """
         Initialize multi-round task executor
         
@@ -113,6 +114,9 @@ class MultiRoundTaskExecutor:
         if workspace_dir:
             os.makedirs(workspace_dir, exist_ok=True)
         
+        # Store plan mode
+        self.plan_mode = plan_mode
+        
         # Initialize tool executor
         self.executor = ToolExecutor(
             api_key=api_key,
@@ -127,7 +131,8 @@ class MultiRoundTaskExecutor:
             MCP_config_file=MCP_config_file,
             prompts_folder=prompts_folder,
             user_id=user_id,
-            subtask_loops=subtask_loops
+            subtask_loops=subtask_loops,
+            plan_mode=plan_mode
         )
         
         # Initialize module components

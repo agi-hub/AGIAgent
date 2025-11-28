@@ -435,6 +435,7 @@ class TerminalTools:
     def talk_to_user(self, query: str, timeout: int = 10) -> Dict[str, Any]:
         """
         Display a question to the user and wait for keyboard input with timeout.
+        Supports both terminal and GUI modes.
         
         Args:
             query: The question to display to the user
@@ -443,46 +444,104 @@ class TerminalTools:
         Returns:
             Dict containing the user's response or timeout indication
         """
-        print_current(f"❓ {query}")
+        import sys
+        import os
         
-        # Check if timeout is disabled
-        if timeout == -1:
-            print_current("⏱️  Waiting for user reply (no timeout)...")
-        else:
-            print_current(f"⏱️  Waiting for user reply ({timeout}seconds)...")
+        # Detect GUI mode: check environment variable or if stdin is not a TTY
+        gui_mode = os.environ.get('AGIA_GUI_MODE', '').lower() == 'true' or not sys.stdin.isatty()
         
-        # Create a queue to communicate between threads
-        response_queue = queue.Queue()
-        
-        def get_user_input():
-            """Thread function to get user input"""
+        if gui_mode:
+            # GUI mode: notify GUI and read from input queue
+            # Print special marker for GUI to detect
+            # IMPORTANT: Print messages in a specific order and flush immediately
+            # The GUI will look for these markers in the output stream
+            # Note: We don't print user-friendly messages in GUI mode as the GUI will show a popup
             try:
-                user_input = input("👤 Please enter your reply: ")
-                response_queue.put(('success', user_input.strip()))
-            except EOFError:
-                # Handle Ctrl+D or end of input
-                response_queue.put(('error', 'EOF'))
-            except KeyboardInterrupt:
-                # Handle Ctrl+C
-                response_queue.put(('error', 'KeyboardInterrupt'))
+                print_current("🔔 GUI_USER_INPUT_REQUEST")
+                sys.stdout.flush()
+                # Small delay to ensure message is processed
+                import time
+                time.sleep(0.01)
+                
+                print_current(f"QUERY: {query}")
+                sys.stdout.flush()
+                time.sleep(0.01)
+                
+                print_current(f"TIMEOUT: {timeout}")
+                sys.stdout.flush()
+                time.sleep(0.01)
             except Exception as e:
-                response_queue.put(('error', str(e)))
-        
-        # Start input thread
-        input_thread = threading.Thread(target=get_user_input)
-        input_thread.daemon = True
-        input_thread.start()
-        
-        # Wait for response or timeout
-        try:
-            if timeout == -1:
-                # No timeout - wait indefinitely
-                status, response = response_queue.get()
-            else:
-                # Normal timeout behavior
-                status, response = response_queue.get(timeout=timeout)
+                # Fallback: if printing fails, try to send directly to queue
+                print_current(f"⚠️ Error in GUI mode message sending: {e}")
+                sys.stdout.flush()
             
-            if status == 'success':
+            # Try to get input queue from main module
+            input_queue = None
+            try:
+                main_module = sys.modules.get('__main__', None)
+                if main_module and hasattr(main_module, '_agia_gui_input_queue'):
+                    input_queue = main_module._agia_gui_input_queue
+            except:
+                pass
+            
+            # Read from input queue if available, otherwise fall back to stdin
+            try:
+                if input_queue:
+                    # Use queue with timeout
+                    if timeout == -1:
+                        # No timeout - wait indefinitely
+                        user_input = input_queue.get()
+                    else:
+                        # Use queue.get with timeout
+                        user_input = input_queue.get(timeout=timeout)
+                    response = user_input.strip() if isinstance(user_input, str) else str(user_input).strip()
+                else:
+                    # Fall back to stdin reading (for compatibility)
+                    if timeout == -1:
+                        user_input = sys.stdin.readline()
+                    else:
+                        import select
+                        if sys.platform != 'win32' and hasattr(select, 'select'):
+                            if select.select([sys.stdin], [], [], timeout)[0]:
+                                user_input = sys.stdin.readline()
+                            else:
+                                print_current("⏰ User did not reply within specified time")
+                                return {
+                                    'status': 'failed',
+                                    'query': query,
+                                    'user_response': 'no user response',
+                                    'timeout': timeout,
+                                    'response_time': 'timeout'
+                                }
+                        else:
+                            response_queue = queue.Queue()
+                            
+                            def read_input():
+                                try:
+                                    user_input = sys.stdin.readline()
+                                    response_queue.put(('success', user_input))
+                                except Exception as e:
+                                    response_queue.put(('error', str(e)))
+                            
+                            input_thread = threading.Thread(target=read_input)
+                            input_thread.daemon = True
+                            input_thread.start()
+                            
+                            try:
+                                status, user_input = response_queue.get(timeout=timeout)
+                                if status == 'error':
+                                    raise Exception(user_input)
+                            except queue.Empty:
+                                print_current("⏰ User did not reply within specified time")
+                                return {
+                                    'status': 'failed',
+                                    'query': query,
+                                    'user_response': 'no user response',
+                                    'timeout': timeout,
+                                    'response_time': 'timeout'
+                                }
+                    response = user_input.strip() if user_input else ""
+                
                 print_current(f"✅ User reply: {response}")
                 return {
                     'status': 'success',
@@ -491,37 +550,99 @@ class TerminalTools:
                     'timeout': timeout,
                     'response_time': 'within_timeout' if timeout != -1 else 'no_timeout'
                 }
-            else:
-                print_current(f"❌ Input error: {response}")
+            except queue.Empty:
+                # Timeout occurred (for queue.get)
+                print_current("⏰ User did not reply within specified time")
+                return {
+                    'status': 'failed',
+                    'query': query,
+                    'user_response': 'no user response',
+                    'timeout': timeout,
+                    'response_time': 'timeout'
+                }
+            except Exception as e:
+                print_current(f"❌ Error occurred while waiting for user input: {e}")
                 return {
                     'status': 'failed',
                     'query': query,
                     'user_response': 'no user response',
                     'timeout': timeout,
                     'response_time': 'error',
-                    'error': response
+                    'error': str(e)
                 }
+        else:
+            # Terminal mode: use input() as before
+            # Create a queue to communicate between threads
+            response_queue = queue.Queue()
+            
+            def get_user_input():
+                """Thread function to get user input"""
+                try:
+                    user_input = input("👤 Please enter your reply: ")
+                    response_queue.put(('success', user_input.strip()))
+                except EOFError:
+                    # Handle Ctrl+D or end of input
+                    response_queue.put(('error', 'EOF'))
+                except KeyboardInterrupt:
+                    # Handle Ctrl+C
+                    response_queue.put(('error', 'KeyboardInterrupt'))
+                except Exception as e:
+                    response_queue.put(('error', str(e)))
+            
+            # Start input thread
+            input_thread = threading.Thread(target=get_user_input)
+            input_thread.daemon = True
+            input_thread.start()
+            
+            # Wait for response or timeout
+            try:
+                if timeout == -1:
+                    # No timeout - wait indefinitely
+                    status, response = response_queue.get()
+                else:
+                    # Normal timeout behavior
+                    status, response = response_queue.get(timeout=timeout)
                 
-        except queue.Empty:
-            # Timeout occurred (only possible when timeout != -1)
-            print_current("⏰ User did not reply within specified time")
-            return {
-                'status': 'failed',
-                'query': query,
-                'user_response': 'no user response',
-                'timeout': timeout,
-                'response_time': 'timeout'
-            }
-        except Exception as e:
-            print_current(f"❌ Error occurred while waiting for user input: {e}")
-            return {
-                'status': 'failed',
-                'query': query,
-                'user_response': 'no user response',
-                'timeout': timeout,
-                'response_time': 'error',
-                'error': str(e)
-            }
+                if status == 'success':
+                    print_current(f"✅ User reply: {response}")
+                    return {
+                        'status': 'success',
+                        'query': query,
+                        'user_response': response,
+                        'timeout': timeout,
+                        'response_time': 'within_timeout' if timeout != -1 else 'no_timeout'
+                    }
+                else:
+                    print_current(f"❌ Input error: {response}")
+                    return {
+                        'status': 'failed',
+                        'query': query,
+                        'user_response': 'no user response',
+                        'timeout': timeout,
+                        'response_time': 'error',
+                        'error': response
+                    }
+                    
+            except queue.Empty:
+                # Timeout occurred (only possible when timeout != -1)
+                print_current("⏰ User did not reply within specified time")
+                return {
+                    'status': 'failed',
+                    'query': query,
+                    'user_response': 'no user response',
+                    'timeout': timeout,
+                    'response_time': 'timeout'
+                }
+            except Exception as e:
+                print_current(f"❌ Error occurred while waiting for user input: {e}")
+                return {
+                    'status': 'failed',
+                    'query': query,
+                    'user_response': 'no user response',
+                    'timeout': timeout,
+                    'response_time': 'error',
+                    'error': str(e)
+                }
 
     def run_terminal_cmd(self, command: str, is_background: bool = False, 
                         timeout_inactive: int = 180, max_total_time: int = 300, 

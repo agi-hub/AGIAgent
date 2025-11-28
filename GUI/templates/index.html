@@ -1257,13 +1257,20 @@
             position: relative;
         }
 
+        .mode-selection {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 4px;
+            margin-bottom: 0;
+        }
+        
         .button-row {
             display: flex;
-            gap: 10px;
+            gap: 6px;
             flex-direction: row;
             align-items: center;
-            align-self: flex-start;
-            transform: translateY(8px);
         }
 
 
@@ -1397,15 +1404,17 @@
             background: transparent;
             border: 1px solid var(--color-accent);
             color: var(--color-accent);
-            border-radius: 6px;
-            width: 40px;
-            height: 40px;
+            border-radius: 4px;
+            width: auto;
+            min-width: 28px;
+            height: 28px;
+            padding: 4px 8px;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 0.9em;
         }
 
         .send-button:hover:not(:disabled) {
@@ -1424,6 +1433,9 @@
             background: var(--bg-send-button);
             color: white;
             border: none;
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
         }
 
         #sendButton:hover:not(:disabled) {
@@ -1438,6 +1450,12 @@
 
         #stopButton:hover:not(:disabled) {
             background-color: #d32f2f !important;
+        }
+
+        #clearChatButton {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
         }
 
         #clearChatButton:hover:not(:disabled) {
@@ -1905,10 +1923,14 @@
                 box-sizing: border-box;
             }
             
-            #routineSelect,
             #modelSelect {
                 width: calc(100vw - 20px) !important;
                 max-width: calc(100vw - 20px) !important;
+            }
+            
+            #routineSelect {
+                max-width: 100px !important; /* 手机布局下缩短选择框宽度 */
+                width: auto !important;
             }
             
             .connect-btn {
@@ -2029,10 +2051,30 @@
                 align-items: stretch;
             }
 
+            .mode-selection {
+                width: 100%;
+                justify-content: flex-end;
+                flex-wrap: wrap; /* 允许换行以适应小屏幕 */
+                gap: 4px; /* 减小间距以适应小屏幕 */
+            }
+            
+            /* 确保"规则文件"label和选择框在同一行，不分开 */
+            .mode-selection > label:nth-of-type(2) {
+                flex-shrink: 0;
+                margin-right: 0; /* 移除右边距，让label和select紧挨着 */
+            }
+            
+            .mode-selection > select#routineSelect {
+                flex-shrink: 0;
+                max-width: 100px !important; /* 进一步缩短选择框宽度 */
+                width: auto !important;
+                margin-left: 0; /* 移除左边距 */
+            }
             
             .button-row {
                 flex-direction: row !important; /* 确保按钮行始终横排 */
-                flex-wrap: wrap; /* 允许换行以适应小屏幕 */
+                flex-wrap: nowrap; /* 按钮不换行，保持左右排列 */
+                justify-content: flex-end; /* 右对齐按钮 */
             }
             
             .input-wrapper {
@@ -2050,18 +2092,10 @@
                 box-sizing: border-box;
             }
             
-            /* 按钮行容器 */
-            .button-row {
-                display: flex;
-                gap: 8px;
-                width: 100%;
-            }
-            
             .send-button {
-                flex: 1; /* 按钮平分宽度 */
-                height: 45px;
+                height: 28px;
                 font-size: 0.9em;
-                min-width: 60px;
+                min-width: 28px;
             }
             
             /* Sidebar optimization */
@@ -2166,14 +2200,36 @@
                 min-width: 250px; /* 小屏设备输入框最小宽度 */
             }
             
+            .mode-selection {
+                width: 100%;
+                justify-content: flex-end;
+                flex-wrap: wrap; /* 允许换行以适应小屏幕 */
+                gap: 4px; /* 减小间距以适应小屏幕 */
+            }
+            
+            /* 确保"规则文件"label和选择框在同一行，不分开 */
+            .mode-selection > label:nth-of-type(2) {
+                flex-shrink: 0;
+                margin-right: 0; /* 移除右边距，让label和select紧挨着 */
+            }
+            
+            .mode-selection > select#routineSelect {
+                flex-shrink: 0;
+                max-width: 100px !important; /* 进一步缩短选择框宽度 */
+                width: auto !important;
+                margin-left: 0; /* 移除左边距 */
+            }
+            
             .button-row {
-                flex-wrap: wrap; /* 小屏下允许按钮换行 */
+                flex-direction: row !important; /* 确保按钮行始终横排 */
+                flex-wrap: nowrap; /* 按钮不换行，保持左右排列 */
+                justify-content: flex-end; /* 右对齐按钮 */
             }
             
             .send-button {
-                height: 40px;
+                height: 28px;
                 font-size: 0.8em;
-                min-width: 45px;
+                min-width: 28px;
             }
             
             .directory-list {
@@ -3106,16 +3162,6 @@
             </div>
         </div>
         <div class="user-auth-right">
-            <!-- Routine file selection (moved to top, left of model selection) -->
-            <div class="api-key-group">
-                <label for="routineSelect">
-                    <i class="fas fa-file-text"></i>
-                    {{ i18n.get('routine_file', '任务类型' if lang == 'zh' else 'Task Type') }}
-                </label>
-                <select id="routineSelect" class="api-key-input" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" style="width: 270px;">
-                    <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
-                </select>
-            </div>
             <div class="api-key-group">
                 <label for="modelSelect">
                     <i class="fas fa-brain"></i>
@@ -3235,21 +3281,40 @@
                             placeholder="{{ i18n.input_placeholder }}"
                             rows="1"
                         ></textarea>
-                    </div>
-                    <div class="button-row">
-                        <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
-                            <i class="fas fa-arrow-up"></i>
-                        </button>
-                        <button class="send-button" id="stopButton" style="display: none;">
-                            <i class="fas fa-stop"></i>
-                        </button>
-                        <button class="send-button" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
-                            <i class="fas fa-paint-brush"></i>
-                        </button>
+                        <div class="mode-selection">
+                            <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
+                                <span>{{ i18n.get('task_type', '任务类型' if lang == 'zh' else 'Task Type') }}:</span>
+                            </label>
+                            <select id="executionModeSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; width: 110px;">
+                                <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
+                                <option value="plan">{{ i18n.get('plan_mode', 'Plan模式' if lang == 'zh' else 'Plan Mode') }}</option>
+                            </select>
+                            <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
+                                <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
+                            </label>
+                            <select id="routineSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; max-width: 180px;" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
+                                <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
+                            </select>
+                            <label style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; font-size: 0.9em; white-space: nowrap;">
+                                <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
+                                <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
+                            </label>
+                            <div class="button-row">
+                                <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
+                                    <i class="fas fa-arrow-up"></i>
+                                </button>
+                                <button class="send-button" id="stopButton" style="display: none;">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                                <button class="send-button" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
+                                    <i class="fas fa-paint-brush"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
-                
+                <!-- User Input Modal for talk_to_user - 已删除，改为在聊天窗口中显示选择题 -->
                 
             </div>
             
@@ -3315,10 +3380,6 @@
                 <div id="configContainer" class="config-container" style="padding: 15px;">
                     <div class="config-options" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85em; justify-content: flex-start;">
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
                             <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
                         </label>
@@ -3348,10 +3409,6 @@
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
                             <input type="checkbox" id="enableJieba" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enablePlanMode" style="margin: 0;">
-                            <span>{{ i18n.get('enable_plan_mode', '计划模式' if lang == 'zh' else 'Plan Mode') }}</span>
                         </label>
                     </div>
 
@@ -3622,6 +3679,7 @@
         const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
         let isManualDisconnect = false;
         let isAutoReconnectInProgress = false;
+        let wasReconnected = false; // 标记是否是重连后的连接
         let heartbeatInterval = null;  // 心跳定时器
         const HEARTBEAT_INTERVAL = 120000;  // 每2分钟发送一次心跳（120秒）
         
@@ -3685,6 +3743,9 @@
         let lastMessageTime = 0;
         let pendingUserInput = ''; // 保存等待执行的用户输入
         let isCreatingDirectoryForTask = false; // 标记是否因为发送任务而创建目录
+        let userInputTimeoutTimer = null; // 用户输入超时定时器
+        let isWaitingForUserInput = false; // 标记是否有等待的user_input_request
+        let currentTaskPlanMode = false; // 保存当前任务的plan_mode状态
         
         // File monitoring variables
         let fileMonitoringTimer = null;
@@ -3804,6 +3865,11 @@
             expandedDirectories = new Set();
             collapsedSubDirectories = new Set();
             expandedSubDirectories = new Set();
+            isWaitingForUserInput = false;
+            if (userInputTimeoutTimer !== null) {
+                clearTimeout(userInputTimeoutTimer);
+                userInputTimeoutTimer = null;
+            }
             
             updateUserStatus('disconnected', I18N.user_disconnected);
             
@@ -3909,12 +3975,13 @@
             if (!socket) return;
             
             socket.on('connect', function() {
+                const shouldAutoSelectFirst = wasReconnected && !selectedDirectory;
+                wasReconnected = false; // 重置标志
                 isAutoReconnectInProgress = false;
                 // 等待status事件获取用户名，如果还没有获取到则暂时显示API Key
                 const identity = currentUser === 'default' ? I18N.default_user :
                     (currentUserName ? `${I18N.user_prefix}: ${currentUserName}` : `${I18N.user_prefix}: ${currentUser}`);
                 updateUserStatus('connected', I18N.user_connected, identity);
-                addMessage(I18N.connected, 'system');
 
                 // Save API key to localStorage for session restoration
                 try {
@@ -3929,7 +3996,8 @@
                 }
                 
                 // Refresh directories for this user
-                refreshDirectories();
+                // 如果是重连后且没有已选择的目录，则自动选择第一个目录
+                refreshDirectories(shouldAutoSelectFirst);
 
                 // 连接成功后，确保任务发起按钮处于就绪状态
                 ensureTaskTriggerReady();
@@ -3968,7 +4036,7 @@
                 
                 isAutoReconnectInProgress = true;
                 updateUserStatus('disconnected', I18N.user_disconnected);
-                addMessage(`🔌 ${I18N.disconnected} (${reason})`, 'warning');
+                // 不显示断开连接消息，只更新状态
                 
                 // If task is running, give special prompt
                 if (isTaskRunning) {
@@ -3985,7 +4053,7 @@
             
             socket.on('connect_error', function(error) {
                 if (isAutoReconnectInProgress) {
-                    addMessage(`⚠️ ${(I18N.reconnect_error || '自动重连出错')}: ${error.message}`, 'warning');
+                    // 自动重连时出错，不显示消息，只保持未连接状态
                     return;
                 }
                 updateUserStatus('error', I18N.connection_error || '连接错误');
@@ -4001,12 +4069,12 @@
 
             socket.on('reconnect_error', function(error) {
                 if (!isAutoReconnectInProgress) return;
-                const errorMessage = error && error.message ? error.message : 'unknown error';
-                addMessage(`⚠️ ${(I18N.reconnect_error || '自动重连出错')}: ${errorMessage}`, 'warning');
+                // 自动重连时出错，不显示消息，只保持未连接状态
             });
 
             socket.on('reconnect', function(attemptNumber) {
                 isAutoReconnectInProgress = false;
+                wasReconnected = true; // 标记为重连
                 addMessage(I18N.reconnect_success || '已重新连接到服务器', 'success');
                 ensureTaskTriggerReady();
             });
@@ -4049,6 +4117,188 @@
                     data.message.includes('no_task_running')
                 )) {
                     setTaskRunning(false);
+                    // 确保按钮处于启用状态
+                    if (sendButton) sendButton.disabled = false;
+                    if (newTaskButton) newTaskButton.disabled = false;
+                }
+            });
+
+            socket.on('user_input_request', function(data) {
+                console.log('[DEBUG] 🔔 前端收到 user_input_request 事件');
+                console.log('[DEBUG] 收到的数据:', data);
+                
+                // Clear any existing timeout timer
+                if (userInputTimeoutTimer !== null) {
+                    clearTimeout(userInputTimeoutTimer);
+                    userInputTimeoutTimer = null;
+                }
+                
+                // 设置等待用户输入标志
+                isWaitingForUserInput = true;
+                console.log('[DEBUG] ✅ 设置 isWaitingForUserInput = true');
+                
+                const query = data.query || '';
+                const timeout = data.timeout || 10;
+                console.log('[DEBUG] query:', query.substring(0, 100) + '...');
+                console.log('[DEBUG] timeout:', timeout);
+                
+                // 解析选项
+                const parseResult = parseOptions(query);
+                const options = parseResult.options;
+                const optionStartIndex = parseResult.optionStartIndex;
+                
+                // 调试信息：检查是否解析到选项
+                console.log('=== 选项解析调试信息 ===');
+                console.log('原始query长度:', query.length);
+                console.log('query前200字符:', query.substring(0, 200));
+                console.log('解析到的选项数量:', options.length);
+                console.log('选项起始行索引:', optionStartIndex);
+                if (options.length > 0) {
+                    console.log('✅ 成功识别到选项:');
+                    options.forEach((opt, idx) => {
+                        console.log(`  选项 ${idx + 1}: ${opt.label}. ${opt.text.substring(0, 50)}... (hasCheckbox: ${opt.hasCheckbox}, fullText: ${opt.fullText.substring(0, 50)})`);
+                    });
+                } else {
+                    console.log('❌ 未识别到任何选项');
+                    // 尝试查找方框字符
+                    const lines = query.split('\n');
+                    const checkboxChars = ['\u25A1', '\u2610'];
+                    let foundCheckboxes = [];
+                    lines.forEach((line, idx) => {
+                        checkboxChars.forEach(char => {
+                            if (line.includes(char)) {
+                                foundCheckboxes.push({line: idx + 1, content: line.substring(0, 80)});
+                            }
+                        });
+                    });
+                    if (foundCheckboxes.length > 0) {
+                        console.log('⚠️ 发现包含方框字符的行，但未解析为选项:');
+                        foundCheckboxes.forEach(item => {
+                            console.log(`  第${item.line}行: ${item.content}`);
+                            // 尝试手动解析这一行
+                            const trimmed = item.content.trim();
+                            const manualMatch = trimmed.match(/.*?[\u25A1\u2610]\s*([A-Z])[.)]\s*(.+)$/);
+                            if (manualMatch) {
+                                console.log(`    手动解析结果: label=${manualMatch[1]}, text=${manualMatch[2].substring(0, 30)}`);
+                            }
+                        });
+                    }
+                }
+                console.log('======================');
+                
+                // 在聊天窗口中显示问题和选项
+                // 如果有选项，需要从query中移除选项部分
+                let questionText = query;
+                if (options.length > 0 && optionStartIndex >= 0) {
+                    // 只保留选项之前的内容作为问题
+                    const lines = query.split('\n');
+                    questionText = lines.slice(0, optionStartIndex).join('\n').trim();
+                    
+                    // 如果questionText为空或太短，尝试从query中移除所有选项行
+                    if (!questionText || questionText.length < 10) {
+                        // 移除所有包含选项的行
+                        const allLines = query.split('\n');
+                        const filteredLines = allLines.filter((line, idx) => {
+                            // 检查这一行是否匹配选项格式
+                            const trimmed = line.trim();
+                            if (!trimmed) return true; // 保留空行
+                            // 检查是否是选项行
+                            const isOptionLine = /.*?[\u25A1\u2610\u25A0-\u25AF\u2611\u2612]\s*[A-Z][.)]\s*/.test(trimmed) ||
+                                                 /^[-•]?\s*[A-Z][.)]\s*/.test(trimmed);
+                            return !isOptionLine;
+                        });
+                        questionText = filteredLines.join('\n').trim();
+                    }
+                }
+                
+                // 显示问题（如果questionText不为空）
+                if (questionText) {
+                    addMessage(questionText, 'info');
+                }
+                
+                // 如果有选项，显示选择题
+                if (options.length > 0) {
+                    console.log('✅ 准备显示', options.length, '个选项的复选框');
+                    // 创建选择题容器
+                    const choiceContainer = document.createElement('div');
+                    choiceContainer.className = 'message choice-message';
+                    choiceContainer.style.cssText = 'padding: 15px; background: var(--bg-secondary); border-radius: 8px; margin: 10px 0;';
+                    
+                    // 为每个选项创建复选框
+                    options.forEach(function(option) {
+                        const optionDiv = document.createElement('div');
+                        optionDiv.style.cssText = 'display: flex; align-items: flex-start; padding: 8px 0; cursor: pointer;';
+                        optionDiv.className = 'choice-option';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = option.fullText;
+                        checkbox.style.cssText = 'margin-right: 10px; margin-top: 3px; cursor: pointer; width: 18px; height: 18px;';
+                        checkbox.className = 'choice-checkbox';
+                        
+                        const label = document.createElement('label');
+                        label.style.cssText = 'flex: 1; cursor: pointer; color: var(--text-primary); line-height: 1.5;';
+                        label.textContent = option.fullText;
+                        label.setAttribute('for', 'choice-' + option.label);
+                        checkbox.id = 'choice-' + option.label;
+                        
+                        // 复选框状态变化时不再发送，改为仅显示状态
+                        checkbox.addEventListener('change', function() {
+                            // 不再发送user_input_response，用户需要在输入框中输入
+                            // 仅更新UI状态
+                            if (checkbox.checked) {
+                                // 禁用所有复选框，防止重复选择
+                                document.querySelectorAll('.choice-checkbox').forEach(function(cb) {
+                                    cb.disabled = true;
+                                });
+                                // 显示已选择的状态
+                                document.querySelectorAll('.choice-option').forEach(function(opt) {
+                                    opt.style.opacity = '0.6';
+                                });
+                            }
+                        });
+                        
+                        // 点击选项的其他部分时，切换复选框状态（仅用于显示，不发送）
+                        optionDiv.addEventListener('click', function(e) {
+                            // 如果点击的是复选框本身，不处理（change事件会处理）
+                            if (e.target === checkbox) {
+                                return;
+                            }
+                            // 点击选项的其他部分，切换复选框状态
+                            checkbox.checked = !checkbox.checked;
+                            // 触发change事件
+                            checkbox.dispatchEvent(new Event('change'));
+                        });
+                        
+                        optionDiv.appendChild(checkbox);
+                        optionDiv.appendChild(label);
+                        choiceContainer.appendChild(optionDiv);
+                    });
+                    
+                    // 添加到聊天窗口
+                    const chatMessages = document.getElementById('chatMessages');
+                    if (chatMessages) {
+                        chatMessages.appendChild(choiceContainer);
+                        // 自动滚动到底部
+                        throttledAutoScroll(true);
+                    }
+                } else {
+                    // 如果没有选项，显示文本输入提示（保留原有功能作为后备）
+                    addMessage('请直接在输入框中回复', 'info');
+                }
+                
+                // Set timeout if specified
+                if (timeout > 0 && timeout !== -1) {
+                    console.log('🔔 Setting user input timeout:', timeout, 'seconds');
+                    userInputTimeoutTimer = setTimeout(function() {
+                        console.log('⏰ User input timeout reached');
+                        // Timeout - send empty response
+                        socket.emit('user_input_response', { input: '' });
+                        userInputTimeoutTimer = null;
+                        isWaitingForUserInput = false;
+                    }, timeout * 1000);
+                } else {
+                    console.log('🔔 User input timeout disabled (timeout =', timeout, ')');
                 }
             });
 
@@ -4057,6 +4307,9 @@
                 setTaskRunning(false);
                 // 任务完成时清理待执行内容
                 pendingUserInput = '';
+                
+                // Check if this was a plan mode task using saved state
+                const wasPlanMode = currentTaskPlanMode;
                 
                 // After task completion, if there's a selected directory, keep selection state, otherwise switch to continue mode
                 if (selectedDirectory) {
@@ -4071,6 +4324,22 @@
                     if (data.output_dir) {
                         expandedDirectories.add(data.output_dir);
                     }
+                }
+                
+                // If plan mode completed, auto-fill input and switch to agent mode
+                if (wasPlanMode) {
+                    const userInput = document.getElementById('userInput');
+                    const modeSelect = document.getElementById('executionModeSelect');
+                    if (userInput && modeSelect) {
+                        userInput.value = '@plan.md 请按照这个计划执行';
+                        modeSelect.value = 'agent';
+                        // Trigger resize to adjust textarea height
+                        if (typeof resizeTextarea === 'function') {
+                            resizeTextarea();
+                        }
+                    }
+                    // Reset plan mode state after handling
+                    currentTaskPlanMode = false;
                 }
                 
                 // Refresh directory list with longer delay to ensure files are generated
@@ -4088,6 +4357,8 @@
                     pendingUserInput = '';
                     resizeTextarea();
                 }
+                // Reset plan mode state
+                currentTaskPlanMode = false;
                 // Keep current task mode
                 // Refresh directories after stopping task
                 setTimeout(refreshDirectories, 1000);
@@ -4102,6 +4373,8 @@
                     pendingUserInput = '';
                     resizeTextarea();
                 }
+                // Reset plan mode state
+                currentTaskPlanMode = false;
             });
 
             socket.on('directory_selected', function(data) {
@@ -4135,7 +4408,7 @@
                         userInput.value = pendingUserInput;
                         // 延迟一点时间确保目录创建完成
                         setTimeout(() => {
-                            sendMessage(false);
+                            sendMessage(null); // Pass null to auto-read from executionModeSelect
                         }, 500);
                         pendingUserInput = ''; // 清空待发送消息
                     }
@@ -4156,6 +4429,123 @@
                     addMessage(`${I18N.chat_cleared}: ${data.error}`, 'error');
                 }
             });
+        }
+
+        // 解析选项的通用函数（识别 A. B. C. 或 - A. - B. 或 □ A. □ B. 等格式）
+        // 提取为全局函数，可以在多个地方使用
+        function parseOptions(queryText) {
+            const lines = queryText.split('\n');
+            const options = [];
+            let currentOption = null;
+            let optionStartIndex = -1;
+            
+            // 检查字符是否是方框字符（通过Unicode代码点）
+            function isCheckboxChar(char) {
+                if (!char) return false;
+                const code = char.charCodeAt(0);
+                // □ (U+25A1), ☐ (U+2610), 以及其他方框字符范围
+                return (code === 0x25A1) || (code === 0x2610) || 
+                       (code >= 0x25A0 && code <= 0x25AF) ||
+                       (code === 0x2611) || (code === 0x2612); // ☑ ☒
+            }
+            
+            // 匹配方框字符开头的选项：□ A. 内容 或 ☐ A. 内容
+            // 匹配普通选项：A. 内容 或 - A. 内容 或 A) 内容
+            // 改进：匹配包含方框字符的行，方框字符可以在任意位置（但通常在开头）
+            const checkboxOptionRegex = /.*?[\u25A1\u2610\u25A0-\u25AF\u2611\u2612]\s*([A-Z])[.)]\s*(.+)$/;
+            // 再匹配普通选项（不包含方框字符）
+            const normalOptionRegex = /^[-•]?\s*([A-Z])[.)]\s*(.+)$/;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmedLine = line.trim();
+                
+                // 跳过空行
+                if (!trimmedLine) {
+                    continue;
+                }
+                
+                // 检查是否包含方框字符（不一定是第一个字符）
+                const hasCheckbox = isCheckboxChar(trimmedLine.charAt(0)) || 
+                                    trimmedLine.includes('\u25A1') || 
+                                    trimmedLine.includes('\u2610') ||
+                                    /[\u25A0-\u25AF\u2611\u2612]/.test(trimmedLine);
+                
+                // 先尝试匹配包含方框字符的选项，再匹配普通选项
+                let optionMatch = null;
+                if (hasCheckbox) {
+                    // 尝试多种匹配方式
+                    // 方式1: 标准格式 □ A. 内容
+                    optionMatch = trimmedLine.match(/.*?[\u25A1\u2610\u25A0-\u25AF\u2611\u2612]\s*([A-Z])[.)]\s*(.+)$/);
+                    // 方式2: 如果方式1失败，尝试更宽松的匹配
+                    if (!optionMatch) {
+                        optionMatch = trimmedLine.match(/.*?[\u25A1\u2610\u25A0-\u25AF\u2611\u2612].*?([A-Z])[.)]\s*(.+)$/);
+                    }
+                    // 方式3: 如果还是失败，尝试匹配checkboxOptionRegex
+                    if (!optionMatch) {
+                        optionMatch = trimmedLine.match(checkboxOptionRegex);
+                    }
+                }
+                // 如果还是没有匹配到，尝试普通选项格式
+                if (!optionMatch) {
+                    optionMatch = trimmedLine.match(normalOptionRegex);
+                }
+                
+                // 调试：如果包含方框字符但没有匹配到，打印调试信息
+                if (hasCheckbox && !optionMatch) {
+                    console.log(`⚠️ 包含方框字符但未匹配到选项，行内容: ${trimmedLine.substring(0, 80)}`);
+                }
+                
+                if (optionMatch) {
+                    const label = optionMatch[1];
+                    const text = optionMatch[2];
+                    
+                    // 如果之前有选项，先保存
+                    if (currentOption) {
+                        options.push(currentOption);
+                    }
+                    if (optionStartIndex === -1) {
+                        optionStartIndex = i;
+                    }
+                    // 移除方框字符，保留选项文本
+                    // 移除行首的方框字符和空格，或者移除行中任意位置的方框字符
+                    let optionText = trimmedLine;
+                    // 先移除行首的方框字符
+                    optionText = optionText.replace(/^[\s\u25A1\u2610\u25A0-\u25AF\u2611\u2612]+/, '');
+                    // 再移除行中任意位置的方框字符（保留字母和内容）
+                    optionText = optionText.replace(/[\u25A1\u2610\u25A0-\u25AF\u2611\u2612]/g, '').trim();
+                    // 如果移除后格式不对，使用label和text重新构建
+                    if (!optionText.match(new RegExp(`^${label}[.)]`))) {
+                        optionText = `${label}. ${text}`;
+                    }
+                    currentOption = {
+                        label: label,
+                        text: text,
+                        fullText: optionText, // 移除方框字符后的完整文本
+                        originalText: trimmedLine, // 保留原始文本用于显示
+                        startIndex: i,
+                        hasCheckbox: hasCheckbox // 标记是否包含方框字符
+                    };
+                } else if (currentOption && trimmedLine) {
+                    // 如果当前行不是新选项，但当前有选项，可能是选项的续行
+                    // 检查是否是缩进的行（可能是选项的续行）
+                    if (line.match(/^\s{2,}/) || line.match(/^\s*[-•]/) || isCheckboxChar(trimmedLine.charAt(0))) {
+                        const cleanedLine = trimmedLine.replace(/^[\s\u25A1\u2610\u25A0-\u25AF\u2611\u2612]*/, '').trim();
+                        currentOption.text += ' ' + cleanedLine;
+                        currentOption.fullText += '\n' + cleanedLine;
+                    } else {
+                        // 如果不是缩进，可能是新内容，结束当前选项
+                        options.push(currentOption);
+                        currentOption = null;
+                    }
+                }
+            }
+            // 保存最后一个选项
+            if (currentOption) {
+                options.push(currentOption);
+            }
+            
+            return { options: options, optionStartIndex: optionStartIndex };
         }
 
         // Message handling
@@ -4224,7 +4614,17 @@
         function detectJsonStart(message) {
             const trimmed = message.trim();
             // 检测是否以{开头（忽略前导空格）
-            return trimmed.startsWith('{');
+            // 也检测是否以💬开头后跟{（处理带emoji前缀的情况）
+            if (trimmed.startsWith('{')) {
+                return true;
+            }
+            // 检测是否以💬开头，且后面包含{
+            if (trimmed.startsWith('💬')) {
+                // 移除💬后检查是否以{开头
+                const withoutEmoji = trimmed.replace(/^💬\s*/, '').trim();
+                return withoutEmoji.startsWith('{');
+            }
+            return false;
         }
         
         /**
@@ -4492,6 +4892,37 @@
             let filtered = jsonContent;
             filtered = filtered.replace(/```json/g, '');
             filtered = filtered.replace(/```/g, '');
+            // 移除💬 emoji前缀
+            filtered = filtered.replace(/^💬\s*/g, '');
+            filtered = filtered.replace(/\s*💬\s*/g, '');
+            
+            // 清理多余的换行，使其与终端打印一致
+            // 移除开头的空行和空白
+            filtered = filtered.replace(/^\s*\n+/, '');
+            // 移除结尾的空行和空白
+            filtered = filtered.replace(/\n+\s*$/, '');
+            
+            // 将连续的多个换行（3个或更多）替换为单个换行
+            // 这样可以移除多余的空行，但保留JSON格式中的正常换行
+            filtered = filtered.replace(/\n{3,}/g, '\n');
+            
+            // 清理行尾空白（但保留行首空白，用于JSON缩进）
+            const lines = filtered.split('\n');
+            const cleanedLines = lines.map(line => {
+                // 如果行是空的或只包含空白，返回空字符串
+                if (!line.trim()) {
+                    return '';
+                }
+                // 保留行首空白（用于JSON缩进），但移除行尾空白
+                return line.replace(/\s+$/, '');
+            });
+            
+            // 重新组合，移除连续的空行（最多保留一个空行）
+            filtered = cleanedLines.join('\n').replace(/\n\n\n+/g, '\n\n');
+            
+            // 最后清理：移除开头和结尾的空行
+            filtered = filtered.replace(/^\n+/, '').replace(/\n+$/, '');
+            
             return filtered;
         }
         
@@ -4582,8 +5013,11 @@
             // 注意：空行检查在JSON检测之后进行，因为JSON检测可能需要这些标记
             // 如果正在收集JSON，继续追加内容
             if (jsonCollectingState.isCollecting) {
-                // 强制检测：如果消息包含💬，强制结束JSON收集，将💬显示到框外
-                if (message.includes('💬')) {
+                // 强制检测：如果消息中间包含💬（不是开头），强制结束JSON收集，将💬显示到框外
+                // 如果💬在开头，则将其包含在JSON内容中（会在filterJsonMarkers中移除）
+                const trimmedMsg = message.trim();
+                const hasEmojiInMiddle = trimmedMsg.includes('💬') && !trimmedMsg.startsWith('💬');
+                if (hasEmojiInMiddle) {
                     // 完成JSON收集（不包含💬消息）
                     resetJsonCollectingState();
                     lastMessageType = null;
@@ -4593,7 +5027,13 @@
                     // 将💬消息作为普通消息显示（会继续执行下面的逻辑）
                     // 不return，继续处理当前消息
                 } else {
-                    jsonCollectingState.jsonContent += message + '\n';
+                    // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                    // 如果消息不以换行结尾，添加换行
+                    if (message.endsWith('\n')) {
+                        jsonCollectingState.jsonContent += message;
+                    } else {
+                        jsonCollectingState.jsonContent += message + '\n';
+                    }
                     jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
                     
                     // 更新折叠框内容
@@ -4639,7 +5079,8 @@
             // JSON检测和处理逻辑
             // 如果正在等待JSON结束标记（```）
             if (jsonCollectingState.waitingForJsonEnd && type === 'info') {
-                // 强制检测：如果消息包含💬，强制结束JSON收集，将💬显示到框外
+                // 强制检测：如果消息包含💬（新工具调用开始），强制结束之前的JSON收集
+                // 注意：如果💬在消息开头，会在detectJsonStart中识别为新JSON，这里结束之前的收集
                 if (message.includes('💬')) {
                     // 完成收集，重置状态（不包含💬消息）
                     resetJsonCollectingState();
@@ -4651,7 +5092,12 @@
                     const trimmedMessage = message.trim();
                     if (trimmedMessage === '```') {
                         // 将结束标记包含到JSON内容中
-                        jsonCollectingState.jsonContent += message + '\n';
+                        // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                        if (message.endsWith('\n')) {
+                            jsonCollectingState.jsonContent += message;
+                        } else {
+                            jsonCollectingState.jsonContent += message + '\n';
+                        }
                         
                         // 更新折叠框内容
                         if (jsonCollectingState.jsonContainer) {
@@ -4694,7 +5140,12 @@
                     // 开始收集JSON
                     jsonCollectingState.isCollecting = true;
                     jsonCollectingState.waitingForJsonStart = false;
-                    jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message + '\n';
+                    // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                    if (message.endsWith('\n')) {
+                        jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message;
+                    } else {
+                        jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message + '\n';
+                    }
                     jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
                     
                     // 尝试提取工具名称
@@ -4775,7 +5226,12 @@
                 if (trimmedMessage === '```json' || trimmedMessage === '```') {
                     // 开始等待JSON开始
                     jsonCollectingState.waitingForJsonStart = true;
-                    jsonCollectingState.jsonContent = message + '\n';
+                    // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                    if (message.endsWith('\n')) {
+                        jsonCollectingState.jsonContent = message;
+                    } else {
+                        jsonCollectingState.jsonContent = message + '\n';
+                    }
                     
                     // 创建一个临时的折叠框（但先不显示内容，等待JSON开始）
                     jsonCollectingState.jsonContainer = createJsonCollapsible(I18N.tool_call || '工具调用');
@@ -4800,7 +5256,12 @@
             if (type === 'info' && detectJsonStart(message)) {
                 // 开始收集JSON
                 jsonCollectingState.isCollecting = true;
-                jsonCollectingState.jsonContent = message + '\n';
+                // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                if (message.endsWith('\n')) {
+                    jsonCollectingState.jsonContent = message;
+                } else {
+                    jsonCollectingState.jsonContent = message + '\n';
+                }
                 jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
                 
                 // 尝试提取工具名称
@@ -4916,13 +5377,125 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
             
-            // Create text element, use textContent to ensure safe display（使用过滤后的消息）
-            const textSpan = document.createElement('span');
-            textSpan.className = 'message-text';
-            textSpan.textContent = filteredMessage;
-            
-            // Directly add text, no icons
-            messageDiv.appendChild(textSpan);
+            // 对于info类型的消息，检测是否包含方框字符和选项
+            // 如果包含，将方框字符替换为checkbox
+            if (type === 'info') {
+                const parseResult = parseOptions(filteredMessage);
+                const options = parseResult.options;
+                const optionStartIndex = parseResult.optionStartIndex;
+                
+                // 检查是否有包含方框字符的选项
+                const hasCheckboxOptions = options.some(opt => opt.hasCheckbox);
+                
+                if (hasCheckboxOptions && options.length > 0) {
+                    // 分离问题部分和选项部分
+                    let questionText = filteredMessage;
+                    if (optionStartIndex >= 0) {
+                        const lines = filteredMessage.split('\n');
+                        questionText = lines.slice(0, optionStartIndex).join('\n').trim();
+                        
+                        // 如果questionText为空或太短，尝试从消息中移除所有选项行
+                        if (!questionText || questionText.length < 10) {
+                            const allLines = filteredMessage.split('\n');
+                            const filteredLines = allLines.filter((line, idx) => {
+                                const trimmed = line.trim();
+                                if (!trimmed) return true; // 保留空行
+                                // 检查是否是选项行
+                                const isOptionLine = /.*?[\u25A1\u2610\u25A0-\u25AF\u2611\u2612]\s*[A-Z][.)]\s*/.test(trimmed) ||
+                                                     /^[-•]?\s*[A-Z][.)]\s*/.test(trimmed);
+                                return !isOptionLine;
+                            });
+                            questionText = filteredLines.join('\n').trim();
+                        }
+                    }
+                    
+                    // 显示问题部分（如果有）
+                    if (questionText) {
+                        const questionSpan = document.createElement('span');
+                        questionSpan.className = 'message-text';
+                        questionSpan.textContent = questionText;
+                        messageDiv.appendChild(questionSpan);
+                    }
+                    
+                    // 创建选项容器
+                    const choiceContainer = document.createElement('div');
+                    choiceContainer.className = 'message choice-message';
+                    choiceContainer.style.cssText = 'padding: 15px; background: var(--bg-secondary); border-radius: 8px; margin: 10px 0;';
+                    
+                    // 为每个选项创建复选框
+                    options.forEach(function(option) {
+                        // 只处理包含方框字符的选项
+                        if (!option.hasCheckbox) {
+                            return;
+                        }
+                        
+                        const optionDiv = document.createElement('div');
+                        optionDiv.style.cssText = 'display: flex; align-items: flex-start; padding: 8px 0; cursor: pointer;';
+                        optionDiv.className = 'choice-option';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = option.fullText;
+                        checkbox.style.cssText = 'margin-right: 10px; margin-top: 3px; cursor: pointer; width: 18px; height: 18px;';
+                        checkbox.className = 'choice-checkbox';
+                        
+                        const label = document.createElement('label');
+                        label.style.cssText = 'flex: 1; cursor: pointer; color: var(--text-primary); line-height: 1.5;';
+                        label.textContent = option.fullText;
+                        label.setAttribute('for', 'choice-' + option.label);
+                        checkbox.id = 'choice-' + option.label;
+                        
+                        // 复选框状态变化时不再发送，改为仅显示状态
+                        checkbox.addEventListener('change', function() {
+                            // 不再发送user_input_response，用户需要在输入框中输入
+                            // 仅更新UI状态
+                            if (checkbox.checked) {
+                                // 禁用所有复选框，防止重复选择
+                                document.querySelectorAll('.choice-checkbox').forEach(function(cb) {
+                                    cb.disabled = true;
+                                });
+                                // 显示已选择的状态
+                                document.querySelectorAll('.choice-option').forEach(function(opt) {
+                                    opt.style.opacity = '0.6';
+                                });
+                            }
+                        });
+                        
+                        // 点击选项的其他部分时，切换复选框状态（仅用于显示，不发送）
+                        optionDiv.addEventListener('click', function(e) {
+                            // 如果点击的是复选框本身，不处理（change事件会处理）
+                            if (e.target === checkbox) {
+                                return;
+                            }
+                            // 点击选项的其他部分，切换复选框状态
+                            checkbox.checked = !checkbox.checked;
+                            // 触发change事件
+                            checkbox.dispatchEvent(new Event('change'));
+                        });
+                        
+                        optionDiv.appendChild(checkbox);
+                        optionDiv.appendChild(label);
+                        choiceContainer.appendChild(optionDiv);
+                    });
+                    
+                    // 如果有选项，添加到消息容器
+                    if (choiceContainer.children.length > 0) {
+                        messageDiv.appendChild(choiceContainer);
+                    }
+                } else {
+                    // 如果没有方框字符选项，正常显示消息
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'message-text';
+                    textSpan.textContent = filteredMessage;
+                    messageDiv.appendChild(textSpan);
+                }
+            } else {
+                // 对于其他类型的消息，正常显示
+                const textSpan = document.createElement('span');
+                textSpan.className = 'message-text';
+                textSpan.textContent = filteredMessage;
+                messageDiv.appendChild(textSpan);
+            }
             
             chatMessages.appendChild(messageDiv);
             
@@ -5013,7 +5586,19 @@
         }
 
         // Input handling
-        async function sendMessage(planMode = false) {
+        async function sendMessage(planMode = null) {
+            // Get mode from select if not provided
+            if (planMode === null) {
+                const modeSelect = document.getElementById('executionModeSelect');
+                planMode = modeSelect ? modeSelect.value === 'plan' : false;
+                console.log('🔧 Frontend: planMode from executionModeSelect:', planMode, 'select value:', modeSelect ? modeSelect.value : 'N/A');
+            } else {
+                console.log('🔧 Frontend: planMode passed as parameter:', planMode);
+            }
+            
+            // Save current task's plan_mode state
+            currentTaskPlanMode = planMode;
+            
             let message = userInput.value.trim();
             if (isTaskRunning || !socket || !isConnected) return;
 
@@ -5090,12 +5675,6 @@
 
                 // Immediately set task running state for better user experience
                 setTaskRunning(true);
-
-                // Display execution mode information
-                let modeInfo = '';
-                if (planMode) {
-                    modeInfo = I18N.plan_mode_suffix;
-                }
 
                 // Get execution rounds from config slider
                 const configRoundsSlider = document.getElementById('configRoundsSlider');
@@ -5284,11 +5863,6 @@
                     setTimeout(() => {
                         console.log('🚀 Auto-connecting with saved session...');
                         connectUser();
-                        
-                        // 显示会话恢复提示
-                        setTimeout(() => {
-                            addMessage(`🔄 ${I18N.session_restored || '已恢复上次登录会话'}`, 'info');
-                        }, 1000);
                     }, 500);
                     
                     return true; // 返回true表示找到了保存的会话并尝试恢复
@@ -5371,9 +5945,18 @@
                     guiConfig.model_api_base = modelConfig.api_base;
                 }
 
+                // Get plan_mode from executionModeSelect
+                const modeSelect = document.getElementById('executionModeSelect');
+                const planMode = modeSelect ? modeSelect.value === 'plan' : false;
+                console.log('🔧 Frontend (executeSelectedTask): planMode:', planMode, 'select value:', modeSelect ? modeSelect.value : 'N/A');
+                
+                // Save current task's plan_mode state
+                currentTaskPlanMode = planMode;
+
                 socket.emit('execute_task', {
                     requirement: message,
                     type: 'selected',
+                    plan_mode: planMode,
                     gui_config: guiConfig
                 });
                 
@@ -5503,8 +6086,9 @@
             }
         });
 
-        sendButton.addEventListener('click', () => sendMessage(false));
-
+        sendButton.addEventListener('click', () => sendMessage(null)); // Pass null to auto-read from executionModeSelect
+        
+        // User input modal handlers - 已删除，改为在聊天窗口中显示选择题
 
         newTaskButton.addEventListener('click', createNewDirectory);
 
@@ -5545,6 +6129,55 @@
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
+                
+                console.log('[DEBUG] 回车键按下');
+                console.log('[DEBUG] isWaitingForUserInput:', isWaitingForUserInput);
+                console.log('[DEBUG] 输入框内容:', userInput.value);
+                console.log('[DEBUG] socket状态:', socket ? 'connected' : 'null');
+                
+                // 如果正在等待user_input_request，发送输入内容到终端
+                if (isWaitingForUserInput) {
+                    const inputText = userInput.value.trim();
+                    console.log('[DEBUG] ✅ 检测到等待用户输入，准备发送');
+                    console.log('[DEBUG] 发送内容:', inputText);
+                    console.log('[DEBUG] 发送数据:', { input: inputText });
+                    
+                    // 发送用户输入到终端
+                    socket.emit('user_input_response', { input: inputText });
+                    console.log('[DEBUG] ✅ 已发送 user_input_response 事件');
+                    
+                    // 清除等待标志
+                    isWaitingForUserInput = false;
+                    console.log('[DEBUG] ✅ 已清除 isWaitingForUserInput 标志');
+                    
+                    // 清除超时定时器
+                    if (userInputTimeoutTimer !== null) {
+                        clearTimeout(userInputTimeoutTimer);
+                        userInputTimeoutTimer = null;
+                        console.log('[DEBUG] ✅ 已清除超时定时器');
+                    }
+                    
+                    // 清空输入框（立即执行，确保在return之前完成）
+                    console.log('[DEBUG] 清空前输入框内容:', userInput.value);
+                    userInput.value = '';
+                    console.log('[DEBUG] ✅ 已清空输入框，当前内容:', userInput.value);
+                    resizeTextarea();
+                    console.log('[DEBUG] ✅ 已调用 resizeTextarea()');
+                    
+                    // 再次确认清空（防止被其他代码覆盖）
+                    setTimeout(function() {
+                        if (userInput.value !== '') {
+                            console.log('[DEBUG] ⚠️ 检测到输入框被重新设置，再次清空');
+                            userInput.value = '';
+                            resizeTextarea();
+                        }
+                    }, 10);
+                    
+                    return;
+                } else {
+                    console.log('[DEBUG] ⚠️ 不在等待用户输入状态，忽略回车');
+                }
+                
                 // 移除自动执行，用户需要点击按钮来执行任务
                 // sendMessage(false); // Default to direct execution mode
             }
@@ -5865,8 +6498,9 @@
          * 目录管理 - 刷新目录列表
          * @description 从后端获取最新的工作目录列表并更新UI显示
          * 保持用户的展开/收起状态、目录列表滚动位置和每个展开目录的文件树滚动位置，直接更新列表不显示加载状态
+         * @param {boolean} autoSelectFirst - 如果为true且没有已选择的目录，则自动选择第一个目录
          */
-                        function refreshDirectories() {
+                        function refreshDirectories(autoSelectFirst = false) {
             // 保存当前展开状态，避免刷新后用户展开的目录被重置
             const currentExpanded = new Set(expandedDirectories);
 
@@ -5940,6 +6574,13 @@
                                     }
                                 }
                             });
+                            
+                            // 如果是重连后且没有已选择的目录，自动选择第一个目录
+                            if (autoSelectFirst && !selectedDirectory && data.directories && data.directories.length > 0) {
+                                const firstDirectory = data.directories[0].name;
+                                console.log(`🔄 Auto-selecting first directory after reconnect: ${firstDirectory}`);
+                                selectDirectory(firstDirectory);
+                            }
                         }, 0);
                     } else {
                         directoryList.innerHTML = `

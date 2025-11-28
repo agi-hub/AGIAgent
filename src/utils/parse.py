@@ -238,12 +238,40 @@ def fix_json_string_values_robust(json_str: str) -> str:
         # 找到最后的}（JSON对象结束）
         last_brace = json_str.rfind('}')
         if last_brace > code_start:
-            # 在最后的}之前找引号（code_edit值的结束引号）
-            quote_end_pos = json_str.rfind('"', code_start, last_brace)
+            # 改进的引号查找策略：从后往前查找，找到第一个未转义的引号
+            # 这个引号应该是code_edit值的结束引号
+            quote_end_pos = -1
+            i = last_brace - 1
+            escape_count = 0
+            
+            # 从最后的}往前查找引号
+            while i >= code_start:
+                if json_str[i] == '\\':
+                    escape_count += 1
+                    i -= 1
+                    continue
+                elif json_str[i] == '"':
+                    # 如果escape_count是偶数，说明这是未转义的引号
+                    if escape_count % 2 == 0:
+                        # 检查这个引号后面是否跟着结束标记（, } 或换行+}）
+                        remaining = json_str[i+1:last_brace+1].lstrip()
+                        if (remaining.startswith(',') or remaining.startswith('}') or 
+                            remaining.startswith('\n') or remaining.startswith('\r')):
+                            quote_end_pos = i
+                            break
+                    escape_count = 0
+                else:
+                    escape_count = 0
+                i -= 1
+            
+            # 如果没找到，使用原来的方法：在最后的}之前找最后一个引号
+            if quote_end_pos == -1:
+                quote_end_pos = json_str.rfind('"', code_start, last_brace)
+            
             if quote_end_pos > code_start:
                 value_content = json_str[code_start:quote_end_pos]
-                # 转义控制字符，但要小心处理已经转义的字符
-                # 策略：只转义未转义的控制字符
+                # 转义控制字符和未转义的引号
+                # 策略：只转义未转义的控制字符和引号
                 fixed_value = []
                 i = 0
                 while i < len(value_content):
@@ -278,19 +306,13 @@ def fix_json_string_values_robust(json_str: str) -> str:
                 
                 fixed_value_str = ''.join(fixed_value)
                 
-                # 还需要转义未转义的引号
-                # 但要小心：已经转义的引号（\"）不需要再转义
-                # 简单策略：在字符串值中，所有未转义的引号都需要转义
-                # 但我们已经转义了反斜杠，所以需要考虑
-                # 更好的方法：在字符级处理时就已经处理了引号，这里只需要处理控制字符
-                
                 # 尝试解析修复后的JSON
                 test_json = json_str[:code_start] + fixed_value_str + json_str[quote_end_pos:]
                 try:
                     json.loads(test_json)
                     return test_json
                 except json.JSONDecodeError as e:
-                    # 如果还有引号问题，使用通用逻辑继续修复
+                    # 如果还有问题，使用通用逻辑继续修复
                     # 但至少控制字符已经修复了
                     json_str = test_json  # 使用部分修复的JSON继续
                     pass  # 继续使用通用逻辑

@@ -339,7 +339,7 @@ I18N_TEXTS = {
         'page_title': f'{APP_NAME}',
         'app_title': f'{APP_NAME}',
         'app_subtitle': '',
-        'connected': f'已连接 {APP_NAME}',
+        'connected': '',  # 已删除连接成功消息
         
         # Button text
         'execute_direct': '直接执行',
@@ -393,7 +393,6 @@ I18N_TEXTS = {
         'confirm_clear_chat': '确定要清空所有日志和历史对话吗？此操作不可撤销。',
         
         # Mode information
-        'plan_mode_info': '🔄 启用计划模式：将先分解任务再执行',
         'direct_mode_info': '⚡ 直接执行模式：不进行任务分解',
         'new_mode_info': '新建目录模式 - 点击绿色按钮创建新工作目录，或选择现有目录',
         'selected_dir_info': '已选择目录',
@@ -448,12 +447,19 @@ I18N_TEXTS = {
         'show_config_options': '显示配置选项',
         'hide_config_options': '隐藏配置选项',
         'routine_file': '任务类型',
+        'task_type': '模式选择',
         'no_routine': '请选择...',
         'enable_web_search': '搜索网络',
         'enable_multi_agent': '启动多智能体',
         'enable_long_term_memory': '启动长期记忆',
         'enable_mcp': 'MCP工具配置',
         'enable_jieba': '启用中文分词',
+        'execution_mode': '执行模式',
+        'agent_mode': 'Agent模式',
+        'plan_mode': 'Plan模式',
+        'user_input_request': '用户输入请求',
+        'enter_your_response': '请输入您的回复...',
+        'submit': '提交',
         
         # Others
         'deleting': '删除中...',
@@ -477,7 +483,6 @@ I18N_TEXTS = {
         'new_messages': '条新消息',
         'auto_scroll': '自动滚动',
         'scroll_to_bottom': '滚动到底部',
-        'plan_mode_suffix': ' (计划模式)',
         'continue_mode_info': '继续模式 - 将使用上次的工作目录',
         'create_or_select_directory': '请先点击绿色按钮创建新工作目录，或选择右侧的现有目录',
         'select_directory_first': '请先创建或者选择一个工作目录，鼠标单击工作目录中的某个文件夹，直到变为蓝色代表选中',
@@ -749,7 +754,6 @@ I18N_TEXTS = {
         'confirm_clear_chat': 'Are you sure you want to clear all chat logs and conversation history? This operation cannot be undone.',
         
         # Mode info
-        'plan_mode_info': '🔄 Plan mode enabled: Tasks will be decomposed before execution',
         'direct_mode_info': '⚡ Direct execution mode: No task decomposition',
         'new_mode_info': 'New directory mode - Click green button to create new workspace, or select existing directory',
         'selected_dir_info': 'Selected directory',
@@ -804,12 +808,19 @@ I18N_TEXTS = {
         'show_config_options': 'Show Configuration',
         'hide_config_options': 'Hide Configuration',
         'routine_file': 'Task Type',
+        'task_type': 'Mode Selection',
         'no_routine': 'Please select...',
         'enable_web_search': 'Web Search',
         'enable_multi_agent': 'Multi-Agent',
         'enable_long_term_memory': 'Long-term Memory',
         'enable_mcp': 'Enable MCP',
         'enable_jieba': 'Chinese Segmentation',
+        'execution_mode': 'Execution Mode',
+        'agent_mode': 'Agent Mode',
+        'plan_mode': 'Plan Mode',
+        'user_input_request': 'User Input Request',
+        'enter_your_response': 'Enter your response...',
+        'submit': 'Submit',
         
         # Others
         'deleting': 'Deleting...',
@@ -833,7 +844,6 @@ I18N_TEXTS = {
         'new_messages': 'new messages',
         'auto_scroll': 'Auto Scroll',
         'scroll_to_bottom': 'Scroll to Bottom',
-        'plan_mode_suffix': ' (Plan Mode)',
         'continue_mode_info': 'Continue mode - Will use the previous workspace directory',
         'create_or_select_directory': 'Please click the green button to create a new workspace directory, or select an existing directory on the right',
         'select_directory_first': 'Please create or select a workspace directory, then click a folder in the workspace list until it turns blue to confirm the selection',
@@ -1053,12 +1063,18 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agia_task_process_target(user_requirement, output_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None, attached_files=None):
+def execute_agia_task_process_target(user_requirement, output_queue, input_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None, attached_files=None):
     """
     This function runs in a separate process.
     It cannot use the `socketio` object directly.
     It communicates back to the main process via the queue.
+    User input is received via input_queue in GUI mode.
     """
+    # Store input_queue in a way that talk_to_user can access it
+    import sys
+    import __main__
+    __main__._agia_gui_input_queue = input_queue
+    
     try:
 
         # Get i18n texts for this process (after sending initial message)
@@ -1185,10 +1201,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             os.environ['AGIBOT_LONG_TERM_MEMORY'] = 'false'
         
         # Set parameters based on mode
-        if plan_mode:
-            single_task_mode = False  # Plan mode uses task decomposition
-        else:
-            single_task_mode = True   # Default mode executes directly
+        # In plan mode, we still use single_task_mode=True, but plan_mode will be handled separately in run()
+        single_task_mode = True   # Default mode executes directly
         
         # Determine MCP config file based on GUI setting
         mcp_config_file = None
@@ -1203,6 +1217,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                 # Use default MCP config if no servers selected
                 mcp_config_file = "config/mcp_servers.json"
         
+        # Set environment variable for GUI mode detection
+        os.environ['AGIA_GUI_MODE'] = 'true'
+        
         agia = AGIAgentMain(
             out_dir=out_dir,
             debug_mode=False,
@@ -1212,7 +1229,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             continue_mode=False,  # Always use False for GUI mode to avoid shared .agia_last_output.json
             MCP_config_file=mcp_config_file,  # Set based on GUI MCP option
             user_id=user_id,  # Pass user ID for MCP knowledge base tools
-            routine_file=routine_file  # Pass routine file to main application
+            routine_file=routine_file,  # Pass routine file to main application
+            plan_mode=plan_mode  # Pass plan_mode to AGIAgentMain
         )
         
         # Use detailed_requirement if provided (contains conversation history)
@@ -1325,6 +1343,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                 self.q = q
                 self.socket_type = socket_type
                 self.buffer = ""
+                # 保存原始的stderr引用，用于调试输出（避免递归）
+                self._original_stderr = sys.__stderr__
             
             def filter_code_edit_content(self, line):
                 """Filter code_edit content in tool execution parameters for GUI display"""
@@ -1363,6 +1383,12 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
             
             def should_filter_message(self, line):
                 """Filter out redundant system messages that are already displayed in GUI"""
+                # IMPORTANT: Don't filter GUI_USER_INPUT_REQUEST, QUERY, and TIMEOUT messages here!
+                # These messages need to enter the queue so queue_reader_thread can detect them.
+                # They will be filtered later in queue_reader_thread before emitting to frontend.
+                # if '🔔 GUI_USER_INPUT_REQUEST' in line or line.startswith('QUERY: ') or line.startswith('TIMEOUT: '):
+                #     return True
+                
                 # Don't filter error messages, warnings, or important notifications
                 line_lower = line.lower()
                 if any(keyword in line_lower for keyword in ['error', 'warning', 'failed', 'exception', 'traceback']):
@@ -1466,9 +1492,90 @@ def execute_agia_task_process_target(user_requirement, output_queue, out_dir=Non
                             self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type, 'is_update': True}})
                         # Clear buffer after processing update
                         self.buffer = ""
+                # 修复丢字问题：如果buffer中没有\n也没有\r，但buffer长度超过阈值（比如1024字符），也应该flush
+                # 这样可以避免长消息被分成多个chunk时，最后一部分没有换行符导致丢失
+                elif len(self.buffer) > 1024:
+                    # Buffer太长但没有换行符，强制flush以避免丢失
+                    buffer_rstrip = self.buffer.rstrip()
+                    if buffer_rstrip:
+                        filtered_line = self.filter_code_edit_content(buffer_rstrip)
+                        if not self.should_filter_message(filtered_line):
+                            line_lower = filtered_line.lower()
+                            if ('warning' in line_lower or
+                                'progress' in line_lower or
+                                'processing files' in line_lower or
+                                filtered_line.startswith('Processing files:') or
+                                'userwarning' in line_lower or
+                                'warnings.warn' in line_lower or
+                                '⚠️' in filtered_line or
+                                filtered_line.startswith('W: ') or
+                                'W: ' in filtered_line):
+                                message_type = 'info'
+                            else:
+                                message_type = self.socket_type
+                            
+                            self.q.put({'event': 'output', 'data': {'message': filtered_line, 'type': message_type, 'is_update': False}})
+                    self.buffer = ""
 
             def flush(self):
-                pass
+                # Flush buffer to queue if it contains content
+                # This ensures that messages are sent immediately when flush() is called
+                # 修复丢字问题：即使buffer中没有换行符，也应该发送buffer中的内容
+                if self.buffer:
+                    # 处理buffer中的所有内容，即使没有换行符
+                    # 先检查是否有完整的行（以\n结尾）
+                    if '\n' in self.buffer:
+                        # 有完整的行，按行处理
+                        *lines, remaining = self.buffer.split('\n')
+                        for line in lines:
+                            if line.strip():
+                                line_rstrip = line.rstrip()
+                                filtered_line = self.filter_code_edit_content(line_rstrip)
+                                if not self.should_filter_message(filtered_line):
+                                    line_lower = filtered_line.lower()
+                                    if ('warning' in line_lower or
+                                        'progress' in line_lower or
+                                        'processing files' in line_lower or
+                                        filtered_line.startswith('Processing files:') or
+                                        'userwarning' in line_lower or
+                                        'warnings.warn' in line_lower or
+                                        '⚠️' in filtered_line or
+                                        filtered_line.startswith('W: ') or
+                                        'W: ' in filtered_line):
+                                        message_type = 'info'
+                                    else:
+                                        message_type = self.socket_type
+                                    
+                                    is_update = '\r' in line
+                                    buffer_clean = filtered_line.replace('\r', '')
+                                    self.q.put({'event': 'output', 'data': {'message': buffer_clean, 'type': message_type, 'is_update': is_update}})
+                        # 保留剩余部分（可能不完整）
+                        self.buffer = remaining
+                    else:
+                        # 没有换行符，直接处理整个buffer
+                        buffer_rstrip = self.buffer.rstrip()
+                        if buffer_rstrip:
+                            filtered_line = self.filter_code_edit_content(buffer_rstrip)
+                            if not self.should_filter_message(filtered_line):
+                                line_lower = filtered_line.lower()
+                                if ('warning' in line_lower or
+                                    'progress' in line_lower or
+                                    'processing files' in line_lower or
+                                    filtered_line.startswith('Processing files:') or
+                                    'userwarning' in line_lower or
+                                    'warnings.warn' in line_lower or
+                                    '⚠️' in filtered_line or
+                                    filtered_line.startswith('W: ') or
+                                    'W: ' in filtered_line):
+                                    message_type = 'info'
+                                else:
+                                    message_type = self.socket_type
+                                
+                                is_update = '\r' in self.buffer
+                                buffer_clean = filtered_line.replace('\r', '')
+                                self.q.put({'event': 'output', 'data': {'message': buffer_clean, 'type': message_type, 'is_update': is_update}})
+                        # 清空buffer，因为已经处理了所有内容
+                        self.buffer = ""
             
             def final_flush(self):
                 if self.buffer.strip():
@@ -1773,6 +1880,7 @@ class UserSession:
         self.user_info = user_info or {}
         self.current_process = None
         self.output_queue = None
+        self.input_queue = None  # Queue for user input in GUI mode
         self.current_output_dir = None  # Track current execution output directory
         self.last_output_dir = None     # Track last used output directory
         self.selected_output_dir = None # Track user selected output directory
@@ -1861,6 +1969,132 @@ def queue_reader_thread(session_id):
             if message.get('event') == 'STOP':
                 break
             
+            # Check for GUI_USER_INPUT_REQUEST marker in output messages
+            # Also check for QUERY: and TIMEOUT: messages that might arrive out of order
+            if message.get('event') == 'output':
+                data = message.get('data', {})
+                msg_text = data.get('message', '')
+                
+                # Check if this is a QUERY: message (might arrive before GUI_USER_INPUT_REQUEST)
+                if msg_text.startswith('QUERY: '):
+                    # Store query for later use
+                    if not hasattr(user_session, '_pending_user_query'):
+                        user_session._pending_user_query = {}
+                    user_session._pending_user_query['query'] = msg_text[7:]  # Remove 'QUERY: ' prefix
+                    # Don't emit this system message to frontend - it's only for internal processing
+                    continue
+                
+                # Check if this is a TIMEOUT: message
+                elif msg_text.startswith('TIMEOUT: '):
+                    # Store timeout for later use
+                    if not hasattr(user_session, '_pending_user_query'):
+                        user_session._pending_user_query = {}
+                    timeout_str = msg_text[9:]  # Remove 'TIMEOUT: ' prefix
+                    try:
+                        user_session._pending_user_query['timeout'] = int(timeout_str)
+                    except:
+                        user_session._pending_user_query['timeout'] = 10
+                    # Don't emit this system message to frontend - it's only for internal processing
+                    continue
+                
+                # Check for GUI_USER_INPUT_REQUEST marker
+                elif '🔔 GUI_USER_INPUT_REQUEST' in msg_text:
+                    # Extract query and timeout from subsequent messages or use stored values
+                    query = None
+                    timeout = 10
+                    timeout_found = False
+                    
+                    # Check if we already have stored query/timeout from previous messages
+                    if hasattr(user_session, '_pending_user_query'):
+                        query = user_session._pending_user_query.get('query')
+                        stored_timeout = user_session._pending_user_query.get('timeout')
+                        if stored_timeout is not None:
+                            timeout = stored_timeout
+                            timeout_found = True
+                        # Clear stored values
+                        delattr(user_session, '_pending_user_query')
+                    
+                    # Store messages that are not QUERY/TIMEOUT for later emission
+                    pending_messages = []
+                    # Read more messages to get query and timeout (increased from 15 to 30)
+                    # Also increase timeout per message to handle slow message delivery
+                    for _ in range(30):  # Read up to 30 more messages to ensure we get QUERY and TIMEOUT
+                        try:
+                            next_msg = user_session.output_queue.get(timeout=2.0)  # Increased timeout from 1.0 to 2.0
+                            if next_msg.get('event') == 'output':
+                                next_data = next_msg.get('data', {})
+                                next_text = next_data.get('message', '')
+                                if next_text.startswith('QUERY: '):
+                                    query = next_text[7:]  # Remove 'QUERY: ' prefix
+                                elif next_text.startswith('TIMEOUT: '):
+                                    timeout_str = next_text[9:]  # Remove 'TIMEOUT: ' prefix
+                                    try:
+                                        timeout = int(timeout_str)
+                                        timeout_found = True
+                                    except:
+                                        timeout = 10
+                                else:
+                                    # Store other messages to emit later
+                                    pending_messages.append(next_msg)
+                            else:
+                                # Store non-output messages to emit later
+                                pending_messages.append(next_msg)
+                            
+                            # If we found both query and timeout, we can break
+                            if query and timeout_found:
+                                break
+                        except queue.Empty:
+                            # If queue is empty, wait a bit more and try to read remaining messages
+                            # This handles the case where messages are still being written
+                            import time
+                            time.sleep(0.1)  # Small delay to allow messages to arrive
+                            # Try one more time with shorter timeout
+                            try:
+                                next_msg = user_session.output_queue.get(timeout=0.5)
+                                if next_msg.get('event') == 'output':
+                                    next_data = next_msg.get('data', {})
+                                    next_text = next_data.get('message', '')
+                                    if next_text.startswith('QUERY: '):
+                                        query = next_text[7:]
+                                    elif next_text.startswith('TIMEOUT: '):
+                                        timeout_str = next_text[9:]
+                                        try:
+                                            timeout = int(timeout_str)
+                                            timeout_found = True
+                                        except:
+                                            timeout = 10
+                                    else:
+                                        pending_messages.append(next_msg)
+                                else:
+                                    pending_messages.append(next_msg)
+                                if query and timeout_found:
+                                    break
+                            except queue.Empty:
+                                break
+                    
+                    # If we found query (either from stored value or from queue), send the request
+                    if query:
+                        # Send user_input_request event to GUI
+                        import logging
+                        logging.info(f"Sending user_input_request event: query length={len(query)}, timeout={timeout}")
+                        socketio.emit('user_input_request', {
+                            'query': query,
+                            'timeout': timeout
+                        }, room=session_id)
+                        # Emit pending messages that were read while looking for QUERY/TIMEOUT
+                        for pending_msg in pending_messages:
+                            socketio.emit(pending_msg['event'], pending_msg.get('data', {}), room=session_id)
+                        continue  # Don't emit the marker message itself
+                    else:
+                        # If query not found after all attempts, log error and emit all pending messages
+                        import logging
+                        logging.error(f"GUI_USER_INPUT_REQUEST detected but QUERY not found. Message: {msg_text}")
+                        # Emit all pending messages including the marker
+                        for pending_msg in pending_messages:
+                            socketio.emit(pending_msg['event'], pending_msg.get('data', {}), room=session_id)
+                        # Still emit the original marker message so user can see something happened
+                        socketio.emit(message['event'], message.get('data', {}), room=session_id)
+            
             # If task completion message, save last used directory and clear current directory mark
             if message.get('event') in ['task_completed', 'error']:
                 # Release task resources
@@ -1889,7 +2123,14 @@ def queue_reader_thread(session_id):
                 
                 user_session.current_output_dir = None
             
-            # Emit to user's specific room
+            # Emit to user's specific room (but filter out system markers)
+            if message.get('event') == 'output':
+                data = message.get('data', {})
+                msg_text = data.get('message', '')
+                # Don't emit system markers to frontend (they're handled internally)
+                if '🔔 GUI_USER_INPUT_REQUEST' in msg_text or msg_text.startswith('QUERY: ') or msg_text.startswith('TIMEOUT: '):
+                    continue  # Skip emitting these system messages
+            
             socketio.emit(message['event'], message.get('data', {}), room=session_id)
         except queue.Empty:
             continue
@@ -3250,7 +3491,12 @@ def handle_execute_task(data):
     # Allow empty requirement to start the program
     
     task_type = data.get('type', 'continue')  # 'new', 'continue', 'selected'
-    plan_mode = data.get('plan_mode', False)  # Whether to use plan mode (task decomposition)
+    # Ensure plan_mode is boolean (handle string 'true'/'false' from frontend)
+    plan_mode_raw = data.get('plan_mode', False)
+    if isinstance(plan_mode_raw, str):
+        plan_mode = plan_mode_raw.lower() in ('true', '1', 'yes')
+    else:
+        plan_mode = bool(plan_mode_raw)
     selected_directory = data.get('selected_directory')  # Directory name from frontend
     gui_config = data.get('gui_config', {})  # GUI configuration options
     attached_files = data.get('attached_files', [])  # Attached file information
@@ -3312,6 +3558,7 @@ def handle_execute_task(data):
         return
     
     user_session.output_queue = multiprocessing.Queue()
+    user_session.input_queue = multiprocessing.Queue()  # Queue for user input in GUI mode
     
     # Get user ID (sha256_hash) for MCP knowledge base tools
     user_id = None
@@ -3329,7 +3576,7 @@ def handle_execute_task(data):
         # 🚀 Create and start process with highest priority (minimize delay)
         user_session.current_process = multiprocessing.Process(
             target=execute_agia_task_process_target,
-            args=(user_requirement, user_session.output_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id, attached_files)
+            args=(user_requirement, user_session.output_queue, user_session.input_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id, attached_files)
         )
         user_session.current_process.daemon = True
         user_session.current_process.start()
@@ -3355,6 +3602,24 @@ def handle_execute_task(data):
     
     # Store current task for conversation history
     user_session._current_task_requirement = user_requirement
+
+@socketio.on('user_input_response')
+def handle_user_input_response(data):
+    """Handle user input response from GUI"""
+    session_id = request.sid
+    
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    user_input = data.get('input', '')
+    
+    # Put user input into the input queue
+    if user_session.input_queue:
+        try:
+            user_session.input_queue.put(user_input)
+        except Exception as e:
+            emit('error', {'message': f'Failed to send user input: {str(e)}'}, room=session_id)
 
 @socketio.on('select_directory')
 def handle_select_directory(data):

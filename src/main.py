@@ -208,7 +208,8 @@ class AGIAgentMain:
                  prompts_folder: Optional[str] = None,
                  link_dir: Optional[str] = None,
                  user_id: Optional[str] = None,
-                 routine_file: Optional[str] = None):
+                 routine_file: Optional[str] = None,
+                 plan_mode: bool = False):
 
         """
         Initialize AGI Agent main program
@@ -272,6 +273,7 @@ class AGIAgentMain:
         self.link_dir = link_dir
         self.user_id = user_id
         self.routine_file = routine_file
+        self.plan_mode = plan_mode
         
         # Ensure output directory exists
         os.makedirs(out_dir, exist_ok=True)
@@ -423,6 +425,88 @@ class AGIAgentMain:
             sys.exit(0)
         
         return requirement
+    
+    def execute_plan_mode(self, user_requirement: str) -> bool:
+        """
+        Execute plan mode: interact with user to create plan.md document
+        
+        Args:
+            user_requirement: User requirement
+            
+        Returns:
+            Whether plan.md was successfully created
+        """
+        try:
+            # Set working directory
+            workspace_dir = os.path.join(self.out_dir, "workspace")
+            
+            # Create multi-round task executor with plan_mode=True
+            executor = MultiRoundTaskExecutor(
+                subtask_loops=50,  # Use reasonable number of loops for planning
+                logs_dir=self.logs_dir,
+                workspace_dir=workspace_dir,
+                debug_mode=self.debug_mode,
+                api_key=self.api_key,
+                model=self.model,
+                api_base=self.api_base,
+                detailed_summary=self.detailed_summary,
+                interactive_mode=False,  # Don't use interactive mode, use talk_to_user instead
+                streaming=self.streaming,
+                MCP_config_file=self.MCP_config_file,
+                prompts_folder=self.prompts_folder,
+                user_id=self.user_id,
+                plan_mode=True  # Enable plan mode
+            )
+            
+            # Construct single task for plan creation
+            plan_task = {
+                'Task ID': '1',
+                'Task Name': 'Plan Creation',
+                'Task Description': user_requirement,
+                'Execution Status': '0',
+                'Dependent Tasks': ''
+            }
+            
+            print_system(f"🚀 Starting plan creation for: {user_requirement}")
+            
+            # Execute plan creation task
+            task_result = executor.execute_single_task(plan_task, 0, 1, "")
+            
+            # Check if user interrupted execution
+            if task_result.get("status") == "user_interrupted":
+                print_current("🛑 Plan creation stopped by user")
+                try:
+                    executor.cleanup()
+                except:
+                    pass
+                return False
+            
+            # Check if plan.md was created
+            plan_md_path = os.path.join(workspace_dir, "plan.md")
+            if os.path.exists(plan_md_path):
+                print_current(f"✅ Plan document created successfully: {plan_md_path}")
+                try:
+                    executor.cleanup()
+                except:
+                    pass
+                return True
+            else:
+                print_current("⚠️ Plan mode completed but plan.md was not found in workspace")
+                try:
+                    executor.cleanup()
+                except:
+                    pass
+                return False
+                
+        except Exception as e:
+            print_current(f"❌ Plan mode execution error: {e}")
+            # Clean up resources if executor was created
+            try:
+                if 'executor' in locals():
+                    executor.cleanup()
+            except:
+                pass
+            return False
     
     def decompose_task(self, user_requirement: str) -> bool:
         """
@@ -1222,6 +1306,19 @@ Final result: {final_result}
         # This enables --continue functionality even if workflow is interrupted
         save_last_output_dir(self.out_dir, requirement)
         print_system(f"💾 Configuration saved for future --continue operations")
+        
+        # Plan mode: interact with user to create plan.md, then exit
+        if self.plan_mode:
+            track_operation("Plan Mode Execution")
+            if not self.execute_plan_mode(requirement):
+                print_current("Plan mode execution failed")
+                finish_operation("Plan Mode Execution")
+                finish_operation("Main Program Execution")
+                return False
+            finish_operation("Plan Mode Execution")
+            finish_operation("Main Program Execution")
+            print_current("🎉 Plan mode completed!")
+            return True
         
         # Interactive mode confirmation before task execution
         if self.interactive_mode:

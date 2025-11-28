@@ -484,6 +484,13 @@ Usage Examples:
         help="Routine file path to include routine guidelines. In --todo mode: integrates into task planning. In single-task mode: appends to user requirement."
     )
     
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        default=False,
+        help="Enable plan mode: interact with user to create plan.md document, then exit without executing tasks"
+    )
+    
     args = parser.parse_args()
     
     # Handle requirement argument priority: positional argument takes precedence over --requirement/-r
@@ -565,6 +572,9 @@ Usage Examples:
     # Determine task mode
     single_task_mode = not args.todo if hasattr(args, 'todo') else args.singletask
     
+    # Get plan mode
+    plan_mode = args.plan if hasattr(args, 'plan') else False
+    
     # Create and run main program
     try:
         main_app = AGIAgentMain(
@@ -578,7 +588,8 @@ Usage Examples:
             interactive_mode=args.interactive,
             continue_mode=args.continue_mode,
             link_dir=args.link_dir,
-            routine_file=args.routine
+            routine_file=args.routine,
+            plan_mode=plan_mode
         )
         
         success = main_app.run(

@@ -147,7 +147,32 @@ def print_current(*args: object, **kwargs) -> None:  # noqa: D401
         processed_message = _process_newlines_for_terminal(message)
 
         # Print to terminal (encoding is handled by module initialization)
-        builtins.print(processed_message, **print_kwargs)
+        # 修复丢字问题：在GUI模式下，确保flush被调用以处理buffer中的内容
+        import sys
+        # 检测是否是GUI模式（QueueSocketHandler）
+        # 如果是GUI模式且消息包含换行符，直接写入整个消息避免被print分割
+        is_gui_mode = hasattr(sys.stdout, 'q') and hasattr(sys.stdout, 'socket_type')
+        if is_gui_mode and '\n' in processed_message:
+            # GUI模式下，对于包含换行符的消息，直接写入整个消息
+            # 这样可以保持消息的完整性，避免被print分割成多行
+            sys.stdout.write(processed_message)
+            if end_char:
+                sys.stdout.write(end_char)
+            if hasattr(sys.stdout, 'flush'):
+                try:
+                    sys.stdout.flush()
+                except:
+                    pass
+        else:
+            # 终端模式或单行消息，使用正常的print
+            builtins.print(processed_message, **print_kwargs)
+            # 如果stdout有flush方法（比如QueueSocketHandler），确保调用flush
+            # 这样可以确保buffer中的内容被及时处理，避免丢字
+            if hasattr(sys.stdout, 'flush'):
+                try:
+                    sys.stdout.flush()
+                except:
+                    pass
 
         # Also write to manager.out file
         _write_to_file("manager.out", message, newline=(end_char != ''))
@@ -209,7 +234,16 @@ class _StreamWriter:
             # Smart escape sequence handling for streaming output
             output_text = self._process_streaming_escapes(processed)
             if output_text:  # Only print if there's text to output
-                builtins.print(output_text, end='', flush=True)
+                # 检测是否是GUI模式（QueueSocketHandler）
+                import sys
+                is_gui_mode = hasattr(sys.stdout, 'q') and hasattr(sys.stdout, 'socket_type')
+                if is_gui_mode:
+                    # GUI模式下，直接调用write()而不是print()，避免被print分割
+                    # 不立即flush，让QueueSocketHandler自己处理缓冲和分割
+                    sys.stdout.write(output_text)
+                else:
+                    # 终端模式，使用正常的print
+                    builtins.print(output_text, end='', flush=True)
             # Also write to manager.out file (keep original)
             _write_to_file("manager.out", processed, newline=False)
         else:

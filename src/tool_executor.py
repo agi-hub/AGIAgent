@@ -170,7 +170,8 @@ class ToolExecutor:
                  MCP_config_file: Optional[str] = None,
                  prompts_folder: Optional[str] = None,
                  user_id: Optional[str] = None,
-                 subtask_loops: Optional[int] = None):
+                 subtask_loops: Optional[int] = None,
+                 plan_mode: bool = False):
         """
         Initialize the ToolExecutor
 
@@ -224,6 +225,9 @@ class ToolExecutor:
         
         # Store subtask loops information for infinite loop mode detection
         self.subtask_loops = subtask_loops
+        
+        # Store plan mode flag
+        self.plan_mode = plan_mode
         
         # Load simplified search output configuration from config/config.txt
         self.simplified_search_output = get_simplified_search_output()
@@ -1074,8 +1078,14 @@ class ToolExecutor:
             The core system prompt text from system_prompt.txt, modified for infinite loop mode if applicable
         """
         try:
-            # Try to load system_prompt.txt first from custom prompts folder
-            system_prompt_file = os.path.join(self.prompts_folder, "system_prompt.txt")
+            # Choose prompt file based on plan mode
+            if self.plan_mode:
+                prompt_filename = "system_plan_prompt.txt"
+            else:
+                prompt_filename = "system_prompt.txt"
+            
+            # Try to load prompt file from custom prompts folder
+            system_prompt_file = os.path.join(self.prompts_folder, prompt_filename)
             
             if os.path.exists(system_prompt_file):
                 with open(system_prompt_file, 'r', encoding='utf-8') as f:
@@ -1084,6 +1094,32 @@ class ToolExecutor:
                 # Fall back to single file approach
                 with open(prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt = f.read()
+            
+            # Add system language information in plan mode
+            if self.plan_mode:
+                # Map language code to language name
+                lang_map = {
+                    'zh': 'Chinese (中文)',
+                    'en': 'English'
+                }
+                lang_name = lang_map.get(self.language, self.language)
+                language_info = f"\n\nThe current system language is: **{lang_name}**\n\nPlease use {lang_name} for all conversations, questions, and content generation.\n"
+                # Insert language info after "Language Setting" section
+                if "## Language Setting" in system_prompt:
+                    # Find the position after "## Language Setting" section header and content
+                    # Look for the next section header (## ) after Language Setting
+                    lang_section_pos = system_prompt.find("## Language Setting")
+                    # Find the next section header
+                    next_section_pos = system_prompt.find("\n## ", lang_section_pos + len("## Language Setting"))
+                    if next_section_pos != -1:
+                        # Insert before the next section
+                        system_prompt = system_prompt[:next_section_pos] + language_info + system_prompt[next_section_pos:]
+                    else:
+                        # No next section found, append at the end
+                        system_prompt = system_prompt + language_info
+                else:
+                    # Insert at the beginning if Language Setting section doesn't exist
+                    system_prompt = language_info + system_prompt
             
             # Modify system prompt for infinite loop mode
             infinite_loop_mode = (self.subtask_loops == -1)
@@ -2111,6 +2147,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
     def _extract_json_block_robust(self, content: str, start_marker: str = '```json') -> Optional[str]:
         """
         更健壮地提取JSON块，处理嵌套的```标记和不完整的JSON块。
+        特别优化了对超长JSON块（如包含大量文本的code_edit字段）的处理。
         
         Args:
             content: 要提取的内容
@@ -2126,10 +2163,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         # 从标记后开始查找JSON内容
         json_content_start = json_start + len(start_marker)
         
-        # 使用栈来匹配```标记，处理嵌套情况
-        # 首先找到第一个```作为开始
-        current_pos = json_content_start
-        depth = 0
+        # 策略1: 先尝试找到结束的```标记
+        # 对于超长JSON块，使用更智能的查找策略
         json_content_end = -1
         
         # 查找JSON块的结束标记```
@@ -2138,13 +2173,16 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         last_triple_backtick = content.rfind('```', json_content_start)
         if last_triple_backtick > json_content_start:
             # 检查这个位置之前是否有 }\n} 模式（说明这是JSON的结束）
-            before_marker = content[max(0, last_triple_backtick-10):last_triple_backtick]
-            if '}\n}' in before_marker or '}\n  }' in before_marker:
+            before_marker = content[max(0, last_triple_backtick-20):last_triple_backtick]
+            # 检查多种可能的结尾模式
+            if ('}\n}' in before_marker or '}\n  }' in before_marker or 
+                before_marker.rstrip().endswith('}') or
+                content[last_triple_backtick-1:last_triple_backtick] in ['\n', '\r', ' ']):
                 # 这很可能是JSON块的结束标记
                 json_content_end = last_triple_backtick
             else:
                 # 继续使用原来的逻辑查找
-                i = current_pos
+                i = current_pos = json_content_start
                 while i < len(content) - 2:
                     if content[i:i+3] == '```':
                         # 检查这是否是开始标记（前面没有内容或是换行）
@@ -2153,60 +2191,70 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             json_content_end = i
                             break
                     i += 1
-        else:
-            # 使用原来的逻辑
-            i = current_pos
-            while i < len(content) - 2:
-                if content[i:i+3] == '```':
-                    # 检查这是否是开始标记（前面没有内容或是换行）
-                    if i == json_content_start or content[i-1] in ['\n', '\r']:
-                        # 这是结束标记
-                        json_content_end = i
-                        break
-                i += 1
         
+        # 策略2: 如果没有找到结束标记，使用括号匹配来找到完整的JSON对象
         if json_content_end == -1:
-            # 没有找到结束标记，可能JSON块不完整
+            # 没有找到结束标记，可能JSON块不完整或超长
             # 尝试找到最后一个完整的JSON对象或数组
-            remaining = content[json_content_start:].strip()
-            # 尝试找到最后一个完整的 } 或 ]
+            remaining = content[json_content_start:]
+            
+            # 使用括号匹配来找到完整的JSON对象
             brace_count = 0
             bracket_count = 0
             in_string = False
             escape_next = False
             last_valid_pos = -1
+            i = 0
             
-            for i, char in enumerate(remaining):
-                if escape_next:
-                    escape_next = False
-                    continue
+            # 跳过开头的空白
+            while i < len(remaining) and remaining[i] in ' \t\n\r':
+                i += 1
+            
+            # 如果第一个字符是{，开始计数
+            if i < len(remaining) and remaining[i] == '{':
+                brace_count = 1
+                i += 1
+                
+                while i < len(remaining):
+                    char = remaining[i]
                     
-                if char == '\\':
-                    escape_next = True
-                    continue
+                    if escape_next:
+                        escape_next = False
+                        i += 1
+                        continue
+                        
+                    if char == '\\':
+                        escape_next = True
+                        i += 1
+                        continue
+                        
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        i += 1
+                        continue
+                        
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0 and bracket_count == 0:
+                                last_valid_pos = i + 1
+                                break
+                        elif char == '[':
+                            bracket_count += 1
+                        elif char == ']':
+                            bracket_count -= 1
+                            if brace_count == 0 and bracket_count == 0:
+                                last_valid_pos = i + 1
+                                break
                     
-                if char == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                    
-                if not in_string:
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0 and bracket_count == 0:
-                            last_valid_pos = i + 1
-                    elif char == '[':
-                        bracket_count += 1
-                    elif char == ']':
-                        bracket_count -= 1
-                        if brace_count == 0 and bracket_count == 0:
-                            last_valid_pos = i + 1
+                    i += 1
             
             if last_valid_pos > 0:
                 return remaining[:last_valid_pos].strip()
             # 如果找不到完整的JSON，返回剩余内容（让JSON解析器尝试处理）
-            return remaining
+            return remaining.strip()
         
         # 提取JSON内容
         json_content = content[json_content_start:json_content_end].strip()
@@ -2475,6 +2523,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 for json_block in json_blocks:
                     try:
                         json_str = json_block.strip()
+                        # 对于超长JSON块，先尝试直接解析
                         tool_data = json.loads(json_str)
                         
                         if isinstance(tool_data, dict):
@@ -2498,29 +2547,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 })
                     except json.JSONDecodeError as e:
                         # Try to fix JSON containing unescaped newlines or quotes
-                        try:
-                            # 首先尝试使用正则表达式方法
-                            fixed_json = smart_escape_quotes_in_json_values(json_str)
-                            tool_data = json.loads(fixed_json)
-                            
-                            if isinstance(tool_data, dict):
-                                if 'tool_name' in tool_data and 'parameters' in tool_data:
-                                    all_tool_calls.append({
-                                        "name": tool_data["tool_name"],
-                                        "arguments": tool_data["parameters"]
-                                    })
-                                elif 'name' in tool_data and 'parameters' in tool_data:
-                                    all_tool_calls.append({
-                                        "name": tool_data["name"],
-                                        "arguments": tool_data["parameters"]
-                                    })
-                                elif 'name' in tool_data and 'content' in tool_data:
-                                    all_tool_calls.append({
-                                        "name": tool_data["name"],
-                                        "arguments": tool_data["content"]
-                                    })
-                        except (json.JSONDecodeError, Exception) as fix_e:
-                            # 如果正则方法失败，尝试使用更可靠的字符级解析方法
+                        # 对于包含code_edit等超长字段的JSON，优先使用robust方法
+                        if 'code_edit' in json_str or len(json_str) > 5000:
+                            # 超长JSON，优先使用robust方法
                             try:
                                 fixed_json_robust = fix_json_string_values_robust(json_str)
                                 if fixed_json_robust != json_str:
@@ -2542,10 +2571,82 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                 "arguments": tool_data["content"]
                                             })
                             except (json.JSONDecodeError, Exception) as robust_fix_e:
-                                if self.debug_mode:
-                                    debug_info.append(f"Failed to parse JSON block: {str(fix_e)[:100]}, robust fix also failed: {str(robust_fix_e)[:100]}")
-                                else:
-                                    pass  # 静默失败，继续尝试其他方法
+                                # 如果robust方法也失败，尝试正则方法
+                                try:
+                                    fixed_json = smart_escape_quotes_in_json_values(json_str)
+                                    tool_data = json.loads(fixed_json)
+                                    
+                                    if isinstance(tool_data, dict):
+                                        if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["tool_name"],
+                                                "arguments": tool_data["parameters"]
+                                            })
+                                        elif 'name' in tool_data and 'parameters' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["parameters"]
+                                            })
+                                        elif 'name' in tool_data and 'content' in tool_data:
+                                            all_tool_calls.append({
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["content"]
+                                            })
+                                except (json.JSONDecodeError, Exception) as fix_e:
+                                    if self.debug_mode:
+                                        debug_info.append(f"Failed to parse JSON block (length: {len(json_str)}): {str(e)[:100]}, robust fix failed: {str(robust_fix_e)[:100]}, regex fix failed: {str(fix_e)[:100]}")
+                                    else:
+                                        pass  # 静默失败，继续尝试其他方法
+                        else:
+                            # 普通长度JSON，先尝试正则方法
+                            try:
+                                # 首先尝试使用正则表达式方法
+                                fixed_json = smart_escape_quotes_in_json_values(json_str)
+                                tool_data = json.loads(fixed_json)
+                                
+                                if isinstance(tool_data, dict):
+                                    if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                        all_tool_calls.append({
+                                            "name": tool_data["tool_name"],
+                                            "arguments": tool_data["parameters"]
+                                        })
+                                    elif 'name' in tool_data and 'parameters' in tool_data:
+                                        all_tool_calls.append({
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["parameters"]
+                                        })
+                                    elif 'name' in tool_data and 'content' in tool_data:
+                                        all_tool_calls.append({
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["content"]
+                                        })
+                            except (json.JSONDecodeError, Exception) as fix_e:
+                                # 如果正则方法失败，尝试使用更可靠的字符级解析方法
+                                try:
+                                    fixed_json_robust = fix_json_string_values_robust(json_str)
+                                    if fixed_json_robust != json_str:
+                                        tool_data = json.loads(fixed_json_robust)
+                                        if isinstance(tool_data, dict):
+                                            if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                                all_tool_calls.append({
+                                                    "name": tool_data["tool_name"],
+                                                    "arguments": tool_data["parameters"]
+                                                })
+                                            elif 'name' in tool_data and 'parameters' in tool_data:
+                                                all_tool_calls.append({
+                                                    "name": tool_data["name"],
+                                                    "arguments": tool_data["parameters"]
+                                                })
+                                            elif 'name' in tool_data and 'content' in tool_data:
+                                                all_tool_calls.append({
+                                                    "name": tool_data["name"],
+                                                    "arguments": tool_data["content"]
+                                                })
+                                except (json.JSONDecodeError, Exception) as robust_fix_e:
+                                    if self.debug_mode:
+                                        debug_info.append(f"Failed to parse JSON block: {str(fix_e)[:100]}, robust fix also failed: {str(robust_fix_e)[:100]}")
+                                    else:
+                                        pass  # 静默失败，继续尝试其他方法
             
                 # If we found any tool calls through multiple JSON blocks, return them
                 if all_tool_calls:
@@ -2763,10 +2864,22 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 debug_msg += f"\nContent length: {len(content)}"
                 debug_msg += f"\nContent preview (first 500 chars): {content[:500]}"
                 debug_msg += f"\nContent preview (last 500 chars): {content[-500:] if len(content) > 500 else content}"
+                # 检查是否有code_edit字段
+                if 'code_edit' in content:
+                    code_edit_start = content.find('code_edit')
+                    debug_msg += f"\nFound 'code_edit' field at position {code_edit_start}"
+                    # 显示code_edit字段周围的内容
+                    preview_start = max(0, code_edit_start - 100)
+                    preview_end = min(len(content), code_edit_start + 200)
+                    debug_msg += f"\nAround 'code_edit': {content[preview_start:preview_end]}"
                 print_current(debug_msg)
             elif has_json_markers:
                 # Even in non-debug mode, log a warning if we expected to find JSON
-                print_current(f"⚠️ Warning: Found JSON markers but failed to parse tool calls. Content length: {len(content)}")
+                warning_msg = f"⚠️ Warning: Found JSON markers but failed to parse tool calls. Content length: {len(content)}"
+                # 检查是否有code_edit字段（可能是超长内容导致解析失败）
+                if 'code_edit' in content:
+                    warning_msg += f" (Contains 'code_edit' field, may be due to very long content)"
+                print_current(warning_msg)
                 # Try one last aggressive attempt: look for any JSON-like structure
                 try:
                     # Try to find and extract any dictionary-like structure
@@ -6082,10 +6195,14 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     # Special handling for edit_file tool's code parameters
                     if tool_name == "edit_file" and key in ["old_code", "code_edit"]:
                         display_value = self._truncate_code_parameter(str(value))
+                    # Special handling for talk_to_user: skip query parameter (will be printed by the tool itself)
+                    elif tool_name == "talk_to_user" and key == "query":
+                        # Skip printing query content to avoid duplication
+                        continue
                     else:
                         # Show complete tool calls without truncation for better debugging
                         display_value = value
-                    formatted_calls.append(f"  - {key}: {display_value}")
+                        formatted_calls.append(f"  - {key}: {display_value}")
             else:
                 formatted_calls.append("Parameters: None")
         
