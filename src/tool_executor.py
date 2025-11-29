@@ -2670,52 +2670,52 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 "name": tool_data["name"],
                                 "arguments": tool_data["content"]
                             }]
-                    # Check if it's a valid tool call format with tool_name and parameters (new JSON format)
-                    elif 'tool_name' in tool_data and 'parameters' in tool_data:
-                        return [{
-                            "name": tool_data["tool_name"],
-                            "arguments": tool_data["parameters"]
-                        }]
-                    # Check if it's a valid tool call format with name and parameters (compatible with old format)
-                    elif 'name' in tool_data and 'parameters' in tool_data:
-                        return [{
-                            "name": tool_data["name"],
-                            "arguments": tool_data["parameters"]
-                        }]
-                    # Check if it's a direct parameter format, try to infer tool name from context
-                    else:
-                        # Look for tool name mentioned in the text before JSON
-                        text_before_json = content[:content.find('```json')]
-                        
-                        # Common tool names to look for
-                        tool_names = list(self.tool_map.keys())
-                        inferred_tool = None
-                        
-                        for tool_name in tool_names:
-                            if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
-                                inferred_tool = tool_name
-                                break
-                        
-                        # If no tool found in text, try to infer from parameters
-                        if not inferred_tool:
-                            if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
-                                inferred_tool = 'read_file'
-                            elif 'relative_workspace_path' in tool_data:
-                                inferred_tool = 'list_dir'
-                            elif 'query' in tool_data and 'target_directories' in tool_data:
-                                inferred_tool = 'workspace_search'
-                            elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
-                                inferred_tool = 'grep_search'
-                            elif 'command' in tool_data and 'is_background' in tool_data:
-                                inferred_tool = 'run_terminal_cmd'
-                            elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
-                                inferred_tool = 'edit_file'
-                        
-                        if inferred_tool:
+                        # Check if it's a valid tool call format with tool_name and parameters (new JSON format)
+                        elif 'tool_name' in tool_data and 'parameters' in tool_data:
                             return [{
-                                "name": inferred_tool,
-                                "arguments": tool_data
+                                "name": tool_data["tool_name"],
+                                "arguments": tool_data["parameters"]
                             }]
+                        # Check if it's a valid tool call format with name and parameters (compatible with old format)
+                        elif 'name' in tool_data and 'parameters' in tool_data:
+                            return [{
+                                "name": tool_data["name"],
+                                "arguments": tool_data["parameters"]
+                            }]
+                        # Check if it's a direct parameter format, try to infer tool name from context
+                        else:
+                            # Look for tool name mentioned in the text before JSON
+                            text_before_json = content[:content.find('```json')]
+                            
+                            # Common tool names to look for
+                            tool_names = list(self.tool_map.keys())
+                            inferred_tool = None
+                            
+                            for tool_name in tool_names:
+                                if tool_name in text_before_json.lower() or tool_name.replace('_', ' ') in text_before_json.lower():
+                                    inferred_tool = tool_name
+                                    break
+                            
+                            # If no tool found in text, try to infer from parameters
+                            if not inferred_tool:
+                                if 'target_file' in tool_data and ('should_read_entire_file' in tool_data or 'start_line' in tool_data):
+                                    inferred_tool = 'read_file'
+                                elif 'relative_workspace_path' in tool_data:
+                                    inferred_tool = 'list_dir'
+                                elif 'query' in tool_data and 'target_directories' in tool_data:
+                                    inferred_tool = 'workspace_search'
+                                elif 'query' in tool_data and ('include_pattern' in tool_data or 'exclude_pattern' in tool_data):
+                                    inferred_tool = 'grep_search'
+                                elif 'command' in tool_data and 'is_background' in tool_data:
+                                    inferred_tool = 'run_terminal_cmd'
+                                elif 'target_file' in tool_data and ('instructions' in tool_data or 'code_edit' in tool_data):
+                                    inferred_tool = 'edit_file'
+                            
+                            if inferred_tool:
+                                return [{
+                                    "name": inferred_tool,
+                                    "arguments": tool_data
+                                }]
                 except json.JSONDecodeError as e:
                     # Try to fix JSON containing unescaped newlines or quotes
                     try:
