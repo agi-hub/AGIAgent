@@ -1325,11 +1325,6 @@
             border: none;
         }
 
-        .execution-rounds-config {
-            border-top: 1px solid var(--border-primary);
-            padding-top: 12px;
-            margin-top: 12px !important;
-        }
 
         #userInput {
             width: 100%;
@@ -1801,7 +1796,7 @@
 
         .scrollbar-custom {
             scrollbar-width: thin;
-            scrollbar-color: var(--color-accent) var(--bg-secondary);
+            scrollbar-color: #569cd6 var(--bg-secondary);
         }
 
         .scrollbar-custom::-webkit-scrollbar {
@@ -1814,12 +1809,12 @@
         }
 
         .scrollbar-custom::-webkit-scrollbar-thumb {
-            background: var(--color-accent);
+            background: #569cd6;
             border-radius: 4px;
         }
 
         .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-            background: var(--color-accent-hover);
+            background: #007acc;
         }
 
         /* Responsive design for mobile devices */
@@ -3378,18 +3373,9 @@
             </div>
             <div class="modal-body">
                 <div id="configContainer" class="config-container" style="padding: 15px;">
-                    <div class="config-options" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85em; justify-content: flex-start;">
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
-                            <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
-                        </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
-                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
-                            <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
-                        </label>
-                        
+                    <div class="config-options" style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85em;">
                         <!-- 执行轮次配置 -->
-                        <div class="config-option execution-rounds-config" style="display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); flex: 1; min-width: 280px; margin-top: 12px;">
+                        <div class="config-option execution-rounds-config" style="display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); width: 100%;">
                             <label for="configRoundsSlider" class="config-rounds-label" style="font-size: 0.9em; font-weight: 500;">
                                 {{ i18n.get('execution_rounds', '执行轮次' if lang == 'zh' else 'Execution Rounds') }}:
                             </label>
@@ -3402,11 +3388,19 @@
                                 {{ i18n.get('execution_rounds_desc', '控制任务执行的轮次数量，范围1-200，典型值50' if lang == 'zh' else 'Controls the number of execution rounds for tasks, range 1-200, typical value 50') }}
                             </div>
                         </div>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
+                            <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
+                            <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
+                            <input type="checkbox" id="enableLongTermMemory" checked style="margin: 0;">
+                            <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
+                        </label>
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
                             <input type="checkbox" id="enableMCP" style="margin: 0;">
                             <span>{{ i18n.get('enable_mcp', '启动MCP' if lang == 'zh' else 'Enable MCP') }}</span>
                         </label>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; flex: 1; min-width: 140px;">
+                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
                             <input type="checkbox" id="enableJieba" checked style="margin: 0;">
                             <span>{{ i18n.get('enable_jieba', '启用中文分词' if lang == 'zh' else 'Chinese Segmentation') }}</span>
                         </label>
