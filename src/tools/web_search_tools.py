@@ -1030,8 +1030,13 @@ Please create a detailed, structured analysis that preserves important informati
                             if engine['name'].startswith('Google'):
                                 current_time = time.time()
                                 time_since_last_request = current_time - self._last_google_request
-                                if time_since_last_request < 5:  # Wait at least 5 seconds between Google requests
-                                    wait_time = 5 - time_since_last_request
+                                # Delay 0.5-2 seconds to avoid anti-bot detection
+                                import random
+                                min_delay = 0.5
+                                max_delay = 2.0
+                                required_delay = random.uniform(min_delay, max_delay)
+                                if time_since_last_request < required_delay:
+                                    wait_time = required_delay - time_since_last_request
                                     self._verbose_print(f"⏱️ Rate limiting: waiting {wait_time:.1f} seconds before Google request")
                                     time.sleep(wait_time)
                                 self._last_google_request = time.time()
@@ -1732,9 +1737,16 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Use ThreadPoolExecutor for parallel processing with improved timeout handling
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
+            # Submit all tasks with delays to avoid triggering anti-bot detection
             future_to_result = {}
-            for i, result in results_to_fetch:
+            import random
+            for idx, (i, result) in enumerate(results_to_fetch):
+                # Add progressive delay: first request immediately, then 0.5-2 seconds between requests
+                if idx > 0:
+                    delay = random.uniform(0.5, 2.0)  # Random delay between 0.5-2 seconds
+                    print_debug(f"⏱️ Waiting {delay:.1f} seconds before submitting request {idx+1}/{len(results_to_fetch)}")
+                    time.sleep(delay)
+                
                 future = executor.submit(self._fetch_single_webpage_content, result, i)
                 future_to_result[future] = (i, result)
             
@@ -1799,6 +1811,11 @@ Please create a detailed, structured analysis that preserves important informati
         target_url = result.get('_internal_url') or result.get('url', '')
         
         try:
+            # Add small random delay before starting to fetch (0.5-2 seconds) to avoid triggering anti-bot detection
+            import random
+            pre_delay = random.uniform(0.5, 2.0)
+            time.sleep(pre_delay)
+            
             print_debug(f"🔗 [{index+1}] Fetching content: {result['title'][:40]}...")
             
             # Handle Baidu redirect URLs
