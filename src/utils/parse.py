@@ -386,12 +386,23 @@ def fix_json_string_values_robust(json_str: str) -> str:
                     is_string_end = True
                 # 模式3: 检查是否是 "\n  }\n}" 完整模式（最典型的情况）
                 elif i + 1 < len(json_str):
-                    # 查看引号后面最多20个字符，看是否有 }\n} 模式
-                    lookahead = json_str[i+1:min(i+21, len(json_str))]
+                    # 对于超长内容，扩大查找范围
+                    # 查看引号后面最多100个字符，看是否有 }\n} 模式
+                    lookahead_size = 100 if len(json_str) > 10000 else 20
+                    lookahead = json_str[i+1:min(i+lookahead_size+1, len(json_str))]
                     # 查找 }\n} 或 }\n  } 模式
-                    if ('}\n}' in lookahead or '}\n  }' in lookahead) and not ('"' in lookahead[:lookahead.find('}')]):
-                        # 如果找到了结尾模式，且之间没有其他引号，说明这是字符串结束
-                        is_string_end = True
+                    if ('}\n}' in lookahead or '}\n  }' in lookahead):
+                        # 找到第一个}的位置
+                        first_brace_pos = lookahead.find('}')
+                        if first_brace_pos > 0:
+                            # 检查在}之前是否有其他引号
+                            before_brace = lookahead[:first_brace_pos]
+                            if '"' not in before_brace:
+                                # 如果找到了结尾模式，且之间没有其他引号，说明这是字符串结束
+                                is_string_end = True
+                        else:
+                            # 如果直接找到}，也认为是字符串结束
+                            is_string_end = True
                 elif next_char is None:
                     # 到达末尾，字符串结束
                     is_string_end = True

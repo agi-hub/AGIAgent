@@ -3294,6 +3294,10 @@
                                 <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                                 <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
                             </label>
+                            <button class="send-button" id="quickUploadButton" title="{{ i18n.get('quick_upload_tooltip', '上传文件到当前工作目录' if lang == 'zh' else 'Upload files to current workspace') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0;">
+                                <i class="fas fa-upload"></i>
+                            </button>
+                            <input type="file" id="quickFileInput" multiple style="display: none;">
                             <div class="button-row">
                                 <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
                                     <i class="fas fa-arrow-up"></i>
@@ -3733,6 +3737,7 @@
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
         let isGuest = false; // 添加guest状态跟踪
+        let pendingUploadFiles = null; // 用于存储待上传的文件（当需要先创建目录时）
         let newMessageCount = 0; // New message counter
         let lastMessageTime = 0;
         let pendingUserInput = ''; // 保存等待执行的用户输入
@@ -4395,6 +4400,16 @@
                     // 启动文件监测
                     startFileMonitoring();
                     
+                    // 如果有待上传的文件，自动上传
+                    if (pendingUploadFiles && pendingUploadFiles.length > 0) {
+                        const filesToUpload = pendingUploadFiles;
+                        pendingUploadFiles = null; // 清空待上传文件
+                        // 延迟一点时间确保目录创建完成
+                        setTimeout(() => {
+                            quickUploadFiles(filesToUpload, selectedDirectory);
+                        }, 500);
+                    }
+                    
                     // 只有当是因为发送任务而创建目录时，才自动发送任务
                     // 如果用户直接点击新建工作目录按钮，不应该自动发送任务
                     // 允许空消息也发送任务（pendingUserInput 可能是空字符串）
@@ -4411,6 +4426,7 @@
                 } else {
                     addMessage(`${I18N.create_directory_failed}: ${data.error}`, 'error');
                     pendingUserInput = ''; // 清空待发送消息
+                    pendingUploadFiles = null; // 清空待上传文件
                     // 重置标志
                     isCreatingDirectoryForTask = false;
                 }
@@ -6538,6 +6554,36 @@
                             }
                         });
                         expandedDirectories = validExpanded;
+                        
+                        // 🔧 修复：重连后从后端恢复selectedDirectory状态
+                        // 优先信任前端的selectedDirectory变量（用户可能刚刚点击选择）
+                        // 只有在selectedDirectory为空时，才从后端恢复状态
+                        if (!selectedDirectory) {
+                            // 检查后端返回的目录中是否有is_selected为true的目录
+                            const selectedDirFromBackend = data.directories.find(dir => dir.is_selected);
+                            if (selectedDirFromBackend && selectedDirFromBackend.name) {
+                                console.log(`🔄 Restoring selected directory from backend: ${selectedDirFromBackend.name}`);
+                                selectedDirectory = selectedDirFromBackend.name;
+                                taskMode = 'selected';
+                                // 启动文件监测
+                                startFileMonitoring();
+                            }
+                        } else {
+                            // 前端已经有selectedDirectory，验证它是否在后端目录列表中
+                            const dirExists = data.directories.some(dir => dir.name === selectedDirectory);
+                            if (!dirExists) {
+                                // 如果前端选择的目录在后端列表中不存在，清空它
+                                console.log(`🔄 Clearing selected directory as it no longer exists: ${selectedDirectory}`);
+                                selectedDirectory = null;
+                                taskMode = 'new';
+                                // 停止文件监测
+                                stopFileMonitoring();
+                            } else {
+                                // 目录存在，确保文件监测已启动
+                                startFileMonitoring();
+                            }
+                        }
+                        
                         renderDirectories(data.directories);
 
                         // 恢复滚动位置和展开状态
@@ -12637,6 +12683,138 @@
                 uploadFiles(Array.from(e.target.files));
             }
         });
+
+        // 快速上传按钮点击处理
+        // 等待DOM加载完成后再设置事件监听器
+        const quickUploadButton = document.getElementById('quickUploadButton');
+        const quickFileInput = document.getElementById('quickFileInput');
+        
+        if (quickUploadButton && quickFileInput) {
+            quickUploadButton.addEventListener('click', function() {
+                // 检查guest用户权限
+                if (isGuest) {
+                    addMessage(I18N.guest_cannot_upload || 'Guest用户无法上传文件', 'error');
+                    return;
+                }
+
+                // 如果没有选择工作目录，先创建新目录
+                if (!selectedDirectory) {
+                    // 先触发文件选择，文件会保存在pendingUploadFiles中
+                    quickFileInput.click();
+                    // 注意：文件选择是异步的，我们会在change事件中处理
+                } else {
+                    // 有工作目录，直接触发文件选择
+                    quickFileInput.click();
+                }
+            });
+
+            // 快速上传文件选择处理
+            quickFileInput.addEventListener('change', function(e) {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) {
+                    return;
+                }
+
+                // 如果没有选择工作目录，先创建新目录
+                if (!selectedDirectory) {
+                    pendingUploadFiles = files; // 保存待上传的文件
+                    // 创建新目录
+                    createNewDirectory();
+                } else {
+                    // 有工作目录，直接上传
+                    quickUploadFiles(files, selectedDirectory);
+                }
+            });
+        }
+
+        // 快速上传文件函数（不显示模态框，直接在聊天中显示消息）
+        function quickUploadFiles(files, dirName) {
+            if (!dirName) {
+                addMessage(I18N.select_directory_error || '请先选择工作目录', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            files.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            // Add API key to form data
+            if (currentUser && currentUser !== 'default') {
+                formData.append('api_key', currentUser);
+            }
+
+            // 显示上传开始消息
+            const fileNames = files.map(f => f.name).join(', ');
+            const uploadingMsg = I18N.uploading_files ? I18N.uploading_files.replace('{0}', files.length) : (CURRENT_LANG === 'zh' ? '正在上传文件' : 'Uploading files');
+            addMessage(`${uploadingMsg}: ${fileNames}...`, 'info');
+
+            // 创建XMLHttpRequest以支持进度监控
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    // 可以在这里更新进度消息，但为了简洁，我们只在完成后显示
+                }
+            });
+
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        // 显示上传成功消息
+                        const successMsg = I18N.upload_success || (CURRENT_LANG === 'zh' ? '上传成功' : 'Upload successful');
+                        addMessage(`${successMsg}: ${response.files.join(', ')}`, 'success');
+                        // 清空文件输入
+                        quickFileInput.value = '';
+                        // 刷新目录
+                        refreshDirectories();
+                        
+                        // 自动在需求框添加文件名引用
+                        if (response.files && response.files.length > 0) {
+                            const fileReferences = response.files.map(file => `@${file}`).join(' ');
+                            const fileRefText = response.files.length === 1 ? `${fileReferences}：` : `${fileReferences}:`;
+                            
+                            // 获取当前输入框内容
+                            const currentText = userInput.value.trim();
+                            
+                            // 如果输入框不为空，在末尾添加空格和文件引用
+                            // 如果输入框为空，直接添加文件引用
+                            if (currentText) {
+                                userInput.value = currentText + ' ' + fileRefText;
+                            } else {
+                                userInput.value = fileRefText;
+                            }
+                            
+                            // 触发输入框的resize事件，确保高度自适应
+                            if (typeof resizeTextarea === 'function') {
+                                resizeTextarea();
+                            }
+                            
+                            // 聚焦到输入框
+                            userInput.focus();
+                            // 将光标移动到末尾
+                            const length = userInput.value.length;
+                            userInput.setSelectionRange(length, length);
+                        }
+                    } else {
+                        const failedMsg = I18N.upload_failed || (CURRENT_LANG === 'zh' ? '上传失败' : 'Upload failed');
+                        addMessage(`${failedMsg}: ${response.error}`, 'error');
+                    }
+                } else {
+                    const failedMsg = I18N.upload_failed || (CURRENT_LANG === 'zh' ? '上传失败' : 'Upload failed');
+                    addMessage(`${failedMsg}: HTTP ${xhr.status}`, 'error');
+                }
+            });
+
+            xhr.addEventListener('error', function() {
+                addMessage(I18N.upload_network_error || (CURRENT_LANG === 'zh' ? '网络错误，上传失败' : 'Network error, upload failed'), 'error');
+            });
+
+            xhr.open('POST', `/api/upload/${dirName}`);
+            xhr.send(formData);
+        }
 
         // 拖拽功能
         uploadArea.addEventListener('dragover', function(e) {

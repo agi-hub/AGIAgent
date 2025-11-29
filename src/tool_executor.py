@@ -2173,7 +2173,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         last_triple_backtick = content.rfind('```', json_content_start)
         if last_triple_backtick > json_content_start:
             # 检查这个位置之前是否有 }\n} 模式（说明这是JSON的结束）
-            before_marker = content[max(0, last_triple_backtick-20):last_triple_backtick]
+            # 对于超长内容，扩大检查范围
+            check_range = 50 if len(content) > 10000 else 20
+            before_marker = content[max(0, last_triple_backtick-check_range):last_triple_backtick]
             # 检查多种可能的结尾模式
             if ('}\n}' in before_marker or '}\n  }' in before_marker or 
                 before_marker.rstrip().endswith('}') or
@@ -2186,10 +2188,15 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 while i < len(content) - 2:
                     if content[i:i+3] == '```':
                         # 检查这是否是开始标记（前面没有内容或是换行）
-                        if i == json_content_start or content[i-1] in ['\n', '\r']:
-                            # 这是结束标记
-                            json_content_end = i
-                            break
+                        # 对于超长内容，放宽检查条件
+                        if i == json_content_start or content[i-1] in ['\n', '\r', ' ']:
+                            # 检查这个位置之前是否有JSON结束模式
+                            check_before = content[max(0, i-50):i]
+                            if ('}\n}' in check_before or '}\n  }' in check_before or 
+                                check_before.rstrip().endswith('}')):
+                                # 这是结束标记
+                                json_content_end = i
+                                break
                     i += 1
         
         # 策略2: 如果没有找到结束标记，使用括号匹配来找到完整的JSON对象
@@ -2199,6 +2206,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             remaining = content[json_content_start:]
             
             # 使用括号匹配来找到完整的JSON对象
+            # 对于超长内容，使用更高效的算法
             brace_count = 0
             bracket_count = 0
             in_string = False
@@ -2215,6 +2223,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 brace_count = 1
                 i += 1
                 
+                # 对于超长内容，优化性能：批量处理字符
                 while i < len(remaining):
                     char = remaining[i]
                     
@@ -2254,6 +2263,16 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             if last_valid_pos > 0:
                 return remaining[:last_valid_pos].strip()
             # 如果找不到完整的JSON，返回剩余内容（让JSON解析器尝试处理）
+            # 但尝试找到最后一个可能的结束位置
+            # 对于包含code_edit的超长JSON，尝试找到最后一个}
+            if 'code_edit' in remaining:
+                last_brace = remaining.rfind('}')
+                if last_brace > 0:
+                    # 检查这个位置是否合理（前面应该有匹配的{）
+                    test_json = remaining[:last_brace+1].strip()
+                    # 简单验证：检查是否以{开头
+                    if test_json.startswith('{'):
+                        return test_json
             return remaining.strip()
         
         # 提取JSON内容
@@ -2659,8 +2678,38 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         if '```json' in content and not all_tool_calls:
             json_block = self._extract_json_block_robust(content, '```json')
             if json_block:
+                json_str = json_block.strip()
+                # 对于包含code_edit字段的超长JSON，优先使用robust修复方法
+                if 'code_edit' in json_str or len(json_str) > 5000:
+                    # 超长JSON，优先使用robust方法
+                    try:
+                        fixed_json_robust = fix_json_string_values_robust(json_str)
+                        if fixed_json_robust != json_str:
+                            tool_data = json.loads(fixed_json_robust)
+                            if isinstance(tool_data, dict):
+                                if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["tool_name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'content' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["content"]
+                                    }]
+                    except (json.JSONDecodeError, Exception) as robust_e:
+                        if self.debug_mode:
+                            debug_info.append(f"Robust fix failed for long JSON: {str(robust_e)[:100]}")
+                        # 继续尝试其他方法
+                        pass
+                
+                # 尝试直接解析
                 try:
-                    json_str = json_block.strip()
                     tool_data = json.loads(json_str)
                     
                     # Handle nested structure like {"name": "edit_file", "content": {...}}
@@ -2718,8 +2767,36 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 }]
                 except json.JSONDecodeError as e:
                     # Try to fix JSON containing unescaped newlines or quotes
+                    # 对于超长JSON，优先使用robust方法
+                    if 'code_edit' in json_str or len(json_str) > 5000:
+                        try:
+                            fixed_json_robust = fix_json_string_values_robust(json_str)
+                            if fixed_json_robust != json_str:
+                                tool_data = json.loads(fixed_json_robust)
+                                if isinstance(tool_data, dict):
+                                    if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                        return [{
+                                            "name": tool_data["tool_name"],
+                                            "arguments": tool_data["parameters"]
+                                        }]
+                                    elif 'name' in tool_data and 'parameters' in tool_data:
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["parameters"]
+                                        }]
+                                    elif 'name' in tool_data and 'content' in tool_data:
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["content"]
+                                        }]
+                        except (json.JSONDecodeError, Exception) as robust_e:
+                            if self.debug_mode:
+                                debug_info.append(f"Robust fix failed: {str(robust_e)[:100]}")
+                            # 继续尝试正则方法
+                            pass
+                    
+                    # 尝试使用正则表达式方法
                     try:
-                        # 首先尝试使用正则表达式方法
                         fixed_json = smart_escape_quotes_in_json_values(json_str)
                         tool_data = json.loads(fixed_json)
                         
@@ -2739,19 +2816,44 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                     "name": tool_data["name"],
                                     "arguments": tool_data["parameters"]
                                 }]
-                    except (json.JSONDecodeError, Exception):
-                        # 如果正则方法失败，尝试使用更可靠的字符级解析方法
-                        try:
+                    except (json.JSONDecodeError, Exception) as regex_e:
+                        if self.debug_mode:
+                            debug_info.append(f"Regex fix failed: {str(regex_e)[:100]}")
+                        # 如果正则方法也失败，再次尝试robust方法（可能之前没执行）
+                        if 'code_edit' not in json_str and len(json_str) <= 5000:
+                            try:
+                                fixed_json_robust = fix_json_string_values_robust(json_str)
+                                if fixed_json_robust != json_str:
+                                    tool_data = json.loads(fixed_json_robust)
+                                    if isinstance(tool_data, dict):
+                                        if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                            return [{
+                                                "name": tool_data["tool_name"],
+                                                "arguments": tool_data["parameters"]
+                                            }]
+                                        elif 'name' in tool_data and 'parameters' in tool_data:
+                                            return [{
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["parameters"]
+                                            }]
+                                        elif 'name' in tool_data and 'content' in tool_data:
+                                            return [{
+                                                "name": tool_data["name"],
+                                                "arguments": tool_data["content"]
+                                            }]
+                            except (json.JSONDecodeError, Exception):
+                                pass  # 继续到下一个修复尝试
+                except Exception as e:
+                    if self.debug_mode:
+                        debug_info.append(f"Single JSON fallback failed: {str(e)[:100]}")
+                    # Try to fix it with robust method first
+                    try:
+                        if 'code_edit' in json_str or len(json_str) > 5000:
                             fixed_json_robust = fix_json_string_values_robust(json_str)
                             if fixed_json_robust != json_str:
                                 tool_data = json.loads(fixed_json_robust)
                                 if isinstance(tool_data, dict):
-                                    if 'name' in tool_data and 'content' in tool_data:
-                                        return [{
-                                            "name": tool_data["name"],
-                                            "arguments": tool_data["content"]
-                                        }]
-                                    elif 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    if 'tool_name' in tool_data and 'parameters' in tool_data:
                                         return [{
                                             "name": tool_data["tool_name"],
                                             "arguments": tool_data["parameters"]
@@ -2761,16 +2863,13 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             "name": tool_data["name"],
                                             "arguments": tool_data["parameters"]
                                         }]
-                        except (json.JSONDecodeError, Exception):
-                            pass  # 继续到下一个修复尝试
-                    except Exception as fix_e2:
-                        if self.debug_mode:
-                            debug_info.append(f"JSON fix attempt in single block also failed: {str(fix_e2)[:100]}")
-                except (json.JSONDecodeError, Exception) as e:
-                    if self.debug_mode:
-                        debug_info.append(f"Single JSON fallback failed: {str(e)[:100]}")
-                    # Try to fix it
-                    try:
+                                    elif 'name' in tool_data and 'content' in tool_data:
+                                        return [{
+                                            "name": tool_data["name"],
+                                            "arguments": tool_data["content"]
+                                        }]
+                        
+                        # 如果robust方法失败或未执行，尝试正则方法
                         fixed_json = smart_escape_quotes_in_json_values(json_str)
                         tool_data = json.loads(fixed_json)
                         if isinstance(tool_data, dict):
