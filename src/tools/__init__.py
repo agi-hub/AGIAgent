@@ -26,6 +26,7 @@ from .file_system_tools import FileSystemTools
 from .terminal_tools import TerminalTools
 from .web_search_tools import WebSearchTools
 from .help_tools import HelpTools
+from .mouse_tools import MouseTools
 
 # Import MCP knowledge base tools
 try:
@@ -56,6 +57,7 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
         TerminalTools,
         WebSearchTools,
         HelpTools,
+        MouseTools,
         MCPKnowledgeBaseTools,
         PluginTools
     ):
@@ -70,6 +72,7 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
+            MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
             PluginTools.__init__(self, workspace_root)
         
@@ -128,6 +131,7 @@ elif MCP_KB_TOOLS_AVAILABLE:
         TerminalTools,
         WebSearchTools,
         HelpTools,
+        MouseTools,
         MCPKnowledgeBaseTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
@@ -141,6 +145,7 @@ elif MCP_KB_TOOLS_AVAILABLE:
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
+            MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
         
         def cleanup(self):
@@ -197,7 +202,8 @@ else:
         FileSystemTools,
         TerminalTools,
         WebSearchTools,
-        HelpTools
+        HelpTools,
+        MouseTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
@@ -210,6 +216,7 @@ else:
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
             HelpTools.__init__(self)
+            MouseTools.__init__(self)
         
         def cleanup(self):
             """Clean up resources used by tools"""

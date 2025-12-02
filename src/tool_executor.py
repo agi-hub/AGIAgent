@@ -443,6 +443,7 @@ class ToolExecutor:
             "merge_file": self.tools.merge_file,  # Add file merging tool
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,  # Add document conversion tool
+            "mouse_control": self.tools.mouse_control,  # Add mouse control tool
         }
         
         # Add history compression tool if available
