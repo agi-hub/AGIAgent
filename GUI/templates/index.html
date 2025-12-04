@@ -4350,6 +4350,11 @@
             socket.on('task_stopped', function(data) {
                 addMessage(data.message, data.type || 'error');
                 setTaskRunning(false);
+                // 🔧 Fix: 确保任务停止时结束绿框状态
+                resetJsonCollectingState();
+                lastMessageType = null;
+                lastMessageDiv = null;
+                lastMessageContent = null;
                 // 任务停止时，如果有待执行的用户输入，恢复到输入框
                 if (pendingUserInput) {
                     userInput.value = pendingUserInput;
@@ -6113,6 +6118,12 @@
                 if (stopButtonTimeout) {
                     clearTimeout(stopButtonTimeout);
                 }
+                
+                // 🔧 Fix: 立即结束绿框状态，防止新任务的消息显示在旧的绿框中
+                resetJsonCollectingState();
+                lastMessageType = null;
+                lastMessageDiv = null;
+                lastMessageContent = null;
                 
                 if (stopButtonClickCount === 1) {
                     // First click: try normal stop
