@@ -3848,6 +3848,11 @@
                 socket.disconnect();
                 socket = null;
             }
+            // 手动断开时清空工具调用细节框
+            const detailInfoMessages = document.getElementById('detailInfoMessages');
+            if (detailInfoMessages) {
+                detailInfoMessages.innerHTML = '';
+            }
             resetAfterDisconnect();
             isManualDisconnect = false;
         }

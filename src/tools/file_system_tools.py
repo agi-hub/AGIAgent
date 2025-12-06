@@ -731,8 +731,11 @@ class FileSystemTools:
                 result['svg_processing'] = svg_result
             
             # Convert markdown to Word and PDF if this is a markdown file
+            # Skip conversion for plan.md as it's an execution plan, not an output document
             conversion_result = None
-            if target_file.lower().endswith('.md'):
+            target_file_lower = target_file.lower()
+            file_basename = os.path.basename(target_file_lower)
+            if target_file_lower.endswith('.md') and file_basename != 'plan.md':
                 try:
                     conversion_result = self._convert_markdown_to_formats(file_path, target_file)
                     if conversion_result:
