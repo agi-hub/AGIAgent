@@ -424,35 +424,38 @@ class ToolExecutor:
         if self.planning_tools:
             self.tool_map["plan_tools"] = self.planning_tools.plan_tools
         
-        # 🚀 长期记忆工具延迟初始化包装器
-        def _create_long_term_memory_wrapper(tool_name):
-            """创建长期记忆工具的延迟初始化包装器"""
-            def wrapper(*args, **kwargs):
-                # 确保长期记忆系统已初始化
-                self._ensure_long_term_memory_initialized()
-                
-                # 检查初始化是否成功
-                if self.long_term_memory is None:
-                    return {"status": "error", "message": "Long-term memory system initialization failed"}
-                
-                # 调用实际的工具方法
-                if tool_name == "recall_memories":
-                    return self.long_term_memory.recall_memories(*args, **kwargs)
-                elif tool_name == "recall_memories_by_time":
-                    return self.long_term_memory.recall_memories_by_time(*args, **kwargs)
-                elif tool_name == "get_memory_summary":
-                    return self.long_term_memory.get_memory_summary(*args, **kwargs)
-                else:
-                    return {"status": "error", "message": f"Unknown long-term memory tool: {tool_name}"}
-            return wrapper
-        
-        # 注册长期记忆工具（使用延迟初始化包装器）
-        self.tool_map.update({
-            "recall_memories": _create_long_term_memory_wrapper("recall_memories"),
-            "recall_memories_by_time": _create_long_term_memory_wrapper("recall_memories_by_time"),
-            "get_memory_summary": _create_long_term_memory_wrapper("get_memory_summary"),
-        })
-        print_debug("🧠 Long-term memory tools registered (lazy initialization)")
+        # 🚀 长期记忆工具延迟初始化包装器（仅在启用时注册）
+        if self._is_long_term_memory_enabled():
+            def _create_long_term_memory_wrapper(tool_name):
+                """创建长期记忆工具的延迟初始化包装器"""
+                def wrapper(*args, **kwargs):
+                    # 确保长期记忆系统已初始化
+                    self._ensure_long_term_memory_initialized()
+                    
+                    # 检查初始化是否成功
+                    if self.long_term_memory is None:
+                        return {"status": "error", "message": "Long-term memory system initialization failed"}
+                    
+                    # 调用实际的工具方法
+                    if tool_name == "recall_memories":
+                        return self.long_term_memory.recall_memories(*args, **kwargs)
+                    elif tool_name == "recall_memories_by_time":
+                        return self.long_term_memory.recall_memories_by_time(*args, **kwargs)
+                    elif tool_name == "get_memory_summary":
+                        return self.long_term_memory.get_memory_summary(*args, **kwargs)
+                    else:
+                        return {"status": "error", "message": f"Unknown long-term memory tool: {tool_name}"}
+                return wrapper
+            
+            # 注册长期记忆工具（使用延迟初始化包装器）
+            self.tool_map.update({
+                "recall_memories": _create_long_term_memory_wrapper("recall_memories"),
+                "recall_memories_by_time": _create_long_term_memory_wrapper("recall_memories_by_time"),
+                "get_memory_summary": _create_long_term_memory_wrapper("get_memory_summary"),
+            })
+            print_debug("🧠 Long-term memory tools registered (lazy initialization)")
+        else:
+            print_debug("ℹ️ Long-term memory is disabled, skipping tool registration")
         
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
@@ -477,16 +480,25 @@ class ToolExecutor:
                 "terminate_agent": _multi_agent_disabled_error,
             })
         
-        # 🚀 MCP真正延迟初始化：只在首次使用MCP工具时才创建客户端实例
-        # 不在 __init__ 中创建实例，避免启动延迟
+        # 🚀 MCP智能加载：检查是否配置了MCP服务器
+        # 检查是否配置了MCP服务器
+        has_mcp_servers = self._check_mcp_servers_configured()
+        
+        # 初始化MCP相关变量
         self.cli_mcp_client = None
         self.direct_mcp_client = None
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
-        self.mcp_initialization_attempted = False  # Track if we've tried to initialize MCP
+        self.mcp_initialization_attempted = False
         
-        # 存储MCP配置文件路径，供延迟初始化使用
-        self.MCP_config_file_path = self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json"
+        if has_mcp_servers:
+            # If MCP servers are configured, initialize at startup
+            print_debug("🔌 MCP server configuration detected, initializing MCP at startup...")
+            # Immediately initialize MCP (pass is_startup=True)
+            self._ensure_mcp_initialized(is_startup=True)
+        else:
+            # If no MCP servers are configured, enable lazy loading
+            print_debug("⏭️ No MCP server configuration detected, enabling lazy loading")
         
         # Log related settings
         # Only create logs directory if we have a valid workspace_dir
@@ -507,25 +519,74 @@ class ToolExecutor:
             os.makedirs(self.llm_logs_dir, exist_ok=True)
 
     
-    def _ensure_mcp_initialized(self):
+    def _check_mcp_servers_configured(self) -> bool:
+        """
+        检查MCP配置文件中是否配置了MCP服务器
+        
+        Returns:
+            True if MCP servers are configured, False otherwise
+        """
+        try:
+            config_path = self.MCP_config_file
+            
+            # 检查配置文件是否存在
+            if not os.path.exists(config_path):
+                return False
+            
+            # 读取配置文件
+            import json
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # 检查是否有mcpServers配置
+            mcp_servers = config.get("mcpServers", {})
+            
+            if not mcp_servers:
+                return False
+            
+            # 检查是否有启用的服务器
+            for server_name, server_config in mcp_servers.items():
+                # 跳过禁用的服务器
+                if server_config.get("enabled", True) is False:
+                    continue
+                
+                # 检查是否有command或url配置（表示这是一个有效的服务器配置）
+                if server_config.get("command") or server_config.get("url"):
+                    return True
+            
+            # 没有找到有效的服务器配置
+            return False
+            
+        except Exception as e:
+            print_debug(f"⚠️ 检查MCP配置时出错: {e}")
+            return False
+    
+    def _ensure_mcp_initialized(self, is_startup: bool = False):
         """
         确保MCP已初始化 - 延迟加载实现
-        在第一次使用MCP工具时调用此方法
+        在第一次使用MCP工具时调用此方法，或在启动时检测到配置时调用
+        
+        Args:
+            is_startup: 是否在启动时调用（True=启动时，False=首次使用时）
         """
         # 如果已经尝试过初始化,直接返回
         if self.mcp_initialization_attempted:
             return
         
         self.mcp_initialization_attempted = True
-        print_system("🔄 首次使用MCP工具,开始初始化MCP客户端...")
+        
+        if is_startup:
+            print_system("🔄 检测到MCP服务器配置,开始初始化MCP客户端...")
+        else:
+            print_system("🔄 首次使用MCP工具,开始初始化MCP客户端...")
         
         # 🚀 在首次使用时创建MCP客户端实例
         try:
             from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper
-            self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file_path)
+            self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
             
             from tools.mcp_client import MCPClient
-            self.direct_mcp_client = MCPClient(self.MCP_config_file_path, workspace_dir=self.workspace_dir)
+            self.direct_mcp_client = MCPClient(self.MCP_config_file, workspace_dir=self.workspace_dir)
             
             print_debug("✅ MCP客户端实例创建成功")
         except Exception as e:
@@ -6513,16 +6574,20 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 tool_definitions = {}
                 print_debug(f"⚠️ 工具定义文件不存在: {json_file_path}")
             
-            # Load memory tool definitions
-            memory_tools_file = os.path.join(self.prompts_folder, "memory_tools.json")
-            if os.path.exists(memory_tools_file):
-                try:
-                    with open(memory_tools_file, 'r', encoding='utf-8') as f:
-                        memory_tools = json.load(f)
-                        tool_definitions.update(memory_tools)
-                        self._tool_defs_file_mtimes[memory_tools_file] = os.path.getmtime(memory_tools_file)
-                except Exception as e:
-                    print_current(f"⚠️ Error loading memory tools: {e}")
+            # Load memory tool definitions (only if long-term memory is enabled)
+            if self._is_long_term_memory_enabled():
+                memory_tools_file = os.path.join(self.prompts_folder, "memory_tools.json")
+                if os.path.exists(memory_tools_file):
+                    try:
+                        with open(memory_tools_file, 'r', encoding='utf-8') as f:
+                            memory_tools = json.load(f)
+                            tool_definitions.update(memory_tools)
+                            self._tool_defs_file_mtimes[memory_tools_file] = os.path.getmtime(memory_tools_file)
+                            print_debug("✅ Long-term memory tool definitions loaded")
+                    except Exception as e:
+                        print_current(f"⚠️ Error loading memory tools: {e}")
+            else:
+                print_debug("ℹ️ Long-term memory is disabled, skipping memory tool definitions")
             
             # Check if multi-agent mode is enabled
             multi_agent_enabled = self._is_multi_agent_enabled()
@@ -6712,6 +6777,36 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             print_current(f"⚠️  Error checking multi-agent configuration: {e}")
             # Default to True if configuration cannot be read
             return True
+    
+    def _is_long_term_memory_enabled(self) -> bool:
+        """
+        Check if long-term memory is enabled from configuration or environment variable.
+        
+        Returns:
+            True if long-term memory is enabled, False otherwise
+        """
+        # First check environment variable (GUI setting takes precedence)
+        env_value = os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower()
+        if env_value:
+            return env_value in ('true', '1', 'yes', 'on')
+        
+        # Then check config file
+        try:
+            from config_loader import get_config_value
+            long_term_memory_config = get_config_value("enable_long_term_memory", "False")
+            
+            # Handle different possible values
+            if isinstance(long_term_memory_config, str):
+                return long_term_memory_config.lower() in ["true", "1", "yes", "on"]
+            elif isinstance(long_term_memory_config, bool):
+                return long_term_memory_config
+            else:
+                return bool(long_term_memory_config)
+                
+        except Exception as e:
+            print_debug(f"⚠️  Error checking long-term memory configuration: {e}")
+            # Default to False if configuration cannot be read
+            return False
     
     # Tool prompt generation function moved to utils/parse.py
     
