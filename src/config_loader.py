@@ -390,54 +390,6 @@ def get_web_content_truncation_length(config_file: str = "config/config.txt") ->
     main_truncation = get_truncation_length(config_file)
     return max(50000, main_truncation * 5)
 
-def get_summary_history(config_file: str = "config/config.txt") -> bool:
-    """
-    Get summary_history configuration from configuration file
-    
-    Args:
-        config_file: Path to the configuration file
-        
-    Returns:
-        Boolean indicating whether to use history summarization (default: False)
-    """
-    config = load_config(config_file)
-    summary_history_str = config.get('summary_history', 'False').lower()
-    
-    # Convert string to boolean
-    if summary_history_str in ('true', '1', 'yes', 'on'):
-        return True
-    elif summary_history_str in ('false', '0', 'no', 'off'):
-        return False
-    else:
-        print(f"Warning: Invalid summary_history value '{summary_history_str}' in config file, using default False")
-        return False
-
-def get_summary_max_length(config_file: str = "config/config.txt") -> int:
-    """
-    Get summary max length from configuration file
-    
-    Args:
-        config_file: Path to the configuration file
-        
-    Returns:
-        Summary max length integer (default: 5000)
-    """
-    config = load_config(config_file)
-    summary_max_length_str = config.get('summary_max_length')
-    
-    if summary_max_length_str:
-        try:
-            summary_max_length = int(summary_max_length_str)
-            if summary_max_length <= 0:
-                print(f"Warning: Invalid summary_max_length value '{summary_max_length_str}' in config file, must be positive integer, using default 5000")
-                return 5000
-            return summary_max_length
-        except ValueError:
-            print(f"Warning: Invalid summary_max_length value '{summary_max_length_str}' in config file, must be an integer, using default 5000")
-            return 5000
-    
-    return 5000  # Default summary max length
-
 def get_compression_min_length(config_file: str = "config/config.txt") -> int:
     """
     Get compression min length from configuration file
@@ -515,32 +467,6 @@ def get_compression_tail_length(config_file: str = "config/config.txt") -> int:
             return 100
     
     return 100  # Default compression tail length
-
-def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
-    """
-    Get summary trigger length from configuration file
-    
-    Args:
-        config_file: Path to the configuration file
-        
-    Returns:
-        Summary trigger length integer (default: 20000)
-    """
-    config = load_config(config_file)
-    summary_trigger_length_str = config.get('summary_trigger_length')
-    
-    if summary_trigger_length_str:
-        try:
-            summary_trigger_length = int(summary_trigger_length_str)
-            if summary_trigger_length <= 0:
-                print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be positive integer, using default 20000")
-                return 20000
-            return summary_trigger_length
-        except ValueError:
-            print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be an integer, using default 20000")
-            return 20000
-    
-    return 20000  # Default summary trigger length
 
 def get_simplified_search_output(config_file: str = "config/config.txt") -> bool:
     """

@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_truncation_length, get_summary_history, get_enable_round_sync, get_sync_round
+from config_loader import get_model, get_truncation_length, get_enable_round_sync, get_sync_round
 from src.tools.print_system import print_current, print_current, print_current, print_debug
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
@@ -573,125 +573,29 @@ class MultiRoundTaskExecutor:
                                          for record in recent_records)
                 total_history_length = records_to_summarize_length + recent_records_length
                 
-                # Only summarize if the content to be summarized is actually substantial
-                if hasattr(self.executor, 'summary_history') and self.executor.summary_history and \
-                   hasattr(self.executor, 'summary_trigger_length') and \
-                   records_to_summarize_length > self.executor.summary_trigger_length and \
-                   len(records_to_summarize) > 0:  # Only summarize if we have records to summarize
-                    
-                    print_current(f"📊 Content to summarize ({records_to_summarize_length} chars) exceeds trigger ({self.executor.summary_trigger_length} chars), attempting to summarize...")
-                    
-                    # Check if we can use executor's summarization capability
-                    if hasattr(self.executor, 'conversation_summarizer') and self.executor.conversation_summarizer:
-                        try:
-                            # Convert to conversation format, excluding recent records to avoid overlap
-                            conversation_records = []
+                # Use simple compression for history management
+                # Apply the logic: only compress older records, keep recent 2 rounds intact
+                if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor and \
+                   len(history_for_llm) > 2:
+                    try:
+                        # Split history: compress older records, keep recent 2 rounds
+                        records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
+                        recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
+                        
+                        if records_to_compress:
+                            # Calculate length of records to compress
+                            records_to_compress_length = sum(len(str(record.get("result", ""))) 
+                                                             for record in records_to_compress)
                             
-                            # Check if we have enough records to summarize
-                            if not records_to_summarize:
-                                print_current(f"📋 Not enough history to summarize (only {len(history_for_llm)} records), using recent records only")
-                                # Keep recent history only as fallback
-                                history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
-                                # Skip summarization and proceed with current history_for_llm
-                            else:
-                                # Convert records to conversation format
-                                for record in records_to_summarize:
-                                    # 🔧 优化：使用简化的用户消息，避免重复提示词
-                                    user_content = f"Round {record.get('task_round', 'N/A')} execution"
-                                    conversation_records.append({
-                                        "role": "user",
-                                        "content": user_content
-                                    })
-                                    conversation_records.append({
-                                        "role": "assistant", 
-                                        "content": record["result"]
-                                    })
+                            # Check trigger length
+                            trigger_length = 20000  # Default trigger length
                                 
-                                # Generate summary (excluding recent records)
-                                latest_result = recent_records[-1]["result"] if recent_records else ""
-                                history_summary = self.executor.conversation_summarizer.generate_conversation_history_summary(
-                                    conversation_records, 
-                                    latest_result
-                                )
-                                
-                                # Validate summary content
-                                if not history_summary or len(history_summary.strip()) < 10:
-                                    print_current("⚠️ Generated summary is too short or empty, using basic fallback")
-                                    # Use basic conversation summary as fallback
-                                    history_summary = self.executor.conversation_summarizer._generate_basic_conversation_summary(
-                                        conversation_records, latest_result
-                                    )
-                                
-                                # Replace history with summary record
-                                summary_record = {
-                                    "task_round": "summary",
-                                    "result": f"## Earlier Conversation Summary\n\n{history_summary}",
-                                    "task_completed": False,
-                                    "timestamp": datetime.now().isoformat(),
-                                    "is_summary": True  # Mark as summary record
-                                }
-                                
-                                # Combine summary with recent records (no overlap now)
-                                history_for_llm = [summary_record] + recent_records
-                                
-                                # Update the main task_history to prevent future growth
-                                # Keep non-LLM records (system messages, etc.) and replace LLM history
-                                non_llm_records = [record for record in task_history 
-                                                 if not ("result" in record) or record.get("error")]
-                                task_history = non_llm_records + history_for_llm
-                                
-                                # Calculate actual new length after replacement
-                                summary_length = len(history_summary) if history_summary else 0
-                                summary_record_length = len(summary_record["result"])
-                                recent_records_length = sum(len(str(r.get("result", ""))) for r in recent_records)
-                                new_total_length = summary_record_length + recent_records_length
-                                
-                                if history_summary:
-                                    print_current(f"✅ Summary completed:")
-                                    print_current(f"   - Summary part: {records_to_summarize_length} → {summary_length} chars ({(1 - summary_length/records_to_summarize_length)*100:.1f}% reduction)")
-                                    print_current(f"   - Recent records (last 2 rounds): {len(recent_records)} records, {recent_records_length} chars")
-                                    print_current(f"   - Total: {total_history_length} → {new_total_length} chars ({(1 - new_total_length/total_history_length)*100:.1f}% reduction)")
-                                    
-                                    # Print the actual summary content to terminal
-                                    print_current("📋 Generated Summary Content:")
-                                    print_current("=" * 80)
-                                    print_current(history_summary)
-                                    print_current("=" * 80)
-                                else:
-                                    print_current(f"⚠️ Summary failed, using recent records only:")
-                                    print_current(f"   - Summary part: {records_to_summarize_length} chars (failed to compress)")
-                                    print_current(f"   - Recent records (last 2 rounds): {len(recent_records)} records, {recent_records_length} chars")
-                                    print_current(f"   - Total: {total_history_length} → {recent_records_length} chars ({(1 - recent_records_length/total_history_length)*100:.1f}% reduction)")
-                            
-                        except Exception as e:
-                            print_current(f"⚠️ History summarization failed: {e}")
-                            # Keep recent history only as fallback
-                            history_for_llm = history_for_llm[-3:] if len(history_for_llm) > 3 else history_for_llm
-                            print_current(f"📋 Using recent history subset: {len(history_for_llm)} records")
-                else:
-                    # When summary_history=False, use simple compression instead
-                    # Apply the same logic as AI summarization: only compress older records, keep recent 2 rounds intact
-                    if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor and \
-                       len(history_for_llm) > 2:
-                        try:
-                            # Split history same way as AI summarization: compress older records, keep recent 2 rounds
-                            records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
-                            recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
-                            
-                            if records_to_compress:
-                                # Calculate length of records to compress
-                                records_to_compress_length = sum(len(str(record.get("result", ""))) 
-                                                                 for record in records_to_compress)
-                                
-                                # Check trigger length (same as AI summarization)
-                                trigger_length = getattr(self.executor, 'summary_trigger_length', 20000) if hasattr(self.executor, 'summary_trigger_length') else 20000
-                                
-                                # Only compress if content exceeds trigger length
-                                if records_to_compress_length > trigger_length:
-                                    #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records ({records_to_compress_length} chars, exceeds trigger {trigger_length} chars), keeping {len(recent_records_to_keep)} recent records intact")
-                                    compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
-                                    # Combine compressed older records with uncompressed recent records
-                                    history_for_llm = compressed_older_records + recent_records_to_keep
+                            # Only compress if content exceeds trigger length
+                            if records_to_compress_length > trigger_length:
+                                #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records ({records_to_compress_length} chars, exceeds trigger {trigger_length} chars), keeping {len(recent_records_to_keep)} recent records intact")
+                                compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
+                                # Combine compressed older records with uncompressed recent records
+                                history_for_llm = compressed_older_records + recent_records_to_keep
                                 # If content doesn't exceed trigger length, keep all records as-is
                             # If no older records to compress, keep all records as-is
                         except Exception as e:

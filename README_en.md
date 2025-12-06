@@ -162,13 +162,6 @@ python agia.py -r "Analyze this chart: [img=chart.png]"
 python agia.py -r "Use AISearch_search to search for AI news"
 ```
 
-#### 📋 Task Decomposition Mode
-Suitable for complex multi-step tasks. The system will automatically decompose large tasks into subtasks for step-by-step execution.
-
-```bash
-python agia.py --todo --requirement "Develop a complete blog system"
-```
-
 #### 💬 Interactive Mode
 Provides a more flexible interactive experience where the system guides you to input task requirements.
 

@@ -161,13 +161,6 @@ python agia.py -r "分析这张图表：[img=chart.png]"
 python agia.py -r "使用AISearch_search搜索AI新闻"
 ```
 
-#### 📋 任务分解模式
-适合复杂的多步骤任务，系统会自动将大任务分解为子任务逐步执行。
-
-```bash
-python agia.py --todo --requirement "开发一个完整的博客系统"
-```
-
 #### 💬 交互模式
 提供更灵活的交互体验，系统会引导您输入任务需求。
 

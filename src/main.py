@@ -21,9 +21,8 @@ AGI Agent Main Program
 
 A complete automated task processing workflow:
 1. Receive user requirement input
-2. Call task decomposer to create todo.md
-3. Call multi-round task executor to execute tasks
-4. Package working directory to tar.gz file
+2. Call multi-round task executor to execute tasks
+3. Package working directory to tar.gz file
 """
 
 # Application name macro definition
@@ -41,9 +40,8 @@ import argparse
 import json
 import atexit
 from datetime import datetime
-from src.task_decomposer import TaskDecomposer
 from src.multi_round_executor import MultiRoundTaskExecutor
-from src.config_loader import get_api_key, get_api_base, get_model, get_truncation_length, get_summary_report
+from src.config_loader import get_api_key, get_api_base, get_model, get_truncation_length
 from src.routine_utils import append_routine_to_requirement
 from src.tools.agent_context import get_current_agent_id, set_current_agent_id
 # Configuration file to store last output directory
@@ -279,7 +277,6 @@ class AGIAgentMain:
         os.makedirs(out_dir, exist_ok=True)
         
         # Set paths
-        self.todo_md_path = os.path.join(out_dir, "todo.md")
         self.logs_dir = os.path.join(out_dir, "logs")  # Simplified: direct logs directory
         
         # Ensure logs directory exists  
@@ -296,17 +293,8 @@ class AGIAgentMain:
         ps_mod = importlib.import_module('src.tools.print_system')
         ps_mod.set_output_directory(self.out_dir)
         
-        # 🔧 Initialize execution report storage
-        self.last_execution_report = None
-        
         # Tools will be initialized in ToolExecutor to avoid duplicate initialization
         self.tools = None
-        
-        # Only create task decomposer in multi-task mode
-        if not single_task_mode:
-            self.task_decomposer = TaskDecomposer(api_key=api_key, model=model, api_base=api_base, out_dir=self.out_dir)
-        else:
-            self.task_decomposer = None
             
     def _create_workspace_link(self):
         """
@@ -508,81 +496,6 @@ class AGIAgentMain:
                 pass
             return False
     
-    def decompose_task(self, user_requirement: str) -> bool:
-        """
-        Execute task decomposition
-        
-        Args:
-            user_requirement: User requirement
-            
-        Returns:
-            Whether todo.md was successfully created
-        """
-        print_current("🔧 Starting task decomposition...")
-        
-        try:
-            # Set working directory
-            workspace_dir = os.path.join(self.out_dir, "workspace")
-            
-            # Execute task decomposition, pass working directory information
-            result = self.task_decomposer.decompose_task(
-                user_requirement, 
-                self.todo_md_path,
-                workspace_dir=workspace_dir,
-                routine_file=self.routine_file
-            )
-            print_current(f"Task decomposition result: {result}")
-            
-            # Check if todo.md file was successfully created
-            if not os.path.exists(self.todo_md_path):
-                # Check if file was created in current directory instead (fallback recovery)
-                local_file = "todo.md"
-                if os.path.exists(local_file):
-                    print_current(f"⚠️ File was created in current directory, moving to correct location...")
-                    try:
-                        import shutil
-                        shutil.move(local_file, self.todo_md_path)
-                        print_current(f"✅ File moved to: {self.todo_md_path}")
-                        return True
-                    except Exception as move_error:
-                        print_current(f"❌ Failed to move file: {move_error}")
-                
-                print_current("Task decomposition failed: Failed to create todo.md file")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            print_current(f"❌ Task decomposition error: {e}")
-            return False
-    
-    def execute_tasks(self, loops: int = 3) -> bool:
-        """
-        Execute tasks (delegates to execute_single_task)
-        
-        Args:
-            loops: Execution rounds for each task
-            
-        Returns:
-            Whether execution was successful
-        """
-        
-        try:
-            # Read todo.md content as user requirement
-            if not os.path.exists(self.todo_md_path):
-                print_current(f"❌ Todo file not found: {self.todo_md_path}")
-                return False
-                
-            with open(self.todo_md_path, 'r', encoding='utf-8') as f:
-                todo_content = f.read()
-            
-            # Use execute_single_task with todo content as requirement
-            return self.execute_single_task(todo_content, loops)
-            
-        except Exception as e:
-            print_current(f"❌ Task execution error: {e}")
-            return False
-    
     def execute_single_task(self, user_requirement: str, loops: int = 3) -> bool:
         """
         Execute single task (skip task decomposition)
@@ -652,7 +565,6 @@ class AGIAgentMain:
             # Check if user interrupted execution
             if task_result.get("status") == "user_interrupted":
                 print_current("🛑 Single task execution stopped by user")
-                print_current("📋 Skipping report generation due to user interruption")
                 # Clean up resources before returning
                 try:
                     executor.cleanup()
@@ -661,52 +573,6 @@ class AGIAgentMain:
                 return False
             
             if task_result.get("status") == "completed":
-                
-                # Save simple execution report
-                execution_report = {
-                    "start_time": datetime.now().isoformat(),
-                    "end_time": datetime.now().isoformat(),
-                    "total_tasks": 1,
-                    "completed_tasks": [task_result],
-                    "failed_tasks": [],
-                    "execution_summary": f"Single task mode execution completed\nTask: {user_requirement}",
-                    "workspace_dir": workspace_dir,
-                    "mode": "single_task",
-                    "current_loop": task_result.get("current_loop", 0)  # Add current loop information
-                }
-                
-                # Save execution report
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 🔧 Add agent ID to report filename
-                current_agent_id = get_current_agent_id()
-                if current_agent_id:
-                    report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
-                else:
-                    report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
-                
-                try:
-                    import json
-                    with open(report_file, 'w', encoding='utf-8') as f:
-                        json.dump(execution_report, f, ensure_ascii=False, indent=2)
-                except Exception as e:
-                    print_current(f"⚠️ Report save failed: {e}")
-                
-                # Generate human-readable Markdown report
-                try:
-                    self.generate_single_task_markdown_report(execution_report, timestamp)
-                except Exception as e:
-                    print_current(f"⚠️ Markdown report generation failed: {e}")
-                
-                # Generate detailed summary report (if enabled in config)
-                if get_summary_report():
-                    try:
-                        self.generate_single_task_summary_report(execution_report, timestamp)
-                    except Exception as e:
-                        print_current(f"⚠️ Detailed summary report generation failed: {e}")
-                
-                # 🔧 Store execution report for AGIAgentClient access
-                self.last_execution_report = execution_report
-                
                 # Clean up resources before returning
                 try:
                     executor.cleanup()
@@ -715,41 +581,7 @@ class AGIAgentMain:
                 
                 return True
             elif task_result.get("status") == "max_rounds_reached":
-                # For max rounds reached, still generate reports but return False to indicate partial success
                 print_current("⚠️ Task reached maximum execution rounds")
-                
-                # Save execution report for max rounds case
-                execution_report = {
-                    "start_time": datetime.now().isoformat(),
-                    "end_time": datetime.now().isoformat(),
-                    "total_tasks": 1,
-                    "completed_tasks": [],
-                    "max_rounds_reached_tasks": [task_result],  # 🔧 Fix: no longer mark as failed_tasks
-                    "execution_summary": f"Single task mode execution reached max rounds\nTask: {user_requirement}",
-                    "workspace_dir": workspace_dir,
-                    "mode": "single_task",
-                    "current_loop": task_result.get("current_loop", loops)  # Add loop information
-                }
-                
-                # Save execution report
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 🔧 Add agent ID to report filename
-                current_agent_id = get_current_agent_id()
-                if current_agent_id:
-                    report_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.json")
-                else:
-                    report_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.json")
-                
-                try:
-                    import json
-                    with open(report_file, 'w', encoding='utf-8') as f:
-                        json.dump(execution_report, f, ensure_ascii=False, indent=2)
-                    print_current(f"📋 Execution report saved to: {report_file}")
-                except Exception as e:
-                    print_current(f"⚠️ Report save failed: {e}")
-                
-                # 🔧 Store execution report for AGIAgentClient access (max_rounds_reached case)
-                self.last_execution_report = execution_report
                 
                 # Clean up resources before returning
                 try:
@@ -777,476 +609,6 @@ class AGIAgentMain:
             except:
                 pass
             return False
-    
-    def generate_single_task_markdown_report(self, report: Dict[str, Any], timestamp: str):
-        """
-        Generate human-readable Markdown report for single task mode
-        
-        Args:
-            report: Execution report
-            timestamp: Timestamp
-        """
-        try:
-            # 🔧 Add agent ID to markdown report filename
-            current_agent_id = get_current_agent_id()
-            if current_agent_id:
-                markdown_file = os.path.join(self.logs_dir, f"single_task_report_{current_agent_id}_{timestamp}.md")
-            else:
-                markdown_file = os.path.join(self.logs_dir, f"single_task_report_{timestamp}.md")
-            
-            start_time = datetime.fromisoformat(report["start_time"])
-            end_time = datetime.fromisoformat(report["end_time"])
-            duration = end_time - start_time
-            
-            task = report["completed_tasks"][0] if report["completed_tasks"] else {}
-            task_name = task.get("task_name", "User Requirement Execution")
-            history = task.get("history", [])
-            summary = task.get("summary", "No summary")
-
-            # Extract user requirement from first round
-            user_requirement = "No user requirement found"
-            for round_info in history:
-                if isinstance(round_info, dict) and "prompt" in round_info:
-                    prompt = round_info["prompt"]
-                    if "Task Description:" in prompt:
-                        desc_start = prompt.find("Task Description:") + len("Task Description:")
-                        desc_end = prompt.find("\n\n", desc_start)
-                        if desc_end != -1:
-                            user_requirement = prompt[desc_start:desc_end].strip()
-                        else:
-                            # Fallback to whole prompt if no clear description section
-                            user_requirement = prompt.split("\n\n")[0].strip()
-                    break
-
-            # Build Markdown content
-            markdown_content = f"""# {APP_NAME} Single Task Execution Report
-
-## 📊 Execution Overview
-
-- **Execution Mode**: Single Task Mode (direct execution of user requirement)
-- **Execution Time**: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
-- **Total Duration**: {duration}
-- **Task Status**: ✅ Execution Completed
-- **Working Directory**: {report.get("workspace_dir", "Not specified")}
-
----
-
-## 📋 Task Details
-
-### {task_name}
-
-**Task Summary**:
-{summary}
-
-**User Requirement**:
-{user_requirement}
-
----
-
-"""
-            
-            # Add execution history details
-            if history:
-                markdown_content += "## 🔄 Execution History\n\n"
-                
-                for round_info in history:
-                    if isinstance(round_info, dict) and "round" in round_info:
-                        round_num = round_info["round"]
-                        prompt = round_info.get("prompt", "")
-                        result = round_info.get("result", "")
-                        task_completed = round_info.get("task_completed", False)
-                        timestamp_str = round_info.get("timestamp", "")
-                        
-                        markdown_content += f"### Round {round_num} Execution\n\n"
-                        
-                        if timestamp_str:
-                            try:
-                                exec_time = datetime.fromisoformat(timestamp_str)
-                                markdown_content += f"**Execution Time**: {exec_time.strftime('%H:%M:%S')}\n\n"
-                            except:
-                                pass
-                        
-                        # Add user prompt (simplified display)
-                        if prompt:
-                            # Extract task description part
-                            if "Task Description:" in prompt:
-                                desc_start = prompt.find("Task Description:") + len("Task Description:")
-                                desc_end = prompt.find("\n\n", desc_start)
-                                if desc_end != -1:
-                                    task_desc = prompt[desc_start:desc_end].strip()
-                                    markdown_content += f"**Task Requirement**: {task_desc}\n\n"
-                        
-                        # Parse result content
-                        if result:
-                            # Separate LLM response and tool execution results
-                            if "--- Tool Execution Results ---" in result:
-                                parts = result.split("--- Tool Execution Results ---")
-                                llm_response = parts[0].strip()
-                                tool_results = parts[1].strip() if len(parts) > 1 else ""
-                                
-                                # LLM response
-                                if llm_response:
-                                    markdown_content += f"**LLM Analysis and Planning**:\n```\n{llm_response}\n```\n\n"
-                                
-                                # Tool execution results
-                                if tool_results:
-                                    markdown_content += f"**Tool Execution Results**:\n```\n{tool_results}\n```\n\n"
-                            else:
-                                # Plain text response
-                                markdown_content += f"**Execution Result**:\n```\n{result}\n```\n\n"
-                        
-                        # Task completion status
-                        if task_completed:
-                            markdown_content += "**Status**: 🎉 Task completed, ending iteration early\n\n"
-                        else:
-                            markdown_content += "**Status**: 🔄 Continue to next round\n\n"
-                        
-                        markdown_content += "---\n\n"
-                    
-                    elif "error" in round_info:
-                        # Handle error records
-                        round_num = round_info.get("round", "Unknown")
-                        error_msg = round_info.get("error", "Unknown error")
-                        markdown_content += f"### ❌ Round {round_num} Execution Error\n\n"
-                        markdown_content += f"**Error Message**: {error_msg}\n\n---\n\n"
-            
-            # Add system information
-            markdown_content += f"""---
-
-## 🔧 System Information
-
-This report was generated by {APP_NAME} Automated Task Processing System.
-
-- **System Version**: {APP_NAME} v1.0
-- **Execution Mode**: Single Task Mode
-- **Report Format**: Human-readable Markdown format  
-- **Generation Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-### 📁 Related Files
-
-- JSON format detailed log: `single_task_report_{timestamp}.json`
-- Task history record: `task_1_log.json`
-""" + (f"- LLM call record: `llmcall.csv` (DEBUG mode)" if self.debug_mode else "") + f"""
-
-### 💡 Usage Instructions
-
-- **Single Task Mode**: Directly execute user requirements without task decomposition, suitable for simple, clear requirements
-- **Multi-round Execution**: System will perform multiple rounds of dialogue and tool calls as needed to ensure task completion
-- **Intelligent Stopping**: When LLM determines task is completed, it will automatically stop subsequent rounds
-
----
-
-*This report contains complete task execution process, tool call details and final results for review and analysis.*
-"""
-            
-            # Save Markdown file
-            with open(markdown_file, 'w', encoding='utf-8') as f:
-                f.write(markdown_content)
-            
-        except Exception as e:
-            print_current(f"⚠️ Single task Markdown report generation failed: {e}")
-    
-    def generate_single_task_summary_report(self, report: Dict[str, Any], timestamp: str):
-        """
-        Use LLM to generate detailed summary report for single task mode (retain detail information, remove multi-round markers)
-        
-        Args:
-            report: Execution report
-            timestamp: Timestamp
-        """
-        try:
-            # Save summary report to workspace directory for easy user access
-            workspace_dir = report.get("workspace_dir")
-            # 🔧 Add agent ID to summary filename
-            current_agent_id = get_current_agent_id()
-            if current_agent_id:
-                summary_filename = f"task_summary_{current_agent_id}_{timestamp}.md"
-            else:
-                summary_filename = f"task_summary_{timestamp}.md"
-            
-            if workspace_dir and os.path.exists(workspace_dir):
-                summary_file = os.path.join(workspace_dir, summary_filename)
-            else:
-                summary_file = os.path.join(self.logs_dir, summary_filename)
-            
-            task = report["completed_tasks"][0] if report["completed_tasks"] else {}
-            task_name = task.get("task_name", "User Requirement Execution")
-            history = task.get("history", [])
-            
-            start_time = datetime.fromisoformat(report["start_time"])
-            end_time = datetime.fromisoformat(report["end_time"])
-            duration = end_time - start_time
-            
-            # Extract execution information (without round division)
-            user_requirement = ""
-            llm_responses = []
-            tool_outputs = []
-            final_result = ""
-            
-            for round_info in history:
-                if isinstance(round_info, dict):
-                    # Extract user requirement (only first time)
-                    if "prompt" in round_info and not user_requirement:
-                        prompt = round_info["prompt"]
-                        if "Task Description:" in prompt:
-                            desc_start = prompt.find("Task Description:") + len("Task Description:")
-                            desc_end = prompt.find("\n\n", desc_start)
-                            if desc_end != -1:
-                                user_requirement = prompt[desc_start:desc_end].strip()
-                    
-                    # Extract execution results
-                    if "result" in round_info:
-                        result = round_info["result"]
-                        
-                        # Separate LLM response and tool execution results
-                        if "--- Tool Execution Results ---" in result:
-                            parts = result.split("--- Tool Execution Results ---")
-                            llm_response = parts[0].strip()
-                            tool_result = parts[1].strip() if len(parts) > 1 else ""
-                            
-                            if llm_response:
-                                llm_responses.append(llm_response)
-                            if tool_result:
-                                tool_outputs.append(tool_result)
-                        else:
-                            # No tool execution results case
-                            if result.strip():
-                                llm_responses.append(result.strip())
-                        
-                        # Check if it's the final completion round
-                        if round_info.get("task_completed", False):
-                            final_result = result
-            
-            # Build summary prompt, requiring retention of detailed information
-            system_prompt = f"""Please generate a detailed summary report based on the following task execution information.
-
-Requirements:
-1. Retain all important information and detailed content from LLM output
-2. Remove "Round X execution" and other multi-round markers, integrate content into coherent description
-3. Retain technical details, analysis process and specific implementation solutions
-4. Retain all key conclusions, configuration examples, code snippets, etc.
-5. Organize content in a flowing manner, avoid repetition
-6. Maintain original technical depth and information completeness
-7. Format in markdown, ensure readability
-8. Focusing on the requirement, keep the useful information relates to the task, and remove the useless information.
-
-Please generate a markdown format detailed summary report, retaining all important information but removing round markers.
-
-"""
-            
-            summary_prompt = f"""
-
-Previous task execution:
-User requirement: {user_requirement}
-
-LLM analysis and output:
-{chr(10).join([f"Response {i+1}: {resp}" for i, resp in enumerate(llm_responses)])}
-
-Tool execution results:
-{chr(10).join([f"Tool output {i+1}: {output}" for i, output in enumerate(tool_outputs)])}
-
-Final result: {final_result}
-"""
-            
-            try:
-                print_current(f"🧠 Using LLM to generate detailed summary report...")
-                
-                # Create temporary multi-round task executor to call LLM
-                from multi_round_executor import MultiRoundTaskExecutor
-                temp_executor = MultiRoundTaskExecutor(
-                    subtask_loops=1,
-                    logs_dir=self.logs_dir,
-                    workspace_dir=None,
-                    debug_mode=False,
-                    api_key=self.api_key,
-                    model=self.model,
-                    api_base=self.api_base,
-                    detailed_summary=False,
-                    user_id=self.user_id
-                )
-                
-                # Use LLM to generate summary
-                if temp_executor.executor.is_claude:
-                    # Use Anthropic Claude API - batch call
-
-                    current_date = datetime.now()
-                    response = temp_executor.executor.client.messages.create(
-                        model=self.model,
-                        max_tokens=temp_executor.executor._get_max_tokens_for_model(self.model),
-                        system=system_prompt,
-                        messages=[
-                            {"role": "user", "content": summary_prompt}
-                        ],
-                        temperature=0.7
-                    )
-                    
-                    # Get complete response content (Claude API structure)
-                    if response.content and len(response.content) > 0:
-                        llm_summary = response.content[0].text
-                    else:
-                        llm_summary = "Summary generation failed: API returned empty response"
-                        print_current("⚠️ Warning: Claude API returned empty content list")
-                    print_current("📋 Single task summary generated")
-                    
-                else:
-                    # Use OpenAI API - batch call
-
-                    
-                    current_date = datetime.now()
-
-                    response = temp_executor.executor.client.chat.completions.create(
-                        model=self.model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": summary_prompt}
-                        ],
-                        max_tokens=temp_executor.executor._get_max_tokens_for_model(self.model),
-                        temperature=0.7,
-                        top_p=0.9
-                    )
-                    
-                    # Get complete response content
-                    if response.choices and len(response.choices) > 0:
-                        llm_summary = response.choices[0].message.content
-                    else:
-                        llm_summary = "Summary generation failed: API returned empty response"
-                        print_current("⚠️ Warning: OpenAI API returned empty choices list")
-                    print_current("📋 Single task summary generated")
-                
-                # Build final summary report
-                final_summary = f"""# {APP_NAME} Task Summary Report
-
-> 📊 **Quick Overview**: Single task execution completed | Duration: {duration} | Status: ✅ Success
-
----
-
-## 📋 Task Details
-
-**User Requirement**: {user_requirement}
-
----
-
-## 🎯 Execution Results and Analysis
-
-{llm_summary}
-
----
-
-## 📊 Execution Overview
-
-- **Execution Time**: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
-- **Total Duration**: {duration}
-- **Task Status**: ✅ Execution Completed
-- **Working Directory**: {report.get("workspace_dir", "Not specified")}
-
----
-
-📅 **Report Generation Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
-📁 **Detailed Log**: `single_task_report_{timestamp}.md`  
-
----
-
-*This report was automatically generated by {APP_NAME}, retaining complete task execution information and technical details.*
-"""
-                
-                # Save summary report
-                with open(summary_file, 'w', encoding='utf-8') as f:
-                    f.write(final_summary)
-                
-                print_current(f"📋 Detailed summary report saved to: {summary_file}")
-                
-            except Exception as e:
-                print_current(f"⚠️ LLM summary generation failed: {e}")
-                # Use backup plan - directly organize existing information
-                self._generate_detailed_single_task_summary(report, timestamp, user_requirement, llm_responses, tool_outputs, final_result)
-            
-        except Exception as e:
-            print_current(f"⚠️ Single task summary report generation failed: {e}")
-    
-    def _generate_detailed_single_task_summary(self, report: Dict[str, Any], timestamp: str, user_requirement: str, llm_responses: List[Any], tool_outputs: List[Any], final_result: str):
-        """
-        Generate detailed single task summary report (backup plan) - retain detailed information
-        """
-        try:
-            # Save summary report to workspace directory for easy user access
-            workspace_dir = report.get("workspace_dir")
-            if workspace_dir and os.path.exists(workspace_dir):
-                summary_file = os.path.join(workspace_dir, f"task_summary_{timestamp}.md")
-            else:
-                summary_file = os.path.join(self.logs_dir, f"task_summary_{timestamp}.md")
-            
-            start_time = datetime.fromisoformat(report["start_time"])
-            duration = datetime.fromisoformat(report["end_time"]) - start_time
-            
-            detailed_summary = f"""# {APP_NAME} Task Summary Report
-
-> 📊 **Quick Overview**: Single task execution completed | Duration: {duration} | Status: ✅ Success
-
----
-
-## 📋 Task Details
-
-**User Requirement**: {user_requirement}
-
----
-
-## 🎯 Execution Process and Results
-
-"""
-            
-            # Add LLM analysis and planning
-            if llm_responses:
-                detailed_summary += "### Analysis and Execution\n\n"
-                for i, response in enumerate(llm_responses):
-                    # Clean content, remove multi-round markers
-                    clean_response = response.replace("Round 1 Execution", "").replace("Round 2 Execution", "").replace("Round 3 Execution", "")
-                    clean_response = clean_response.replace("## Round", "## ").replace("### Round", "### ")
-                    if clean_response.strip():
-                        detailed_summary += f"{clean_response}\n\n"
-            
-            # Add tool execution results (if there's important information)
-            if tool_outputs:
-                detailed_summary += "### Execution Results\n\n"
-                for output in tool_outputs:
-                    # Only add meaningful tool outputs
-                    if len(output) > 50 and any(keyword in output for keyword in ['success', 'completed', 'created', 'modified', 'result', 'content']):
-                        # Use configured history truncation length
-                        history_truncation_length = get_truncation_length()
-                        detailed_summary += f"```\n{output[:history_truncation_length]}...\n```\n\n"
-            
-            # Add final result
-            if final_result:
-                clean_final = final_result.replace("TASK_COMPLETED:", "").strip()
-                if clean_final:
-                    detailed_summary += f"### Final Conclusion\n\n{clean_final}\n\n"
-            
-            detailed_summary += f"""---
-
-## 📊 Execution Overview
-
-- **Execution Time**: {start_time.strftime('%Y-%m-%d %H:%M:%S')}
-- **Total Duration**: {duration}
-- **Task Status**: ✅ Execution Completed
-- **Working Directory**: {report.get("workspace_dir", "Not specified")}
-
----
-
-📅 **Report Generation Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
-📁 **Detailed Log**: `single_task_report_{timestamp}.md`  
-
----
-
-*This report was automatically generated by {APP_NAME}, retaining complete task execution information and technical details.*
-"""
-            
-            # Save detailed summary
-            with open(summary_file, 'w', encoding='utf-8') as f:
-                f.write(detailed_summary)
-            
-            print_current(f"📋 Detailed summary report saved to: {summary_file}")
-            
-        except Exception as e:
-            print_current(f"⚠️ Detailed summary report generation failed: {e}")
     
     def ask_user_confirmation(self, message: str, default_yes: bool = True) -> bool:
         """
@@ -1290,9 +652,6 @@ Final result: {final_result}
         
         workspace_dir = os.path.join(self.out_dir, "workspace")
         
-        if not self.single_task_mode:
-            print_current(f"📋 Task File: {os.path.abspath(self.todo_md_path)}")
-        
         # Step 1: Get user requirement
         track_operation("Get User Requirement")
         requirement = self.get_user_requirement(user_requirement)
@@ -1327,42 +686,14 @@ Final result: {final_result}
                 print_current("Task execution cancelled by user")
                 return False
         
-        # Choose execution path based on mode
-        if self.single_task_mode:
-            # Single task mode: directly execute user requirement
-            track_operation("Single Task Execution")
-            if not self.execute_single_task(requirement, loops):
-                print_current("⚠️ Single task execution reached maximum rounds")  # Fix: distinguish between failure and reaching max rounds
-                finish_operation("Single Task Execution")
-                finish_operation("Main Program Execution")
-                return False
+        # Execute single task
+        track_operation("Single Task Execution")
+        if not self.execute_single_task(requirement, loops):
+            print_current("⚠️ Single task execution reached maximum rounds")  # Fix: distinguish between failure and reaching max rounds
             finish_operation("Single Task Execution")
-                
-        else:
-            # Step 2: Task decomposition
-            track_operation("Task Decomposition")
-            if not self.decompose_task(requirement):
-                print_current("Task decomposition failed, program terminated")
-                finish_operation("Task Decomposition")
-                finish_operation("Main Program Execution")
-                return False
-            finish_operation("Task Decomposition")
-            
-            # Interactive mode confirmation after task decomposition
-            if self.interactive_mode:
-                if not self.ask_user_confirmation(f"🤖 Task decomposition completed. Ready to execute all tasks?\n\nProceed with task execution?"):
-                    print_current("Task execution cancelled by user")
-                    finish_operation("Main Program Execution")
-                    return False
-            
-            # Step 3: Execute tasks
-            track_operation("Multi-Task Execution")
-            if not self.execute_tasks(loops):
-                print_current("Task execution failed")
-                finish_operation("Multi-Task Execution")
-                finish_operation("Main Program Execution")
-                return False
-            finish_operation("Multi-Task Execution")
+            finish_operation("Main Program Execution")
+            return False
+        finish_operation("Single Task Execution")
         
         # Task execution completed
         #print_current(f"📁 All output files saved at: {os.path.abspath(self.out_dir)}")
@@ -1566,18 +897,12 @@ class AGIAgentClient:
             workspace_dir = os.path.join(dir, "workspace")
             
             if success:
-                # 🔧 Get loop information
-                current_loop = 0
-                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
-                    current_loop = main_app.last_execution_report.get("current_loop", 0)
-                
                 return {
                     "success": True,
                     "message": "Task completed successfully",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
-                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
@@ -1586,19 +911,12 @@ class AGIAgentClient:
                     }
                 }
             else:
-                # 🔧 Get loop information (failure case)
-                current_loop = loops  # Default to maximum loops
-                if hasattr(main_app, 'last_execution_report') and main_app.last_execution_report:
-                    current_loop = main_app.last_execution_report.get("current_loop", loops)
-                
-                # 🔧 Fix: distinguish between failure and reaching max rounds
                 return {
                     "success": False,
                     "message": "Task execution reached maximum execution rounds",
                     "output_dir": os.path.abspath(dir),
                     "workspace_dir": os.path.abspath(workspace_dir) if os.path.exists(workspace_dir) else None,
                     "execution_time": execution_time,
-                    "current_loop": current_loop,  # Add current loop information
                     "details": {
                         "requirement": user_message,
                         "loops": loops,
@@ -1714,17 +1032,12 @@ Usage Examples:
   python main.py -r "Fix game sound effect playback issue"
   python main.py --singletask "Optimize code performance"
   
-  # Multi-task mode - automatically decompose task into multiple subtasks for execution
-  python main.py --todo "Develop a complete Python Web application"
-  python main.py --todo --requirement "Develop a complete Python Web application"
-  
   # Continue from last output directory
   python main.py --continue "Continue working on the previous task"
   python main.py -c --requirement "Add new features to existing project"
   
   # Interactive mode - prompt user for requirement input
-  python main.py  # Single task mode
-  python main.py --todo  # Multi-task mode
+  python main.py
   
   # Specify output directory and execution rounds
   python main.py --dir my_project --loops 5 "Requirement description"
@@ -1751,7 +1064,7 @@ Usage Examples:
     parser.add_argument(
         "--dir", "-d",
         default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        help="Output directory for storing todo.md and logs (default: output_timestamp)"
+        help="Output directory for storing logs (default: output_timestamp)"
     )
     
     parser.add_argument(
@@ -1805,13 +1118,6 @@ Usage Examples:
         action="store_true",
         default=True,
         help="Enable single task mode, skip task decomposition and directly execute user requirement (default mode)"
-    )
-    
-    parser.add_argument(
-        "--todo",
-        action="store_true",
-        default=False,
-        help="Enable multi-task mode, use task decomposer to decompose requirement into multiple subtasks"
     )
     
     parser.add_argument(
@@ -1873,8 +1179,8 @@ Usage Examples:
     # Determine summary mode
     detailed_summary = not args.simple_summary if hasattr(args, 'simple_summary') else args.detailed_summary
     
-    # Determine task mode
-    single_task_mode = not args.todo if hasattr(args, 'todo') else args.singletask
+    # Determine task mode (always single task mode now)
+    single_task_mode = True
     
     # Create and run main program
     try:

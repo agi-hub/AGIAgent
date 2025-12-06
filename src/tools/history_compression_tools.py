@@ -30,8 +30,7 @@ class HistoryCompressionTools:
     
     def compress_history(self, keep_recent_rounds: int = 2, **kwargs) -> Dict[str, Any]:
         """
-        Compress conversation history using AI summarization, similar to the automatic 
-        compression triggered when summary_history=True and history exceeds summary_trigger_length.
+        Compress conversation history using simple compression to reduce context length.
         This tool allows the model to actively request history compression when needed.
         
         Args:
@@ -93,10 +92,8 @@ class HistoryCompressionTools:
         # Note: Active compression (when called by the model) does not check trigger_length
         # The model can request compression at any time, regardless of content length
         
-        # Check if summarization is enabled
-        if not (hasattr(self.tool_executor, 'summary_history') and self.tool_executor.summary_history):
-            # If AI summarization is disabled, use simple compression instead
-            if hasattr(self.tool_executor, 'simple_compressor') and self.tool_executor.simple_compressor:
+        # Use simple compression for history management
+        if hasattr(self.tool_executor, 'simple_compressor') and self.tool_executor.simple_compressor:
                 try:
                     print_current(f"🗜️ Using simple compression for {len(records_to_summarize)} older records ({records_to_summarize_length} chars)...")
                     
@@ -167,128 +164,9 @@ class HistoryCompressionTools:
                         "status": "error",
                         "message": f"Simple compression failed: {e}"
                     }
-            else:
-                return {
-                    "status": "error",
-                    "message": "History compression is disabled (summary_history=False) and simple compressor is not available."
-                }
-        
-        # Use AI summarization
-        if not (hasattr(self.tool_executor, 'conversation_summarizer') and self.tool_executor.conversation_summarizer):
+        else:
             return {
                 "status": "error",
-                "message": "Conversation summarizer not available. Cannot perform AI-based compression."
-            }
-        
-        try:
-            print_current(f"🧠 Compressing {len(records_to_summarize)} older history records using AI summarization...")
-            
-            # Print content before compression
-            print_debug("=" * 80)
-            print_debug("📋 CONTENT BEFORE COMPRESSION (AI Summarization):")
-            print_debug("=" * 80)
-            print_debug(f"Total records in history: {len(history_for_llm)}")
-            print_debug(f"Records to compress: {len(records_to_summarize)}")
-            print_debug(f"Recent records to keep uncompressed: {len(recent_records)}")
-            print_debug("\n--- Records TO COMPRESS ---")
-            for i, record in enumerate(records_to_summarize, 1):
-                print_debug(f"\n--- Record {i} (Round {record.get('task_round', 'N/A')}) ---")
-                result_content = str(record.get("result", ""))
-                print_debug(f"Length: {len(result_content)} characters")
-                print_debug(f"Content:\n{result_content}")
-            print_debug("\n--- Recent Records TO KEEP UNCOMPRESSED ---")
-            for i, record in enumerate(recent_records, 1):
-                print_debug(f"\n--- Recent Record {i} (Round {record.get('task_round', 'N/A')}) ---")
-                result_content = str(record.get("result", ""))
-                print_debug(f"Length: {len(result_content)} characters")
-                print_debug(f"Content:\n{result_content}")
-            print_debug(f"\nTotal length before compression: {records_to_summarize_length} characters")
-            print_debug("=" * 80)
-            
-            # Convert records to conversation format
-            conversation_records = []
-            for record in records_to_summarize:
-                user_content = f"Round {record.get('task_round', 'N/A')} execution"
-                conversation_records.append({
-                    "role": "user",
-                    "content": user_content
-                })
-                conversation_records.append({
-                    "role": "assistant", 
-                    "content": record["result"]
-                })
-            
-            # Generate summary (excluding recent records)
-            latest_result = recent_records[-1]["result"] if recent_records else ""
-            history_summary = self.tool_executor.conversation_summarizer.generate_conversation_history_summary(
-                conversation_records, 
-                latest_result
-            )
-            
-            # Print content after compression
-            print_debug("=" * 80)
-            print_debug("📋 CONTENT AFTER COMPRESSION (AI Summarization):")
-            print_debug("=" * 80)
-            print_debug(f"Generated Summary Length: {len(history_summary) if history_summary else 0} characters")
-            print_debug(f"Summary Content:\n{history_summary if history_summary else '(empty)'}")
-            print_debug("=" * 80)
-            
-            # Validate summary content
-            if not history_summary or len(history_summary.strip()) < 10:
-                print_current("⚠️ Generated summary is too short or empty, using basic fallback")
-                history_summary = self.tool_executor.conversation_summarizer._generate_basic_conversation_summary(
-                    conversation_records, latest_result
-                )
-            
-            # Create summary record
-            summary_record = {
-                "task_round": "summary",
-                "result": f"## Earlier Conversation Summary\n\n{history_summary}",
-                "task_completed": False,
-                "timestamp": datetime.now().isoformat(),
-                "is_summary": True
-            }
-            
-            # Combine summary with recent records
-            compressed_history = [summary_record] + recent_records
-            
-            # Update the main task_history
-            non_llm_records = [record for record in task_history 
-                             if not ("result" in record) or record.get("error")]
-            task_history.clear()
-            task_history.extend(non_llm_records + compressed_history)
-            
-            # Calculate compression stats
-            summary_length = len(history_summary) if history_summary else 0
-            summary_record_length = len(summary_record["result"])
-            new_total_length = summary_record_length + recent_records_length
-            
-            compression_ratio = (1 - new_total_length/total_history_length)*100 if total_history_length > 0 else 0
-            
-            print_current(f"✅ History compression completed:")
-            print_current(f"   - Compressed {len(records_to_summarize)} older records into summary")
-            print_current(f"   - Kept {len(recent_records)} recent records uncompressed")
-            print_current(f"   - Compression ratio: {compression_ratio:.1f}%")
-            
-            return {
-                "status": "success",
-                "compression_method": "ai_summarization",
-                "message": f"History compressed successfully using AI summarization",
-                "original_records": len(records_to_summarize),
-                "compressed_to": 1,  # Summary record
-                "recent_records_kept": len(recent_records),
-                "original_length": records_to_summarize_length,
-                "summary_length": summary_length,
-                "recent_length": recent_records_length,
-                "total_before": total_history_length,
-                "total_after": new_total_length,
-                "compression_ratio": f"{compression_ratio:.1f}%"
-            }
-            
-        except Exception as e:
-            print_current(f"⚠️ History compression failed: {e}")
-            return {
-                "status": "error",
-                "message": f"History compression failed: {e}"
+                "message": "Simple compressor is not available."
             }
 

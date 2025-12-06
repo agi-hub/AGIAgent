@@ -338,14 +338,6 @@ Usage Examples:
   python agia.py -r "Fix game sound effect playback issue"
   python agia.py --singletask "Optimize code performance"
   
-  # Multi-task mode - automatically decompose task into multiple subtasks for execution
-  python agia.py --todo "Develop a complete Python Web application"
-  python agia.py --todo --requirement "Develop a complete Python Web application"
-  
-  # Multi-task mode with routine file - use routine guidelines for task planning
-  python agia.py --todo --routine "my_routine.txt" "Develop a web application"
-  python agia.py --todo -u "routines/development.md" --requirement "Build an API server"
-  
   # Single task mode with routine file - append routine content to user requirement
   python agia.py --routine "my_routine.txt" "Create a Python script"
   python agia.py -u "routines/coding_style.md" --requirement "Refactor existing code"
@@ -360,7 +352,6 @@ Usage Examples:
   
   # Interactive mode - prompt user for requirement input
   python agia.py  # Single task mode
-  python agia.py --todo  # Multi-task mode
   
   # Specify output directory and execution rounds
   python agia.py --dir my_project --loops 5 "Requirement description"
@@ -387,7 +378,7 @@ Usage Examples:
     parser.add_argument(
         "--dir", "-d",
         default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        help="Output directory for storing todo.md and logs (default: output_timestamp)"
+        help="Output directory for storing logs (default: output_timestamp)"
     )
     
     parser.add_argument(
@@ -444,13 +435,6 @@ Usage Examples:
     )
     
     parser.add_argument(
-        "--todo",
-        action="store_true",
-        default=False,
-        help="Enable multi-task mode, use task decomposer to decompose requirement into multiple subtasks"
-    )
-    
-    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"{APP_NAME} v1.0.2"
@@ -481,7 +465,7 @@ Usage Examples:
         "--routine", "-u",
         type=str,
         default=None,
-        help="Routine file path to include routine guidelines. In --todo mode: integrates into task planning. In single-task mode: appends to user requirement."
+        help="Routine file path to include routine guidelines. Appends routine content to user requirement."
     )
     
     parser.add_argument(
@@ -569,8 +553,8 @@ Usage Examples:
     # Determine summary mode
     detailed_summary = not args.simple_summary if hasattr(args, 'simple_summary') else args.detailed_summary
     
-    # Determine task mode
-    single_task_mode = not args.todo if hasattr(args, 'todo') else args.singletask
+    # Determine task mode (always single task mode now)
+    single_task_mode = True
     
     # Get plan mode
     plan_mode = args.plan if hasattr(args, 'plan') else False

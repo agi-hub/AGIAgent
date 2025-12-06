@@ -42,7 +42,7 @@ from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
 from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
 from src.tools.mcp_client import safe_cleanup_mcp_client
-from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length
+from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length
 from src.tools.message_system import get_message_router
 
 # Initialize logger
@@ -218,11 +218,6 @@ class ToolExecutor:
         # Load language configuration from config/config.txt
         self.language = get_language()
         
-        # Load history summarization configuration from config/config.txt
-        self.summary_history = get_summary_history()
-        self.summary_max_length = get_summary_max_length()
-        self.summary_trigger_length = get_summary_trigger_length()
-        
         # Store subtask loops information for infinite loop mode detection
         self.subtask_loops = subtask_loops
         
@@ -293,7 +288,6 @@ class ToolExecutor:
         # print_system(f"   Language: {'中文' if self.language == 'zh' else 'English'} ({self.language})")  # Commented out to reduce terminal noise
         # print_system(f"   Streaming: {'✅ Enabled' if self.streaming else '❌ Disabled (Batch mode)'}")  # Commented out to reduce terminal noise
         # print_system(f"   Cache Optimization: ✅ Enabled (All rounds use combined prompts for maximum cache hits)")  # Commented out to reduce terminal noise
-        # print_system(f"   History Summarization: {'✅ Enabled' if self.summary_history else '❌ Disabled'} (Trigger: {self.summary_trigger_length} chars, Max: {self.summary_max_length} chars)")  # Commented out to reduce terminal noise
         # print_system(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects workspace_search and web_search terminal display)")  # Commented out to reduce terminal noise
         # if debug_mode:
         #     print_system(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
@@ -364,35 +358,21 @@ class ToolExecutor:
         # Store previous messages for cache analysis
         self.previous_messages = []
         
-        # Initialize summary generator for conversation history summarization
-        if self.summary_history:
-            try:
-                from multi_round_executor.summary_generator import SummaryGenerator
-                self.conversation_summarizer = SummaryGenerator(self, detailed_summary=True)
-                # print_current(f"✅ Conversation history summarizer initialized")
-            except ImportError as e:
-                print_system(f"⚠️ Failed to import SummaryGenerator: {e}, history summarization disabled")
-                self.conversation_summarizer = None
-                self.summary_history = False  # Disable summarization if import fails
-        else:
-            self.conversation_summarizer = None
-        
-        # Initialize simple history compressor when summary_history=False
-        if not self.summary_history:
-            try:
-                from tools.simple_history_compressor import SimpleHistoryCompressor
-                # Load compression settings from config
-                min_length = get_compression_min_length()
-                head_length = get_compression_head_length()
-                tail_length = get_compression_tail_length()
-                self.simple_compressor = SimpleHistoryCompressor(
-                    min_length=min_length,
-                    head_length=head_length,
-                    tail_length=tail_length
-                )
-            except ImportError as e:
-                print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
-                self.simple_compressor = None
+        # Initialize simple history compressor for conversation history compression
+        try:
+            from tools.simple_history_compressor import SimpleHistoryCompressor
+            # Load compression settings from config
+            min_length = get_compression_min_length()
+            head_length = get_compression_head_length()
+            tail_length = get_compression_tail_length()
+            self.simple_compressor = SimpleHistoryCompressor(
+                min_length=min_length,
+                head_length=head_length,
+                tail_length=tail_length
+            )
+        except ImportError as e:
+            print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
+            self.simple_compressor = None
         else:
             self.simple_compressor = None
         
@@ -439,7 +419,6 @@ class ToolExecutor:
             "talk_to_user": self.tools.talk_to_user,
             "idle": self.tools.idle,
             "get_sensor_data": self.tools.get_sensor_data,
-            "todo_update": self.tools.todo_update,  # Add todo task status update tool
             "merge_file": self.tools.merge_file,  # Add file merging tool
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,  # Add document conversion tool
@@ -6787,13 +6766,14 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             # 🔧 优化：计算历史记录长度时，只计算result字段，因为prompt字段只在第一轮存在
             total_history_length = sum(len(str(record.get("result", ""))) for record in processed_history)
             
-            # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
-            if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
-                print_system(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
+            # Check if we need to trim the history when it's too long
+            max_history_length = 50000  # Default maximum history length
+            if total_history_length > max_history_length:
+                print_system(f"📊 History length ({total_history_length} chars) exceeds maximum ({max_history_length} chars)")
                 print_system("⚠️ History is very long. Using recent history subset to keep context manageable.")
                 
                 # Use recent history subset as fallback when history is still too long
-                recent_history = self._get_recent_history_subset(processed_history, max_length=self.summary_trigger_length // 2)
+                recent_history = self._get_recent_history_subset(processed_history, max_length=max_history_length // 2)
                 self._add_full_history_to_message(message_parts, recent_history)
                 print_system(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(processed_history)} records")
             else:

@@ -54,31 +54,6 @@ This is the recommended routine you should follow for this task:
     
     return formatted_content
 
-def format_routine_for_todo_mode(routine_content: str) -> str:
-    """
-    Format routine content for todo decomposition mode
-    
-    Args:
-        routine_content: Raw routine content
-        
-    Returns:
-        Formatted routine content for system prompt
-    """
-    if not routine_content:
-        return ""
-    
-    formatted_content = f"""
-
-## Routine Guidelines
-
-Please follow these routine guidelines when planning and decomposing tasks:
-
-{routine_content}
-
-These guidelines should be considered alongside the standard task decomposition principles below."""
-    
-    return formatted_content
-
 def append_routine_to_requirement(user_requirement: str, routine_file: str) -> str:
     """
     Append routine content to user requirement for single task mode
