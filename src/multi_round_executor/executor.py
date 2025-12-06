@@ -598,8 +598,8 @@ class MultiRoundTaskExecutor:
                                 history_for_llm = compressed_older_records + recent_records_to_keep
                                 # If content doesn't exceed trigger length, keep all records as-is
                             # If no older records to compress, keep all records as-is
-                        except Exception as e:
-                            print_debug(f"⚠️ Simple history compression failed: {e}")
+                    except Exception as e:
+                        print_debug(f"⚠️ Simple history compression failed: {e}")
                 
                 # 🔧 Ensure correct agent_id is set in agent context before executing subtask
                 current_agent_id = get_current_agent_id()
