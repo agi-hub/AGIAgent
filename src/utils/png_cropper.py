@@ -9,7 +9,21 @@ import os
 from pathlib import Path
 from typing import Tuple, Optional
 from PIL import Image, ImageOps
-import numpy as np
+
+# ========================================
+# 🚀 延迟导入优化：numpy 延迟加载
+# ========================================
+# numpy 是重量级库，只在实际使用图片裁剪功能时才加载
+# 避免启动时加载，节省约 0.7秒
+
+np = None
+
+def _ensure_numpy():
+    """确保 numpy 已加载（延迟加载）"""
+    global np
+    if np is None:
+        import numpy as _np
+        np = _np
 
 class PNGCropper:
     """PNG图片裁剪工具，用于自动去除空白区域"""
@@ -29,6 +43,9 @@ class PNGCropper:
         Returns:
             (left, top, right, bottom) 内容边界坐标
         """
+        # 🚀 延迟加载：只在实际使用时才加载 numpy
+        _ensure_numpy()
+        
         # 转换为RGBA模式以处理透明度
         if image.mode != 'RGBA':
             image = image.convert('RGBA')

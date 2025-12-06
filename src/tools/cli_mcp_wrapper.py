@@ -14,13 +14,38 @@ import shutil
 from typing import Dict, Any, List, Optional, Union
 from .print_system import print_current, print_system, print_error, print_debug
 
-# Import FastMCP wrapper to check for conflicts
-try:
-    from .fastmcp_wrapper import get_fastmcp_wrapper
-    FASTMCP_AVAILABLE = True
-except ImportError:
-    FASTMCP_AVAILABLE = False
-    get_fastmcp_wrapper = None
+# ========================================
+# 🚀 延迟导入优化：FastMCP wrapper 延迟加载
+# ========================================
+# FastMCP 是重量级框架（~3秒），只在实际使用 MCP 功能时才加载
+# 避免启动时加载，节省约 3秒
+
+FASTMCP_AVAILABLE = None  # 未初始化状态
+_fastmcp_wrapper_checked = False
+
+def _check_fastmcp_available():
+    """检查 FastMCP 是否可用（延迟检查）"""
+    global FASTMCP_AVAILABLE, _fastmcp_wrapper_checked
+    
+    if _fastmcp_wrapper_checked:
+        return FASTMCP_AVAILABLE
+    
+    try:
+        # 延迟导入 fastmcp_wrapper
+        from .fastmcp_wrapper import get_fastmcp_wrapper
+        FASTMCP_AVAILABLE = True
+    except ImportError:
+        FASTMCP_AVAILABLE = False
+    
+    _fastmcp_wrapper_checked = True
+    return FASTMCP_AVAILABLE
+
+def get_fastmcp_wrapper():
+    """获取 FastMCP wrapper（延迟加载）"""
+    if _check_fastmcp_available():
+        from .fastmcp_wrapper import get_fastmcp_wrapper as _get_wrapper
+        return _get_wrapper()
+    return None
 
 def find_cli_mcp_path():
     """Find the cli-mcp executable path"""

@@ -58,29 +58,36 @@ def global_cleanup():
     _cleanup_executed = True
     
     try:
+        import sys
         #print_current("🔄 Starting global cleanup...")
         
         # Import here to avoid circular imports
         # Note: AgentManager class is not implemented, skipping cleanup
         
+        # 🎯 性能优化：只清理已加载的模块，避免在清理时延迟导入未使用的模块
+        # 这可以节省 7+ 秒的清理时间（避免导入 fastmcp）
+        
         # Cleanup MCP clients first (most important for subprocess cleanup)
-        try:
-            from tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
-            safe_cleanup_cli_mcp_wrapper()
-        except Exception as e:
-            print_current(f"⚠️ CLI-MCP cleanup warning: {e}")
+        if 'tools.cli_mcp_wrapper' in sys.modules:
+            try:
+                from tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                safe_cleanup_cli_mcp_wrapper()
+            except Exception as e:
+                print_current(f"⚠️ CLI-MCP cleanup warning: {e}")
         
-        try:
-            from tools.fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
-            safe_cleanup_fastmcp_wrapper()
-        except Exception as e:
-            print_current(f"⚠️ FastMCP cleanup warning: {e}")
+        if 'tools.fastmcp_wrapper' in sys.modules or 'src.tools.fastmcp_wrapper' in sys.modules:
+            try:
+                from tools.fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                safe_cleanup_fastmcp_wrapper()
+            except Exception as e:
+                print_current(f"⚠️ FastMCP cleanup warning: {e}")
         
-        try:
-            from tools.mcp_client import safe_cleanup_mcp_client
-            safe_cleanup_mcp_client()
-        except Exception as e:
-            print_current(f"⚠️ MCP client cleanup warning: {e}")
+        if 'tools.mcp_client' in sys.modules:
+            try:
+                from tools.mcp_client import safe_cleanup_mcp_client
+                safe_cleanup_mcp_client()
+            except Exception as e:
+                print_current(f"⚠️ MCP client cleanup warning: {e}")
         
         # Stop message router if it exists
         try:
@@ -189,6 +196,97 @@ def load_last_requirement() -> Optional[str]:
     except Exception as e:
         print_current(f"⚠️ Failed to load last requirement: {e}")
         return None
+
+def get_user_requirement_interactive(requirement: Optional[str] = None, 
+                                    last_requirement: Optional[str] = None) -> Optional[str]:
+    """
+    Get user requirement (extracted from AGIAgentMain for use in main())
+    
+    Args:
+        requirement: Provided requirement from command line
+        last_requirement: Previous requirement for continue mode
+        
+    Returns:
+        User requirement string, or None if cancelled
+    """
+    # Check if we need to merge with previous requirement in continue mode
+    if requirement and last_requirement:
+        # Merge new requirement with previous requirement
+        merged_requirement = f"{requirement}. This is a task that continues to be executed. The previous task requirements is: {last_requirement}"
+        print_system(f"🔄 Continue mode: Merging new requirement with previous context")
+        print_system(f"   New requirement: {requirement}")
+        print_system(f"   Previous requirement: {last_requirement}")
+        print_system(f"   Final merged requirement will be passed to AI")
+        return merged_requirement
+    
+    if requirement:
+        print_current(f"Received user requirement: {requirement}")
+        return requirement
+    
+    # Check if we should use last requirement from continue mode
+    if last_requirement:
+        print_system(f"🔄 Using last requirement from continue mode:")
+        print_system(f"   {last_requirement}")
+        print_system("   (Press Enter to use this requirement, or type a new one)")
+        print_system("-" * 50)
+        
+        try:
+            user_input = input("New requirement (or press Enter to continue): ").strip()
+            if user_input:
+                # Merge new requirement with previous requirement
+                merged_requirement = f"{user_input}. This is a task that continues to be executed. The previous task requirements is: {last_requirement}"
+                print_system(f"Using merged requirement: {user_input}")
+                print_system(f"With context: Previous task - {last_requirement}")
+                return merged_requirement
+            else:
+                print_system("Using previous requirement")
+                return last_requirement
+        except (KeyboardInterrupt, EOFError):
+            print_current("\nUsing previous requirement")
+            return last_requirement
+    
+    # Interactive input
+    print_system(f"=== {APP_NAME} Automated Task Processing System ===")
+    print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
+    print_system("(Press Enter to finish)")
+    print_system("-" * 50)
+    
+    try:
+        requirement = input("Enter your requirement: ").strip()
+        if not requirement:
+            print_current("No valid requirement entered")
+            return None
+        return requirement
+    except EOFError:
+        print_current("No valid requirement entered")
+        return None
+    except KeyboardInterrupt:
+        print_current("\nUser cancelled input")
+        return None
+
+def ask_user_confirmation_interactive(message: str, default_yes: bool = True) -> bool:
+    """
+    Ask user for confirmation (extracted from AGIAgentMain for use in main())
+    
+    Args:
+        message: Confirmation message to display
+        default_yes: Whether to default to 'yes' if user just presses Enter
+        
+    Returns:
+        True if user confirms, False otherwise
+    """
+    try:
+        default_hint = "(Y/n)" if default_yes else "(y/N)"
+        response = input(f"\n{message} {default_hint}: ").strip().lower()
+        
+        if not response:  # Empty response, use default
+            return default_yes
+        
+        return response in ['y', 'yes', 'yes', 'confirm']
+        
+    except (KeyboardInterrupt, EOFError):
+        print_current("\n❌ User cancelled operation")
+        return False
 
 class AGIAgentMain:
     def __init__(self, 
@@ -1173,35 +1271,58 @@ Usage Examples:
         print_current(f"🤖 Model: Will load from config/config.txt")
 
     
-    # Get API key
-    api_key = args.api_key
+    # === Step 1: Handle continue mode ===
+    last_requirement = None
+    if args.continue_mode:
+        last_requirement = load_last_requirement()
+        if last_requirement:
+            print_system(f"🔄 Continue mode: Last requirement loaded: {last_requirement[:100]}{'...' if len(last_requirement) > 100 else ''}")
+        else:
+            print_system("ℹ️ Continue mode: No previous requirement found")
     
-    # Determine summary mode
-    detailed_summary = not args.simple_summary if hasattr(args, 'simple_summary') else args.detailed_summary
+    # === Step 2: Get user requirement (interactive logic) ===
+    requirement = get_user_requirement_interactive(args.requirement, last_requirement)
+    if not requirement:
+        print_current("Invalid user requirement")
+        sys.exit(1)
     
-    # Determine task mode (always single task mode now)
-    single_task_mode = True
+    # === Step 3: Save configuration (for future --continue operations) ===
+    save_last_output_dir(args.dir, requirement)
+    print_system(f"💾 Configuration saved for future --continue operations")
     
-    # Create and run main program
+    # === Step 4: Interactive confirmation ===
+    if args.interactive:
+        if not ask_user_confirmation_interactive(f"🤖 Ready to execute task:\n   {requirement}\n\nProceed with execution?"):
+            print_current("Task execution cancelled by user")
+            sys.exit(0)
+    
+    # === Step 5: Execute via AGIAgentClient ===
     try:
-        main_app = AGIAgentMain(
-            out_dir=args.dir,
-            api_key=api_key,
+        # Create AGIAgentClient
+        client = AGIAgentClient(
+            api_key=args.api_key,
             model=args.model,
             api_base=args.api_base,
             debug_mode=args.debug,
-            detailed_summary=detailed_summary,
-            single_task_mode=single_task_mode,
-            interactive_mode=args.interactive,
-            continue_mode=args.continue_mode
+            streaming=None,  # Will read from config.txt
+            MCP_config_file=None,  # Use default
+            prompts_folder=None,  # Use default
         )
         
-        success = main_app.run(
-            user_requirement=args.requirement,
+        # Call chat API
+        response = client.chat(
+            messages=[{"role": "user", "content": requirement}],
+            dir=args.dir,
             loops=args.loops
         )
         
-        sys.exit(0 if success else 1)
+        # Handle result
+        if response["success"]:
+            print_current("🎉 Workflow completed!")
+            sys.exit(0)
+        else:
+            print_current(f"⚠️ Task execution: {response['message']}")
+            sys.exit(1)
         
     except KeyboardInterrupt:
         print_current("\nUser interrupted program execution")

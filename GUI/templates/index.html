@@ -3294,6 +3294,9 @@
                                 <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
                                 <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
                             </label>
+                            <button class="send-button" id="infiniteExecuteButton" title="{{ i18n.get('infinite_execute_tooltip', '无限执行模式（loops=-1）' if lang == 'zh' else 'Infinite Execute Mode (loops=-1)') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
+                                <i class="fas fa-infinity"></i>
+                            </button>
                             <button class="send-button" id="quickUploadButton" title="{{ i18n.get('quick_upload_tooltip', '上传文件到当前工作目录' if lang == 'zh' else 'Upload files to current workspace') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0;">
                                 <i class="fas fa-upload"></i>
                             </button>
@@ -3725,6 +3728,7 @@
         
         // State management
         let isTaskRunning = false;
+        let infiniteExecuteMode = false; // 无限执行模式状态
         let selectedDirectory = null;
         let taskMode = 'new'; // 'new', 'continue', 'selected' - 默认为新建模式
         let expandedDirectories = new Set();
@@ -4307,6 +4311,12 @@
                 // 任务完成时清理待执行内容
                 pendingUserInput = '';
                 
+                // 任务完成时，清空工具调用信息显示框
+                const detailInfoMessages = document.getElementById('detailInfoMessages');
+                if (detailInfoMessages) {
+                    detailInfoMessages.innerHTML = '';
+                }
+                
                 // Check if this was a plan mode task using saved state
                 const wasPlanMode = currentTaskPlanMode;
                 
@@ -4400,6 +4410,12 @@
                     taskMode = 'selected';
                     // 将新创建的目录添加到展开列表中，使其自动展开
                     expandedDirectories.add(data.dir_name);
+                    
+                    // 如果用户手动点击新建工作目录按钮（不是为发送任务而创建），自动清理历史聊天记录和工具调用信息
+                    if (!isCreatingDirectoryForTask) {
+                        autoClearChat();
+                    }
+                    
                     addMessage(data.message, 'success');
                     refreshDirectories();
                     // 启动文件监测
@@ -5558,16 +5574,31 @@
             // 允许用户在任务执行过程中输入新的需求，但不允许执行
             userInput.disabled = false;
             
+            // 获取无限执行按钮
+            const infiniteExecuteButton = document.getElementById('infiniteExecuteButton');
+            
             if (running) {
                 sendButton.style.display = 'none';
                 newTaskButton.style.display = 'none';
                 stopButton.style.display = 'flex';
+                // 禁用无限执行按钮
+                if (infiniteExecuteButton) {
+                    infiniteExecuteButton.disabled = true;
+                    infiniteExecuteButton.style.opacity = '0.6';
+                    infiniteExecuteButton.style.cursor = 'not-allowed';
+                }
                 // 更新输入框提示文本
                 userInput.placeholder = I18N.running_input_placeholder || 'Task is running. You can type a new request (will execute after current task)...';
             } else {
                 sendButton.style.display = 'flex';
                 newTaskButton.style.display = 'flex';
                 stopButton.style.display = 'none';
+                // 启用无限执行按钮
+                if (infiniteExecuteButton) {
+                    infiniteExecuteButton.disabled = false;
+                    infiniteExecuteButton.style.opacity = '1';
+                    infiniteExecuteButton.style.cursor = 'pointer';
+                }
                 // 恢复原始提示文本
                 userInput.placeholder = '{{ i18n.input_placeholder }}';
             }
@@ -5692,8 +5723,9 @@
                 setTaskRunning(true);
 
                 // Get execution rounds from config slider
+                // 如果无限执行模式启用，则设置为-1
                 const configRoundsSlider = document.getElementById('configRoundsSlider');
-                const executionRounds = configRoundsSlider ? parseInt(configRoundsSlider.value) : 50;
+                const executionRounds = infiniteExecuteMode ? -1 : (configRoundsSlider ? parseInt(configRoundsSlider.value) : 50);
 
                 // Get GUI configuration options
                 const guiConfig = {
@@ -5775,6 +5807,58 @@
             socket.emit('create_new_directory', {
                 language: CURRENT_LANG
             });
+        }
+
+        /**
+         * 自动清理聊天记录和工具调用信息（不需要确认对话框）
+         * 用于新建工作目录时自动清理
+         */
+        function autoClearChat() {
+            if (!socket || !isConnected) return;
+            
+            // 清理批处理队列和定时器
+            clearTimeout(batchProcessingTimer);
+            batchProcessingTimer = null;
+            messageBatchQueue = [];
+            isBatchProcessing = false;
+            batchScrollPending = false;
+            
+            // Clear the chat messages immediately for better user experience
+            chatMessages.innerHTML = `
+                <div class="message system">
+                    <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                    ${I18N.welcome_message || '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。'}
+                </div>
+            `;
+            
+            // Reset message tracking variables
+            lastMessageType = null;
+            lastMessageDiv = null;
+            lastMessageContent = null;
+            
+            // 重置JSON收集状态
+            resetJsonCollectingState();
+            
+            // 清空细节信息窗口（工具调用信息显示框）
+            const detailInfoMessages = document.getElementById('detailInfoMessages');
+            if (detailInfoMessages) {
+                detailInfoMessages.innerHTML = '';
+            }
+            
+            // Reset scroll state
+            autoScrollEnabled = true;
+            updateAutoScrollIndicator();
+            
+            // Clear attached files
+            if (window.attachedFiles) {
+                window.attachedFiles.clear();
+            }
+            
+            // Scroll to bottom
+            scrollToBottom(false);
+            
+            // Notify server
+            socket.emit('clear_chat');
         }
 
         function clearChat() {
@@ -5949,7 +6033,12 @@
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
                     // Add language preference
-                    language: CURRENT_LANG
+                    language: CURRENT_LANG,
+                    // Add execution rounds (如果无限执行模式启用，则设置为-1)
+                    execution_rounds: infiniteExecuteMode ? -1 : (() => {
+                        const configRoundsSlider = document.getElementById('configRoundsSlider');
+                        return configRoundsSlider ? parseInt(configRoundsSlider.value) : 50;
+                    })()
                 };
                 
                 // 只有自定义配置才发送 api_key 和 api_base
@@ -7531,6 +7620,13 @@
                     return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
                 };
                 
+                // 自定义链接渲染，确保链接正确闭合
+                renderer.link = function(href, title, text) {
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    const target = href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : '';
+                    return `<a href="${href}"${titleAttr}${target}>${text}</a>`;
+                };
+                
                 // 配置marked选项
                 marked.setOptions({
                     renderer: renderer,
@@ -7601,6 +7697,9 @@
                     <div class="markdown-toolbar-header" style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
                         <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: Markdown</span>
                         <div class="markdown-toolbar-buttons" style="display: flex; gap: 8px; align-items: center;">
+                            <button id="reparseMarkdownBtn" onclick="reparseMarkdownDiagrams()" style="background: #9c27b0; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 120px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.reparse_diagrams_title || '重新解析Markdown中的Mermaid图表和SVG代码块'}">
+                                <i class="fas fa-project-diagram" style="margin-right: 5px;"></i> ${I18N.reparse_diagrams || '解析图表'}
+                            </button>
                             <button id="reloadMarkdownBtn" onclick="reloadCurrentMarkdown()" style="background: #455a64; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.reload || 'Reload'}">
                                 <i class="fas fa-sync" style="margin-right: 5px;"></i> ${I18N.reload || 'Reload'}
                             </button>
@@ -10681,6 +10780,13 @@
                     return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
                 };
                 
+                // 自定义链接渲染，确保链接正确闭合
+                renderer.link = function(href, title, text) {
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    const target = href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : '';
+                    return `<a href="${href}"${titleAttr}${target}>${text}</a>`;
+                };
+                
                 // 配置marked选项
                 marked.setOptions({
                     renderer: renderer,
@@ -10887,6 +10993,151 @@
             } catch (e) {
                 console.error('重新加载失败:', e);
                 addMessage('重新加载失败: 网络或服务器错误', 'error');
+            }
+        }
+
+        async function reparseMarkdownDiagrams() {
+            try {
+                // 检查guest用户权限
+                if (isGuest) {
+                    alert(I18N.guest_cannot_save);
+                    return;
+                }
+                
+                const path = window.currentOriginalFilePath || currentFilePath;
+                if (!path) {
+                    alert(I18N.cannot_determine_markdown_path || '无法确定Markdown文件路径');
+                    return;
+                }
+                
+                // 只支持markdown文件
+                if (!path.toLowerCase().endsWith('.md')) {
+                    alert('只支持Markdown文件的图表解析');
+                    return;
+                }
+                
+                // 显示处理中的提示
+                const reparseBtn = document.getElementById('reparseMarkdownBtn');
+                const originalBtnText = reparseBtn ? reparseBtn.innerHTML : '';
+                if (reparseBtn) {
+                    reparseBtn.disabled = true;
+                    reparseBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 5px;"></i> 准备中...';
+                }
+                
+                // 先保存markdown文档（用户可能已经修改了内容）
+                addMessage('正在保存Markdown文档...', 'info');
+                try {
+                    // 优先从编辑器获取内容
+                    const editor = document.getElementById('markdownEditor');
+                    let contentToSave;
+                    if (editor && editor.parentElement.style.display !== 'none') {
+                        contentToSave = editor.value;
+                        // 更新当前内容
+                        if (window.currentMarkdownContent) {
+                            window.currentMarkdownContent.processed = contentToSave;
+                        }
+                    } else if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
+                        contentToSave = window.currentMarkdownContent.processed;
+                    } else {
+                        throw new Error('无法获取Markdown内容');
+                    }
+                    
+                    const headers = { 'Content-Type': 'application/json' };
+                    const body = {
+                        path: path,
+                        content: contentToSave
+                    };
+                    if (currentUser && currentUser !== 'default') {
+                        headers['X-API-Key'] = currentUser;
+                        body.api_key = currentUser;
+                    }
+                    
+                    const saveResp = await fetch('/api/save-markdown', { method: 'POST', headers, body: JSON.stringify(body) });
+                    const saveData = await saveResp.json();
+                    
+                    if (!saveData || !saveData.success) {
+                        throw new Error(saveData && saveData.error ? saveData.error : '保存失败');
+                    }
+                    
+                    addMessage('Markdown文档已保存', 'success');
+                } catch (saveError) {
+                    // 恢复按钮状态
+                    if (reparseBtn) {
+                        reparseBtn.disabled = false;
+                        reparseBtn.innerHTML = originalBtnText;
+                    }
+                    addMessage('保存失败: ' + saveError.message, 'error');
+                    return;
+                }
+                
+                // 更新按钮状态为解析中
+                if (reparseBtn) {
+                    reparseBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 5px;"></i> 解析中...';
+                }
+                
+                addMessage('正在解析Markdown中的Mermaid图表和SVG代码块...', 'info');
+                
+                // 调用后端API
+                const headers = { 'Content-Type': 'application/json' };
+                const body = { path: path };
+                if (currentUser && currentUser !== 'default') {
+                    headers['X-API-Key'] = currentUser;
+                    body.api_key = currentUser;
+                }
+                
+                const resp = await fetch('/api/reparse-markdown-diagrams', { 
+                    method: 'POST', 
+                    headers, 
+                    body: JSON.stringify(body) 
+                });
+                const data = await resp.json();
+                
+                // 恢复按钮状态
+                if (reparseBtn) {
+                    reparseBtn.disabled = false;
+                    reparseBtn.innerHTML = originalBtnText;
+                }
+                
+                if (data && data.success) {
+                    // 显示处理结果
+                    let message = '图表解析完成！';
+                    if (data.details) {
+                        const mermaid = data.details.mermaid || {};
+                        const svg = data.details.svg || {};
+                        
+                        let detailMsg = [];
+                        if (mermaid.charts_found > 0) {
+                            detailMsg.push(`Mermaid: ${mermaid.charts_processed || 0}/${mermaid.charts_found} 个图表已处理`);
+                        }
+                        if (svg.svg_blocks_found > 0) {
+                            detailMsg.push(`SVG: ${svg.successful_conversions || 0}/${svg.svg_blocks_found} 个代码块已转换`);
+                        }
+                        
+                        if (detailMsg.length > 0) {
+                            message += '\n' + detailMsg.join('\n');
+                        } else {
+                            message = '未发现需要处理的Mermaid图表或SVG代码块';
+                        }
+                    }
+                    
+                    addMessage(message, 'success');
+                    
+                    // 重新加载文件以显示更新后的内容
+                    await reloadCurrentMarkdown();
+                } else {
+                    const errorMsg = data && data.error ? data.error : '未知错误';
+                    addMessage(`图表解析失败: ${errorMsg}`, 'error');
+                }
+            } catch (e) {
+                console.error('解析图表失败:', e);
+                addMessage('解析图表失败: 网络或服务器错误', 'error');
+                
+                // 恢复按钮状态
+                const reparseBtn = document.getElementById('reparseMarkdownBtn');
+                if (reparseBtn) {
+                    reparseBtn.disabled = false;
+                    reparseBtn.innerHTML = '<i class="fas fa-project-diagram" style="margin-right: 5px;"></i> 解析图表';
+                }
             }
         }
 
@@ -12694,6 +12945,24 @@
                 uploadFiles(Array.from(e.target.files));
             }
         });
+
+        // 无限执行按钮点击处理
+        const infiniteExecuteButton = document.getElementById('infiniteExecuteButton');
+        if (infiniteExecuteButton) {
+            infiniteExecuteButton.addEventListener('click', function() {
+                infiniteExecuteMode = !infiniteExecuteMode;
+                // 更新按钮样式以显示激活状态
+                if (infiniteExecuteMode) {
+                    infiniteExecuteButton.style.background = 'var(--color-accent)';
+                    infiniteExecuteButton.style.color = 'white';
+                    infiniteExecuteButton.style.borderColor = 'var(--color-accent)';
+                } else {
+                    infiniteExecuteButton.style.background = 'transparent';
+                    infiniteExecuteButton.style.color = 'var(--color-accent)';
+                    infiniteExecuteButton.style.borderColor = 'var(--color-accent)';
+                }
+            });
+        }
 
         // 快速上传按钮点击处理
         // 等待DOM加载完成后再设置事件监听器

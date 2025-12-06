@@ -3,10 +3,10 @@
 LANG=zh
 
 # GUI API configuration
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.6
-# max_tokens=16384
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.6
+max_tokens=16384
 
 # OpenAI API configuration 
 # api_key=your key
@@ -89,6 +89,14 @@ mem_model_api_base=https://api.openai-proxy.org/v1
 embedding_model=BAAI/bge-m3
 embedding_model_api_key=your key
 embedding_model_api_base=https://api.siliconflow.cn/v1
+
+# Vision model configuration (for image recognition with get_sensor_data)
+# If not configured, will use the main model (model, api_key, api_base) for vision tasks
+# It's recommended to configure a vision-capable model here (e.g., GPT-4 Vision, Claude 3, Gemini)
+# vision_model=gpt-4o
+# vision_api_key=your key
+# vision_api_base=https://api.openai.com/v1
+# vision_max_tokens=4096
 
 # Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
 # When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)

@@ -78,12 +78,62 @@ from enum import Enum
 import logging
 from .print_system import print_current, print_system, print_error, print_debug
 
-# FastMCP integration
-try:
-    from .fastmcp_wrapper import get_fastmcp_wrapper, initialize_fastmcp_wrapper, is_fastmcp_initialized, FASTMCP_AVAILABLE
-    FASTMCP_INTEGRATION_AVAILABLE = True
-except ImportError:
-    FASTMCP_INTEGRATION_AVAILABLE = False
+# ========================================
+# 🚀 延迟导入优化：FastMCP 集成延迟加载
+# ========================================
+# FastMCP 是重量级框架（~3秒），只在实际使用 MCP 功能时才加载
+
+FASTMCP_INTEGRATION_AVAILABLE = None  # 未初始化状态
+_fastmcp_integration_checked = False
+
+def _check_fastmcp_integration():
+    """检查 FastMCP 集成是否可用（延迟检查）"""
+    global FASTMCP_INTEGRATION_AVAILABLE, _fastmcp_integration_checked
+    
+    if _fastmcp_integration_checked:
+        return FASTMCP_INTEGRATION_AVAILABLE
+    
+    try:
+        # 延迟导入 fastmcp_wrapper（只检查是否可导入，不真正导入）
+        import importlib.util
+        spec = importlib.util.find_spec('.fastmcp_wrapper', package='src.tools')
+        FASTMCP_INTEGRATION_AVAILABLE = spec is not None
+    except:
+        FASTMCP_INTEGRATION_AVAILABLE = False
+    
+    _fastmcp_integration_checked = True
+    return FASTMCP_INTEGRATION_AVAILABLE
+
+def get_fastmcp_wrapper():
+    """获取 FastMCP wrapper（延迟加载）"""
+    if _check_fastmcp_integration():
+        from .fastmcp_wrapper import get_fastmcp_wrapper as _get_wrapper
+        return _get_wrapper()
+    return None
+
+def initialize_fastmcp_wrapper(*args, **kwargs):
+    """初始化 FastMCP wrapper（延迟加载）"""
+    if _check_fastmcp_integration():
+        from .fastmcp_wrapper import initialize_fastmcp_wrapper as _init
+        return _init(*args, **kwargs)
+    return False
+
+def is_fastmcp_initialized():
+    """检查 FastMCP 是否已初始化（延迟加载）"""
+    if _check_fastmcp_integration():
+        from .fastmcp_wrapper import is_fastmcp_initialized as _is_init
+        return _is_init()
+    return False
+
+# 兼容性：FASTMCP_AVAILABLE 属性
+def _get_fastmcp_available():
+    """获取 FASTMCP_AVAILABLE 状态（延迟）"""
+    if _check_fastmcp_integration():
+        from .fastmcp_wrapper import FASTMCP_AVAILABLE as _available
+        return _available
+    return False
+
+FASTMCP_AVAILABLE = property(lambda self: _get_fastmcp_available())
 
 # Setup logging
 logger = logging.getLogger(__name__)

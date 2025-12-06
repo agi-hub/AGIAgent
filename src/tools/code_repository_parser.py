@@ -19,7 +19,6 @@ limitations under the License.
 import os
 import json
 import pickle
-import numpy as np
 from pathlib import Path
 from typing import List, Dict, Tuple, Any, Optional
 from dataclasses import dataclass
@@ -40,51 +39,138 @@ logger = logging.getLogger(__name__)
 jieba_logger = logging.getLogger('jieba')
 jieba_logger.setLevel(logging.ERROR)
 
-# Machine learning related libraries
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+# ========================================
+# 🚀 延迟导入优化：重量级库延迟加载
+# ========================================
+# 这些库只在实际使用代码索引功能时才导入，避免启动时加载
+# numpy、sklearn 等库会在后台线程中首次使用时加载
 
-# Import jieba conditionally based on configuration
-try:
-    # Import configuration loader to check jieba setting
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from config_loader import get_enable_jieba
+# 延迟导入标志
+_LAZY_IMPORTS_LOADED = False
+_LAZY_IMPORTS_LOCK = threading.Lock()
+
+# 全局变量用于存储延迟导入的模块
+np = None
+TfidfVectorizer = None
+cosine_similarity = None
+
+def _ensure_lazy_imports():
+    """确保延迟导入的库已加载（线程安全）"""
+    global _LAZY_IMPORTS_LOADED, np, TfidfVectorizer, cosine_similarity
     
-    # Check if jieba is enabled
-    JIEBA_ENABLED = get_enable_jieba()
+    if _LAZY_IMPORTS_LOADED:
+        return
     
-    if JIEBA_ENABLED:
-        # Further suppress jieba initialization output
-        import warnings
-        warnings.filterwarnings('ignore', category=UserWarning, module='jieba')
+    with _LAZY_IMPORTS_LOCK:
+        # 双重检查锁定模式
+        if _LAZY_IMPORTS_LOADED:
+            return
         
-        # Redirect jieba stderr to suppress prints
-        import contextlib
-        import io
+        try:
+            print_debug("⏳ 首次使用代码索引功能，正在加载机器学习库...")
+            
+            # 导入 numpy
+            import numpy as _np
+            np = _np
+            
+            # 导入 sklearn
+            from sklearn.feature_extraction.text import TfidfVectorizer as _TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity as _cosine_similarity
+            TfidfVectorizer = _TfidfVectorizer
+            cosine_similarity = _cosine_similarity
+            
+            _LAZY_IMPORTS_LOADED = True
+            print_debug("✅ 机器学习库加载完成")
+            
+        except ImportError as e:
+            print_error(f"❌ 无法导入必需的机器学习库: {e}")
+            raise
+
+# ========================================
+# 🚀 Jieba 延迟导入优化
+# ========================================
+# jieba 用于中文分词，只在实际需要中文分词时才加载
+# 这样可以避免启动时加载 jieba 及其词典文件（较慢）
+
+jieba = None
+JIEBA_ENABLED = None  # 未初始化状态
+_JIEBA_CHECKED = False
+_JIEBA_LOCK = threading.Lock()
+
+def _ensure_jieba_loaded():
+    """确保 jieba 已加载（延迟加载，线程安全）"""
+    global jieba, JIEBA_ENABLED, _JIEBA_CHECKED
+    
+    if _JIEBA_CHECKED:
+        return JIEBA_ENABLED
+    
+    with _JIEBA_LOCK:
+        # 双重检查锁定
+        if _JIEBA_CHECKED:
+            return JIEBA_ENABLED
         
-        with contextlib.redirect_stderr(io.StringIO()):
-            import jieba
-            import jieba.analyse
-            # Configure jieba to be quiet
-            jieba.setLogLevel(logging.ERROR)
-    else:
-        jieba = None
+        try:
+            # Check jieba setting
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+            from config_loader import get_enable_jieba
+            
+            JIEBA_ENABLED = get_enable_jieba()
+            
+            if JIEBA_ENABLED:
+                print_debug("⏳ 首次使用中文分词，正在加载 jieba...")
+                
+                # Suppress jieba initialization output
+                import warnings
+                warnings.filterwarnings('ignore', category=UserWarning, module='jieba')
+                
+                # Redirect jieba stderr to suppress prints
+                import contextlib
+                import io
+                
+                with contextlib.redirect_stderr(io.StringIO()):
+                    import jieba as _jieba
+                    import jieba.analyse
+                    # Configure jieba to be quiet
+                    _jieba.setLogLevel(logging.ERROR)
+                    jieba = _jieba
+                
+                print_debug("✅ jieba 加载完成")
+            else:
+                jieba = None
+                print_debug("ℹ️ 中文分词功能未启用")
+                
+        except ImportError:
+            # If config_loader is not available, default to disabled
+            JIEBA_ENABLED = False
+            jieba = None
         
-except ImportError:
-    # If config_loader is not available, default to disabled
-    JIEBA_ENABLED = False
-    jieba = None
+        _JIEBA_CHECKED = True
+        return JIEBA_ENABLED
 
 # Vectorization related libraries - removed sentence_transformers
-# Vector database related libraries
-try:
-    import faiss
-    FAISS_AVAILABLE = True
-except ImportError:
-    FAISS_AVAILABLE = False
-    # print_current("Warning: faiss not available. Will use numpy for vector storage.")  # Moved warning display to main.py
+# Vector database related libraries (延迟加载)
+faiss = None
+FAISS_AVAILABLE = None  # Will be checked on first use
+
+def _check_faiss_available():
+    """检查 faiss 是否可用（延迟检查）"""
+    global faiss, FAISS_AVAILABLE
+    
+    if FAISS_AVAILABLE is not None:
+        return FAISS_AVAILABLE
+    
+    try:
+        import faiss as _faiss
+        faiss = _faiss
+        FAISS_AVAILABLE = True
+        print_debug("✅ FAISS 库已加载")
+    except ImportError:
+        FAISS_AVAILABLE = False
+        print_debug("ℹ️ FAISS 不可用，将使用 numpy 进行向量存储")
+    
+    return FAISS_AVAILABLE
 
 # Add global code index manager
 _global_parsers = {}  # workspace_root -> CodeRepositoryParser instance
@@ -136,6 +222,14 @@ class CodeSegment:
     start_line: int
     end_line: int
     segment_id: str
+    
+    def __getstate__(self):
+        """Support for pickling"""
+        return self.__dict__
+    
+    def __setstate__(self, state):
+        """Support for unpickling"""
+        self.__dict__.update(state)
 
 @dataclass
 class SearchResult:
@@ -351,25 +445,24 @@ class CodeRepositoryParser:
         
         # Data storage
         self.code_segments: List[CodeSegment] = []
-        self.segment_vectors: Optional[np.ndarray] = None
+        self.segment_vectors: Optional[Any] = None  # Will be np.ndarray after lazy import
         self.vector_index = None
         
         # File timestamp records
         self.file_timestamps: Dict[str, FileTimestamp] = {}
         
-        # TF-IDF database
-        self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=8000,  # Reduced from 15000 to 8000 for better performance
-            stop_words=None,  # Don't use stop words for code
-            ngram_range=(1, 2),  # Reduced to avoid over-complexity
-            tokenizer=self._tokenize_code,
-            token_pattern=None,  # Explicitly set to None to avoid warning when using custom tokenizer
-            min_df=1,  # Include terms that appear in at least 1 document
-            max_df=1.0,  # Include all terms (changed from 0.95 to avoid min_df > max_df issue)
-            sublinear_tf=True,  # Use sublinear TF scaling
-            norm='l2'  # L2 normalization
-        )
+        # TF-IDF database (延迟初始化)
+        self.tfidf_vectorizer = None  # Will be initialized when needed
         self.tfidf_matrix = None
+        self._tfidf_config = {
+            'max_features': 8000,
+            'stop_words': None,
+            'ngram_range': (1, 2),
+            'min_df': 1,
+            'max_df': 1.0,
+            'sublinear_tf': True,
+            'norm': 'l2'
+        }
         
         # Background update thread
         self.background_update_thread = None
@@ -379,6 +472,30 @@ class CodeRepositoryParser:
         
         # If background update is enabled, thread will be started later (after initialization)
         self._background_update_enabled = enable_background_update
+    
+    def _ensure_tfidf_vectorizer(self):
+        """确保 TF-IDF vectorizer 已初始化（延迟加载）"""
+        if self.tfidf_vectorizer is not None:
+            return
+        
+        # 先确保延迟导入的库已加载
+        _ensure_lazy_imports()
+        
+        # 使用全局的 TfidfVectorizer 类
+        global TfidfVectorizer
+        
+        # 创建 TF-IDF vectorizer 实例
+        self.tfidf_vectorizer = TfidfVectorizer(
+            max_features=self._tfidf_config['max_features'],
+            stop_words=self._tfidf_config['stop_words'],
+            ngram_range=self._tfidf_config['ngram_range'],
+            tokenizer=self._tokenize_code,
+            token_pattern=None,
+            min_df=self._tfidf_config['min_df'],
+            max_df=self._tfidf_config['max_df'],
+            sublinear_tf=self._tfidf_config['sublinear_tf'],
+            norm=self._tfidf_config['norm']
+        )
     
     def start_background_update(self):
         """Start background incremental update thread"""
@@ -425,7 +542,9 @@ class CodeRepositoryParser:
         identifiers = re.findall(identifier_pattern, text)
         
         # Add Chinese word segmentation support (for Chinese comments) if jieba is enabled
-        if JIEBA_ENABLED and jieba is not None:
+        # 🚀 延迟加载：首次使用中文分词时才加载 jieba
+        if _ensure_jieba_loaded():
+            global jieba
             chinese_text = re.sub(r'[^\u4e00-\u9fff]+', ' ', text)
             if chinese_text.strip():
                 try:
@@ -974,6 +1093,13 @@ class CodeRepositoryParser:
         """Build vector database"""
         logger.info("Building vector database...")
         
+        # 🚀 延迟加载：确保机器学习库已导入
+        _ensure_lazy_imports()
+        global np, TfidfVectorizer
+        
+        # 确保 TF-IDF vectorizer 已初始化
+        self._ensure_tfidf_vectorizer()
+        
         if not self.code_segments:
             logger.debug("No code segments to vectorize")
             return
@@ -1038,7 +1164,8 @@ class CodeRepositoryParser:
                 return
         
         # Build FAISS index (if available)
-        if FAISS_AVAILABLE and self.segment_vectors is not None:
+        if _check_faiss_available() and self.segment_vectors is not None:
+            global faiss
             logger.info("Building FAISS index...")
             dimension = self.segment_vectors.shape[1]
             self.vector_index = faiss.IndexFlatIP(dimension)  # Inner product index
@@ -1052,6 +1179,12 @@ class CodeRepositoryParser:
     def _build_tfidf_database(self):
         """Build TF-IDF database"""
         logger.info("Building TF-IDF database...")
+        
+        # 🚀 延迟加载：确保机器学习库已导入
+        _ensure_lazy_imports()
+        
+        # 确保 TF-IDF vectorizer 已初始化
+        self._ensure_tfidf_vectorizer()
         
         if not self.code_segments:
             logger.debug("No code segments for TF-IDF indexing")
@@ -1121,6 +1254,10 @@ class CodeRepositoryParser:
         Returns:
             List of search results
         """
+        # 🚀 延迟加载：确保机器学习库已导入
+        _ensure_lazy_imports()
+        global np, cosine_similarity
+        
         # Use lock to ensure thread safety when reading data
         with self._update_lock:
             if self.segment_vectors is None:
@@ -1131,8 +1268,9 @@ class CodeRepositoryParser:
             query_vector = self.tfidf_vectorizer.transform([query]).toarray()
             
             # Search similar vectors
-            if self.vector_index is not None and FAISS_AVAILABLE:
+            if self.vector_index is not None and _check_faiss_available():
                 # Use FAISS search
+                global faiss
                 faiss.normalize_L2(query_vector.astype(np.float32))
                 scores, indices = self.vector_index.search(
                     query_vector.astype(np.float32), 
@@ -1175,6 +1313,10 @@ class CodeRepositoryParser:
         Returns:
             List of search results
         """
+        # 🚀 延迟加载：确保机器学习库已导入
+        _ensure_lazy_imports()
+        global cosine_similarity
+        
         # Use lock to ensure thread safety when reading data
         with self._update_lock:
             if self.tfidf_matrix is None:
@@ -1302,6 +1444,9 @@ class CodeRepositoryParser:
         
         # Save vector data
         if self.segment_vectors is not None:
+            # 🚀 延迟加载：确保 numpy 已导入
+            _ensure_lazy_imports()
+            global np
             np.save(save_path / 'segment_vectors.npy', self.segment_vectors)
         
         # Save TF-IDF model and matrix
@@ -1316,7 +1461,8 @@ class CodeRepositoryParser:
 
         
         # Save FAISS index
-        if self.vector_index is not None and FAISS_AVAILABLE:
+        if self.vector_index is not None and _check_faiss_available():
+            global faiss
             faiss.write_index(self.vector_index, str(save_path / 'faiss_index.idx'))
         
         # Save statistics
@@ -1329,6 +1475,10 @@ class CodeRepositoryParser:
     def load_database(self, load_path: str):
         """Load database from file"""
         load_path = Path(load_path)
+        
+        # 🚀 延迟加载：确保机器学习库已导入（因为可能需要加载向量数据）
+        _ensure_lazy_imports()
+        global np
         
         # Load code segments
         with open(load_path / 'code_segments.pkl', 'rb') as f:
@@ -1369,7 +1519,8 @@ class CodeRepositoryParser:
         
         # Load FAISS index
         faiss_index_file = load_path / 'faiss_index.idx'
-        if faiss_index_file.exists() and FAISS_AVAILABLE:
+        if faiss_index_file.exists() and _check_faiss_available():
+            global faiss
             self.vector_index = faiss.read_index(str(faiss_index_file))
         
         logger.info(f"Database loaded from {load_path}")

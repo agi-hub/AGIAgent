@@ -90,12 +90,19 @@ class SVGProcessor:
             return False
     
     def _check_python_package(self, package: str) -> bool:
-        """Check if a Python package is available"""
+        """
+        Check if a Python package is available (without importing it)
+        
+        🚀 性能优化：使用 importlib.util.find_spec 检查模块存在性
+        避免在启动时导入 cairosvg (~2.4秒) 和 cairocffi (~1.5秒)
+        """
         try:
-            __import__(package)
-            return True
-        except (ImportError, OSError, Exception):
-            # Catch all exceptions including OSError from missing libraries
+            import importlib.util
+            spec = importlib.util.find_spec(package)
+            return spec is not None
+        except (ImportError, ValueError, AttributeError):
+            # ValueError: can occur for invalid module names
+            # AttributeError: can occur for edge cases
             return False
     
     def has_svg_blocks(self, markdown_file: str) -> bool:

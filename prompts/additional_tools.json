@@ -98,5 +98,40 @@
       },
       "required": ["type", "source"]
     }
+  },
+  "mouse_control": {
+    "description": "Control mouse operations, including moving the mouse to a specified coordinate, single clicking the left mouse button, double clicking, right mouse button clicking, and scrolling the mouse wheel. This is a cross-platform mouse control tool that prioritizes using the PyAutoGUI or PyNput libraries, and falls back to system commands if those are not available.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Type of operation. Possible values: 'move' (move mouse), 'click' (single click), 'double_click' (double click), 'right_click' (right-button click), 'scroll' (scroll wheel).",
+          "enum": ["move", "click", "double_click", "right_click", "scroll"]
+        },
+        "x": {
+          "type": "integer",
+          "description": "X coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "button": {
+          "type": "string",
+          "description": "Mouse button type, only used when action='click'. Possible values: 'left', 'right'. Defaults to 'left'.",
+          "enum": ["left", "right"]
+        },
+        "clicks": {
+          "type": "integer",
+          "description": "Number of clicks, only used when action='click'. Defaults to 1."
+        },
+        "scroll_delta": {
+          "type": "integer",
+          "description": "Amount to scroll by, only used when action='scroll'. Positive for scroll up, negative for scroll down. Larger absolute values scroll more."
+        }
+      },
+      "required": ["action"]
+    }
   }
 } 

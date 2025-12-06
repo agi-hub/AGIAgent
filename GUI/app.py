@@ -641,6 +641,10 @@ I18N_TEXTS = {
         'restore_svg_tooltip': '恢复原图',
         'delete_svg_tooltip': '删除SVG图',
         
+        # Markdown diagram reparse
+        'reparse_diagrams': '解析图表',
+        'reparse_diagrams_title': '重新解析Markdown中的Mermaid图表和SVG代码块',
+        
         # Document conversion messages
         'converting': '转换中...',
         'mermaid_conversion_success': 'Mermaid图表转换成功！',
@@ -1001,6 +1005,10 @@ I18N_TEXTS = {
         'ai_optimize_svg_tooltip': 'AI intelligent redesign SVG image',
         'restore_svg_tooltip': 'Restore original image',
         'delete_svg_tooltip': 'Delete SVG image',
+        
+        # Markdown diagram reparse
+        'reparse_diagrams': 'Parse Diagrams',
+        'reparse_diagrams_title': 'Reparse Mermaid charts and SVG code blocks in Markdown',
         
         # Document conversion messages
         'converting': 'Converting...',
@@ -4483,6 +4491,65 @@ def render_markdown():
         
         return jsonify({'success': True, 'html': html})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/reparse-markdown-diagrams', methods=['POST'])
+def reparse_markdown_diagrams():
+    """重新解析Markdown文件中的Mermaid图表和SVG代码块"""
+    try:
+        data = request.get_json() or {}
+        rel_path = data.get('path')
+        
+        if not rel_path:
+            return jsonify({'success': False, 'error': 'File path is required'})
+        
+        # 获取用户会话
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # 获取完整路径
+        full_path = os.path.join(user_base_dir, rel_path)
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        
+        # 安全检查
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'})
+        
+        if not os.path.exists(real_file_path):
+            return jsonify({'success': False, 'error': 'File not found'})
+        
+        if not rel_path.lower().endswith('.md'):
+            return jsonify({'success': False, 'error': 'Only markdown files are supported'})
+        
+        # 使用FileSystemTools的process_markdown_diagrams方法
+        from src.tools.file_system_tools import FileSystemTools
+        
+        fs_tools = FileSystemTools(workspace_root=user_base_dir)
+        result = fs_tools.process_markdown_diagrams(rel_path)
+        
+        if result.get('status') == 'success':
+            return jsonify({
+                'success': True,
+                'message': result.get('message', 'Processing completed'),
+                'details': {
+                    'mermaid': result.get('mermaid_processing', {}),
+                    'svg': result.get('svg_processing', {})
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('message', 'Processing failed'),
+                'details': result
+            })
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/gui-configs', methods=['GET'])

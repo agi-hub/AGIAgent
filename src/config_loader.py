@@ -788,3 +788,106 @@ def validate_gui_config(gui_config: Dict[str, Optional[str]]) -> Tuple[bool, str
     if not api_base or api_base.strip() == '':
         return False, "Invalid API Base configuration. Please check the GUI API configuration section in config/config.txt."
     return True, ""
+
+def get_vision_model(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get vision model name from configuration file
+    Falls back to main model if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Vision model name string or None
+    """
+    config = load_config(config_file)
+    vision_model = config.get('vision_model')
+    
+    # If vision_model is not set or is placeholder, return main model
+    if not vision_model or vision_model.strip() == '' or vision_model.strip() == 'your key':
+        return get_model(config_file)
+    
+    return vision_model
+
+def get_vision_api_key(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get vision API key from configuration file
+    Falls back to main API key if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Vision API key string or None
+    """
+    config = load_config(config_file)
+    vision_api_key = config.get('vision_api_key')
+    
+    # If vision_api_key is not set or is placeholder, return main api_key
+    if not vision_api_key or vision_api_key.strip() == '' or vision_api_key.strip() == 'your key':
+        return get_api_key(config_file)
+    
+    return vision_api_key
+
+def get_vision_api_base(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get vision API base URL from configuration file
+    Falls back to main API base if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Vision API base URL string or None
+    """
+    config = load_config(config_file)
+    vision_api_base = config.get('vision_api_base')
+    
+    # If vision_api_base is not set or is placeholder, return main api_base
+    if not vision_api_base or vision_api_base.strip() == '':
+        return get_api_base(config_file)
+    
+    return vision_api_base
+
+def get_vision_max_tokens(config_file: str = "config/config.txt") -> Optional[int]:
+    """
+    Get vision max_tokens from configuration file
+    Falls back to main max_tokens if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Vision max tokens integer or None
+    """
+    config = load_config(config_file)
+    vision_max_tokens_str = config.get('vision_max_tokens')
+    
+    # If vision_max_tokens is set, use it
+    if vision_max_tokens_str:
+        try:
+            return int(vision_max_tokens_str)
+        except ValueError:
+            print(f"Warning: Invalid vision_max_tokens value '{vision_max_tokens_str}' in config file, using main max_tokens")
+    
+    # Fall back to main max_tokens
+    return get_max_tokens(config_file)
+
+def has_vision_config(config_file: str = "config/config.txt") -> bool:
+    """
+    Check if vision-specific configuration exists
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        True if vision config is set, False if using main model config
+    """
+    config = load_config(config_file)
+    vision_model = config.get('vision_model')
+    
+    # Check if vision_model is properly configured
+    if vision_model and vision_model.strip() != '' and vision_model.strip() != 'your key':
+        return True
+    
+    return False

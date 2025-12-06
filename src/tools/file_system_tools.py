@@ -120,12 +120,34 @@ def create_emoji_free_markdown(input_file):
     except Exception as e:
         print_debug(f"❌ Error creating emoji-free markdown: {e}")
         return None
-try:
-    from .mermaid_processor import mermaid_processor
-    MERMAID_PROCESSOR_AVAILABLE = True
-except ImportError:
-    print_debug("⚠️ Mermaid processor not available")
-    MERMAID_PROCESSOR_AVAILABLE = False
+# ========================================
+# 🚀 延迟导入优化：mermaid_processor 延迟加载
+# ========================================
+# mermaid_processor 用于处理 Mermaid 图表，只在实际需要时才加载
+# 避免启动时加载，节省约 3.2秒
+
+_mermaid_processor = None
+MERMAID_PROCESSOR_AVAILABLE = None  # 未初始化状态
+
+def _get_mermaid_processor():
+    """延迟获取 Mermaid 处理器（只在需要时导入）"""
+    global _mermaid_processor, MERMAID_PROCESSOR_AVAILABLE
+    
+    if _mermaid_processor is not None:
+        return _mermaid_processor
+    
+    if MERMAID_PROCESSOR_AVAILABLE is False:
+        return None
+    
+    try:
+        from .mermaid_processor import MermaidProcessor
+        _mermaid_processor = MermaidProcessor(silent_init=True)
+        MERMAID_PROCESSOR_AVAILABLE = True
+        return _mermaid_processor
+    except ImportError:
+        print_debug("⚠️ Mermaid processor not available")
+        MERMAID_PROCESSOR_AVAILABLE = False
+        return None
 
 # Import SVG processor for handling SVG code blocks in markdown files
 try:
@@ -612,22 +634,25 @@ class FileSystemTools:
             
             # Process Mermaid charts if this is a markdown file
             mermaid_result = None
-            if target_file.lower().endswith('.md') and MERMAID_PROCESSOR_AVAILABLE:
-                try:
-                    if mermaid_processor.has_mermaid_charts(file_path):
-                        print_debug(f"🎨 Detected Mermaid charts in markdown file, processing...")
-                        mermaid_result = mermaid_processor.process_markdown_file(file_path)
-                        if mermaid_result['status'] == 'success':
-                            print_debug(f"✅ Mermaid processing completed: {mermaid_result['message']}")
-                        else:
-                            print_debug(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
-                except Exception as e:
-                    print_debug(f"⚠️ Error during Mermaid processing: {e}")
-                    mermaid_result = {
-                        'status': 'failed',
-                        'error': str(e),
-                        'message': f'Mermaid processing error: {e}'
-                    }
+            if target_file.lower().endswith('.md'):
+                # 🚀 延迟加载：只在需要处理 Mermaid 图表时才加载处理器
+                processor = _get_mermaid_processor()
+                if processor:
+                    try:
+                        if processor.has_mermaid_charts(file_path):
+                            print_debug(f"🎨 Detected Mermaid charts in markdown file, processing...")
+                            mermaid_result = processor.process_markdown_file(file_path)
+                            if mermaid_result['status'] == 'success':
+                                print_debug(f"✅ Mermaid processing completed: {mermaid_result['message']}")
+                            else:
+                                print_debug(f"⚠️ Mermaid processing failed: {mermaid_result.get('message', 'Unknown error')}")
+                    except Exception as e:
+                        print_debug(f"⚠️ Error during Mermaid processing: {e}")
+                        mermaid_result = {
+                            'status': 'failed',
+                            'error': str(e),
+                            'message': f'Mermaid processing error: {e}'
+                        }
             
             # Process SVG code blocks if this is a markdown file
             svg_result = None
@@ -2250,11 +2275,13 @@ class FileSystemTools:
             }
             
             # Process Mermaid charts
-            if MERMAID_PROCESSOR_AVAILABLE:
+            # 🚀 延迟加载：只在需要处理 Mermaid 图表时才加载处理器
+            processor = _get_mermaid_processor()
+            if processor:
                 try:
-                    if mermaid_processor.has_mermaid_charts(file_path):
+                    if processor.has_mermaid_charts(file_path):
                         print_debug(f"🎨 Detected Mermaid charts, processing...")
-                        mermaid_result = mermaid_processor.process_markdown_file(file_path)
+                        mermaid_result = processor.process_markdown_file(file_path)
                         processing_results['mermaid_processing'] = mermaid_result
                         
                         if mermaid_result['status'] == 'success':

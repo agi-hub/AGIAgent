@@ -21,7 +21,7 @@ import platform
 import subprocess
 import time
 from typing import Dict, Any, Optional
-from .print_system import print_current
+from .print_system import print_current, print_debug
 
 
 class MouseTools:
@@ -76,7 +76,7 @@ class MouseTools:
         
         # 如果都没有，将使用系统命令
         if not self.pyautogui_available and not self.pynput_available:
-            print_current("⚠️ 未找到 PyAutoGUI 或 PyNput，将尝试使用系统命令进行鼠标操作")
+            print_debug("⚠️ 未找到 PyAutoGUI 或 PyNput，将尝试使用系统命令进行鼠标操作")
     
     def mouse_control(self, action: str, x: Optional[int] = None, y: Optional[int] = None, 
                      button: Optional[str] = None, clicks: Optional[int] = None, 

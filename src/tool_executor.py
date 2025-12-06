@@ -40,7 +40,9 @@ from src.tools.print_system import (print_system, print_current, streaming_conte
                                 print_error)
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
-from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
+# 🚀 延迟导入优化：MCP 相关模块延迟加载，避免启动时加载 FastMCP 框架（~3秒）
+# from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
+# 这些函数将在实际使用时才导入
 from src.tools.mcp_client import safe_cleanup_mcp_client
 from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length
 from src.tools.message_system import get_message_router
@@ -292,8 +294,9 @@ class ToolExecutor:
         # if debug_mode:
         #     print_system(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
         
-        # Set up LLM client
-        self._setup_llm_client()
+        # 🚀 LLM客户端延迟初始化：不在__init__中创建客户端
+        self.client = None
+        self._llm_client_initialized = False
         
         # Initialize tools with LLM configuration for web search filtering
         from tools import Tools
@@ -315,26 +318,14 @@ class ToolExecutor:
             user_id=self.user_id
         )
         
-        # Initialize long-term memory system
-        try:
-            # Check if long-term memory is enabled via environment variable
-            if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
-                print_current("⚠️ Long-term memory is disabled via environment variable AGIBOT_LONG_TERM_MEMORY")
-                self.long_term_memory = None
-            else:
-                from tools.long_term_memory import LongTermMemoryTools
-                # Long-term memory is now stored in the project root directory
-                # Configuration files will be automatically loaded from the project root directory
-                self.long_term_memory = LongTermMemoryTools(
-                    workspace_root=self.workspace_dir  # 仅用于兼容性，实际存储在项目根目录
-                )
-                #print_current("✅ Long-term memory system initialized successfully (global shared storage)")
-        except ImportError as e:
-            print_current(f"⚠️ Long-term memory module import failed: {e}")
-            self.long_term_memory = None
-        except Exception as e:
-            print_current(f"⚠️ Long-term memory system initialization failed: {e}")
-            self.long_term_memory = None
+        # 🚀 长期记忆系统延迟初始化：只在首次使用时才初始化
+        self.long_term_memory = None
+        self._long_term_memory_initialized = False
+        
+        # 🚀 Prompt缓存优化：避免重复读取文件和生成文本
+        self._prompt_file_cache = {}  # {file_path: (content, mtime)}
+        self._prompt_components_cache = None  # 缓存load_user_prompt_components的结果
+        self._tools_prompt_cache = {}  # {(lang, def_hash): generated_prompt}
         
         # Initialize history optimizer for image data optimization
         try:
@@ -433,24 +424,35 @@ class ToolExecutor:
         if self.planning_tools:
             self.tool_map["plan_tools"] = self.planning_tools.plan_tools
         
-        # Add long-term memory tools if available
-        if self.long_term_memory:
-            self.tool_map.update({
-                "recall_memories": self.long_term_memory.recall_memories,
-                "recall_memories_by_time": self.long_term_memory.recall_memories_by_time,
-                "get_memory_summary": self.long_term_memory.get_memory_summary,
-            })
-            print_system("🧠 Long-term memory tools registered")
-        else:
-            # Add error handlers for disabled memory tools
-            def _memory_disabled_error(*args, **kwargs):
-                return {"status": "error", "message": "Long-term memory feature not enabled or initialization failed"}
-            
-            self.tool_map.update({
-                "recall_memories": _memory_disabled_error,
-                "recall_memories_by_time": _memory_disabled_error,
-                "get_memory_summary": _memory_disabled_error,
-            })
+        # 🚀 长期记忆工具延迟初始化包装器
+        def _create_long_term_memory_wrapper(tool_name):
+            """创建长期记忆工具的延迟初始化包装器"""
+            def wrapper(*args, **kwargs):
+                # 确保长期记忆系统已初始化
+                self._ensure_long_term_memory_initialized()
+                
+                # 检查初始化是否成功
+                if self.long_term_memory is None:
+                    return {"status": "error", "message": "Long-term memory system initialization failed"}
+                
+                # 调用实际的工具方法
+                if tool_name == "recall_memories":
+                    return self.long_term_memory.recall_memories(*args, **kwargs)
+                elif tool_name == "recall_memories_by_time":
+                    return self.long_term_memory.recall_memories_by_time(*args, **kwargs)
+                elif tool_name == "get_memory_summary":
+                    return self.long_term_memory.get_memory_summary(*args, **kwargs)
+                else:
+                    return {"status": "error", "message": f"Unknown long-term memory tool: {tool_name}"}
+            return wrapper
+        
+        # 注册长期记忆工具（使用延迟初始化包装器）
+        self.tool_map.update({
+            "recall_memories": _create_long_term_memory_wrapper("recall_memories"),
+            "recall_memories_by_time": _create_long_term_memory_wrapper("recall_memories_by_time"),
+            "get_memory_summary": _create_long_term_memory_wrapper("get_memory_summary"),
+        })
+        print_debug("🧠 Long-term memory tools registered (lazy initialization)")
         
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
@@ -475,101 +477,16 @@ class ToolExecutor:
                 "terminate_agent": _multi_agent_disabled_error,
             })
         
-
-        # Initialize MCP clients - support both cli-mcp and direct MCP implementation
-        self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
-        # Create direct MCP client with specific config file instead of using global singleton
-        from tools.mcp_client import MCPClient
-        self.direct_mcp_client = MCPClient(self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json", workspace_dir=self.workspace_dir)
+        # 🚀 MCP真正延迟初始化：只在首次使用MCP工具时才创建客户端实例
+        # 不在 __init__ 中创建实例，避免启动延迟
+        self.cli_mcp_client = None
+        self.direct_mcp_client = None
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
+        self.mcp_initialization_attempted = False  # Track if we've tried to initialize MCP
         
-        # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
-        import asyncio
-        try:
-            loop = asyncio.get_running_loop()
-            if loop and loop.is_running():
-                # We're in an async context, use thread pool for initialization
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    # Initialize direct MCP client (FastMCP) FIRST
-                    try:
-                        future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
-                        self.direct_mcp_initialized = future_direct.result(timeout=10)
-                        if self.direct_mcp_initialized:
-                            print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
-                    except Exception as e:
-                        print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
-                        self.direct_mcp_initialized = False
-                    
-                    # Only initialize cli-mcp if FastMCP is not handling servers
-                    should_init_cli_mcp = self._should_initialize_cli_mcp()
-                    if should_init_cli_mcp:
-                        try:
-                            future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
-                            self.cli_mcp_initialized = future_cli.result(timeout=10)
-                            if self.cli_mcp_initialized:
-                                print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
-                        except Exception as e:
-                            print_system(f"⚠️ cli-mcp client startup initialization failed: {e}")
-                            self.cli_mcp_initialized = False
-                    else:
-                        print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                        self.cli_mcp_initialized = False
-            else:
-                # Safe to run async initialization directly
-                # Initialize direct MCP client (FastMCP) FIRST
-                try:
-                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                    if self.direct_mcp_initialized:
-                        print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
-                except Exception as e:
-                    print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
-                    self.direct_mcp_initialized = False
-                
-                # Only initialize cli-mcp if needed
-                should_init_cli_mcp = self._should_initialize_cli_mcp()
-                if should_init_cli_mcp:
-                    try:
-                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
-                        if self.cli_mcp_initialized:
-                            print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
-                    except Exception as e:
-                        print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
-                        self.cli_mcp_initialized = False
-                else:
-                    print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                    self.cli_mcp_initialized = False
-        except RuntimeError:
-            # No event loop, safe to create one
-            # Initialize direct MCP client (FastMCP) FIRST
-            try:
-                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                if self.direct_mcp_initialized:
-                    print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
-            except Exception as e:
-                print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
-                self.direct_mcp_initialized = False
-            
-            # Only initialize cli-mcp if needed
-            should_init_cli_mcp = self._should_initialize_cli_mcp()
-            if should_init_cli_mcp:
-                try:
-                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
-                    if self.cli_mcp_initialized:
-                        print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
-                except Exception as e:
-                    print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
-                    self.cli_mcp_initialized = False
-            else:
-                print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                self.cli_mcp_initialized = False
-        
-        # Add MCP tools to tool_map after successful initialization
-        if self.cli_mcp_initialized or self.direct_mcp_initialized:
-            self._add_mcp_tools_to_map()
-            #print_current(f"🔧 MCP tools loaded successfully during startup")
-
+        # 存储MCP配置文件路径，供延迟初始化使用
+        self.MCP_config_file_path = self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json"
         
         # Log related settings
         # Only create logs directory if we have a valid workspace_dir
@@ -588,14 +505,132 @@ class ToolExecutor:
         # Ensure log directory exists only if logs_dir is set
         if self.llm_logs_dir:
             os.makedirs(self.llm_logs_dir, exist_ok=True)
-        
 
+    
+    def _ensure_mcp_initialized(self):
+        """
+        确保MCP已初始化 - 延迟加载实现
+        在第一次使用MCP工具时调用此方法
+        """
+        # 如果已经尝试过初始化,直接返回
+        if self.mcp_initialization_attempted:
+            return
+        
+        self.mcp_initialization_attempted = True
+        print_system("🔄 首次使用MCP工具,开始初始化MCP客户端...")
+        
+        # 🚀 在首次使用时创建MCP客户端实例
+        try:
+            from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper
+            self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file_path)
+            
+            from tools.mcp_client import MCPClient
+            self.direct_mcp_client = MCPClient(self.MCP_config_file_path, workspace_dir=self.workspace_dir)
+            
+            print_debug("✅ MCP客户端实例创建成功")
+        except Exception as e:
+            print_current(f"⚠️ 创建MCP客户端实例失败: {e}")
+            return
+        
+        # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            if loop and loop.is_running():
+                # We're in an async context, use thread pool for initialization
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    # Initialize direct MCP client (FastMCP) FIRST
+                    try:
+                        future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
+                        self.direct_mcp_initialized = future_direct.result(timeout=10)
+                        if self.direct_mcp_initialized:
+                            print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ SSE MCP client initialization failed: {e}")
+                        self.direct_mcp_initialized = False
+                    
+                    # Only initialize cli-mcp if FastMCP is not handling servers
+                    should_init_cli_mcp = self._should_initialize_cli_mcp()
+                    if should_init_cli_mcp:
+                        try:
+                            # 🚀 延迟导入：只在实际使用 MCP 时才加载
+                            from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
+                            future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
+                            self.cli_mcp_initialized = future_cli.result(timeout=10)
+                            if self.cli_mcp_initialized:
+                                print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
+                        except Exception as e:
+                            print_system(f"⚠️ cli-mcp client initialization failed: {e}")
+                            self.cli_mcp_initialized = False
+                    else:
+                        print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                        self.cli_mcp_initialized = False
+            else:
+                # Safe to run async initialization directly
+                # Initialize direct MCP client (FastMCP) FIRST
+                try:
+                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                    if self.direct_mcp_initialized:
+                        print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ SSE MCP client initialization failed: {e}")
+                    self.direct_mcp_initialized = False
+                
+                # Only initialize cli-mcp if needed
+                should_init_cli_mcp = self._should_initialize_cli_mcp()
+                if should_init_cli_mcp:
+                    try:
+                        # 🚀 延迟导入：只在实际使用 MCP 时才加载
+                        from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
+                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                        if self.cli_mcp_initialized:
+                            print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ cli-mcp client initialization failed: {e}")
+                        self.cli_mcp_initialized = False
+                else:
+                    print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                    self.cli_mcp_initialized = False
+        except RuntimeError:
+            # No event loop, safe to create one
+            # Initialize direct MCP client (FastMCP) FIRST
+            try:
+                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                if self.direct_mcp_initialized:
+                    print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
+            except Exception as e:
+                print_current(f"⚠️ SSE MCP client initialization failed: {e}")
+                self.direct_mcp_initialized = False
+            
+            # Only initialize cli-mcp if needed
+            should_init_cli_mcp = self._should_initialize_cli_mcp()
+            if should_init_cli_mcp:
+                try:
+                    # 🚀 延迟导入：只在实际使用 MCP 时才加载
+                    from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
+                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                    if self.cli_mcp_initialized:
+                        print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp client initialization failed: {e}")
+                    self.cli_mcp_initialized = False
+            else:
+                print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                self.cli_mcp_initialized = False
+        
+        # Add MCP tools to tool_map after successful initialization
+        if self.cli_mcp_initialized or self.direct_mcp_initialized:
+            self._add_mcp_tools_to_map()
+            print_system(f"🔧 MCP tools loaded successfully")
     
     async def _initialize_mcp_async(self):
         """Initialize both MCP clients asynchronously"""
         try:
             # Initialize cli-mcp wrapper
             if not self.cli_mcp_initialized:
+                # 🚀 延迟导入：只在实际使用 MCP 时才加载
+                from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
                 self.cli_mcp_initialized = await initialize_cli_mcp_wrapper(self.MCP_config_file)
                 if self.cli_mcp_initialized:
                     print_system("✅ cli-mcp client initialized successfully")
@@ -616,6 +651,36 @@ class ToolExecutor:
                 
         except Exception as e:
             print_current(f"⚠️ MCP client async initialization failed: {e}")
+    
+    def _ensure_long_term_memory_initialized(self):
+        """
+        确保长期记忆系统已初始化 - 延迟加载实现
+        在第一次使用长期记忆工具时调用此方法
+        """
+        if self._long_term_memory_initialized:
+            return
+        
+        self._long_term_memory_initialized = True
+        
+        # Check if long-term memory is disabled
+        if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
+            print_debug("ℹ️ Long-term memory is disabled via environment variable")
+            return
+        
+        print_system("🔄 首次使用长期记忆工具，开始初始化长期记忆系统...")
+        
+        try:
+            from tools.long_term_memory import LongTermMemoryTools
+            self.long_term_memory = LongTermMemoryTools(
+                workspace_root=self.workspace_dir
+            )
+            print_system("✅ 长期记忆系统初始化成功")
+        except ImportError as e:
+            print_current(f"⚠️ Long-term memory module import failed: {e}")
+            self.long_term_memory = None
+        except Exception as e:
+            print_current(f"⚠️ Long-term memory system initialization failed: {e}")
+            self.long_term_memory = None
     
     def _should_initialize_cli_mcp(self) -> bool:
         """Check if cli-mcp should be initialized based on FastMCP status"""
@@ -877,22 +942,29 @@ class ToolExecutor:
     def cleanup(self):
         """Clean up all resources and threads"""
         try:
+            import sys
             
             # Cleanup cli-mcp client
+            # 🎯 性能优化：只有在 cli_mcp_wrapper 已被导入时才清理
             if hasattr(self, 'cli_mcp_client') and self.cli_mcp_client:
-                try:
-                    safe_cleanup_cli_mcp_wrapper()
-                    # print_current("🔌 cli-mcp client cleanup completed")
-                except Exception as e:
-                    print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
+                # 检查模块是否已加载（避免在清理时延迟导入）
+                if 'src.tools.cli_mcp_wrapper' in sys.modules:
+                    try:
+                        from src.tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                        safe_cleanup_cli_mcp_wrapper()
+                        # print_current("🔌 cli-mcp client cleanup completed")
+                    except Exception as e:
+                        print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
             
             # Cleanup direct MCP client
+            # 🎯 性能优化：只有在 mcp_client 已被导入时才清理
             if hasattr(self, 'direct_mcp_client') and self.direct_mcp_client:
-                try:
-                    safe_cleanup_mcp_client()
-                    # print_current("🔌 Direct MCP client cleanup completed")
-                except Exception as e:
-                    print_current(f"⚠️ Direct MCP client cleanup failed: {e}")
+                if 'src.tools.mcp_client' in sys.modules:
+                    try:
+                        safe_cleanup_mcp_client()
+                        # print_current("🔌 Direct MCP client cleanup completed")
+                    except Exception as e:
+                        print_current(f"⚠️ Direct MCP client cleanup failed: {e}")
             
             # Cleanup long-term memory
             if hasattr(self, 'long_term_memory') and self.long_term_memory:
@@ -974,25 +1046,36 @@ class ToolExecutor:
                 
     def _setup_llm_client(self):
         """
-        Set up the LLM client based on the API base URL.
+        确保LLM客户端已初始化 - 延迟加载实现
+        在第一次调用LLM时才创建客户端
         """
+        # 如果已经初始化，直接返回
+        if self._llm_client_initialized:
+            return
+        
+        self._llm_client_initialized = True
+        print_debug("🔄 首次调用LLM，开始初始化LLM客户端...")
+        
         if self.is_claude:
-            # print_current(f"🧠 Detected Anthropic API, using Anthropic protocol")
-            # print_current(f" Anthropic API Base: {self.api_base}")
+            print_debug(f"🧠 Detected Anthropic API, using Anthropic protocol")
             
-            # Initialize Anthropic client
+            # 延迟导入 Anthropic 库
             Anthropic = get_anthropic_client()
             self.client = Anthropic(
                 api_key=self.api_key,
                 base_url=self.api_base
             )
         else:
-            # print_current(f"🤖 Using OpenAI protocol")
-            # Initialize OpenAI client
+            print_debug(f"🤖 Using OpenAI protocol")
+            
+            # 延迟导入 OpenAI 库
+            from openai import OpenAI
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.api_base
             )
+        
+        print_debug("✅ LLM客户端初始化成功")
     
     def _get_max_tokens_for_model(self, model: str) -> int:
         """
@@ -1132,9 +1215,44 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             print_current(f"Error loading system prompt: {e}")
             return "You are a helpful AI assistant that can use tools to accomplish tasks."
     
+    def _load_prompt_file_cached(self, file_path: str) -> str:
+        """
+        缓存加载提示文件，使用文件修改时间检测变化
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            文件内容，如果文件不存在返回空字符串
+        """
+        if not os.path.exists(file_path):
+            return ""
+        
+        try:
+            # 检查缓存
+            current_mtime = os.path.getmtime(file_path)
+            
+            if file_path in self._prompt_file_cache:
+                cached_content, cached_mtime = self._prompt_file_cache[file_path]
+                if cached_mtime == current_mtime:
+                    return cached_content  # 缓存命中
+            
+            # 缓存未命中，读取文件
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            
+            # 更新缓存
+            self._prompt_file_cache[file_path] = (content, current_mtime)
+            return content
+            
+        except Exception as e:
+            print_debug(f"Warning: Could not load file {file_path}: {e}")
+            return ""
+    
     def load_user_prompt_components(self) -> Dict[str, str]:
         """
         Load all prompt components that go into the user message.
+        使用缓存优化，避免重复读取文件
         
         Returns:
             Dictionary containing different prompt components
@@ -1148,12 +1266,21 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         try:
             # For chat-based tools, generate tool descriptions from JSON instead of loading files
             if self.use_chat_based_tools:
-                # Generate tools prompt from JSON definitions
-                # Force reload to ensure FastMCP tools are included if they were initialized after first load
-                tool_definitions = self._load_tool_definitions_from_file(force_reload=True)
-                json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
+                # 使用缓存加载工具定义（不强制重新加载）
+                tool_definitions = self._load_tool_definitions_from_file(force_reload=False)
                 
-                # Load only rules and plugin prompts (excluding deprecated tool files)
+                # 缓存生成的工具提示
+                import hashlib
+                def_hash = hashlib.md5(str(sorted(tool_definitions.items())).encode()).hexdigest()
+                cache_key = (self.language, def_hash)
+                
+                if cache_key in self._tools_prompt_cache:
+                    json_tools_prompt = self._tools_prompt_cache[cache_key]
+                else:
+                    json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
+                    self._tools_prompt_cache[cache_key] = json_tools_prompt
+                
+                # Load only rules and plugin prompts (使用缓存)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
                     os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
@@ -1164,18 +1291,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 if json_tools_prompt:
                     rules_parts.append(json_tools_prompt)
                 
-                loaded_files = []
-                
+                # 使用缓存方法加载文件
                 for file_path in rules_tool_files:
-                    if os.path.exists(file_path):
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                content = f.read().strip()
-                                if content:
-                                    rules_parts.append(content)
-                                    loaded_files.append(file_path)
-                        except Exception as e:
-                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                    content = self._load_prompt_file_cached(file_path)
+                    if content:
+                        rules_parts.append(content)
                 
                 if rules_parts:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
@@ -1187,7 +1307,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 #    print_current("⚠️  Failed to generate JSON tool descriptions, falling back to file-based approach")
                     
             else:
-                # For standard tool calling, load only rules (no tool descriptions needed)
+                # For standard tool calling, load only rules (使用缓存)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
                     os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
@@ -1195,18 +1315,12 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 ]
                 
                 rules_parts = []
-                loaded_files = []
                 
+                # 使用缓存方法加载文件
                 for file_path in rules_tool_files:
-                    if os.path.exists(file_path):
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                content = f.read().strip()
-                                if content:
-                                    rules_parts.append(content)
-                                    loaded_files.append(file_path)
-                        except Exception as e:
-                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                    content = self._load_prompt_file_cached(file_path)
+                    if content:
+                        rules_parts.append(content)
                 
                 if rules_parts:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
@@ -3174,8 +3288,34 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             
             # Update tool_call object to reflect the correction
             tool_call["name"] = tool_name
+        
         # Check tool source from mapping table
         tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
+        
+        # 🔄 延迟加载MCP: 在以下情况下初始化MCP
+        # 1. 工具来源已标记为MCP工具
+        # 2. 工具不在tool_map中,且工具名称符合MCP命名规则(包含下划线或特定前缀)
+        should_init_mcp = False
+        if not self.mcp_initialization_attempted:
+            if tool_source in ['fastmcp', 'cli_mcp']:
+                # 情况1: 已知是MCP工具
+                should_init_mcp = True
+            elif tool_name not in self.tool_map:
+                # 情况2: 工具不存在,且可能是MCP工具(根据命名规则判断)
+                # MCP工具通常包含下划线,如: taobao_search, filesystem_read_file
+                # 排除已知的非MCP工具
+                known_regular_tools = {
+                    'list_files', 'read_file', 'write_file', 'edit_file', 'delete_file',
+                    'execute_bash', 'search_files', 'search_content', 'create_directory',
+                    'list_directory', 'move_file', 'copy_file'
+                }
+                if tool_name not in known_regular_tools and '_' in tool_name:
+                    should_init_mcp = True
+        
+        if should_init_mcp:
+            self._ensure_mcp_initialized()
+            # 重新检查工具来源,因为初始化后可能会改变
+            tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
         
         # Handle FastMCP tools
         if tool_source == 'fastmcp':
@@ -4403,6 +4543,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         Returns:
             Tuple of (content, tool_calls)
         """
+        # 🚀 确保LLM客户端已初始化（延迟加载）
+        self._setup_llm_client()
+        
         if self.use_chat_based_tools:
             return self._call_llm_with_chat_based_tools(messages, user_message, system_message)
         elif self.is_glm:
@@ -6330,31 +6473,45 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         try:
             import json
             
-            # Check cache first (unless force_reload is True)
-            if not force_reload and self._tool_definitions_cache is not None:
-                # Check if cache is still valid (within 60 seconds)
-                current_time = time.time()
-                if (self._tool_definitions_cache_timestamp is not None and 
-                    current_time - self._tool_definitions_cache_timestamp < 60):
-                    # Using cached tool definitions (avoiding repeated FastMCP loading)
-                    return self._tool_definitions_cache
-            
-            # Load basic tool definitions
-            tool_definitions = {}
-            
             # Use default path if none provided
             if json_file_path is None:
                 json_file_path = os.path.join(self.prompts_folder, "tool_prompt.json")
+            
+            # 🚀 优化：使用文件修改时间检测缓存是否有效
+            if not force_reload and self._tool_definitions_cache is not None:
+                # 检查所有相关文件的修改时间
+                cache_valid = True
+                for cached_file, cached_mtime in getattr(self, '_tool_defs_file_mtimes', {}).items():
+                    if os.path.exists(cached_file):
+                        current_mtime = os.path.getmtime(cached_file)
+                        if current_mtime != cached_mtime:
+                            cache_valid = False
+                            break
+                    else:
+                        cache_valid = False
+                        break
+                
+                if cache_valid:
+                    print_debug("✅ 工具定义缓存命中（文件未修改）")
+                    return self._tool_definitions_cache
+            
+            # 缓存未命中或强制重新加载，记录文件修改时间
+            if not hasattr(self, '_tool_defs_file_mtimes'):
+                self._tool_defs_file_mtimes = {}
+            
+            # Load basic tool definitions
+            tool_definitions = {}
             
             # Try to load from the provided path
             if os.path.exists(json_file_path):
                 with open(json_file_path, 'r', encoding='utf-8') as f:
                     tool_definitions = json.load(f)
-                    # print_current(f"✅ Loaded basic tool definitions from {json_file_path}")
+                    self._tool_defs_file_mtimes[json_file_path] = os.path.getmtime(json_file_path)
+                    print_debug(f"📝 加载工具定义: {json_file_path}")
             else:
-                # print_current(f"⚠️  Tool definitions file not found: {json_file_path}")
                 # No fallback definitions available
                 tool_definitions = {}
+                print_debug(f"⚠️ 工具定义文件不存在: {json_file_path}")
             
             # Load memory tool definitions
             memory_tools_file = os.path.join(self.prompts_folder, "memory_tools.json")
@@ -6363,12 +6520,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     with open(memory_tools_file, 'r', encoding='utf-8') as f:
                         memory_tools = json.load(f)
                         tool_definitions.update(memory_tools)
-                        # print_current(f"✅ Loaded memory tool definitions from {memory_tools_file}")
+                        self._tool_defs_file_mtimes[memory_tools_file] = os.path.getmtime(memory_tools_file)
                 except Exception as e:
                     print_current(f"⚠️ Error loading memory tools: {e}")
-            else:
-                # print_current(f"⚠️ Memory tools file not found: {memory_tools_file}")
-                pass
             
             # Check if multi-agent mode is enabled
             multi_agent_enabled = self._is_multi_agent_enabled()
@@ -6380,21 +6534,14 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     with open(multiagent_file_path, 'r', encoding='utf-8') as f:
                         multiagent_tools = json.load(f)
                         tool_definitions.update(multiagent_tools)
-                        # print_current(f"✅ Loaded multi-agent tool definitions from {multiagent_file_path}")
-                else:
-                    # print_current(f"⚠️  Multi-agent tool definitions file not found: {multiagent_file_path}")
-                    pass
-            else:
-                # print_current("🔒 Multi-agent mode disabled - skipping multi-agent tool definitions")
-                pass
+                        self._tool_defs_file_mtimes[multiagent_file_path] = os.path.getmtime(multiagent_file_path)
             
             # 🔧 NEW: Load FastMCP tool definitions dynamically
+            # 🚀 优化：只在direct_mcp_client已初始化时才加载FastMCP工具定义
             try:
-                from tools.fastmcp_wrapper import get_fastmcp_wrapper
-
-                fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
-                if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
-                    fastmcp_tools = fastmcp_wrapper.get_available_tools()
+                # 检查MCP客户端是否已初始化
+                if self.direct_mcp_client is not None:
+                    fastmcp_tools = self.direct_mcp_client.get_available_tools()
                     if fastmcp_tools:
                         # Only print loading info on first load or force reload
                         should_print = force_reload or not hasattr(self, '_fastmcp_loaded_before')
@@ -6404,8 +6551,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         
                         for tool_name in fastmcp_tools:
                             try:
-                                # Get tool definition from FastMCP wrapper
-                                tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
+                                # Get tool definition from direct MCP client
+                                tool_def = self.direct_mcp_client.get_tool_definition(tool_name)
                                 if tool_def:
                                     # Convert to the format expected by our tool definitions
                                     tool_definitions[tool_name] = {
@@ -6428,11 +6575,10 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         # Mark that we've loaded FastMCP tools before
                         self._fastmcp_loaded_before = True
                 else:
-                    # If FastMCP is not initialized yet, invalidate cache to force reload later
-                    if not force_reload:
-                        print_debug("⚠️ FastMCP not initialized yet, will retry on next tool definition load")
-                        self._tool_definitions_cache = None
-                        self._tool_definitions_cache_timestamp = None
+                    # If FastMCP is not initialized yet, skip loading (will be loaded when MCP is actually used)
+                    if not force_reload and not hasattr(self, '_fastmcp_skip_warned'):
+                        print_debug("ℹ️ FastMCP not initialized yet, skipping tool definitions (will load when MCP is used)")
+                        self._fastmcp_skip_warned = True
                     
             except Exception as e:
                 print_debug(f"⚠️ Failed to load FastMCP tool definitions: {e}")

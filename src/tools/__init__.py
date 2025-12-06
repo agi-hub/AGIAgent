@@ -79,24 +79,32 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                import sys
+                
+                # 🎯 性能优化：只清理已加载的模块，避免在清理时延迟导入未使用的模块
+                # 这可以节省 7+ 秒的清理时间（避免导入 fastmcp）
+                
                 # Clean up MCP clients first (most critical for subprocess cleanup)
-                try:
-                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
-                    safe_cleanup_cli_mcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                if 'src.tools.cli_mcp_wrapper' in sys.modules:
+                    try:
+                        from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                        safe_cleanup_cli_mcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
                 
-                try:
-                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
-                    safe_cleanup_fastmcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                if 'src.tools.fastmcp_wrapper' in sys.modules:
+                    try:
+                        from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                        safe_cleanup_fastmcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
                 
-                try:
-                    from .mcp_client import safe_cleanup_mcp_client
-                    safe_cleanup_mcp_client()
-                except Exception as e:
-                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                if 'src.tools.mcp_client' in sys.modules:
+                    try:
+                        from .mcp_client import safe_cleanup_mcp_client
+                        safe_cleanup_mcp_client()
+                    except Exception as e:
+                        print_current(f"⚠️ MCP client cleanup in Tools: {e}")
                 
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
@@ -151,24 +159,32 @@ elif MCP_KB_TOOLS_AVAILABLE:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                import sys
+                
+                # 🎯 性能优化：只清理已加载的模块，避免在清理时延迟导入未使用的模块
+                # 这可以节省 7+ 秒的清理时间（避免导入 fastmcp）
+                
                 # Clean up MCP clients first (most critical for subprocess cleanup)
-                try:
-                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
-                    safe_cleanup_cli_mcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                if 'src.tools.cli_mcp_wrapper' in sys.modules:
+                    try:
+                        from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                        safe_cleanup_cli_mcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
                 
-                try:
-                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
-                    safe_cleanup_fastmcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                if 'src.tools.fastmcp_wrapper' in sys.modules:
+                    try:
+                        from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                        safe_cleanup_fastmcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
                 
-                try:
-                    from .mcp_client import safe_cleanup_mcp_client
-                    safe_cleanup_mcp_client()
-                except Exception as e:
-                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                if 'src.tools.mcp_client' in sys.modules:
+                    try:
+                        from .mcp_client import safe_cleanup_mcp_client
+                        safe_cleanup_mcp_client()
+                    except Exception as e:
+                        print_current(f"⚠️ MCP client cleanup in Tools: {e}")
                 
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
@@ -221,24 +237,32 @@ else:
         def cleanup(self):
             """Clean up resources used by tools"""
             try:
+                import sys
+                
+                # 🎯 性能优化：只清理已加载的模块，避免在清理时延迟导入未使用的模块
+                # 这可以节省 7+ 秒的清理时间（避免导入 fastmcp）
+                
                 # Clean up MCP clients first (most critical for subprocess cleanup)
-                try:
-                    from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
-                    safe_cleanup_cli_mcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
+                if 'src.tools.cli_mcp_wrapper' in sys.modules:
+                    try:
+                        from .cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
+                        safe_cleanup_cli_mcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ CLI-MCP cleanup in Tools: {e}")
                 
-                try:
-                    from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
-                    safe_cleanup_fastmcp_wrapper()
-                except Exception as e:
-                    print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
+                if 'src.tools.fastmcp_wrapper' in sys.modules:
+                    try:
+                        from .fastmcp_wrapper import safe_cleanup_fastmcp_wrapper
+                        safe_cleanup_fastmcp_wrapper()
+                    except Exception as e:
+                        print_current(f"⚠️ FastMCP cleanup in Tools: {e}")
                 
-                try:
-                    from .mcp_client import safe_cleanup_mcp_client
-                    safe_cleanup_mcp_client()
-                except Exception as e:
-                    print_current(f"⚠️ MCP client cleanup in Tools: {e}")
+                if 'src.tools.mcp_client' in sys.modules:
+                    try:
+                        from .mcp_client import safe_cleanup_mcp_client
+                        safe_cleanup_mcp_client()
+                    except Exception as e:
+                        print_current(f"⚠️ MCP client cleanup in Tools: {e}")
                 
                 # Clean up LLM client if it exists
                 if hasattr(self, 'llm_client') and self.llm_client:
