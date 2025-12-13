@@ -8,15 +8,20 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from functools import lru_cache
 import pickle
-import jieba
 import re
 import warnings
+
+# Suppress pkg_resources deprecation warning from jieba
+warnings.filterwarnings('ignore', category=UserWarning, message='.*pkg_resources.*')
 
 # Set sklearn warning handling: redirect warnings to logs instead of terminal
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", UserWarning)
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
+
+# Import jieba after setting up warning filters
+import jieba
 
 from ..models.memory_cell import MemCell
 from ..clients.llm_client import LLMClient

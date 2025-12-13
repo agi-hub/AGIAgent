@@ -129,7 +129,6 @@ class GlobalRoundSyncManager:
                     # check each agent status file; handle finished agents properly for sync
                     considered_agents = []
                     waiting_flags = []
-                    finished_agents = []
                     for agent_id in agents:
                         status_file = None
                         if self._workspace_root:
@@ -152,6 +151,12 @@ class GlobalRoundSyncManager:
                             'completed', 'terminated', 'failed', 'success', 'max_rounds_reached'
                         )
 
+                        # 🔧 Fixed: Skip finished agents immediately - they should not participate in sync
+                        # This prevents deadlock when agents complete while waiting for sync
+                        if finished:
+                            # Finished agents are excluded from sync consideration
+                            continue
+
                         # Ignore not-started agents to avoid deadlock (they'll join next window)
                         try:
                             if int(data.get('current_loop', 0)) < 1:
@@ -159,40 +164,112 @@ class GlobalRoundSyncManager:
                         except Exception:
                             continue
 
-                        if finished:
-                            # Track finished agents separately - they still need to participate in sync
-                            finished_agents.append(agent_id)
-                            # For finished agents, consider them as waiting if they have wait_for_sync flag
-                            # or if they're finished (they shouldn't block the sync)
-                            waiting_flags.append(True)  # Finished agents are considered "waiting"
-                            considered_agents.append(agent_id)
-                        else:
-                            # Running agent
-                            considered_agents.append(agent_id)
-                            waiting_flags.append(bool(data.get('wait_for_sync', False)))
+                        # Running agent (not finished)
+                        considered_agents.append(agent_id)
+                        waiting_flags.append(bool(data.get('wait_for_sync', False)))
 
-                    # If no running-and-started agents remain, no barrier is needed; stop sync loop gracefully
+                    # Check manager wait state - always check, regardless of spawned agents
+                    manager_wait_file = os.path.join(base_dir, '.agia_manager_wait_sync.json')
+                    manager_waiting = False
+                    manager_participating = False
+                    if os.path.exists(manager_wait_file):
+                        manager_participating = True
+                        try:
+                            with open(manager_wait_file, 'r', encoding='utf-8') as f:
+                                manager_data = json.load(f)
+                                manager_waiting = bool(manager_data.get('wait_for_sync', False))
+                        except Exception:
+                            # If file exists but can't read, assume manager is waiting (file existence indicates participation)
+                            manager_waiting = True
+                    
+                    # If no spawned agents, check if manager is waiting and release signal if needed
+                    # Note: Manager may still be waiting even if all spawned agents have finished
                     if not considered_agents:
-                        # No participants; avoid keeping barrier active forever
+                        # No spawned agents - check if manager is waiting and needs sync signal
+                        if manager_participating and manager_waiting:
+                            # Manager is waiting but no spawned agents remain - release signal immediately
+                            try:
+                                sync_epoch += 1
+                                os.makedirs(os.path.dirname(signal_file), exist_ok=True)
+                                with open(signal_file, 'w', encoding='utf-8') as f:
+                                    f.write(str(sync_epoch))
+                                    f.flush()
+                                    os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                                if self._debug_mode:
+                                    print_debug(f"🌐 Released sync signal epoch {sync_epoch} for manager (no spawned agents remaining)")
+                                # Clean up manager wait file after releasing signal
+                                try:
+                                    os.remove(manager_wait_file)
+                                    if self._debug_mode:
+                                        print_debug(f"🌐 Cleaned up manager wait file (no spawned agents)")
+                                except Exception:
+                                    pass
+                                time.sleep(0.1)
+                            except Exception as e:
+                                if self._debug_mode:
+                                    print_debug(f"⚠️ Failed to release sync signal for manager: {e}")
+                        elif manager_participating and os.path.exists(manager_wait_file):
+                            # Manager wait file exists but manager is not waiting (stale state)
+                            try:
+                                os.remove(manager_wait_file)
+                                if self._debug_mode:
+                                    print_debug(f"🌐 Cleaned up stale manager wait file (no spawned agents)")
+                            except Exception:
+                                pass
                         time.sleep(0.5)
                         continue
-                    if considered_agents and all(waiting_flags):
-                        # release signal by increasing epoch
-                        try:
-                            sync_epoch += 1
-                            # Ensure signal file directory exists
-                            os.makedirs(os.path.dirname(signal_file), exist_ok=True)
-                            with open(signal_file, 'w', encoding='utf-8') as f:
-                                f.write(str(sync_epoch))
-                                f.flush()
-                                os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
-                            if self._debug_mode:
-                                print_debug(f"🌐 Released sync signal epoch {sync_epoch} for agents: {considered_agents}")
-                            # allow agents to proceed and clear their wait flags
-                            time.sleep(0.1)
-                        except Exception as e:
-                            if self._debug_mode:
-                                print_debug(f"⚠️ Failed to write sync signal: {e}")
+                    
+                    # Note: Finished agents are now excluded from considered_agents above,
+                    # so we don't need to check if all agents are finished here
+                    
+                    # Release signal only when all spawned agents AND manager (if manager is participating) are waiting
+                    # Note: Manager only participates when there are spawned agents (barrier_applicable requires multi_agent_active=True)
+                    # If wait file exists but no spawned agents, it's likely a stale state - manager won't actually wait
+                    all_spawned_waiting = considered_agents and all(waiting_flags)
+                    
+                    # Only process sync when there are spawned agents
+                    # If no spawned agents exist, manager won't participate in sync (barrier_applicable=False)
+                    if all_spawned_waiting:
+                        # Check if manager is also participating in sync
+                        if manager_participating:
+                            # Manager is participating, wait for it to be waiting too
+                            if manager_waiting:
+                                # All spawned agents and manager are waiting, release signal
+                                try:
+                                    sync_epoch += 1
+                                    # Ensure signal file directory exists
+                                    os.makedirs(os.path.dirname(signal_file), exist_ok=True)
+                                    with open(signal_file, 'w', encoding='utf-8') as f:
+                                        f.write(str(sync_epoch))
+                                        f.flush()
+                                        os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                                    if self._debug_mode:
+                                        all_participants = considered_agents.copy()
+                                        all_participants.append('manager')
+                                        print_debug(f"🌐 Released sync signal epoch {sync_epoch} for agents: {all_participants}")
+                                    # allow agents to proceed and clear their wait flags
+                                    time.sleep(0.1)
+                                except Exception as e:
+                                    if self._debug_mode:
+                                        print_debug(f"⚠️ Failed to write sync signal: {e}")
+                            # else: manager is participating but not waiting yet, continue waiting
+                        else:
+                            # Manager is not participating (no wait file), release signal when all spawned agents are waiting
+                            try:
+                                sync_epoch += 1
+                                # Ensure signal file directory exists
+                                os.makedirs(os.path.dirname(signal_file), exist_ok=True)
+                                with open(signal_file, 'w', encoding='utf-8') as f:
+                                    f.write(str(sync_epoch))
+                                    f.flush()
+                                    os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                                if self._debug_mode:
+                                    print_debug(f"🌐 Released sync signal epoch {sync_epoch} for agents: {considered_agents}")
+                                # allow agents to proceed and clear their wait flags
+                                time.sleep(0.1)
+                            except Exception as e:
+                                if self._debug_mode:
+                                    print_debug(f"⚠️ Failed to write sync signal: {e}")
                 except Exception:
                     time.sleep(0.5)
         except Exception as e:
@@ -475,10 +552,12 @@ class MultiAgentTools:
                         from .message_system import get_message_router
                         router = get_message_router(workspace_dir, cleanup_on_init=False)
                         router.register_agent(task_id)
-                        print_current(task_id, f"📬 Mailbox registered")
+                        print_current(task_id, f"📬 Mailbox registered for {task_id}")
                     except Exception as e:
-                        # Remove unnecessary log output
-                        pass
+                        # Don't silently ignore mailbox registration errors
+                        print_current(task_id, f"⚠️ Warning: Failed to register mailbox for {task_id}: {e}")
+                        import traceback
+                        print_current(task_id, f"⚠️ Traceback: {traceback.format_exc()}")
                     
                     # Ensure all direct prints during agent execution are routed to agent logs
                     try:
@@ -540,6 +619,19 @@ class MultiAgentTools:
                         is_terminated = True
                         print_current(task_id, f"🛑 Agent {task_id} received terminate signal and will exit")
                     
+                    # 🔧 Read actual current_loop from status file before updating
+                    actual_current_loop = None
+                    try:
+                        if os.path.exists(status_file_path):
+                            with open(status_file_path, 'r', encoding='utf-8') as f:
+                                existing_status = json.load(f)
+                                actual_current_loop = existing_status.get('current_loop')
+                    except Exception:
+                        pass
+                    
+                    # Use actual_current_loop if available, otherwise fallback to response or 0
+                    final_current_loop = actual_current_loop if actual_current_loop is not None else response.get("current_loop", 0)
+                    
                     # Update status file with completion
                     if is_terminated:
                         # 🔧 New: handle terminate signal status update
@@ -553,12 +645,15 @@ class MultiAgentTools:
                             "working_directory": workspace_dir,
                             "model": model,
                             "max_loops": max_loops,
-                            "current_loop": response.get("current_loop", 0),  # Add loop information when terminated
+                            "current_loop": final_current_loop,  # Use actual current_loop from status file
                             "error": None,
                             "status": "success",
                             "terminated": True,
                             "response": response
                         }
+                        
+                        # 🔧 Clear wait_for_sync flag when agent terminates to avoid sync deadlock
+                        terminate_status["wait_for_sync"] = False
                         
                         try:
                             with open(status_file_path, 'w', encoding='utf-8') as f:
@@ -582,11 +677,14 @@ class MultiAgentTools:
                             "working_directory": workspace_dir,
                             "model": model,
                             "max_loops": max_loops,
-                            "current_loop": response.get("current_loop", max_loops),  # Add final loop information
+                            "current_loop": final_current_loop,  # Use actual current_loop from status file
                             "error": None,
                             "status": "success",
                             "response": response
                         }
+                        
+                        # 🔧 Clear wait_for_sync flag when agent completes to avoid sync deadlock
+                        completion_status["wait_for_sync"] = False
                         
                         # 🔧 New: add agent to completed_agents set
                         if hasattr(self, 'completed_agents'):
@@ -620,10 +718,13 @@ class MultiAgentTools:
                             "working_directory": workspace_dir,
                             "model": model,
                             "max_loops": max_loops,
-                            "current_loop": response.get("current_loop", max_loops),  # Add loop information when failed
+                            "current_loop": final_current_loop,  # Use actual current_loop from status file
                             "error": error_message,
                             "response": response
                         }
+                        
+                        # 🔧 Clear wait_for_sync flag when agent fails to avoid sync deadlock
+                        completion_status["wait_for_sync"] = False
                         
                         try:
                             with open(status_file_path, 'w', encoding='utf-8') as f:
@@ -637,11 +738,11 @@ class MultiAgentTools:
                     
                     time.sleep(0.5)
                     
-                    # Print completion status
+                    # Print completion status (removed Loop information as requested)
                     if is_terminated:
-                        print_current(task_id, f"🛑 AGIAgent spawn {task_id} terminated successfully")
+                        print_current(task_id, f"🛑 AGIAgent spawn {task_id} terminated")
                     elif response["success"]:
-                        print_current(task_id, f"✅ AGIAgent spawn {task_id} completed successfully")
+                        print_current(task_id, f"✅ AGIAgent spawn {task_id} completed")
                     else:
                         response_message = response.get('message', 'Unknown error')
                         if "reached maximum execution rounds" in response_message or "max_rounds_reached" in response_message:
@@ -877,15 +978,39 @@ class MultiAgentTools:
             # Get messages
             if include_read:
                 messages = mailbox.get_all_messages()
+                print_current(f"📬 Reading ALL messages (including read) for agent {agent_id}")
             else:
                 messages = mailbox.get_unread_messages()
+                print_current(f"📬 Reading UNREAD messages for agent {agent_id}")
+            
+            # Log detailed message information
+            if messages:
+                print_current(f"📨 Found {len(messages)} message(s) in inbox:")
+                for i, message in enumerate(messages, 1):
+                    message_content = message.content.get('text', str(message.content)) if isinstance(message.content, dict) else str(message.content)
+                    print_current(f"   [{i}] Message ID: {message.message_id}")
+                    print_current(f"       From: {message.sender_id} → To: {message.receiver_id}")
+                    print_current(f"       Type: {message.message_type.value}")
+                    print_current(f"       Priority: {message.priority.value}")
+                    print_current(f"       Content: {message_content[:200]}{'...' if len(message_content) > 200 else ''}")
+                    print_current(f"       Timestamp: {message.timestamp}")
+                    print_current(f"       Read status: {'READ' if message.read else 'UNREAD'}")
+            else:
+                print_current(f"📭 No messages found in inbox for agent {agent_id}")
             
             # Automatically mark messages as read after retrieval
+            marked_count = 0
             for message in messages:
-                try:
-                    mailbox.mark_as_read(message.message_id)
-                except Exception as e:
-                    print_current(f"⚠️ Warning: Could not mark message {message.message_id} as read: {e}")
+                if not message.read:  # Only mark unread messages
+                    try:
+                        mailbox.mark_as_read(message.message_id)
+                        marked_count += 1
+                        print_current(f"✅ Marked message {message.message_id} as read")
+                    except Exception as e:
+                        print_current(f"⚠️ Warning: Could not mark message {message.message_id} as read: {e}")
+            
+            if marked_count > 0:
+                print_current(f"📌 Total {marked_count} message(s) marked as read")
             
             # Convert message format
             messages_data = [msg.to_dict() for msg in messages]
@@ -1315,29 +1440,9 @@ class MultiAgentTools:
                     
                     # Add more detailed status descriptions
                     status_desc = agent.get('status', 'unknown')
+                    # Remove Loop information from status description - user requested not to show it
                     if status_desc == "completed":
-                        # Try to get completion time information
-                        try:
-                            import datetime
-                            completion_status = self._get_agent_completion_info(agent['agent_id'])
-                            if completion_status:
-                                completion_time = completion_status.get('completion_time')
-                                if completion_time:
-                                    # Calculate how long ago completion time was from now
-                                    from datetime import datetime as dt
-                                    completed_dt = dt.fromisoformat(completion_time.replace('Z', '+00:00') if completion_time.endswith('Z') else completion_time)
-                                    now_dt = dt.now()
-                                    time_diff = now_dt - completed_dt
-                                    if time_diff.total_seconds() < 60:
-                                        status_desc = f"completed (just completed)"
-                                    elif time_diff.total_seconds() < 3600:
-                                        minutes = int(time_diff.total_seconds() / 60)
-                                        status_desc = f"completed ({minutes} minutes ago)"
-                                    else:
-                                        hours = int(time_diff.total_seconds() / 3600)
-                                        status_desc = f"completed ({hours} hours ago)"
-                        except Exception:
-                            pass
+                        status_desc = "completed"
                     elif status_desc == "max_rounds_reached":
                         status_desc = "exit (max rounds reached)"
                     elif status_desc == "failed":

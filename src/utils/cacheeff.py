@@ -17,33 +17,39 @@ limitations under the License.
 """
 
 from typing import Dict, Any, List
+import re
 
 
 def estimate_token_count(text: str, has_images: bool = False, model: str = "gpt-4") -> int:
     """
     Estimate token count for given text, including image tokens if present.
     This is a rough approximation based on character count and common tokenization patterns.
-    
+
     Args:
         text: Input text to estimate tokens for
         has_images: Whether the input contains images
         model: Model name (affects token calculation)
-        
+
     Returns:
         Estimated token count
     """
     if not text:
         return 0
-    
+
+    # GLM-4.6模型的优化token估算
+    if "glm" in model.lower():
+        return _estimate_glm_tokens(text, has_images)
+
+    # 其他模型使用原有逻辑
     # Basic estimation rules:
     # - English: ~4 characters per token
     # - Chinese: ~1.5 characters per token (since Chinese characters are more dense)
     # - Code: ~3.5 characters per token (due to symbols and keywords)
-    
+
     # Detect text type
     chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
     total_chars = len(text)
-    
+
     if chinese_chars > total_chars * 0.3:  # More than 30% Chinese characters
         # Primarily Chinese text
         estimated_tokens = int(total_chars / 1.5)
@@ -206,4 +212,105 @@ def analyze_cache_potential(messages: List[Dict[str, Any]], previous_messages: L
             'cache_hit_potential': 0,
             'estimated_cache_tokens': 0,
             'cache_efficiency': 0
-        } 
+        }
+
+
+def _estimate_glm_tokens(text: str, has_images: bool = False) -> int:
+    """
+    GLM-4.6模型专用token估算函数
+    基于智谱清言GLM模型的实际token化特性优化
+
+    Args:
+        text: 输入文本
+        has_images: 是否包含图片
+
+    Returns:
+        估算的token数量
+    """
+    if not text:
+        return 0
+
+    total_chars = len(text)
+
+    # 统计不同类型字符
+    chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
+    english_chars = sum(1 for char in text if char.isascii() and (char.isalnum() or char.isspace()))
+    symbol_chars = total_chars - chinese_chars - english_chars
+
+    # 计算比率
+    chinese_ratio = chinese_chars / total_chars if total_chars > 0 else 0
+    english_ratio = english_chars / total_chars if total_chars > 0 else 0
+
+    # GLM模型的token化特征（基于测试数据优化）
+    token_ratios = {
+        'chinese': 1.2,      # 中文：约1.2个字符 = 1个token
+        'english': 3.8,      # 英文：约3.8个字符 = 1个token
+        'symbols': 2.5       # 标点符号：约2.5个字符 = 1个token
+    }
+
+    # 检测是否为代码
+    is_code = _detect_code_for_glm(text)
+
+    if is_code:
+        # 代码文本：约3.2个字符 = 1个token
+        estimated_tokens = int(total_chars / 3.2)
+    elif chinese_ratio > 0.8:
+        # 纯中文文本
+        estimated_tokens = int(chinese_chars / token_ratios['chinese'])
+    elif english_ratio > 0.8:
+        # 纯英文文本
+        estimated_tokens = int(english_chars / token_ratios['english'])
+    else:
+        # 中英混合文本：分别计算后相加
+        chinese_tokens = chinese_chars / token_ratios['chinese']
+        english_tokens = english_chars / token_ratios['english']
+        symbol_tokens = symbol_chars / token_ratios['symbols']
+        estimated_tokens = int(chinese_tokens + english_tokens + symbol_tokens)
+
+    # 处理图片tokens
+    if has_images:
+        # 查找base64图片数据
+        base64_pattern = r'[A-Za-z0-9+/]{100,}={0,2}'
+        base64_matches = re.findall(base64_pattern, text)
+
+        if base64_matches:
+            base64_chars = sum(len(match) for match in base64_matches)
+            # GLM模型对base64图片的估算
+            image_tokens = int(base64_chars * 1.3)  # 约1.3 tokens per base64 char
+            estimated_tokens += image_tokens
+
+    return max(1, estimated_tokens)
+
+
+def _detect_code_for_glm(text: str) -> bool:
+    """
+    GLM专用代码检测函数
+    """
+    # 代码关键词检测
+    code_keywords = [
+        'def ', 'class ', 'import ', 'from ', 'if ', 'for ', 'while ',
+        'function', 'const ', 'let ', 'var ', 'try:', 'except:',
+        '{', '}', '=>', '->', '::'
+    ]
+
+    keyword_count = sum(text.count(keyword) for keyword in code_keywords)
+
+    # 代码模式检测
+    code_patterns = [
+        r'^\s{4,}',  # Python缩进
+        r'{\s*$',    # 代码块开始
+        r'^\s*}',    # 代码块结束
+        r'import\s+\w+',  # 导入语句
+        r'function\s+\w+', # 函数定义
+        r'class\s+\w+',    # 类定义
+    ]
+
+    pattern_count = 0
+    for pattern in code_patterns:
+        pattern_count += len(re.findall(pattern, text, re.MULTILINE))
+
+    # 计算代码得分
+    keyword_score = min(keyword_count * 2, 20)
+    pattern_score = min(pattern_count * 3, 20)
+
+    return (keyword_score + pattern_score) > 15 

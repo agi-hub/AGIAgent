@@ -340,19 +340,19 @@ class AGIAgentMain:
         if api_key is None:
             api_key = get_api_key()
             if api_key is None:
-                raise ValueError("API key not found. Please provide api_key parameter or set it in config/config.txt")
+                raise ValueError("API key not found. Please provide api_key parameter, set it in config/config.txt, or set AGIAGENT_API_KEY environment variable")
 
         # Load model from config/config.txt if not provided
         if model is None:
             model = get_model()
             if model is None:
-                raise ValueError("Model not found. Please provide model parameter or set it in config/config.txt")
+                raise ValueError("Model not found. Please provide model parameter, set it in config/config.txt, or set AGIAGENT_MODEL environment variable")
 
         # Load API base from config/config.txt if not provided
         if api_base is None:
             api_base = get_api_base()
             if api_base is None:
-                raise ValueError("API base URL not found. Please provide api_base parameter or set it in config/config.txt")
+                raise ValueError("API base URL not found. Please provide api_base parameter, set it in config/config.txt, or set AGIAGENT_API_BASE environment variable")
 
         # Store the validated parameters
         self.out_dir = out_dir
@@ -390,6 +390,12 @@ class AGIAgentMain:
         
         ps_mod = importlib.import_module('src.tools.print_system')
         ps_mod.set_output_directory(self.out_dir)
+        
+        # Reset ID counters at startup to start from 1
+        from src.tools.id_manager import get_id_manager
+        id_manager = get_id_manager(self.out_dir)
+        id_manager.reset_counters(agent_counter=1, message_counter=0)
+        print_system("🔄 ID counters reset at startup - agent from 1, message from 0")
         
         # Tools will be initialized in ToolExecutor to avoid duplicate initialization
         self.tools = None
@@ -528,7 +534,7 @@ class AGIAgentMain:
             
             # Create multi-round task executor with plan_mode=True
             executor = MultiRoundTaskExecutor(
-                subtask_loops=50,  # Use reasonable number of loops for planning
+                subtask_loops=100,  # Use reasonable number of loops for planning
                 logs_dir=self.logs_dir,
                 workspace_dir=workspace_dir,
                 debug_mode=self.debug_mode,
@@ -747,7 +753,12 @@ class AGIAgentMain:
             Whether successfully completed
         """
         track_operation("Main Program Execution")
-        
+
+        # Check if infinite loop mode is enabled
+        if loops == -1:
+            from src.tools.print_system import print_debug
+            print_debug("Infinite loop mode")
+
         workspace_dir = os.path.join(self.out_dir, "workspace")
         
         # Step 1: Get user requirement
@@ -882,14 +893,15 @@ class AGIAgentClient:
         self.link_dir = link_dir
         self.routine_file = routine_file
         # Store agent id and publish to agent context
-        self.agent_id = agent_id
+        # If no agent_id is provided, this is the manager
+        self.agent_id = agent_id if agent_id else "manager"
         
-        set_current_agent_id(agent_id)
+        set_current_agent_id(self.agent_id)
         
     def chat(self, 
              messages: list,
              dir: Optional[str] = None,
-             loops: int = 50,
+             loops: int = 100,
              continue_mode: bool = False,
              **kwargs) -> dict:
         """
@@ -900,7 +912,7 @@ class AGIAgentClient:
                      Currently only supports single user message
                      Example: [{"role": "user", "content": "Build a calculator app"}]
             dir: Output directory for results (optional, will auto-generate if not provided)
-             loops: Maximum execution rounds per task (default: 50, -1 for infinite loop)
+             loops: Maximum execution rounds per task (default: 100, -1 for infinite loop)
             continue_mode: Whether to continue from previous execution (default: False)
             **kwargs: Additional parameters (reserved for future use)
             
@@ -1168,8 +1180,8 @@ Usage Examples:
     parser.add_argument(
         "--loops", "-l",
         type=int,
-        default=50,
-        help="Execution rounds for each subtask (default: 50, -1 for infinite loop)"
+        default=100,
+        help="Execution rounds for each subtask (default: 100, -1 for infinite loop)"
     )
     
     parser.add_argument(
@@ -1260,7 +1272,7 @@ Usage Examples:
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
         #args.out_dir = "output_test"
-        args.loops = 50
+        args.loops = 100
         #args.model = "gpt-4.1"
         #args.base_url = "https://api.openai-proxy.org/v1"
         args.api_key = None

@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_truncation_length, get_enable_round_sync, get_sync_round
+from config_loader import get_model, get_truncation_length, get_enable_round_sync, get_sync_round, get_summary_trigger_length
 from src.tools.print_system import print_current, print_current, print_current, print_debug
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
@@ -60,7 +60,7 @@ def extract_session_timestamp(logs_dir: str) -> str:
 class MultiRoundTaskExecutor:
     """Main executor for multi-round task execution"""
     
-    def __init__(self, subtask_loops: int = 50, 
+    def __init__(self, subtask_loops: int = 100, 
                  logs_dir: str = "logs", workspace_dir: str = None, 
                  debug_mode: bool = False, api_key: str = None, 
                  model: str = 'GPT-4.1', api_base: str = None, 
@@ -157,6 +157,111 @@ class MultiRoundTaskExecutor:
         except Exception:
             return None
         return None
+    
+    def _get_manager_status_file_path(self) -> Optional[str]:
+        """Get manager status file path"""
+        try:
+            # Try to get output directory from workspace_dir
+            if self.workspace_dir:
+                if os.path.basename(self.workspace_dir) == 'workspace':
+                    outdir = os.path.dirname(self.workspace_dir)
+                else:
+                    outdir = self.workspace_dir
+                return os.path.join(outdir, ".agia_spawn_manager_status.json")
+            
+            # Fallback: try to get from multi_agent_tools
+            if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
+                workspace_root = self.executor.multi_agent_tools.workspace_root
+                if workspace_root:
+                    if os.path.basename(workspace_root) == 'workspace':
+                        outdir = os.path.dirname(workspace_root)
+                    else:
+                        outdir = workspace_root
+                    return os.path.join(outdir, ".agia_spawn_manager_status.json")
+        except Exception:
+            pass
+        return None
+    
+    def _create_or_update_manager_status_file(self, current_loop: int = 0, task_desc: str = "", max_loops: int = None) -> bool:
+        """Create or update manager status file"""
+        try:
+            status_file_path = self._get_manager_status_file_path()
+            if not status_file_path:
+                return False
+            
+            # Get model from executor
+            model = self.model if hasattr(self, 'model') else None
+            if not model:
+                from config_loader import get_model
+                model = get_model()
+            
+            # Get max_loops if not provided
+            if max_loops is None:
+                max_loops = self.subtask_loops
+            
+            # Check if file exists
+            if os.path.exists(status_file_path):
+                # Update existing file
+                try:
+                    with open(status_file_path, 'r', encoding='utf-8') as f:
+                        status_data = json.load(f)
+                    
+                    # Update fields
+                    status_data["current_loop"] = current_loop
+                    status_data["last_loop_update"] = datetime.now().isoformat()
+                    if status_data.get("status") == "running":
+                        # Keep status as running
+                        pass
+                    
+                    # Write back
+                    with open(status_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(status_data, f, indent=2, ensure_ascii=False)
+                        f.flush()
+                        os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                    
+                    return True
+                except Exception as e:
+                    print_debug(f"⚠️ Failed to update manager status file: {e}")
+                    return False
+            else:
+                # Create new file
+                # Determine output directory
+                if self.workspace_dir:
+                    if os.path.basename(self.workspace_dir) == 'workspace':
+                        abs_output_dir = os.path.dirname(self.workspace_dir)
+                    else:
+                        abs_output_dir = self.workspace_dir
+                else:
+                    abs_output_dir = os.getcwd()
+                
+                initial_status = {
+                    "agent_id": "manager",
+                    "status": "running",
+                    "task_description": task_desc or "Manager agent task",
+                    "start_time": datetime.now().isoformat(),
+                    "completion_time": None,
+                    "output_directory": abs_output_dir,
+                    "working_directory": os.path.basename(abs_output_dir) if abs_output_dir else "",
+                    "model": model,
+                    "max_loops": max_loops,
+                    "current_loop": current_loop,
+                    "error": None,
+                    "last_loop_update": datetime.now().isoformat()
+                }
+                
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(status_file_path), exist_ok=True)
+                
+                # Write initial status
+                with open(status_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(initial_status, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+                
+                return True
+        except Exception as e:
+            print_debug(f"⚠️ Failed to create/update manager status file: {e}")
+            return False
 
     def _is_agent_finished(self, data: Dict[str, Any]) -> bool:
         """Determine if an agent has finished based on simplified status field"""
@@ -237,6 +342,35 @@ class MultiRoundTaskExecutor:
             if self.debug_mode:
                 print_debug(f"⚠️ Failed to write wait_for_sync to {path}: {e}")
 
+    def _set_manager_wait_for_sync(self, waiting: bool) -> None:
+        """Mark manager wait state file for sync manager to check"""
+        try:
+            import json, os
+            base_dir = None
+            if hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
+                base_dir = self.executor.multi_agent_tools.workspace_root
+                if base_dir and os.path.basename(base_dir) == 'workspace':
+                    base_dir = os.path.dirname(base_dir)
+            if not base_dir:
+                base_dir = os.getcwd()
+            wait_file = os.path.join(base_dir, '.agia_manager_wait_sync.json')
+            if waiting:
+                data = {
+                    'wait_for_sync': True,
+                    'updated_at': datetime.now().isoformat()
+                }
+                with open(wait_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+            else:
+                # Remove wait file when not waiting
+                if os.path.exists(wait_file):
+                    os.remove(wait_file)
+        except Exception as e:
+            if self.debug_mode:
+                print_debug(f"⚠️ Failed to write manager wait_for_sync: {e}")
+
     def _wait_for_global_sync_signal(self) -> None:
         """Block current thread until a global sync signal epoch increases; each agent consumes once per window.
         If no participants remain, return immediately to avoid deadlock."""
@@ -277,6 +411,8 @@ class MultiRoundTaskExecutor:
             # wait until epoch increases
             wait_start_time = time.time()
             max_wait_time = 300  # 5 minutes max wait to prevent infinite waiting
+            check_participants_interval = 2.0  # Check for other participants every 2 seconds
+            last_participant_check = 0
 
             while True:
                 # Check for timeout
@@ -285,21 +421,38 @@ class MultiRoundTaskExecutor:
                         print_debug(f"⚠️ Sync signal wait timeout for agent {current_agent_id}")
                     break
 
+                # For manager: periodically check if there are any running participants
+                # If no other agents are running, sync manager should release signal immediately
+                # This is a safety check in case sync manager hasn't detected the state change yet
+                if (not current_agent_id or current_agent_id == 'manager') and not current_agent_finished:
+                    current_time = time.time()
+                    if current_time - last_participant_check > check_participants_interval:
+                        last_participant_check = current_time
+                        running_participants = self._list_running_participants(exclude_agent_id='manager')
+                        if not running_participants:
+                            # No other running agents - sync manager should release signal
+                            # Wait a bit more for sync manager to catch up, but not too long
+                            if current_time - wait_start_time > 1.0:  # Give sync manager at least 1 second
+                                if self.debug_mode:
+                                    print_debug(f"🌐 Manager detected no running participants, waiting for sync signal release...")
+                                # Continue waiting for signal, but sync manager should release it soon
+
+                # Read current epoch
+                epoch = read_epoch()
+                
                 # For finished agents, wait for signal but don't require other participants
                 if current_agent_finished:
-                    epoch = read_epoch()
                     if epoch > last_seen:
                         self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
                         break
                 else:
-                    # For running agents, check if other participants exist
-                    others = self._list_running_participants(exclude_agent_id=current_agent_id)
-                    if not others:
-                        # No other running participants, can proceed
-                        break
-                    epoch = read_epoch()
+                    # For running agents, wait for sync signal to increase
+                    # Don't check for other participants here - sync manager will handle coordination
+                    # Just wait for the signal epoch to increase, which means sync barrier is released
                     if epoch > last_seen:
                         self._agent_last_sync_epoch[current_agent_id or 'manager'] = epoch
+                        if self.debug_mode:
+                            print_debug(f"✅ Agent {current_agent_id} received sync signal, epoch increased from {last_seen} to {epoch}")
                         break
 
                 time.sleep(0.3)
@@ -395,6 +548,29 @@ class MultiRoundTaskExecutor:
                 last_round = record["task_round"]
                 break
         
+        # 🔧 New: Update manager status file with final status if this is manager
+        current_agent_id = get_current_agent_id()
+        is_manager = (current_agent_id == 'manager' or not current_agent_id)
+        if is_manager:
+            try:
+                status_file_path = self._get_manager_status_file_path()
+                if status_file_path and os.path.exists(status_file_path):
+                    with open(status_file_path, 'r', encoding='utf-8') as f:
+                        status_data = json.load(f)
+                    
+                    status_data["status"] = status
+                    status_data["current_loop"] = last_round
+                    status_data["last_loop_update"] = datetime.now().isoformat()
+                    if status == "completed":
+                        status_data["completion_time"] = datetime.now().isoformat()
+                    
+                    with open(status_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(status_data, f, indent=2, ensure_ascii=False)
+                        f.flush()
+                        os.fsync(f.fileno()) if hasattr(f, 'fileno') else None
+            except Exception as e:
+                print_debug(f"⚠️ Failed to update manager status file with final status: {e}")
+        
         return {
             "task_id": task_id,
             "task_name": task_name,
@@ -447,6 +623,19 @@ class MultiRoundTaskExecutor:
         except Exception:
             pass
         
+        # 🔧 New: Create manager status file if this is manager agent
+        is_manager = (current_agent_id == 'manager' or not current_agent_id)
+        if is_manager:
+            try:
+                self._create_or_update_manager_status_file(
+                    current_loop=0,
+                    task_desc=task_desc,
+                    max_loops=max_rounds if not infinite_loop else None
+                )
+                print_debug("📝 Manager status file created/initialized")
+            except Exception as e:
+                print_debug(f"⚠️ Failed to create manager status file: {e}")
+        
         while (infinite_loop or task_round <= max_rounds) and not task_completed:
             if infinite_loop:
                 print_debug(f"\n🔄 Current round {task_round} / infinite loop mode")
@@ -486,12 +675,18 @@ class MultiRoundTaskExecutor:
                     or (is_manager and multi_agent_active)  # Manager Also Follows When Other Agents Exist
                 )
             )
+            
+            # Debug output for sync check
+            if enable_round_sync and self.debug_mode:
+                print_debug(f"🔍 [SYNC CHECK] Round {task_round}: barrier_applicable={barrier_applicable}, sync_step={sync_step}, enable_round_sync={enable_round_sync}")
+            
             if barrier_applicable:
                 try:
                     # Determine if this agent should wait (when next round would exceed its sync window)
                     # An agent can run rounds: 1..sync_step, then wait; (sync_step+1)..(2*sync_step), then wait; etc.
                     # We block when we are at the first round of a new window: rounds (sync_step+1), (2*sync_step+1), ...
                     need_sync = ((task_round - 1) % sync_step == 0) and (task_round > 1)
+                    
                     if need_sync:
                         # Update Status File to Indicate Waiting for Sync (Only for Non-manager)
                         if (
@@ -509,6 +704,11 @@ class MultiRoundTaskExecutor:
                         elif is_manager:
                             # Manager Only Outputs Prompt When Waiting
                             print_current(f"⏸️ Waiting for sync barrier before round {task_round}")
+                            # Set manager wait flag file for sync manager to check
+                            try:
+                                self._set_manager_wait_for_sync(True)
+                            except Exception as e:
+                                print_debug(f"⚠️ Failed to mark manager wait_for_sync: {e}")
                         # Block until sync signal epoch increases (barrier release)
                         self._wait_for_global_sync_signal()
                         # Clear wait flag after sync
@@ -520,6 +720,14 @@ class MultiRoundTaskExecutor:
                         ):
                             try:
                                 self._set_agent_wait_for_sync(current_agent_id, False)
+                                print_current(current_agent_id, f"✅ Sync complete, continuing to round {task_round}")
+                            except Exception:
+                                pass
+                        elif is_manager:
+                            # Clear manager wait flag after sync
+                            try:
+                                self._set_manager_wait_for_sync(False)
+                                print_current(f"✅ Sync complete, continuing to round {task_round}")
                             except Exception:
                                 pass
                 except Exception as e:
@@ -573,33 +781,49 @@ class MultiRoundTaskExecutor:
                                          for record in recent_records)
                 total_history_length = records_to_summarize_length + recent_records_length
                 
-                # Use simple compression for history management
-                # Apply the logic: only compress older records, keep recent 2 rounds intact
-                if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor and \
-                   len(history_for_llm) > 2:
+                # Use enhanced compression for history management
+                # Two-stage compression: simple compression (field-level) + truncation compression (record-level)
+                if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor:
                     try:
-                        # Split history: compress older records, keep recent 2 rounds
-                        records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
-                        recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
-                        
-                        if records_to_compress:
-                            # Calculate length of records to compress
-                            records_to_compress_length = sum(len(str(record.get("result", ""))) 
-                                                             for record in records_to_compress)
+                        # Check if using EnhancedHistoryCompressor (new method)
+                        if hasattr(self.executor.simple_compressor, 'compress_history') and \
+                           hasattr(self.executor.simple_compressor, '_truncation_compress'):
+                            # New enhanced compression: simple + truncation
+                            # This handles both field compression and record deletion
+                            compressed_history, compression_stats = self.executor.simple_compressor.compress_history(task_history)
                             
-                            # Check trigger length
-                            trigger_length = 20000  # Default trigger length
+                            # Extract LLM records from compressed history
+                            history_for_llm = [r for r in compressed_history 
+                                             if "result" in r or "error" in r]
+                            
+                            # Update task_history with compressed version
+                            non_llm_records = [r for r in task_history 
+                                              if not ("result" in r or "error" in r)]
+                            task_history.clear()
+                            task_history.extend(non_llm_records + history_for_llm)
+                            
+                            print_debug(f"🗜️ Enhanced compression completed: "
+                                      f"simple={compression_stats.get('simple_compression', {}).get('compressed', False)}, "
+                                      f"truncated={compression_stats.get('truncation_compression', {}).get('truncated', False)}, "
+                                      f"deleted={compression_stats.get('truncation_compression', {}).get('records_deleted', 0)} records")
+                        else:
+                            # Fallback to old compression method (backward compatibility)
+                            if len(history_for_llm) > 2:
+                                records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
+                                recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
                                 
-                            # Only compress if content exceeds trigger length
-                            if records_to_compress_length > trigger_length:
-                                #print_current(f"🗜️ Using simple compressor: compressing {len(records_to_compress)} older records ({records_to_compress_length} chars, exceeds trigger {trigger_length} chars), keeping {len(recent_records_to_keep)} recent records intact")
-                                compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
-                                # Combine compressed older records with uncompressed recent records
-                                history_for_llm = compressed_older_records + recent_records_to_keep
-                                # If content doesn't exceed trigger length, keep all records as-is
-                            # If no older records to compress, keep all records as-is
+                                if records_to_compress:
+                                    records_to_compress_length = sum(len(str(record.get("result", ""))) 
+                                                                     for record in records_to_compress)
+                                    trigger_length = get_summary_trigger_length()  # Use config value instead of hardcoded
+                                    
+                                    if records_to_compress_length > trigger_length:
+                                        compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
+                                        history_for_llm = compressed_older_records + recent_records_to_keep
                     except Exception as e:
-                        print_debug(f"⚠️ Simple history compression failed: {e}")
+                        print_debug(f"⚠️ History compression failed: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
                 # 🔧 Ensure correct agent_id is set in agent context before executing subtask
                 current_agent_id = get_current_agent_id()
@@ -617,7 +841,6 @@ class MultiRoundTaskExecutor:
                 optimized_history = None
                 if isinstance(result, tuple):
                     result, optimized_history = result
-                    print_debug(f"🔄 Received optimized history from single-round executor: {len(optimized_history)} records")
                     
                     # Update main task_history with optimized version
                     # Keep non-LLM records (system messages) and replace LLM history
@@ -625,7 +848,6 @@ class MultiRoundTaskExecutor:
                                      if not ("result" in record) or record.get("error")]
                     task_history.clear()
                     task_history.extend(non_llm_records + optimized_history)
-                    print_debug(f"✅ Main task history updated with optimized records")
                 
                 # Check if user interrupted execution
                 if result.startswith("USER_INTERRUPTED:"):
@@ -695,8 +917,6 @@ class MultiRoundTaskExecutor:
                 
 
                 
-                print_debug(f"✅ Task round {task_round} execution completed")
-                
                 # 🔧 New: Update current loop information in agent status file
                 if current_agent_id and hasattr(self.executor, 'multi_agent_tools') and self.executor.multi_agent_tools:
                     try:
@@ -710,6 +930,14 @@ class MultiRoundTaskExecutor:
                             print_current(current_agent_id, f"⚠️ Status update failed: {update_result.get('message', 'Unknown error')}")
                     except Exception as e:
                         print_current(current_agent_id, f"⚠️ Status update error: {e}")
+                
+                # 🔧 New: Update manager status file current_loop if this is manager
+                if is_manager:
+                    try:
+                        if self._create_or_update_manager_status_file(current_loop=task_round):
+                            print_debug(f"📝 Manager status file updated: current_loop = {task_round}")
+                    except Exception as e:
+                        print_debug(f"⚠️ Failed to update manager status file: {e}")
                 
                 # 🔧 Remove synchronous incremental update call, now handled automatically by background thread
                 # Commented out original synchronous update code:

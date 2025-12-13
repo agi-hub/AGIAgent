@@ -82,6 +82,19 @@ except ImportError:
     #print("⚠️ SVG to PNG converter not available")
     SVG_TO_PNG_CONVERTER_AVAILABLE = False
 
+# Import agent status visualizer functions
+try:
+    # Import from same directory as app.py (GUI directory)
+    from agent_status_visualizer import (
+        find_status_files, load_status_file, find_message_files,
+        find_tool_calls_from_logs, find_mermaid_figures_from_plan,
+        find_status_updates, find_latest_output_dir
+    )
+    AGENT_VISUALIZER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Agent status visualizer not available: {e}")
+    AGENT_VISUALIZER_AVAILABLE = False
+
 # Check current directory, switch to parent directory if in GUI directory
 current_dir = os.getcwd()
 current_dir_name = os.path.basename(current_dir)
@@ -460,6 +473,10 @@ I18N_TEXTS = {
         'user_input_request': '用户输入请求',
         'enter_your_response': '请输入您的回复...',
         'submit': '提交',
+        'append_task': '追加任务',
+        'append_task_empty': '请输入要追加的任务内容',
+        'append_task_success': '任务已成功发送给智能体',
+        'append_task_sent': '任务已追加到inbox',
         
         # Others
         'deleting': '删除中...',
@@ -825,6 +842,10 @@ I18N_TEXTS = {
         'user_input_request': 'User Input Request',
         'enter_your_response': 'Enter your response...',
         'submit': 'Submit',
+        'append_task': 'Append Task',
+        'append_task_empty': 'Please enter task content to append',
+        'append_task_success': 'Task successfully sent to agent',
+        'append_task_sent': 'Task appended to inbox',
         
         # Others
         'deleting': 'Deleting...',
@@ -3645,6 +3666,88 @@ def handle_select_directory(data):
         user_session.selected_output_dir = None
         emit('directory_selected', {'dir_name': None}, room=session_id)
 
+@socketio.on('append_task')
+def handle_append_task(data):
+    """Handle append task request - add user request to manager inbox (multi-agent mode only)"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        emit('error', {'message': 'Session not found'}, room=session_id)
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    content = data.get('content', '').strip()
+    
+    if not content:
+        emit('error', {'message': 'Task content cannot be empty'}, room=session_id)
+        return
+    
+    try:
+        # Get current output directory
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        output_dir = None
+        
+        if user_session.current_output_dir:
+            output_dir = os.path.join(user_base_dir, user_session.current_output_dir)
+        elif user_session.selected_output_dir:
+            output_dir = os.path.join(user_base_dir, user_session.selected_output_dir)
+        elif user_session.last_output_dir:
+            output_dir = os.path.join(user_base_dir, user_session.last_output_dir)
+        
+        if not output_dir or not os.path.exists(output_dir):
+            emit('error', {'message': 'No valid output directory found. Please start a task first.'}, room=session_id)
+            return
+        
+        # Import functions from add_user_request.py
+        import re
+        from datetime import datetime
+        
+        # Find next extmsg ID
+        inbox_dir = os.path.join(output_dir, "mailboxes", "manager", "inbox")
+        os.makedirs(inbox_dir, exist_ok=True)
+        
+        max_id = 0
+        pattern = re.compile(r'extmsg_(\d+)\.json')
+        
+        if os.path.exists(inbox_dir):
+            for filename in os.listdir(inbox_dir):
+                match = pattern.match(filename)
+                if match:
+                    msg_id = int(match.group(1))
+                    max_id = max(max_id, msg_id)
+        
+        next_id = max_id + 1
+        message_id = f"extmsg_{next_id:06d}"
+        
+        # Create message object
+        message = {
+            "message_id": message_id,
+            "sender_id": "user",
+            "receiver_id": "manager",
+            "message_type": "collaboration",
+            "content": {
+                "text": content
+            },
+            "priority": 2,
+            "requires_response": False,
+            "timestamp": datetime.now().isoformat(),
+            "delivered": False,
+            "read": False
+        }
+        
+        # Write message file
+        file_path = os.path.join(inbox_dir, f"{message_id}.json")
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(message, f, indent=2, ensure_ascii=False)
+        
+        emit('append_task_success', {
+            'message': f'Task appended successfully',
+            'message_id': message_id,
+            'file_path': file_path
+        }, room=session_id)
+        
+    except Exception as e:
+        emit('error', {'message': f'Failed to append task: {str(e)}'}, room=session_id)
+
 @socketio.on('get_metrics')
 def handle_get_metrics():
     """Handle real-time metrics request"""
@@ -3915,6 +4018,338 @@ def get_file_count(dir_name):
         }), 500
 
 # File upload functionality
+@app.route('/agent-status-visualizer')
+def agent_status_visualizer():
+    """Serve agent status visualizer page"""
+    if not AGENT_VISUALIZER_AVAILABLE:
+        return "Agent status visualizer is not available", 404
+    
+    # Get API key from query parameters or headers
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+    temp_session_id = create_temp_session_id(request, api_key)
+    user_session = gui_instance.get_user_session(temp_session_id, api_key)
+    if not user_session:
+        return "Authentication failed. Please provide a valid API key.", 401
+    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    
+    # Get directory from query parameter (selected directory)
+    dir_name = request.args.get('dir')
+    
+    # Try to find the output directory
+    output_dir = None
+    if dir_name:
+        # Use the selected directory from query parameter
+        # Ensure dir_name doesn't already contain user directory path
+        # If it does, extract just the directory name
+        if os.path.sep in dir_name or '/' in dir_name:
+            # dir_name might contain user directory, extract just the basename
+            dir_name = os.path.basename(dir_name)
+        output_dir = os.path.join(user_base_dir, dir_name)
+        if not os.path.exists(output_dir):
+            return f"Directory not found: {dir_name} (searched in: {user_base_dir})", 404
+    elif user_session.current_output_dir:
+        output_dir = os.path.join(user_base_dir, user_session.current_output_dir)
+    elif user_session.last_output_dir:
+        output_dir = os.path.join(user_base_dir, user_session.last_output_dir)
+    else:
+        # Try to find latest output directory
+        latest_dir = find_latest_output_dir(user_base_dir)
+        if latest_dir:
+            output_dir = latest_dir
+    
+    # Read agent_status_visualizer.html from templates directory
+    html_path = os.path.join(template_dir, 'agent_status_visualizer.html')
+    
+    if not os.path.exists(html_path):
+        return f"Agent status visualizer HTML not found at {html_path}", 404
+    
+    try:
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        # Replace API endpoints to use new routes
+        # Use regex to replace more accurately
+        html_content = re.sub(r"'/api/status'", "'/api/agent-status'", html_content)
+        html_content = re.sub(r'"/api/status"', '"/api/agent-status"', html_content)
+        html_content = re.sub(r"'/api/reload'", "'/api/agent-status-reload'", html_content)
+        html_content = re.sub(r'"/api/reload"', '"/api/agent-status-reload"', html_content)
+        html_content = re.sub(r"'/api/files/", "'/api/agent-status-files/", html_content)
+        html_content = re.sub(r'"/api/files/', '"/api/agent-status-files/', html_content)
+        
+        # Inject JavaScript to get dir and api_key parameters from URL and pass them to API calls
+        dir_param = dir_name if dir_name else ''
+        api_key_param = api_key if api_key else ''
+        inject_script = f"""
+        <script>
+            // Get directory and API key parameters from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const dirParam = urlParams.get('dir') || '{dir_param}';
+            const apiKeyParam = urlParams.get('api_key') || '{api_key_param}';
+            
+            // Override fetch to automatically add dir and api_key parameters to API calls
+            const originalFetch = window.fetch;
+            window.fetch = function(url, options) {{
+                if (typeof url === 'string') {{
+                    // Handle agent-status related API calls
+                    if (url.includes('/api/agent-status') || url.includes('/api/reload') || url.includes('/api/files/')) {{
+                        const urlObj = new URL(url, window.location.origin);
+                        if (dirParam && !urlObj.searchParams.has('dir')) {{
+                            urlObj.searchParams.set('dir', dirParam);
+                        }}
+                        if (apiKeyParam && !urlObj.searchParams.has('api_key')) {{
+                            urlObj.searchParams.set('api_key', apiKeyParam);
+                        }}
+                        url = urlObj.toString();
+                    }}
+                }}
+                return originalFetch.call(this, url, options);
+            }};
+        </script>
+        """
+        
+        # Insert the script before closing </head> tag
+        html_content = html_content.replace('</head>', inject_script + '</head>')
+        
+        return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except Exception as e:
+        return f"Error loading agent status visualizer: {str(e)}", 500
+
+@app.route('/api/agent-status')
+def agent_status_api():
+    """API endpoint to get current agent statuses and messages"""
+    if not AGENT_VISUALIZER_AVAILABLE:
+        return jsonify({'error': 'Agent status visualizer not available'}), 404
+    
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Get directory from query parameter (selected directory)
+        dir_name = request.args.get('dir')
+        
+        # Try to find the output directory
+        output_dir = None
+        if dir_name:
+            # Use the selected directory from query parameter
+            # Ensure dir_name doesn't already contain user directory path
+            # If it does, extract just the directory name
+            if os.path.sep in dir_name or '/' in dir_name:
+                # dir_name might contain user directory, extract just the basename
+                dir_name = os.path.basename(dir_name)
+            output_dir = os.path.join(user_base_dir, dir_name)
+            if not os.path.exists(output_dir):
+                return jsonify({'error': f'Directory not found: {dir_name} (searched in: {user_base_dir})'}), 404
+        elif user_session.current_output_dir:
+            output_dir = os.path.join(user_base_dir, user_session.current_output_dir)
+        elif user_session.last_output_dir:
+            output_dir = os.path.join(user_base_dir, user_session.last_output_dir)
+        else:
+            # Try to find latest output directory
+            latest_dir = find_latest_output_dir(user_base_dir)
+            if latest_dir:
+                output_dir = latest_dir
+        
+        if not output_dir or not os.path.exists(output_dir):
+            return jsonify({
+                'error': 'Output directory not found',
+                'agents': {},
+                'messages': [],
+                'agent_ids': [],
+                'output_directory': output_dir or '未设置',
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # Load all agent statuses
+        status_files = find_status_files(output_dir)
+        agent_statuses = {}
+        
+        for status_file in status_files:
+            status_data = load_status_file(status_file)
+            if status_data:
+                agent_id = status_data.get('agent_id', 'unknown')
+                agent_statuses[agent_id] = status_data
+        
+        # Also add manager if not present
+        if 'manager' not in agent_statuses:
+            agent_statuses['manager'] = {
+                'agent_id': 'manager',
+                'status': 'running',
+                'current_loop': 0
+            }
+        
+        # Load all messages
+        messages = find_message_files(output_dir)
+        sorted_messages = sorted(messages, key=lambda x: x.get('timestamp', '') or '')
+        
+        # Load tool calls from log files
+        tool_calls = find_tool_calls_from_logs(output_dir)
+        
+        # Load mermaid figures from plan.md
+        mermaid_figures = find_mermaid_figures_from_plan(output_dir)
+        
+        # Load status updates from status files
+        status_updates = find_status_updates(output_dir)
+        
+        # Get all unique agent IDs
+        agent_ids = set(agent_statuses.keys())
+        for msg in messages:
+            agent_ids.add(msg.get('sender_id', ''))
+            agent_ids.add(msg.get('receiver_id', ''))
+        agent_ids = sorted([aid for aid in agent_ids if aid])
+        
+        return jsonify({
+            'agents': agent_statuses,
+            'messages': sorted_messages,
+            'tool_calls': tool_calls,
+            'status_updates': status_updates,
+            'mermaid_figures': mermaid_figures,
+            'agent_ids': agent_ids,
+            'output_directory': output_dir,
+            'timestamp': datetime.now().isoformat(),
+            'message_count': len(sorted_messages)
+        })
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        traceback.print_exc()
+        return jsonify({
+            'error': f'Error loading status: {error_msg}',
+            'agents': {},
+            'messages': [],
+            'agent_ids': [],
+            'output_directory': 'Error',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/agent-status-reload', methods=['POST'])
+def agent_status_reload():
+    """API endpoint to reload and find the latest output directory"""
+    if not AGENT_VISUALIZER_AVAILABLE:
+        return jsonify({'success': False, 'message': 'Agent status visualizer not available'}), 404
+    
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Get directory from query parameter (selected directory)
+        dir_name = request.args.get('dir')
+        
+        # If dir parameter is provided, use it; otherwise find latest
+        if dir_name:
+            # Ensure dir_name doesn't already contain user directory path
+            # If it does, extract just the directory name
+            if os.path.sep in dir_name or '/' in dir_name:
+                # dir_name might contain user directory, extract just the basename
+                dir_name = os.path.basename(dir_name)
+            new_output_dir = os.path.join(user_base_dir, dir_name)
+            if not os.path.exists(new_output_dir):
+                return jsonify({
+                    'success': False,
+                    'message': f'Directory not found: {dir_name} (searched in: {user_base_dir})',
+                    'output_directory': 'Not set'
+                }), 404
+        else:
+            # Find latest output directory
+            new_output_dir = find_latest_output_dir(user_base_dir)
+        
+        if new_output_dir and os.path.exists(new_output_dir):
+            # Update user session's last output dir
+            rel_path = os.path.relpath(new_output_dir, user_base_dir)
+            user_session.last_output_dir = rel_path
+            
+            return jsonify({
+                'success': True,
+                'output_directory': new_output_dir,
+                'message': f'Reloaded: {os.path.basename(new_output_dir)}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No output directory found',
+                'output_directory': 'Not set'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
+
+@app.route('/api/agent-status-files/<path:path>')
+def agent_status_files(path):
+    """Serve files from output directory (for mermaid images)"""
+    if not AGENT_VISUALIZER_AVAILABLE:
+        return jsonify({'error': 'Agent status visualizer not available'}), 404
+    
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Get directory from query parameter (selected directory)
+        dir_name = request.args.get('dir')
+        
+        # Try to find the output directory
+        output_dir = None
+        if dir_name:
+            # Use the selected directory from query parameter
+            # Ensure dir_name doesn't already contain user directory path
+            # If it does, extract just the directory name
+            if os.path.sep in dir_name or '/' in dir_name:
+                # dir_name might contain user directory, extract just the basename
+                dir_name = os.path.basename(dir_name)
+            output_dir = os.path.join(user_base_dir, dir_name)
+            if not os.path.exists(output_dir):
+                return jsonify({'error': f'Directory not found: {dir_name} (searched in: {user_base_dir})'}), 404
+        elif user_session.current_output_dir:
+            # Ensure current_output_dir doesn't already contain user directory path
+            current_dir = user_session.current_output_dir
+            if os.path.sep in current_dir or '/' in current_dir:
+                current_dir = os.path.basename(current_dir)
+            output_dir = os.path.join(user_base_dir, current_dir)
+        elif user_session.last_output_dir:
+            # Ensure last_output_dir doesn't already contain user directory path
+            last_dir = user_session.last_output_dir
+            if os.path.sep in last_dir or '/' in last_dir:
+                last_dir = os.path.basename(last_dir)
+            output_dir = os.path.join(user_base_dir, last_dir)
+        else:
+            latest_dir = find_latest_output_dir(user_base_dir)
+            if latest_dir:
+                output_dir = latest_dir
+        
+        if not output_dir:
+            return jsonify({'error': 'Output directory not set'}), 404
+        
+        # Construct full path
+        file_path = os.path.join(output_dir, path)
+        
+        # Security check: ensure path is within OUTPUT_DIR
+        real_output_dir = os.path.realpath(output_dir)
+        real_file_path = os.path.realpath(file_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'error': 'Invalid path'}), 403
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        return send_from_directory(output_dir, path)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/upload/<path:dir_name>', methods=['POST'])
 def upload_files(dir_name):
     """Upload files to workspace of specified directory"""

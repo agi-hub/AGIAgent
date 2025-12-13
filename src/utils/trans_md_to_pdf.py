@@ -645,7 +645,7 @@ Example:
         print(f"✗ {output_type} conversion failed")
         if output:
             print(f"Error information: {output}")
-        sys.exit(1)
+        return False
 
 
 if __name__ == "__main__":

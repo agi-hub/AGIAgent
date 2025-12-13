@@ -133,7 +133,13 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
         return env_value
     
     config = load_config(config_file)
-    return config.get('api_key')
+    api_key = config.get('api_key')
+    
+    # If not found in config file, try AGIAGENT_API_KEY environment variable
+    if not api_key:
+        api_key = os.environ.get('AGIAGENT_API_KEY')
+    
+    return api_key
 
 def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -151,7 +157,13 @@ def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
         return env_value
     
     config = load_config(config_file)
-    return config.get('api_base')
+    api_base = config.get('api_base')
+    
+    # If not found in config file, try AGIAGENT_API_BASE environment variable
+    if not api_base:
+        api_base = os.environ.get('AGIAGENT_API_BASE')
+    
+    return api_base
 
 def get_config_value(key: str, default: Optional[str] = None, config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -216,7 +228,13 @@ def get_model(config_file: str = "config/config.txt") -> Optional[str]:
         return env_value
     
     config = load_config(config_file)
-    return config.get('model')
+    model = config.get('model')
+    
+    # If not found in config file, try AGIAGENT_MODEL environment variable
+    if not model:
+        model = os.environ.get('AGIAGENT_MODEL')
+    
+    return model
 
 def get_max_tokens(config_file: str = "config/config.txt") -> Optional[int]:
     """
@@ -238,6 +256,15 @@ def get_max_tokens(config_file: str = "config/config.txt") -> Optional[int]:
         except ValueError:
             print(f"Warning: Invalid max_tokens value '{max_tokens_str}' in config file, must be an integer")
             # Fall through to model-specific defaults
+    
+    # If not found in config file, try AGIAGENT_MAX_OUT_TOKENS environment variable
+    if not max_tokens_str:
+        max_tokens_env = os.environ.get('AGIAGENT_MAX_OUT_TOKENS')
+        if max_tokens_env:
+            try:
+                return int(max_tokens_env)
+            except ValueError:
+                print(f"Warning: Invalid AGIAGENT_MAX_OUT_TOKENS value '{max_tokens_env}', must be an integer")
     
     # If no manual setting, use model-specific defaults
     model = get_model(config_file)
@@ -467,6 +494,80 @@ def get_compression_tail_length(config_file: str = "config/config.txt") -> int:
             return 100
     
     return 100  # Default compression tail length
+
+def get_summary_history(config_file: str = "config/config.txt") -> bool:
+    """
+    Get summary history configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to enable history summarization (default: True)
+    """
+    config = load_config(config_file)
+    summary_history_str = config.get('summary_history', 'True').lower()
+    
+    # Convert string to boolean
+    if summary_history_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif summary_history_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        print(f"Warning: Invalid summary_history value '{summary_history_str}' in config file, using default True")
+        return True
+
+def get_summary_max_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get summary max length from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Summary max length integer (default: 5000)
+    """
+    config = load_config(config_file)
+    summary_max_length_str = config.get('summary_max_length')
+    
+    if summary_max_length_str:
+        try:
+            summary_max_length = int(summary_max_length_str)
+            if summary_max_length <= 0:
+                print(f"Warning: Invalid summary_max_length value '{summary_max_length_str}' in config file, must be positive integer, using default 5000")
+                return 5000
+            return summary_max_length
+        except ValueError:
+            print(f"Warning: Invalid summary_max_length value '{summary_max_length_str}' in config file, must be an integer, using default 5000")
+            return 5000
+    
+    return 5000  # Default summary max length
+
+def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get summary trigger length from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Summary trigger length integer (default: 30000)
+    """
+    config = load_config(config_file)
+    summary_trigger_length_str = config.get('summary_trigger_length')
+    
+    if summary_trigger_length_str:
+        try:
+            summary_trigger_length = int(summary_trigger_length_str)
+            if summary_trigger_length <= 0:
+                print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be positive integer, using default 30000")
+                return 30000
+            return summary_trigger_length
+        except ValueError:
+            print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be an integer, using default 30000")
+            return 30000
+    
+    return 30000  # Default summary trigger length
 
 def get_simplified_search_output(config_file: str = "config/config.txt") -> bool:
     """
@@ -702,6 +803,29 @@ def get_tool_calling_format(config_file: str = "config/config.txt") -> bool:
     if tool_calling_format_str in ('true', '1', 'yes', 'on'):
         return True
     elif tool_calling_format_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to True if invalid value
+        return True
+
+def get_enable_thinking(config_file: str = "config/config.txt") -> bool:
+    """
+    Get thinking support configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to enable and display thinking process from reasoning models
+        Default: True (enabled for models that support thinking)
+    """
+    config = load_config(config_file)
+    enable_thinking_str = config.get('enable_thinking', 'True').lower()
+    
+    # Convert string to boolean
+    if enable_thinking_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif enable_thinking_str in ('false', '0', 'no', 'off'):
         return False
     else:
         # Default to True if invalid value

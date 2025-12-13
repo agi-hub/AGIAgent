@@ -46,23 +46,6 @@
       "required": ["target_file"]
     }
   },
-  "idle": {
-    "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "Optional message explaining why the agent is idling"
-        },
-        "reason": {
-          "type": "string",
-          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'task_completed', 'no_action_needed')"
-        }
-      },
-      "required": []
-    }
-  },
   "get_sensor_data": {
     "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
     "parameters": {
@@ -132,6 +115,60 @@
         }
       },
       "required": ["action"]
+    }
+  },
+  "read_received_messages": {
+    "description": "Fetch messages from your own mailbox, including broadcast messages and P2P messages. Messages are automatically marked as read after retrieval.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "include_read": {
+          "type": "boolean",
+          "description": "Include already read messages (default: false)"
+        }
+      },
+      "required": []
+    }
+  },
+  "send_status_update_to_manager": {
+    "description": "Send a status update from an agent to the manager about task progress.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "ID of the agent sending the update. ALWAYS use 'current_agent' to auto-detect the correct agent ID.",
+          "default": "current_agent"
+        },
+        "round_number": {
+          "type": "integer",
+          "description": "Current execution round number"
+        },
+        "task_completed": {
+          "type": "boolean",
+          "description": "Whether the task is completed"
+        },
+        "llm_response_preview": {
+          "type": "string",
+          "description": "Preview of LLM response (first 200 characters)"
+        },
+        "tool_calls_summary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tool names called in this round"
+        },
+        "current_task_description": {
+          "type": "string",
+          "description": "Description of current task being worked on"
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Error message if any error occurred"
+        }
+      },
+      "required": ["agent_id", "round_number", "task_completed", "llm_response_preview", "tool_calls_summary"]
     }
   }
 } 

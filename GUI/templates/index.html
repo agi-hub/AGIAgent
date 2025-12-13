@@ -918,12 +918,51 @@
             font-weight: 500;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
             flex-shrink: 0;
         }
 
         .chat-header i {
             color: var(--color-accent);
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chat-header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .agent-view-btn {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            padding: 0;
+            background: var(--color-accent);
+            color: white;
+            border: 1px solid var(--color-accent);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s, opacity 0.3s;
+        }
+
+        .agent-view-btn:hover {
+            opacity: 0.9;
+            background: var(--color-accent);
+        }
+
+        .agent-view-btn i {
+            color: white;
         }
 
         .vertical-resizer {
@@ -3184,9 +3223,8 @@
                     </button>
                 </div>
             </div>
-            <button id="connectBtn" class="connect-btn connect">
+            <button id="connectBtn" class="send-button" title="{{ i18n.connect_btn }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
                 <i class="fas fa-plug"></i>
-                <span>{{ i18n.connect_btn }}</span>
             </button>
             <div class="user-info">
                 <span id="userStatusText">{{ i18n.user_disconnected }}</span>
@@ -3220,8 +3258,15 @@
             <div class="chat-wrapper">
                 <div class="chat-container">
                     <div class="chat-header">
-                        <i class="fas fa-comments"></i>
-                        <span>{{ i18n.get('chat_window', '聊天窗口' if lang == 'zh' else 'Chat Window') }}</span>
+                        <div class="chat-header-left">
+                            <i class="fas fa-comments"></i>
+                            <span>{{ i18n.get('chat_window', '聊天窗口' if lang == 'zh' else 'Chat Window') }}</span>
+                        </div>
+                        <div class="chat-header-right">
+                            <button class="agent-view-btn" id="agentViewBtn" title="{{ i18n.get('agent_view', '智能体视图' if lang == 'zh' else 'Agent View') }}">
+                                <i class="fas fa-cube"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="chat-messages scrollbar-custom" id="chatMessages">
                         <div class="message system">
@@ -3278,22 +3323,24 @@
                         ></textarea>
                         <div class="mode-selection">
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
+                                <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
+                            </label>
+                            <select id="routineSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; max-width: 180px;" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
+                                <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
+                            </select>
+                            <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('task_type', '任务类型' if lang == 'zh' else 'Task Type') }}:</span>
                             </label>
                             <select id="executionModeSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; width: 110px;">
                                 <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
                                 <option value="plan">{{ i18n.get('plan_mode', 'Plan模式' if lang == 'zh' else 'Plan Mode') }}</option>
                             </select>
-                            <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
-                                <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
-                            </label>
-                            <select id="routineSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; max-width: 180px;" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
-                                <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
-                            </select>
-                            <label style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; font-size: 0.9em; white-space: nowrap;">
-                                <span>{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}</span>
-                                <input type="checkbox" id="enableWebSearch" checked style="margin: 0;">
-                            </label>
+                            <button class="send-button" id="multiAgentButton" title="{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <button class="send-button" id="webSearchButton" title="{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: var(--color-accent); border: 1px solid var(--color-accent); color: white;">
+                                <i class="fas fa-search"></i>
+                            </button>
                             <button class="send-button" id="infiniteExecuteButton" title="{{ i18n.get('infinite_execute_tooltip', '无限执行模式（loops=-1）' if lang == 'zh' else 'Infinite Execute Mode (loops=-1)') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
                                 <i class="fas fa-infinity"></i>
                             </button>
@@ -3305,8 +3352,11 @@
                                 <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
                                     <i class="fas fa-arrow-up"></i>
                                 </button>
-                                <button class="send-button" id="stopButton" style="display: none;">
+                                <button class="send-button" id="stopButton" style="display: none;" title="{{ i18n.get('stop_task', '停止任务' if lang == 'zh' else 'Stop Task') }}">
                                     <i class="fas fa-stop"></i>
+                                </button>
+                                <button class="send-button" id="appendTaskButton" style="display: none;" title="{{ i18n.get('append_task', '追加任务' if lang == 'zh' else 'Append Task') }}">
+                                    <i class="fas fa-plus-circle"></i>
                                 </button>
                                 <button class="send-button" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
                                     <i class="fas fa-paint-brush"></i>
@@ -3387,18 +3437,14 @@
                                 {{ i18n.get('execution_rounds', '执行轮次' if lang == 'zh' else 'Execution Rounds') }}:
                             </label>
                             <div class="config-slider-wrapper" style="display: flex; align-items: center; gap: 12px;">
-                                <input type="range" id="configRoundsSlider" class="config-rounds-slider" min="1" max="200" value="50" 
+                                <input type="range" id="configRoundsSlider" class="config-rounds-slider" min="1" max="200" value="100" 
                                        style="flex: 1; height: 6px; background: var(--bg-secondary); outline: none; border-radius: 3px; appearance: none; cursor: pointer;">
-                                <span id="configRoundsValue" class="config-rounds-value" style="font-size: 0.9em; font-weight: 600; color: var(--text-primary); min-width: 35px; text-align: center; background: var(--bg-input); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary);">50</span>
+                                <span id="configRoundsValue" class="config-rounds-value" style="font-size: 0.9em; font-weight: 600; color: var(--text-primary); min-width: 35px; text-align: center; background: var(--bg-input); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary);">100</span>
                             </div>
                             <div class="config-rounds-description" style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">
-                                {{ i18n.get('execution_rounds_desc', '控制任务执行的轮次数量，范围1-200，典型值50' if lang == 'zh' else 'Controls the number of execution rounds for tasks, range 1-200, typical value 50') }}
+                                {{ i18n.get('execution_rounds_desc', '控制任务执行的轮次数量，范围1-200，典型值100' if lang == 'zh' else 'Controls the number of execution rounds for tasks, range 1-200, typical value 100') }}
                             </div>
                         </div>
-                        <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
-                            <input type="checkbox" id="enableMultiAgent" style="margin: 0;">
-                            <span>{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}</span>
-                        </label>
                         <label class="config-option" style="display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; width: 100%;">
                             <input type="checkbox" id="enableLongTermMemory" style="margin: 0;">
                             <span>{{ i18n.get('enable_long_term_memory', '启动长期记忆' if lang == 'zh' else 'Long-term Memory') }}</span>
@@ -3682,7 +3728,7 @@
         let isAutoReconnectInProgress = false;
         let wasReconnected = false; // 标记是否是重连后的连接
         let heartbeatInterval = null;  // 心跳定时器
-        const HEARTBEAT_INTERVAL = 120000;  // 每2分钟发送一次心跳（120秒）
+        const HEARTBEAT_INTERVAL = 50000;  // 每50秒发送一次心跳（小于服务器ping_timeout=75秒）
         
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
@@ -3716,6 +3762,7 @@
 
         const newTaskButton = document.getElementById('newTaskButton');
         const stopButton = document.getElementById('stopButton');
+        const appendTaskButton = document.getElementById('appendTaskButton');
         const clearChatButton = document.getElementById('clearChatButton');
         const directoryList = document.getElementById('directoryList');
         const sidebarLoading = document.getElementById('sidebarLoading');
@@ -3729,6 +3776,8 @@
         // State management
         let isTaskRunning = false;
         let infiniteExecuteMode = false; // 无限执行模式状态
+        let multiAgentMode = false; // 多智能体模式状态
+        let webSearchMode = true; // 搜索网络模式状态，默认开启
         let selectedDirectory = null;
         let taskMode = 'new'; // 'new', 'continue', 'selected' - 默认为新建模式
         let expandedDirectories = new Set();
@@ -3772,23 +3821,31 @@
             
             // Update connect button
             if (status === 'connected') {
-                connectBtn.className = 'connect-btn disconnect';
-                connectBtn.innerHTML = `<i class="fas fa-unlink"></i><span>${I18N.disconnect_btn}</span>`;
+                connectBtn.style.background = 'var(--color-accent)';
+                connectBtn.style.color = 'white';
+                connectBtn.style.borderColor = 'var(--color-accent)';
+                connectBtn.innerHTML = `<i class="fas fa-unlink"></i>`;
                 connectBtn.disabled = false;
+                connectBtn.title = I18N.disconnect_btn || '断开连接';
                 isConnected = true;
                 
                 // Enable UI controls
                 enableUI(true);
             } else if (status === 'connecting') {
                 connectBtn.disabled = true;
-                connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>${I18N.connecting}</span>`;
+                connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                connectBtn.style.opacity = '0.6';
                 
                 // Disable UI controls
                 enableUI(false);
             } else {
-                connectBtn.className = 'connect-btn connect';
-                connectBtn.innerHTML = `<i class="fas fa-plug"></i><span>${I18N.connect_btn}</span>`;
+                connectBtn.style.background = 'transparent';
+                connectBtn.style.color = 'var(--color-accent)';
+                connectBtn.style.borderColor = 'var(--color-accent)';
+                connectBtn.innerHTML = `<i class="fas fa-plug"></i>`;
                 connectBtn.disabled = false;
+                connectBtn.style.opacity = '1';
+                connectBtn.title = I18N.connect_btn || '连接网络';
                 isConnected = false;
                 
                 // Disable UI controls
@@ -3869,6 +3926,8 @@
             taskMode = 'new';
             pendingUserInput = '';
             isCreatingDirectoryForTask = false;
+            // Update agent view button state
+            updateAgentViewButtonState();
             isAutoReconnectInProgress = false;
             expandedDirectories = new Set();
             collapsedSubDirectories = new Set();
@@ -3953,10 +4012,10 @@
             // 立即发送一次心跳
             sendHeartbeat();
             
-            // 设置定时器，每2分钟发送一次心跳
+            // 设置定时器，每50秒发送一次心跳（小于服务器ping_timeout=75秒）
             heartbeatInterval = setInterval(function() {
-                if (socket && socket.connected && !isTaskRunning) {
-                    // 只在非任务执行状态下发送心跳，避免干扰任务执行
+                if (socket && socket.connected) {
+                    // 始终发送心跳保持连接，即使在任务执行时也需要保持连接活跃
                     sendHeartbeat();
                 }
             }, HEARTBEAT_INTERVAL);
@@ -4383,6 +4442,10 @@
                 setTimeout(refreshDirectories, 1000);
             });
 
+            socket.on('append_task_success', function(data) {
+                addMessage(data.message || I18N.get('append_task_success', '任务已成功发送给智能体'), 'success');
+            });
+
             socket.on('error', function(data) {
                 addMessage(data.message, 'error');
                 setTaskRunning(false);
@@ -4407,6 +4470,8 @@
                     // 停止文件监测
                     stopFileMonitoring();
                 }
+                // Update agent view button state
+                updateAgentViewButtonState();
             });
 
             socket.on('directory_created', function(data) {
@@ -4425,6 +4490,8 @@
                     refreshDirectories();
                     // 启动文件监测
                     startFileMonitoring();
+                    // Update agent view button state
+                    updateAgentViewButtonState();
                     
                     // 如果有待上传的文件，自动上传
                     if (pendingUploadFiles && pendingUploadFiles.length > 0) {
@@ -5579,13 +5646,23 @@
             // 允许用户在任务执行过程中输入新的需求，但不允许执行
             userInput.disabled = false;
             
-            // 获取无限执行按钮
+            // 获取无限执行按钮和追加任务按钮
             const infiniteExecuteButton = document.getElementById('infiniteExecuteButton');
+            const appendTaskButton = document.getElementById('appendTaskButton');
             
             if (running) {
                 sendButton.style.display = 'none';
                 newTaskButton.style.display = 'none';
-                stopButton.style.display = 'flex';
+                // 在多智能体模式下显示追加按钮，否则显示停止按钮
+                if (multiAgentMode && appendTaskButton) {
+                    stopButton.style.display = 'none';
+                    appendTaskButton.style.display = 'flex';
+                } else {
+                    stopButton.style.display = 'flex';
+                    if (appendTaskButton) {
+                        appendTaskButton.style.display = 'none';
+                    }
+                }
                 // 禁用无限执行按钮
                 if (infiniteExecuteButton) {
                     infiniteExecuteButton.disabled = true;
@@ -5598,6 +5675,9 @@
                 sendButton.style.display = 'flex';
                 newTaskButton.style.display = 'flex';
                 stopButton.style.display = 'none';
+                if (appendTaskButton) {
+                    appendTaskButton.style.display = 'none';
+                }
                 // 启用无限执行按钮
                 if (infiniteExecuteButton) {
                     infiniteExecuteButton.disabled = false;
@@ -5730,12 +5810,12 @@
                 // Get execution rounds from config slider
                 // 如果无限执行模式启用，则设置为-1
                 const configRoundsSlider = document.getElementById('configRoundsSlider');
-                const executionRounds = infiniteExecuteMode ? -1 : (configRoundsSlider ? parseInt(configRoundsSlider.value) : 50);
+                const executionRounds = infiniteExecuteMode ? -1 : (configRoundsSlider ? parseInt(configRoundsSlider.value) : 100);
 
                 // Get GUI configuration options
                 const guiConfig = {
-                    enable_web_search: document.getElementById('enableWebSearch').checked,
-                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_web_search: webSearchMode,
+                    enable_multi_agent: multiAgentMode,
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
                     enable_jieba: document.getElementById('enableJieba').checked,
@@ -6024,8 +6104,8 @@
 
                 // Get GUI configuration options
                 const guiConfig = {
-                    enable_web_search: document.getElementById('enableWebSearch').checked,
-                    enable_multi_agent: document.getElementById('enableMultiAgent').checked,
+                    enable_web_search: webSearchMode,
+                    enable_multi_agent: multiAgentMode,
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
                     enable_jieba: document.getElementById('enableJieba').checked,
@@ -6042,7 +6122,7 @@
                     // Add execution rounds (如果无限执行模式启用，则设置为-1)
                     execution_rounds: infiniteExecuteMode ? -1 : (() => {
                         const configRoundsSlider = document.getElementById('configRoundsSlider');
-                        return configRoundsSlider ? parseInt(configRoundsSlider.value) : 50;
+                        return configRoundsSlider ? parseInt(configRoundsSlider.value) : 100;
                     })()
                 };
                 
@@ -6094,6 +6174,9 @@
             
             // Switch to selected directory mode
             taskMode = 'selected';
+            
+            // Update agent view button state
+            updateAgentViewButtonState();
             
             // 发送选择目录的请求
             socket.emit('select_directory', {
@@ -6239,7 +6322,80 @@
             }
         });
 
+        // 追加任务按钮点击事件（仅多智能体模式）
+        if (appendTaskButton) {
+            appendTaskButton.addEventListener('click', function() {
+                if (socket && isTaskRunning && multiAgentMode) {
+                    const message = userInput.value.trim();
+                    if (!message) {
+                        addMessage(I18N.get('append_task_empty', '请输入要追加的任务内容'), 'warning');
+                        return;
+                    }
+                    
+                    // 发送追加任务请求
+                    socket.emit('append_task', {
+                        content: message
+                    });
+                    
+                    // 清空输入框
+                    userInput.value = '';
+                    resizeTextarea();
+                }
+            });
+        }
+
         clearChatButton.addEventListener('click', clearChat);
+        
+        // Agent view button
+        const agentViewBtn = document.getElementById('agentViewBtn');
+        function updateAgentViewButtonState() {
+            if (agentViewBtn) {
+                if (selectedDirectory) {
+                    agentViewBtn.disabled = false;
+                    agentViewBtn.style.opacity = '1';
+                    agentViewBtn.style.cursor = 'pointer';
+                } else {
+                    agentViewBtn.disabled = true;
+                    agentViewBtn.style.opacity = '0.5';
+                    agentViewBtn.style.cursor = 'not-allowed';
+                }
+            }
+        }
+        
+        if (agentViewBtn) {
+            // Initial state
+            updateAgentViewButtonState();
+            
+            agentViewBtn.addEventListener('click', function() {
+                // Check if a directory is selected
+                if (!selectedDirectory) {
+                    const message = (typeof I18N !== 'undefined' && I18N.lang === 'zh') ? '请先选择一个工作目录' : 'Please select a workspace directory first';
+                    alert(message);
+                    return;
+                }
+                
+                // Get API key from localStorage or input field
+                let apiKey = null;
+                try {
+                    apiKey = localStorage.getItem('agia_api_key');
+                    if (!apiKey) {
+                        const apiKeyInputEl = document.getElementById('apiKeyInput');
+                        if (apiKeyInputEl) {
+                            apiKey = apiKeyInputEl.value.trim() || null;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to get API key:', e);
+                }
+                
+                // Open agent status visualizer in a new window with selected directory and API key
+                let agentViewUrl = `/agent-status-visualizer?dir=${encodeURIComponent(selectedDirectory)}`;
+                if (apiKey) {
+                    agentViewUrl += `&api_key=${encodeURIComponent(apiKey)}`;
+                }
+                window.open(agentViewUrl, '_blank', 'width=1400,height=900,resizable=yes,scrollbars=yes');
+            });
+        }
 
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -7266,6 +7422,8 @@
                         taskMode = 'new';
                         // 停止文件监测
                         stopFileMonitoring();
+                        // Update agent view button state
+                        updateAgentViewButtonState();
                     }
                     
                     alert(`目录 "${dirName}" 已成功删除`);
@@ -11685,9 +11843,9 @@
             });
             
             // 设置GUI配置选项的默认值
-            document.getElementById('enableWebSearch').checked = true;       // 搜索网络默认选择
+            // 搜索网络按钮默认状态（已通过webSearchMode变量控制，默认为true，按钮初始样式已设置为激活状态）
 
-            document.getElementById('enableMultiAgent').checked = false;     // 启动多智能体默认不选择
+            // 多智能体按钮默认状态（已通过multiAgentMode变量控制，默认为false）
             document.getElementById('enableLongTermMemory').checked = true;  // 启动长期记忆默认选择
             document.getElementById('enableMCP').checked = false;            // 启动MCP默认不选择
             document.getElementById('enableJieba').checked = true;           // 启用中文分词默认选择
@@ -12965,6 +13123,46 @@
                     infiniteExecuteButton.style.background = 'transparent';
                     infiniteExecuteButton.style.color = 'var(--color-accent)';
                     infiniteExecuteButton.style.borderColor = 'var(--color-accent)';
+                }
+            });
+        }
+
+        // 多智能体按钮点击处理
+        const multiAgentButton = document.getElementById('multiAgentButton');
+        if (multiAgentButton) {
+            multiAgentButton.addEventListener('click', function() {
+                multiAgentMode = !multiAgentMode;
+                // 如果任务正在运行，更新按钮显示状态
+                if (isTaskRunning) {
+                    setTaskRunning(true);
+                }
+                // 更新按钮样式以显示激活状态
+                if (multiAgentMode) {
+                    multiAgentButton.style.background = 'var(--color-accent)';
+                    multiAgentButton.style.color = 'white';
+                    multiAgentButton.style.borderColor = 'var(--color-accent)';
+                } else {
+                    multiAgentButton.style.background = 'transparent';
+                    multiAgentButton.style.color = 'var(--color-accent)';
+                    multiAgentButton.style.borderColor = 'var(--color-accent)';
+                }
+            });
+        }
+
+        // 搜索网络按钮点击处理
+        const webSearchButton = document.getElementById('webSearchButton');
+        if (webSearchButton) {
+            webSearchButton.addEventListener('click', function() {
+                webSearchMode = !webSearchMode;
+                // 更新按钮样式以显示激活状态
+                if (webSearchMode) {
+                    webSearchButton.style.background = 'var(--color-accent)';
+                    webSearchButton.style.color = 'white';
+                    webSearchButton.style.borderColor = 'var(--color-accent)';
+                } else {
+                    webSearchButton.style.background = 'transparent';
+                    webSearchButton.style.color = 'var(--color-accent)';
+                    webSearchButton.style.borderColor = 'var(--color-accent)';
                 }
             });
         }

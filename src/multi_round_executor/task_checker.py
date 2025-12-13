@@ -33,15 +33,28 @@ class TaskChecker:
         """
         Check if the large model response contains task completion flag
         Only triggers when a line starts with TASK_COMPLETED or **TASK_COMPLETED
+        Only checks LLM's original response content, ignoring tool execution results
+        (e.g., terminal output) to avoid false positives from sub-agents.
         
         Args:
-            result: Large model response text
+            result: Large model response text (may include tool execution results)
             
         Returns:
-            Whether task completion flag is detected
+            Whether task completion flag is detected in LLM's original response
         """
-        # Split result into lines for line-by-line checking
-        lines = result.split('\n')
+        # Extract only LLM's original response content, ignoring tool execution results
+        # Tool execution results are separated by "--- Tool Execution Results ---"
+        # We should only check content before this marker
+        tool_results_marker = "--- Tool Execution Results ---"
+        if tool_results_marker in result:
+            # Only check content before tool execution results
+            llm_content = result.split(tool_results_marker)[0]
+        else:
+            # No tool execution results, check entire result
+            llm_content = result
+        
+        # Split LLM content into lines for line-by-line checking
+        lines = llm_content.split('\n')
         
         for line in lines:
             stripped_line = line.strip()

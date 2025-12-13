@@ -18,6 +18,7 @@ cairosvg
 # GUI dependencies
 flask>=2.0.0
 flask-socketio>=5.0.0
+flask-cors>=3.0.0
 eventlet>=0.30.0
 
 #for MCP

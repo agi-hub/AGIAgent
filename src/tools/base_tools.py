@@ -211,25 +211,26 @@ class BaseTools:
                 'error': 'Terminal tools not initialized'
             }
 
-    def idle(self, message: str = None, reason: str = None) -> Dict[str, Any]:
+    def idle(self, reason: str = None, sleep: float = 10) -> Dict[str, Any]:
         """
         Idle tool - represents doing nothing in this round, mainly used for multi-agent synchronization.
+        Monitors manager's inbox for new extmsg messages and exits sleep early if detected.
+        Default sleep time is 10 seconds to wait for other agents.
         
         Args:
-            message: Optional message explaining why idling (default: None)
             reason: Optional reason for idling (default: None)
+            sleep: Sleep time in seconds (default: 10). Will sleep and monitor for new extmsg messages.
+                   If extmsg is detected, will exit early. Otherwise waits for full sleep time.
+                   Set to -1 for infinite sleep (only wakes up when user sends a message).
             
         Returns:
-            Dict containing idle status and optional message
+            Dict containing idle status and optional reason
         """
         result = {
             'status': 'idle',
             'action': 'no_action_taken',
             'description': 'This round is idle - no operations performed'
         }
-        
-        if message:
-            result['message'] = message
         
         if reason:
             result['reason'] = reason
@@ -239,10 +240,93 @@ class BaseTools:
         result['timestamp'] = datetime.datetime.now().isoformat()
         
         print_current("💤 Idle - No action taken this round")
-        if message:
-            print_current(f"   Message: {message}")
         if reason:
             print_current(f"   Reason: {reason}")
+        
+        # Get manager's inbox directory and mailbox
+        manager_inbox_dir = None
+        mailbox = None
+        try:
+            # Try to get workspace root to determine mailbox path
+            workspace_root = self.workspace_root
+            if workspace_root:
+                from .message_system import get_message_router
+                router = get_message_router(workspace_root, cleanup_on_init=False)
+                mailbox = router.get_mailbox("manager")
+                
+                if mailbox:
+                    manager_inbox_dir = mailbox.inbox_dir
+        except Exception as e:
+            print_current(f"   ⚠️ Could not access message router: {e}")
+        
+        # Handle infinite sleep (sleep == -1)
+        if sleep == -1:
+            print_current("   ⏸️  Infinite sleep mode - waiting for user message to wake up...")
+            
+            if manager_inbox_dir and os.path.exists(manager_inbox_dir) and mailbox:
+                # Infinite loop checking for new messages
+                check_interval = 0.5  # Check every 0.5 seconds
+                while True:
+                    time.sleep(check_interval)
+                    
+                    # Check for unread extmsg messages
+                    try:
+                        unread_messages = mailbox.get_unread_messages()
+                        # Check if any unread message is an extmsg
+                        for msg in unread_messages:
+                            if msg.message_id.startswith("extmsg_"):
+                                print_current(f"   ⚡ Detected new extmsg message ({msg.message_id}), waking up from infinite sleep")
+                                result['early_exit'] = True
+                                result['extmsg_detected'] = msg.message_id
+                                result['infinite_sleep'] = True
+                                return result
+                    except Exception as e:
+                        print_current(f"   ⚠️ Error checking for extmsg: {e}")
+            else:
+                print_current("   ⚠️ Cannot enter infinite sleep mode: manager inbox not available")
+                result['error'] = 'inbox_not_available'
+        
+        # If sleep time is specified (and not -1), monitor inbox and sleep
+        elif sleep > 0:
+            print_current(f"   Sleeping for {sleep} seconds, monitoring for new extmsg messages...")
+            
+            # Monitor inbox and sleep
+            if manager_inbox_dir and os.path.exists(manager_inbox_dir) and mailbox:
+                # Sleep with periodic checks for new messages
+                check_interval = 0.5  # Check every 0.5 seconds
+                elapsed_time = 0.0
+                early_exit = False
+                
+                while elapsed_time < sleep:
+                    time.sleep(min(check_interval, sleep - elapsed_time))
+                    elapsed_time += check_interval
+                    
+                    # Always check for unread extmsg messages (not just when file count changes)
+                    # This ensures we detect messages even if they arrive between checks
+                    try:
+                        unread_messages = mailbox.get_unread_messages()
+                        # Check if any unread message is an extmsg
+                        for msg in unread_messages:
+                            if msg.message_id.startswith("extmsg_"):
+                                print_current(f"   ⚡ Detected new extmsg message ({msg.message_id}), exiting sleep early")
+                                result['early_exit'] = True
+                                result['extmsg_detected'] = msg.message_id
+                                early_exit = True
+                                break
+                        
+                        if early_exit:
+                            break
+                    except Exception as e:
+                        print_current(f"   ⚠️ Error checking for extmsg: {e}")
+                
+                if not early_exit:
+                    print_current(f"   ✅ Sleep completed ({elapsed_time:.1f} seconds)")
+            else:
+                # If inbox directory not found, just sleep normally
+                if manager_inbox_dir:
+                    print_current(f"   ⚠️ Manager inbox directory not found: {manager_inbox_dir}, sleeping normally")
+                time.sleep(sleep)
+                print_current(f"   ✅ Sleep completed ({sleep} seconds)")
         
         return result
 

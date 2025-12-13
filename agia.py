@@ -384,8 +384,8 @@ Usage Examples:
     parser.add_argument(
         "--loops", "-l",
         type=int,
-        default=50,
-        help="Execution rounds for each subtask (default: 50, -1 for infinite loop)"
+        default=100,
+        help="Execution rounds for each subtask (default: 100, -1 for infinite loop)"
     )
     
     parser.add_argument(
@@ -513,7 +513,7 @@ Usage Examples:
         # args.requirement = "build a tetris game"
         # args.requirement = "make up some electronic sound in the sounds directory and remove the chinese characters in the GUI"
         #args.out_dir = "output_test"
-        args.loops = 50
+        args.loops = 100
         #args.model = "gpt-4.1"
         #args.base_url = "https://api.openai-proxy.org/v1"
         args.api_key = None
@@ -527,6 +527,12 @@ Usage Examples:
     # This ensures all subsequent logs go to the correct directory
     from src.tools.print_system import set_output_directory
     set_output_directory(args.dir)
+    
+    # Reset ID counters at startup to start from 1
+    from src.tools.id_manager import get_id_manager
+    id_manager = get_id_manager(args.dir)
+    id_manager.reset_counters(agent_counter=1, message_counter=0)
+    print_current("🔄 ID counters reset at startup - agent from 1, message from 0")
     
     # Install debug system after setting output directory
     from src.config_loader import load_config

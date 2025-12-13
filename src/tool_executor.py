@@ -40,11 +40,9 @@ from src.tools.print_system import (print_system, print_current, streaming_conte
                                 print_error)
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
-# 🚀 延迟导入优化：MCP 相关模块延迟加载，避免启动时加载 FastMCP 框架（~3秒）
-# from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
-# 这些函数将在实际使用时才导入
+from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
 from src.tools.mcp_client import safe_cleanup_mcp_client
-from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length
+from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length, get_enable_thinking
 from src.tools.message_system import get_message_router
 
 # Initialize logger
@@ -220,6 +218,11 @@ class ToolExecutor:
         # Load language configuration from config/config.txt
         self.language = get_language()
         
+        # Load history summarization configuration from config/config.txt
+        self.summary_history = get_summary_history()
+        self.summary_max_length = get_summary_max_length()
+        self.summary_trigger_length = get_summary_trigger_length()
+        
         # Store subtask loops information for infinite loop mode detection
         self.subtask_loops = subtask_loops
         
@@ -262,6 +265,10 @@ class ToolExecutor:
         # Note: use_chat_based_tools is the inverse of tool_calling_format
         self.use_chat_based_tools = not tool_calling_format
         
+        # Load thinking support configuration from config/config.txt
+        # True = enable thinking, False = disable thinking
+        self.enable_thinking = get_enable_thinking()
+        
         # Print system is ready to use
         
         # Display tool calling method
@@ -290,13 +297,13 @@ class ToolExecutor:
         # print_system(f"   Language: {'中文' if self.language == 'zh' else 'English'} ({self.language})")  # Commented out to reduce terminal noise
         # print_system(f"   Streaming: {'✅ Enabled' if self.streaming else '❌ Disabled (Batch mode)'}")  # Commented out to reduce terminal noise
         # print_system(f"   Cache Optimization: ✅ Enabled (All rounds use combined prompts for maximum cache hits)")  # Commented out to reduce terminal noise
+        # print_system(f"   History Summarization: {'✅ Enabled' if self.summary_history else '❌ Disabled'} (Trigger: {self.summary_trigger_length} chars, Max: {self.summary_max_length} chars)")  # Commented out to reduce terminal noise
         # print_system(f"   Simplified Search Output: {'✅ Enabled' if self.simplified_search_output else '❌ Disabled'} (Affects workspace_search and web_search terminal display)")  # Commented out to reduce terminal noise
         # if debug_mode:
         #     print_system(f"   Debug Mode: Enabled (Log directory: {logs_dir})")  # Commented out to reduce terminal noise
         
-        # 🚀 LLM客户端延迟初始化：不在__init__中创建客户端
-        self.client = None
-        self._llm_client_initialized = False
+        # Set up LLM client
+        self._setup_llm_client()
         
         # Initialize tools with LLM configuration for web search filtering
         from tools import Tools
@@ -318,14 +325,26 @@ class ToolExecutor:
             user_id=self.user_id
         )
         
-        # 🚀 长期记忆系统延迟初始化：只在首次使用时才初始化
-        self.long_term_memory = None
-        self._long_term_memory_initialized = False
-        
-        # 🚀 Prompt缓存优化：避免重复读取文件和生成文本
-        self._prompt_file_cache = {}  # {file_path: (content, mtime)}
-        self._prompt_components_cache = None  # 缓存load_user_prompt_components的结果
-        self._tools_prompt_cache = {}  # {(lang, def_hash): generated_prompt}
+        # Initialize long-term memory system
+        try:
+            # Check if long-term memory is enabled via environment variable
+            if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
+                print_current("⚠️ Long-term memory is disabled via environment variable AGIBOT_LONG_TERM_MEMORY")
+                self.long_term_memory = None
+            else:
+                from tools.long_term_memory import LongTermMemoryTools
+                # Long-term memory is now stored in the project root directory
+                # Configuration files will be automatically loaded from the project root directory
+                self.long_term_memory = LongTermMemoryTools(
+                    workspace_root=self.workspace_dir  # 仅用于兼容性，实际存储在项目根目录
+                )
+                #print_current("✅ Long-term memory system initialized successfully (global shared storage)")
+        except ImportError as e:
+            print_current(f"⚠️ Long-term memory module import failed: {e}")
+            self.long_term_memory = None
+        except Exception as e:
+            print_current(f"⚠️ Long-term memory system initialization failed: {e}")
+            self.long_term_memory = None
         
         # Initialize history optimizer for image data optimization
         try:
@@ -349,21 +368,35 @@ class ToolExecutor:
         # Store previous messages for cache analysis
         self.previous_messages = []
         
-        # Initialize simple history compressor for conversation history compression
-        try:
-            from tools.simple_history_compressor import SimpleHistoryCompressor
-            # Load compression settings from config
-            min_length = get_compression_min_length()
-            head_length = get_compression_head_length()
-            tail_length = get_compression_tail_length()
-            self.simple_compressor = SimpleHistoryCompressor(
-                min_length=min_length,
-                head_length=head_length,
-                tail_length=tail_length
-            )
-        except ImportError as e:
-            print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
-            self.simple_compressor = None
+        # Initialize summary generator for conversation history summarization
+        if self.summary_history:
+            try:
+                from multi_round_executor.summary_generator import SummaryGenerator
+                self.conversation_summarizer = SummaryGenerator(self, detailed_summary=True)
+                # print_current(f"✅ Conversation history summarizer initialized")
+            except ImportError as e:
+                print_system(f"⚠️ Failed to import SummaryGenerator: {e}, history summarization disabled")
+                self.conversation_summarizer = None
+                self.summary_history = False  # Disable summarization if import fails
+        else:
+            self.conversation_summarizer = None
+        
+        # Initialize simple history compressor when summary_history=False
+        if not self.summary_history:
+            try:
+                from tools.simple_history_compressor import SimpleHistoryCompressor
+                # Load compression settings from config
+                min_length = get_compression_min_length()
+                head_length = get_compression_head_length()
+                tail_length = get_compression_tail_length()
+                self.simple_compressor = SimpleHistoryCompressor(
+                    min_length=min_length,
+                    head_length=head_length,
+                    tail_length=tail_length
+                )
+            except ImportError as e:
+                print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
+                self.simple_compressor = None
         else:
             self.simple_compressor = None
         
@@ -413,7 +446,6 @@ class ToolExecutor:
             "merge_file": self.tools.merge_file,  # Add file merging tool
             "parse_doc_to_md": self.tools.parse_doc_to_md,  # Add document parsing tool
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,  # Add document conversion tool
-            "mouse_control": self.tools.mouse_control,  # Add mouse control tool
         }
         
         # Add history compression tool if available
@@ -424,38 +456,24 @@ class ToolExecutor:
         if self.planning_tools:
             self.tool_map["plan_tools"] = self.planning_tools.plan_tools
         
-        # 🚀 长期记忆工具延迟初始化包装器（仅在启用时注册）
-        if self._is_long_term_memory_enabled():
-            def _create_long_term_memory_wrapper(tool_name):
-                """创建长期记忆工具的延迟初始化包装器"""
-                def wrapper(*args, **kwargs):
-                    # 确保长期记忆系统已初始化
-                    self._ensure_long_term_memory_initialized()
-                    
-                    # 检查初始化是否成功
-                    if self.long_term_memory is None:
-                        return {"status": "error", "message": "Long-term memory system initialization failed"}
-                    
-                    # 调用实际的工具方法
-                    if tool_name == "recall_memories":
-                        return self.long_term_memory.recall_memories(*args, **kwargs)
-                    elif tool_name == "recall_memories_by_time":
-                        return self.long_term_memory.recall_memories_by_time(*args, **kwargs)
-                    elif tool_name == "get_memory_summary":
-                        return self.long_term_memory.get_memory_summary(*args, **kwargs)
-                    else:
-                        return {"status": "error", "message": f"Unknown long-term memory tool: {tool_name}"}
-                return wrapper
-            
-            # 注册长期记忆工具（使用延迟初始化包装器）
+        # Add long-term memory tools if available
+        if self.long_term_memory:
             self.tool_map.update({
-                "recall_memories": _create_long_term_memory_wrapper("recall_memories"),
-                "recall_memories_by_time": _create_long_term_memory_wrapper("recall_memories_by_time"),
-                "get_memory_summary": _create_long_term_memory_wrapper("get_memory_summary"),
+                "recall_memories": self.long_term_memory.recall_memories,
+                "recall_memories_by_time": self.long_term_memory.recall_memories_by_time,
+                "get_memory_summary": self.long_term_memory.get_memory_summary,
             })
-            print_debug("🧠 Long-term memory tools registered (lazy initialization)")
+            print_system("🧠 Long-term memory tools registered")
         else:
-            print_debug("ℹ️ Long-term memory is disabled, skipping tool registration")
+            # Add error handlers for disabled memory tools
+            def _memory_disabled_error(*args, **kwargs):
+                return {"status": "error", "message": "Long-term memory feature not enabled or initialization failed"}
+            
+            self.tool_map.update({
+                "recall_memories": _memory_disabled_error,
+                "recall_memories_by_time": _memory_disabled_error,
+                "get_memory_summary": _memory_disabled_error,
+            })
         
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
@@ -480,25 +498,101 @@ class ToolExecutor:
                 "terminate_agent": _multi_agent_disabled_error,
             })
         
-        # 🚀 MCP智能加载：检查是否配置了MCP服务器
-        # 检查是否配置了MCP服务器
-        has_mcp_servers = self._check_mcp_servers_configured()
-        
-        # 初始化MCP相关变量
-        self.cli_mcp_client = None
-        self.direct_mcp_client = None
+
+        # Initialize MCP clients - support both cli-mcp and direct MCP implementation
+        self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
+        # Create direct MCP client with specific config file instead of using global singleton
+        from tools.mcp_client import MCPClient
+        self.direct_mcp_client = MCPClient(self.MCP_config_file if self.MCP_config_file else "config/mcp_servers.json", workspace_dir=self.workspace_dir)
         self.cli_mcp_initialized = False
         self.direct_mcp_initialized = False
-        self.mcp_initialization_attempted = False
         
-        if has_mcp_servers:
-            # If MCP servers are configured, initialize at startup
-            print_debug("🔌 MCP server configuration detected, initializing MCP at startup...")
-            # Immediately initialize MCP (pass is_startup=True)
-            self._ensure_mcp_initialized(is_startup=True)
-        else:
-            # If no MCP servers are configured, enable lazy loading
-            print_debug("⏭️ No MCP server configuration detected, enabling lazy loading")
+        # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            if loop and loop.is_running():
+                # We're in an async context, use thread pool for initialization
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    # Initialize direct MCP client (FastMCP) FIRST
+                    try:
+                        future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
+                        self.direct_mcp_initialized = future_direct.result(timeout=10)
+                        if self.direct_mcp_initialized:
+                            print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                        self.direct_mcp_initialized = False
+                    
+                    # Only initialize cli-mcp if FastMCP is not handling servers
+                    should_init_cli_mcp = self._should_initialize_cli_mcp()
+                    if should_init_cli_mcp:
+                        try:
+                            future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
+                            self.cli_mcp_initialized = future_cli.result(timeout=10)
+                            if self.cli_mcp_initialized:
+                                print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                        except Exception as e:
+                            print_system(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                            self.cli_mcp_initialized = False
+                    else:
+                        print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                        self.cli_mcp_initialized = False
+            else:
+                # Safe to run async initialization directly
+                # Initialize direct MCP client (FastMCP) FIRST
+                try:
+                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                    if self.direct_mcp_initialized:
+                        print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                    self.direct_mcp_initialized = False
+                
+                # Only initialize cli-mcp if needed
+                should_init_cli_mcp = self._should_initialize_cli_mcp()
+                if should_init_cli_mcp:
+                    try:
+                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                        if self.cli_mcp_initialized:
+                            print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                        self.cli_mcp_initialized = False
+                else:
+                    print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                    self.cli_mcp_initialized = False
+        except RuntimeError:
+            # No event loop, safe to create one
+            # Initialize direct MCP client (FastMCP) FIRST
+            try:
+                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
+                if self.direct_mcp_initialized:
+                    print_system(f"✅ SSE MCP client (FastMCP) initialized during startup with config: {self.MCP_config_file}")
+            except Exception as e:
+                print_current(f"⚠️ SSE MCP client startup initialization failed: {e}")
+                self.direct_mcp_initialized = False
+            
+            # Only initialize cli-mcp if needed
+            should_init_cli_mcp = self._should_initialize_cli_mcp()
+            if should_init_cli_mcp:
+                try:
+                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
+                    if self.cli_mcp_initialized:
+                        print_system(f"✅ cli-mcp client initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp client startup initialization failed: {e}")
+                    self.cli_mcp_initialized = False
+            else:
+                print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
+                self.cli_mcp_initialized = False
+        
+        # Add MCP tools to tool_map after successful initialization
+        if self.cli_mcp_initialized or self.direct_mcp_initialized:
+            self._add_mcp_tools_to_map()
+            #print_current(f"🔧 MCP tools loaded successfully during startup")
+
         
         # Log related settings
         # Only create logs directory if we have a valid workspace_dir
@@ -517,181 +611,14 @@ class ToolExecutor:
         # Ensure log directory exists only if logs_dir is set
         if self.llm_logs_dir:
             os.makedirs(self.llm_logs_dir, exist_ok=True)
+        
 
-    
-    def _check_mcp_servers_configured(self) -> bool:
-        """
-        检查MCP配置文件中是否配置了MCP服务器
-        
-        Returns:
-            True if MCP servers are configured, False otherwise
-        """
-        try:
-            config_path = self.MCP_config_file
-            
-            # 检查配置文件是否存在
-            if not os.path.exists(config_path):
-                return False
-            
-            # 读取配置文件
-            import json
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            
-            # 检查是否有mcpServers配置
-            mcp_servers = config.get("mcpServers", {})
-            
-            if not mcp_servers:
-                return False
-            
-            # 检查是否有启用的服务器
-            for server_name, server_config in mcp_servers.items():
-                # 跳过禁用的服务器
-                if server_config.get("enabled", True) is False:
-                    continue
-                
-                # 检查是否有command或url配置（表示这是一个有效的服务器配置）
-                if server_config.get("command") or server_config.get("url"):
-                    return True
-            
-            # 没有找到有效的服务器配置
-            return False
-            
-        except Exception as e:
-            print_debug(f"⚠️ 检查MCP配置时出错: {e}")
-            return False
-    
-    def _ensure_mcp_initialized(self, is_startup: bool = False):
-        """
-        确保MCP已初始化 - 延迟加载实现
-        在第一次使用MCP工具时调用此方法，或在启动时检测到配置时调用
-        
-        Args:
-            is_startup: 是否在启动时调用（True=启动时，False=首次使用时）
-        """
-        # 如果已经尝试过初始化,直接返回
-        if self.mcp_initialization_attempted:
-            return
-        
-        self.mcp_initialization_attempted = True
-        
-        if is_startup:
-            print_system("🔄 检测到MCP服务器配置,开始初始化MCP客户端...")
-        else:
-            print_system("🔄 首次使用MCP工具,开始初始化MCP客户端...")
-        
-        # 🚀 在首次使用时创建MCP客户端实例
-        try:
-            from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper
-            self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
-            
-            from tools.mcp_client import MCPClient
-            self.direct_mcp_client = MCPClient(self.MCP_config_file, workspace_dir=self.workspace_dir)
-            
-            print_debug("✅ MCP客户端实例创建成功")
-        except Exception as e:
-            print_current(f"⚠️ 创建MCP客户端实例失败: {e}")
-            return
-        
-        # Initialize MCP clients with proper order: FastMCP first, then cli-mcp
-        import asyncio
-        try:
-            loop = asyncio.get_running_loop()
-            if loop and loop.is_running():
-                # We're in an async context, use thread pool for initialization
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    # Initialize direct MCP client (FastMCP) FIRST
-                    try:
-                        future_direct = executor.submit(asyncio.run, self.direct_mcp_client.initialize())
-                        self.direct_mcp_initialized = future_direct.result(timeout=10)
-                        if self.direct_mcp_initialized:
-                            print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
-                    except Exception as e:
-                        print_current(f"⚠️ SSE MCP client initialization failed: {e}")
-                        self.direct_mcp_initialized = False
-                    
-                    # Only initialize cli-mcp if FastMCP is not handling servers
-                    should_init_cli_mcp = self._should_initialize_cli_mcp()
-                    if should_init_cli_mcp:
-                        try:
-                            # 🚀 延迟导入：只在实际使用 MCP 时才加载
-                            from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
-                            future_cli = executor.submit(asyncio.run, initialize_cli_mcp_wrapper(self.MCP_config_file))
-                            self.cli_mcp_initialized = future_cli.result(timeout=10)
-                            if self.cli_mcp_initialized:
-                                print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
-                        except Exception as e:
-                            print_system(f"⚠️ cli-mcp client initialization failed: {e}")
-                            self.cli_mcp_initialized = False
-                    else:
-                        print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                        self.cli_mcp_initialized = False
-            else:
-                # Safe to run async initialization directly
-                # Initialize direct MCP client (FastMCP) FIRST
-                try:
-                    self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                    if self.direct_mcp_initialized:
-                        print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
-                except Exception as e:
-                    print_current(f"⚠️ SSE MCP client initialization failed: {e}")
-                    self.direct_mcp_initialized = False
-                
-                # Only initialize cli-mcp if needed
-                should_init_cli_mcp = self._should_initialize_cli_mcp()
-                if should_init_cli_mcp:
-                    try:
-                        # 🚀 延迟导入：只在实际使用 MCP 时才加载
-                        from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
-                        self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
-                        if self.cli_mcp_initialized:
-                            print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
-                    except Exception as e:
-                        print_current(f"⚠️ cli-mcp client initialization failed: {e}")
-                        self.cli_mcp_initialized = False
-                else:
-                    print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                    self.cli_mcp_initialized = False
-        except RuntimeError:
-            # No event loop, safe to create one
-            # Initialize direct MCP client (FastMCP) FIRST
-            try:
-                self.direct_mcp_initialized = asyncio.run(self.direct_mcp_client.initialize())
-                if self.direct_mcp_initialized:
-                    print_system(f"✅ SSE MCP client (FastMCP) initialized with config: {self.MCP_config_file}")
-            except Exception as e:
-                print_current(f"⚠️ SSE MCP client initialization failed: {e}")
-                self.direct_mcp_initialized = False
-            
-            # Only initialize cli-mcp if needed
-            should_init_cli_mcp = self._should_initialize_cli_mcp()
-            if should_init_cli_mcp:
-                try:
-                    # 🚀 延迟导入：只在实际使用 MCP 时才加载
-                    from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
-                    self.cli_mcp_initialized = asyncio.run(initialize_cli_mcp_wrapper(self.MCP_config_file))
-                    if self.cli_mcp_initialized:
-                        print_system(f"✅ cli-mcp client initialized with config: {self.MCP_config_file}")
-                except Exception as e:
-                    print_current(f"⚠️ cli-mcp client initialization failed: {e}")
-                    self.cli_mcp_initialized = False
-            else:
-                print_system("⏭️ Skipping cli-mcp initialization (servers handled by FastMCP)")
-                self.cli_mcp_initialized = False
-        
-        # Add MCP tools to tool_map after successful initialization
-        if self.cli_mcp_initialized or self.direct_mcp_initialized:
-            self._add_mcp_tools_to_map()
-            print_system(f"🔧 MCP tools loaded successfully")
     
     async def _initialize_mcp_async(self):
         """Initialize both MCP clients asynchronously"""
         try:
             # Initialize cli-mcp wrapper
             if not self.cli_mcp_initialized:
-                # 🚀 延迟导入：只在实际使用 MCP 时才加载
-                from src.tools.cli_mcp_wrapper import initialize_cli_mcp_wrapper
                 self.cli_mcp_initialized = await initialize_cli_mcp_wrapper(self.MCP_config_file)
                 if self.cli_mcp_initialized:
                     print_system("✅ cli-mcp client initialized successfully")
@@ -712,36 +639,6 @@ class ToolExecutor:
                 
         except Exception as e:
             print_current(f"⚠️ MCP client async initialization failed: {e}")
-    
-    def _ensure_long_term_memory_initialized(self):
-        """
-        确保长期记忆系统已初始化 - 延迟加载实现
-        在第一次使用长期记忆工具时调用此方法
-        """
-        if self._long_term_memory_initialized:
-            return
-        
-        self._long_term_memory_initialized = True
-        
-        # Check if long-term memory is disabled
-        if os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower() in ('false', '0', 'no', 'off'):
-            print_debug("ℹ️ Long-term memory is disabled via environment variable")
-            return
-        
-        print_system("🔄 首次使用长期记忆工具，开始初始化长期记忆系统...")
-        
-        try:
-            from tools.long_term_memory import LongTermMemoryTools
-            self.long_term_memory = LongTermMemoryTools(
-                workspace_root=self.workspace_dir
-            )
-            print_system("✅ 长期记忆系统初始化成功")
-        except ImportError as e:
-            print_current(f"⚠️ Long-term memory module import failed: {e}")
-            self.long_term_memory = None
-        except Exception as e:
-            print_current(f"⚠️ Long-term memory system initialization failed: {e}")
-            self.long_term_memory = None
     
     def _should_initialize_cli_mcp(self) -> bool:
         """Check if cli-mcp should be initialized based on FastMCP status"""
@@ -1003,29 +900,22 @@ class ToolExecutor:
     def cleanup(self):
         """Clean up all resources and threads"""
         try:
-            import sys
             
             # Cleanup cli-mcp client
-            # 🎯 性能优化：只有在 cli_mcp_wrapper 已被导入时才清理
             if hasattr(self, 'cli_mcp_client') and self.cli_mcp_client:
-                # 检查模块是否已加载（避免在清理时延迟导入）
-                if 'src.tools.cli_mcp_wrapper' in sys.modules:
-                    try:
-                        from src.tools.cli_mcp_wrapper import safe_cleanup_cli_mcp_wrapper
-                        safe_cleanup_cli_mcp_wrapper()
-                        # print_current("🔌 cli-mcp client cleanup completed")
-                    except Exception as e:
-                        print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
+                try:
+                    safe_cleanup_cli_mcp_wrapper()
+                    # print_current("🔌 cli-mcp client cleanup completed")
+                except Exception as e:
+                    print_current(f"⚠️ cli-mcp client cleanup failed: {e}")
             
             # Cleanup direct MCP client
-            # 🎯 性能优化：只有在 mcp_client 已被导入时才清理
             if hasattr(self, 'direct_mcp_client') and self.direct_mcp_client:
-                if 'src.tools.mcp_client' in sys.modules:
-                    try:
-                        safe_cleanup_mcp_client()
-                        # print_current("🔌 Direct MCP client cleanup completed")
-                    except Exception as e:
-                        print_current(f"⚠️ Direct MCP client cleanup failed: {e}")
+                try:
+                    safe_cleanup_mcp_client()
+                    # print_current("🔌 Direct MCP client cleanup completed")
+                except Exception as e:
+                    print_current(f"⚠️ Direct MCP client cleanup failed: {e}")
             
             # Cleanup long-term memory
             if hasattr(self, 'long_term_memory') and self.long_term_memory:
@@ -1107,36 +997,25 @@ class ToolExecutor:
                 
     def _setup_llm_client(self):
         """
-        确保LLM客户端已初始化 - 延迟加载实现
-        在第一次调用LLM时才创建客户端
+        Set up the LLM client based on the API base URL.
         """
-        # 如果已经初始化，直接返回
-        if self._llm_client_initialized:
-            return
-        
-        self._llm_client_initialized = True
-        print_debug("🔄 首次调用LLM，开始初始化LLM客户端...")
-        
         if self.is_claude:
-            print_debug(f"🧠 Detected Anthropic API, using Anthropic protocol")
+            # print_current(f"🧠 Detected Anthropic API, using Anthropic protocol")
+            # print_current(f" Anthropic API Base: {self.api_base}")
             
-            # 延迟导入 Anthropic 库
+            # Initialize Anthropic client
             Anthropic = get_anthropic_client()
             self.client = Anthropic(
                 api_key=self.api_key,
                 base_url=self.api_base
             )
         else:
-            print_debug(f"🤖 Using OpenAI protocol")
-            
-            # 延迟导入 OpenAI 库
-            from openai import OpenAI
+            # print_current(f"🤖 Using OpenAI protocol")
+            # Initialize OpenAI client
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.api_base
             )
-        
-        print_debug("✅ LLM客户端初始化成功")
     
     def _get_max_tokens_for_model(self, model: str) -> int:
         """
@@ -1276,44 +1155,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             print_current(f"Error loading system prompt: {e}")
             return "You are a helpful AI assistant that can use tools to accomplish tasks."
     
-    def _load_prompt_file_cached(self, file_path: str) -> str:
-        """
-        缓存加载提示文件，使用文件修改时间检测变化
-        
-        Args:
-            file_path: 文件路径
-            
-        Returns:
-            文件内容，如果文件不存在返回空字符串
-        """
-        if not os.path.exists(file_path):
-            return ""
-        
-        try:
-            # 检查缓存
-            current_mtime = os.path.getmtime(file_path)
-            
-            if file_path in self._prompt_file_cache:
-                cached_content, cached_mtime = self._prompt_file_cache[file_path]
-                if cached_mtime == current_mtime:
-                    return cached_content  # 缓存命中
-            
-            # 缓存未命中，读取文件
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-            
-            # 更新缓存
-            self._prompt_file_cache[file_path] = (content, current_mtime)
-            return content
-            
-        except Exception as e:
-            print_debug(f"Warning: Could not load file {file_path}: {e}")
-            return ""
-    
     def load_user_prompt_components(self) -> Dict[str, str]:
         """
         Load all prompt components that go into the user message.
-        使用缓存优化，避免重复读取文件
         
         Returns:
             Dictionary containing different prompt components
@@ -1327,21 +1171,12 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         try:
             # For chat-based tools, generate tool descriptions from JSON instead of loading files
             if self.use_chat_based_tools:
-                # 使用缓存加载工具定义（不强制重新加载）
-                tool_definitions = self._load_tool_definitions_from_file(force_reload=False)
+                # Generate tools prompt from JSON definitions
+                # Force reload to ensure FastMCP tools are included if they were initialized after first load
+                tool_definitions = self._load_tool_definitions_from_file(force_reload=True)
+                json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
                 
-                # 缓存生成的工具提示
-                import hashlib
-                def_hash = hashlib.md5(str(sorted(tool_definitions.items())).encode()).hexdigest()
-                cache_key = (self.language, def_hash)
-                
-                if cache_key in self._tools_prompt_cache:
-                    json_tools_prompt = self._tools_prompt_cache[cache_key]
-                else:
-                    json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
-                    self._tools_prompt_cache[cache_key] = json_tools_prompt
-                
-                # Load only rules and plugin prompts (使用缓存)
+                # Load only rules and plugin prompts (excluding deprecated tool files)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
                     os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
@@ -1352,11 +1187,31 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 if json_tools_prompt:
                     rules_parts.append(json_tools_prompt)
                 
-                # 使用缓存方法加载文件
+                loaded_files = []
+                
                 for file_path in rules_tool_files:
-                    content = self._load_prompt_file_cached(file_path)
-                    if content:
-                        rules_parts.append(content)
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                
+                # Load multiagent_prompt.txt if multi-agent is enabled
+                if self.multi_agent:
+                    multiagent_file_path = os.path.join(self.prompts_folder, "multiagent_prompt.txt")
+                    if os.path.exists(multiagent_file_path):
+                        try:
+                            with open(multiagent_file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(multiagent_file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {multiagent_file_path}: {e}")
                 
                 if rules_parts:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
@@ -1368,7 +1223,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 #    print_current("⚠️  Failed to generate JSON tool descriptions, falling back to file-based approach")
                     
             else:
-                # For standard tool calling, load only rules (使用缓存)
+                # For standard tool calling, load only rules (no tool descriptions needed)
                 rules_tool_files = [
                     os.path.join(self.prompts_folder, "rules_prompt.txt"), 
                     os.path.join(self.prompts_folder, "mcp_kb_tool_prompts.txt"),
@@ -1376,17 +1231,55 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 ]
                 
                 rules_parts = []
+                loaded_files = []
                 
-                # 使用缓存方法加载文件
                 for file_path in rules_tool_files:
-                    content = self._load_prompt_file_cached(file_path)
-                    if content:
-                        rules_parts.append(content)
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {file_path}: {e}")
+                
+                # Load multiagent_prompt.txt if multi-agent is enabled
+                if self.multi_agent:
+                    multiagent_file_path = os.path.join(self.prompts_folder, "multiagent_prompt.txt")
+                    if os.path.exists(multiagent_file_path):
+                        try:
+                            with open(multiagent_file_path, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    rules_parts.append(content)
+                                    loaded_files.append(multiagent_file_path)
+                        except Exception as e:
+                            print_current(f"Warning: Could not load file {multiagent_file_path}: {e}")
                 
                 if rules_parts:
                     components['rules_and_tools'] = "\n\n".join(rules_parts)
                 
                 print_debug("✅ Using standard tool calling (tool descriptions provided via API)")
+            
+            # Inject agent role information into rules_prompt content
+            if components['rules_and_tools']:
+                from src.tools.agent_context import get_current_agent_id
+                current_agent_id = get_current_agent_id()
+                
+                # Determine role based on agent_id
+                if current_agent_id and current_agent_id.startswith('agent_'):
+                    # This is an executor agent
+                    role_info = f"\n\n<agent_role_info>\nYOUR ROLE: You are an EXECUTOR agent. Your agent ID is: {current_agent_id}\n- You are NOT the manager\n- As an executor, you MUST NOT edit the plan.md file\n- You should follow instructions from the manager\n</agent_role_info>\n"
+                elif current_agent_id == 'manager' or not current_agent_id:
+                    # This is the manager (or no agent_id means manager by default)
+                    role_info = f"\n\n<agent_role_info>\nYOUR ROLE: You are the MANAGER agent. Your agent ID is: {current_agent_id or 'manager'}\n- You are responsible for planning and updating plan.md\n- You can spawn executor agents and assign tasks to them\n</agent_role_info>\n"
+                else:
+                    role_info = ""
+                
+                # Inject role info after rules_prompt content
+                if role_info:
+                    components['rules_and_tools'] = components['rules_and_tools'] + role_info
                 
             # Note: Removed loading of deprecated files:
             # - prompts/tool_prompt.txt
@@ -1833,7 +1726,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     pass
                     #print_current(f"🔧 Model decided to call {len(tool_calls)} tools:")
 
-                    # 添加换行（仅限chat based接口，在工具执行之前）
                     if self.use_chat_based_tools:
                         print_current("")
                     
@@ -2078,8 +1970,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
 
 
             current_agent_id = get_current_agent_id()
+            # If no agent_id is set, treat as manager
             if not current_agent_id:
-                return None
+                current_agent_id = "manager"
 
             try:
                 router = get_message_router(self.multi_agent_tools.workspace_root, cleanup_on_init=False)
@@ -2132,6 +2025,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
     def _has_complete_json_tool_call(self, content: str) -> bool:
         """
         检测content中是否包含完整的工具调用（支持带```json标记和不带标记的纯JSON格式）
+        重要：检查第二个```json块是否在JSON字符串值内部（如code_edit字段的值中）
         
         Args:
             content: 累积的响应内容
@@ -2151,7 +2045,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 return False
             
             # 查找第二个```json块（必须在第一个块之后）
-            second_pos = content.find(json_block_marker, first_block_end + 3)
+            # 使用改进的方法，检查第二个```json是否在字符串值内部
+            second_pos = self._find_second_json_block_start(content)
             # 如果找到第二个```json块，且第一个块已完整，说明有多个工具调用，需要截断
             return second_pos != -1
         
@@ -2219,6 +2114,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         """
         找到第二个```json块的起始位置
         确保第一个JSON块已经完整闭合后再查找第二个
+        重要：检查第二个```json块是否在JSON字符串值内部（如code_edit字段的值中）
         
         Args:
             content: 响应内容
@@ -2240,7 +2136,49 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             return -1
         
         # 在第一个块闭合之后查找第二个```json块
-        second_pos = content.find(json_block_marker, first_block_end + 3)
+        search_start = first_block_end + 3
+        second_pos = content.find(json_block_marker, search_start)
+        
+        # 如果找到了第二个```json块，需要检查它是否在JSON字符串值内部
+        if second_pos != -1:
+            # 提取第一个JSON块的内容（从```json到```之间）
+            json_content = content[json_start:first_block_end].strip()
+            
+            # 检查第二个```json是否在第一个JSON块的字符串值内部
+            # 方法：从第一个JSON块开始到第二个```json位置，检查引号匹配
+            # 如果引号数量是奇数，说明第二个```json在字符串值内部
+            
+            # 计算第二个```json相对于第一个JSON块开始的位置
+            second_pos_relative = second_pos - json_start
+            
+            # 检查从json_start到second_pos之间的引号匹配情况
+            check_range = content[json_start:second_pos]
+            in_string = False
+            escape_next = False
+            brace_count = 0
+            
+            for i, char in enumerate(check_range):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+            
+            # 如果in_string为True，说明第二个```json在字符串值内部，应该忽略
+            if in_string:
+                # 继续查找下一个```json块（跳过这个在字符串值内部的）
+                next_pos = content.find(json_block_marker, second_pos + len(json_block_marker))
+                return next_pos if next_pos != -1 else -1
+        
         return second_pos
     
     def _ensure_first_json_block_complete(self, content: str) -> str:
@@ -2669,28 +2607,21 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             return all_tool_calls
         
         # NEW: Support for multiple independent JSON tool calls (like our new format)
+        # 🎯 关键修复：只解析第一个JSON块，符合"每轮只能调用一个工具"的规则
         # Look for multiple ```json blocks with tool_name format
         # Use improved extraction for each block
         if '```json' in content:
-            # Try to extract all JSON blocks using robust method
-            json_blocks = []
-            search_start = 0
-            while True:
-                remaining_content = content[search_start:]
-                json_block = self._extract_json_block_robust(remaining_content, '```json')
-                if json_block:
-                    json_blocks.append(json_block)
-                    # Find the position of this block in original content
-                    block_start = content.find('```json', search_start)
-                    if block_start == -1:
-                        break
-                    block_end = content.find('```', block_start + 7)
-                    if block_end == -1:
-                        # No closing marker, break
-                        break
-                    search_start = block_end + 3
-                else:
-                    break
+            # 🎯 只提取第一个JSON块，忽略后续的块
+            # 先获取第一个JSON块之前的内容（排除第二个及以后的JSON块）
+            content_for_first_block = self._get_content_before_second_json(content)
+            
+            # Try to extract only the first JSON block using robust method
+            json_block = self._extract_json_block_robust(content_for_first_block, '```json')
+            
+            if json_block:
+                json_blocks = [json_block]  # 只处理第一个块
+            else:
+                json_blocks = []
             
             if json_blocks:
                 # Process each extracted JSON block
@@ -2857,9 +2788,84 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                         "name": tool_data["name"],
                                         "arguments": tool_data["content"]
                                     }]
-                    except (json.JSONDecodeError, Exception) as robust_e:
+                        else:
+                            # 如果robust方法没有修改JSON，尝试直接解析
+                            tool_data = json.loads(json_str)
+                            if isinstance(tool_data, dict):
+                                if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["tool_name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'content' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["content"]
+                                    }]
+                    except json.JSONDecodeError as robust_e:
+                        # JSON解析失败，尝试使用smart_escape方法
                         if self.debug_mode:
                             debug_info.append(f"Robust fix failed for long JSON: {str(robust_e)[:100]}")
+                        try:
+                            fixed_json_smart = smart_escape_quotes_in_json_values(json_str)
+                            tool_data = json.loads(fixed_json_smart)
+                            if isinstance(tool_data, dict):
+                                if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["tool_name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                                elif 'name' in tool_data and 'parameters' in tool_data:
+                                    return [{
+                                        "name": tool_data["name"],
+                                        "arguments": tool_data["parameters"]
+                                    }]
+                        except (json.JSONDecodeError, Exception) as smart_e:
+                            if self.debug_mode:
+                                debug_info.append(f"Smart escape also failed: {str(smart_e)[:100]}")
+                            # 检查JSON是否可能被截断
+                            if 'code_edit' in json_str:
+                                # 尝试找到code_edit字段的结束位置并补全JSON
+                                code_edit_pos = json_str.find('"code_edit"')
+                                if code_edit_pos != -1:
+                                    # 检查JSON是否完整（以}结尾）
+                                    if not json_str.rstrip().endswith('}'):
+                                        # JSON可能被截断，尝试补全
+                                        # 找到最后一个未闭合的引号或大括号
+                                        brace_count = json_str.count('{') - json_str.count('}')
+                                        if brace_count > 0:
+                                            # 补全缺失的闭合括号和引号
+                                            # 找到code_edit值的开始位置
+                                            value_start = json_str.find('"', code_edit_pos + len('"code_edit"'))
+                                            if value_start != -1:
+                                                # 尝试找到值的结束位置（最后一个引号）
+                                                last_quote = json_str.rfind('"')
+                                                if last_quote > value_start:
+                                                    # 检查是否需要补全
+                                                    remaining = json_str[last_quote+1:].strip()
+                                                    if not remaining.startswith(',') and not remaining.startswith('}'):
+                                                        # 需要补全引号和闭合括号
+                                                        fixed_json_str = json_str[:last_quote+1] + '}' * brace_count
+                                                        try:
+                                                            tool_data = json.loads(fixed_json_str)
+                                                            if isinstance(tool_data, dict):
+                                                                if 'tool_name' in tool_data and 'parameters' in tool_data:
+                                                                    return [{
+                                                                        "name": tool_data["tool_name"],
+                                                                        "arguments": tool_data["parameters"]
+                                                                    }]
+                                                        except:
+                                                            pass
+                        # 继续尝试其他方法
+                        pass
+                    except Exception as robust_e:
+                        if self.debug_mode:
+                            debug_info.append(f"Robust fix exception: {str(robust_e)[:100]}")
                         # 继续尝试其他方法
                         pass
                 
@@ -3349,34 +3355,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             
             # Update tool_call object to reflect the correction
             tool_call["name"] = tool_name
-        
         # Check tool source from mapping table
         tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
-        
-        # 🔄 延迟加载MCP: 在以下情况下初始化MCP
-        # 1. 工具来源已标记为MCP工具
-        # 2. 工具不在tool_map中,且工具名称符合MCP命名规则(包含下划线或特定前缀)
-        should_init_mcp = False
-        if not self.mcp_initialization_attempted:
-            if tool_source in ['fastmcp', 'cli_mcp']:
-                # 情况1: 已知是MCP工具
-                should_init_mcp = True
-            elif tool_name not in self.tool_map:
-                # 情况2: 工具不存在,且可能是MCP工具(根据命名规则判断)
-                # MCP工具通常包含下划线,如: taobao_search, filesystem_read_file
-                # 排除已知的非MCP工具
-                known_regular_tools = {
-                    'list_files', 'read_file', 'write_file', 'edit_file', 'delete_file',
-                    'execute_bash', 'search_files', 'search_content', 'create_directory',
-                    'list_directory', 'move_file', 'copy_file'
-                }
-                if tool_name not in known_regular_tools and '_' in tool_name:
-                    should_init_mcp = True
-        
-        if should_init_mcp:
-            self._ensure_mcp_initialized()
-            # 重新检查工具来源,因为初始化后可能会改变
-            tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
         
         # Handle FastMCP tools
         if tool_source == 'fastmcp':
@@ -4604,9 +4584,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         Returns:
             Tuple of (content, tool_calls)
         """
-        # 🚀 确保LLM客户端已初始化（延迟加载）
-        self._setup_llm_client()
-        
         if self.use_chat_based_tools:
             return self._call_llm_with_chat_based_tools(messages, user_message, system_message)
         elif self.is_glm:
@@ -4651,7 +4628,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             ) as stream:
                                 content = ""
                                 hallucination_detected = False
-                                json_block_detected = False
                                 stream_error_occurred = False
                                 stream_error_message = ""
                                 
@@ -4667,7 +4643,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                         
                                         # Check for hallucination patterns - strict match (检查整个 content，避免打印幻觉字符串)
                                         hallucination_patterns = [
-                                            "LLM Called Following Tools in this round",
+                                            "**LLM Called Following Tools in this round",
                                             "**Tool Execution Results:**"
                                         ]
                                         hallucination_detected_flag = False
@@ -4698,97 +4674,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             break
                                         
                                         # 当缓冲区达到最小大小时，打印缓冲区内容
-                                        # 但需要检查是否已经包含了第二个```json（如果检测到工具调用）
                                         if len(buffer) >= min_buffer_size:
-                                            # 检查是否应该提前截断（如果已经检测到第二个工具调用）
-                                            if self._is_complete_json_tool_call(content):
-                                                # 找到第二个```json的位置
-                                                content_to_print = self._get_content_before_second_json(content)
-                                                # 只打印到第二个```json之前的内容
-                                                if len(content_to_print) < total_printed + len(buffer):
-                                                    # 需要截断
-                                                    to_print = content_to_print[total_printed:]
-                                                    if to_print:
-                                                        printer.write(to_print)
-                                                        total_printed = len(content_to_print)
-                                                    buffer = ""
-                                                    json_block_detected = True
-                                                    break
-                                            else:
-                                                # 正常打印
-                                                printer.write(buffer)
-                                                total_printed += len(buffer)
-                                                buffer = ""
-                                        
-                                        # 检测工具调用：检查是否包含完整的工具调用JSON（支持带```json标记和不带标记的纯JSON）
-                                        if self._has_complete_json_tool_call(content):
-                                            json_block_detected = True
-                                            # 在break之前，先打印buffer中工具调用之前的内容
-                                            # 找到第二个```json的位置，只打印到那里之前的内容
-                                            content_to_print = self._get_content_before_second_json(content)
-                                            # 计算需要打印的内容：从total_printed到content_to_print的末尾
-                                            remaining_to_print = content_to_print[total_printed:]
-                                            if remaining_to_print:
-                                                printer.write(remaining_to_print)
-                                                total_printed = len(content_to_print)
-                                            # 清空buffer，因为已经打印了所有应该打印的内容
+                                            # 正常打印
+                                            printer.write(buffer)
+                                            total_printed += len(buffer)
                                             buffer = ""
-                                            break
-                                        
-                                        # 额外检查：如果检测到纯JSON格式的工具调用（不带```json标记），也停止接收
-                                        if '"tool_name"' in content and '"parameters"' in content:
-                                            # 检查是否已经有一个完整的JSON对象
-                                            try:
-                                                brace_start = content.find('{')
-                                                if brace_start != -1:
-                                                    brace_count = 0
-                                                    in_string = False
-                                                    escape_next = False
-                                                    brace_end = -1
-                                                    
-                                                    for i in range(brace_start, len(content)):
-                                                        char = content[i]
-                                                        if escape_next:
-                                                            escape_next = False
-                                                            continue
-                                                        if char == '\\':
-                                                            escape_next = True
-                                                            continue
-                                                        if char == '"' and not escape_next:
-                                                            in_string = not in_string
-                                                            continue
-                                                        if not in_string:
-                                                            if char == '{':
-                                                                brace_count += 1
-                                                            elif char == '}':
-                                                                brace_count -= 1
-                                                                if brace_count == 0:
-                                                                    brace_end = i + 1
-                                                                    break
-                                                    
-                                                    if brace_end > brace_start:
-                                                        json_str = content[brace_start:brace_end]
-                                                        if '"tool_name"' in json_str and '"parameters"' in json_str:
-                                                            try:
-                                                                import json
-                                                                tool_data = json.loads(json_str)
-                                                                if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
-                                                                    json_block_detected = True
-                                                                    # 在break之前，先打印buffer中工具调用之前的内容
-                                                                    # 找到JSON对象开始的位置，只打印到那里之前的内容
-                                                                    text_before_json = content[:brace_start].rstrip()
-                                                                    # 计算需要打印的内容：从total_printed到brace_start之前
-                                                                    remaining_to_print = text_before_json[total_printed:]
-                                                                    if remaining_to_print:
-                                                                        printer.write(remaining_to_print)
-                                                                        total_printed = len(text_before_json)
-                                                                    # 清空buffer，因为已经打印了所有应该打印的内容
-                                                                    buffer = ""
-                                                                    break
-                                                            except:
-                                                                pass
-                                            except:
-                                                pass
                                 except Exception as e:
                                     # 捕获流式处理中的异常
                                     stream_error_occurred = True
@@ -4811,38 +4701,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                         # 如果没有接收到任何内容，重新抛出异常
                                         raise Exception(f"Anthropic API streaming failed: {stream_error_message}")
                                 
-                                # 处理剩余缓冲区和截断逻辑
-                                if json_block_detected:
-                                    # 检查是否有```json标记
-                                    has_json_block = '```json' in content
-                                    if has_json_block:
-                                        # 找到第二个```json的位置
-                                        content_to_print = self._get_content_before_second_json(content)
-                                        
-                                        # 打印缓冲区中还没打印的部分（但不超过第二个```json之前）
-                                        remaining_buffer = content_to_print[total_printed:]
-                                        if remaining_buffer:
-                                            printer.write(remaining_buffer)
-                                            total_printed = len(content_to_print)
-                                    else:
-                                        # 纯JSON格式：找到第一个JSON对象开始的位置
-                                        try:
-                                            brace_start = content.find('{')
-                                            if brace_start != -1:
-                                                text_before_json = content[:brace_start].rstrip()
-                                                remaining_buffer = text_before_json[total_printed:]
-                                                if remaining_buffer:
-                                                    printer.write(remaining_buffer)
-                                                    total_printed = len(text_before_json)
-                                        except:
-                                            pass
-                                    
-                                    # 不打印buffer中工具调用之后的内容
-                                    buffer = ""
-                                else:
-                                    # 没有检测到工具调用，打印剩余缓冲区
-                                    if buffer:
-                                        printer.write(buffer)
+                                # 打印剩余缓冲区
+                                if buffer:
+                                    printer.write(buffer)
                                 
                                 # If hallucination was detected, return early
                                 if hallucination_detected:
@@ -4857,90 +4718,27 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 # 也检查纯JSON格式（不带```json标记）
                                 has_plain_json_tool_call = ('"tool_name"' in content and '"parameters"' in content) and not has_json_block
                                 
-                                if json_block_detected:
-                                    # 检测到第二个工具调用，只解析第一个
-                                    # 确保用于解析的content包含完整的第一个工具调用
-                                    # 即使被截断了，也要确保第一个JSON块是完整的
-                                    if has_json_block:
-                                        content_for_parsing = self._ensure_first_json_block_complete(content)
-                                    else:
-                                        # 纯JSON格式：找到第一个完整的JSON对象并截断
-                                        try:
-                                            brace_start = content.find('{')
-                                            if brace_start != -1:
-                                                brace_count = 0
-                                                in_string = False
-                                                escape_next = False
-                                                brace_end = -1
-                                                
-                                                for i in range(brace_start, len(content)):
-                                                    char = content[i]
-                                                    if escape_next:
-                                                        escape_next = False
-                                                        continue
-                                                    if char == '\\':
-                                                        escape_next = True
-                                                        continue
-                                                    if char == '"' and not escape_next:
-                                                        in_string = not in_string
-                                                        continue
-                                                    if not in_string:
-                                                        if char == '{':
-                                                            brace_count += 1
-                                                        elif char == '}':
-                                                            brace_count -= 1
-                                                            if brace_count == 0:
-                                                                brace_end = i + 1
-                                                                break
-                                                
-                                                if brace_end > brace_start:
-                                                    content_for_parsing = content[:brace_end]
-                                                else:
-                                                    content_for_parsing = content
-                                            else:
-                                                content_for_parsing = content
-                                        except:
-                                            content_for_parsing = content
-                                    
-                                    # Parse tool calls from the accumulated content
-                                    tool_calls = self.parse_tool_calls(content_for_parsing)
-                                    
-                                    # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
-                                    if tool_calls and len(tool_calls) > 1:
-                                        tool_calls = [tool_calls[0]]
-                                    
-                                    # Convert tool calls to standard format for compatibility
-                                    standardized_tool_calls = []
-                                    for tool_call in tool_calls:
-                                        if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
-                                            standardized_tool_calls.append({
-                                                "name": tool_call["name"],
-                                                "input": tool_call["arguments"]  # Use "input" format like Anthropic
-                                            })
-                                    
-                                    # 调试：检查解析结果
-                                    if not standardized_tool_calls:
-                                        print_current(f"⚠️ Warning: After detecting multiple tool calls, failed to parse any valid tool call. Content length: {len(content_for_parsing)}")
-                                        print_current(f"Content for parsing: {content_for_parsing[:500]}...")
-                                    
-                                    # 添加换行（仅限chat接口）
-                                    if not content_for_parsing.endswith('\n'):
-                                        content_for_parsing += '\n'
-                                    return content_for_parsing, standardized_tool_calls
-                                elif has_json_block or has_plain_json_tool_call:
-                                    # 只有一个工具调用，正常解析并返回
+                                if has_json_block or has_plain_json_tool_call:
+                                    # 🎯 关键修复：只解析第一个工具调用，符合"每轮只能调用一个工具"的规则
                                     # 确保JSON块完整（如果使用```json标记）
                                     if has_json_block:
-                                        content_for_parsing = self._ensure_first_json_block_complete(content)
+                                        # 只获取第一个JSON块之前的内容，忽略后续的JSON块
+                                        content_for_parsing = self._get_content_before_second_json(content)
                                     else:
-                                        # 纯JSON格式，直接使用content
-                                        content_for_parsing = content
+                                        # 纯JSON格式，直接使用content（但也要检查是否有多个JSON对象）
+                                        # 查找第一个完整的JSON对象
+                                        first_json_end = content.find('}\n```', content.find('"tool_name"'))
+                                        if first_json_end != -1:
+                                            content_for_parsing = content[:first_json_end + 1]
+                                        else:
+                                            content_for_parsing = content
                                     
-                                    # Parse tool calls from the accumulated content
+                                    # Parse tool calls from the accumulated content (只解析第一个块)
                                     tool_calls = self.parse_tool_calls(content_for_parsing)
                                     
-                                    # 只保留第一个工具调用
+                                    # 只保留第一个工具调用（双重保险）
                                     if tool_calls and len(tool_calls) > 1:
+                                        print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
                                         tool_calls = [tool_calls[0]]
                                     
                                     # Convert tool calls to standard format for compatibility
@@ -4982,9 +4780,30 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         )
                         
                         content = ""
+                        thinking = ""
+                        
+                        # Extract thinking and content from Anthropic response
+                        if self.enable_thinking:
+                            # Check if response has thinking attribute (for reasoning models)
+                            thinking = getattr(response, 'thinking', None) or ""
+                            
+                            # Also check for thinking in content blocks
+                            for content_block in response.content:
+                                if hasattr(content_block, 'type'):
+                                    if content_block.type == "thinking":
+                                        if hasattr(content_block, 'text'):
+                                            thinking += content_block.text
+                                        elif hasattr(content_block, 'thinking'):
+                                            thinking += content_block.thinking
+                            
+                        # Extract text content
                         for content_block in response.content:
                             if content_block.type == "text":
                                 content += content_block.text
+                        
+                        # Combine thinking and content if thinking exists
+                        if self.enable_thinking and thinking:
+                            content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                         # Check for hallucination patterns in non-streaming response - strict match
                         if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
@@ -5017,7 +4836,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
 
                             content = ""
                             hallucination_detected = False
-                            json_block_detected = False
                             stream_error_occurred = False
                             stream_error_message = ""
                             
@@ -5037,7 +4855,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             # 在缓冲区逻辑中统一检测幻觉模式和工具调用
                                             # 检测幻觉模式（优先于工具调用检测）
                                             # 严格匹配两个幻觉标志：
-                                            # 1. "LLM Called Following Tools in this round" (8个单词)
+                                            # 1. "**LLM Called Following Tools in this round"
                                             # 2. "**Tool Execution Results:**"
                                             hallucination_patterns = [
                                                 "LLM Called Following Tools in this round",
@@ -5065,21 +4883,30 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                 buffer = ""
                                                 break
                                             
-                                            # 检测工具调用：检查是否已经包含了第二个```json
-                                            if self._is_complete_json_tool_call(content):
-                                                # 找到第二个```json的位置
-                                                content_to_print = self._get_content_before_second_json(content)
-                                                # 打印到第二个```json之前的内容（如果还有未打印的）
-                                                if len(content_to_print) > total_printed:
-                                                    remaining_to_print = content_to_print[total_printed:]
-                                                    if remaining_to_print:
-                                                        printer.write(remaining_to_print)
-                                                    total_printed = len(content_to_print)
-                                                # 更新content为截断后的内容
-                                                content = content_to_print
-                                                buffer = ""
-                                                json_block_detected = True
-                                                break
+                                            # 🎯 检测是否有第二个工具调用（在streaming过程中停止）
+                                            if self._has_complete_json_tool_call(content):
+                                                # 检查是否真的有多个工具调用
+                                                try:
+                                                    temp_tool_calls = self.parse_tool_calls(content)
+                                                    if temp_tool_calls and len(temp_tool_calls) > 1:
+                                                        print_debug("\n🚨 检测到多个工具调用，停止生成")
+                                                        # 截断到第一个工具调用结束的位置
+                                                        # 先找到第一个工具调用的结束位置
+                                                        if '```json' in content:
+                                                            first_json_start = content.find('```json')
+                                                            first_json_end = content.find('```', first_json_start + 7)
+                                                            if first_json_end != -1:
+                                                                # 截断到第一个```闭合标记之后
+                                                                first_tool_end = first_json_end + 3
+                                                                content = content[:first_tool_end]
+                                                                # 确保打印到第一个工具调用为止
+                                                                remaining_to_print = content[total_printed:]
+                                                                if remaining_to_print:
+                                                                    printer.write(remaining_to_print)
+                                                        buffer = ""
+                                                        break
+                                                except Exception as e:
+                                                    print_debug(f"⚠️ 检测多工具调用时出错: {e}")
                                             
                                             # 当缓冲区达到最小大小时，打印缓冲区内容
                                             if len(buffer) >= min_buffer_size:
@@ -5111,11 +4938,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                     # 如果没有接收到任何内容，重新抛出异常
                                     raise Exception(f"OpenAI API streaming failed: {stream_error_message}")
                             
-                            # 处理剩余缓冲区（如果循环内没有检测到特殊模式）
-                            if not hallucination_detected and not json_block_detected:
-                                # 没有检测到幻觉或工具调用，打印剩余缓冲区
-                                if buffer:
-                                    printer.write(buffer)
+                            # 打印剩余缓冲区
+                            if buffer:
+                                printer.write(buffer)
                             
                             # If hallucination was detected, return early
                             if hallucination_detected:
@@ -5127,51 +4952,30 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             # 检查是否有工具调用（即使只有一个）
                             # 查找第一个```json块
                             has_json_block = '```json' in content
+                            # 也检查纯JSON格式（不带```json标记）
+                            has_plain_json_tool_call = ('"tool_name"' in content and '"parameters"' in content) and not has_json_block
                             
-                            if json_block_detected:
-                                # 检测到第二个工具调用，只解析第一个
-                                # content已经在循环内部被截断到第二个JSON块之前
-                                # 确保用于解析的content包含完整的第一个工具调用
-                                content_for_parsing = self._ensure_first_json_block_complete(content)
-                                
-                                # Parse tool calls from the accumulated content
-                                tool_calls = self.parse_tool_calls(content_for_parsing)
-                                
-                                # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
-                                if tool_calls and len(tool_calls) > 1:
-                                    tool_calls = [tool_calls[0]]
-                                
-                                # Convert tool calls to standard format for compatibility
-                                standardized_tool_calls = []
-                                for tool_call in tool_calls:
-                                    if isinstance(tool_call, dict) and "name" in tool_call and "arguments" in tool_call:
-                                        standardized_tool_calls.append({
-                                            "name": tool_call["name"],
-                                            "input": tool_call["arguments"]  # Use "input" format like Anthropic
-                                        })
+                            if has_json_block or has_plain_json_tool_call:
+                                # 🎯 关键修复：只解析第一个工具调用，符合"每轮只能调用一个工具"的规则
+                                # 确保JSON块完整（如果使用```json标记）
+                                if has_json_block:
+                                    # 只获取第一个JSON块之前的内容，忽略后续的JSON块
+                                    content_for_parsing = self._get_content_before_second_json(content)
+                                else:
+                                    # 纯JSON格式，直接使用content（但也要检查是否有多个JSON对象）
+                                    # 查找第一个完整的JSON对象
+                                    first_json_end = content.find('}\n```', content.find('"tool_name"'))
+                                    if first_json_end != -1:
+                                        content_for_parsing = content[:first_json_end + 1]
                                     else:
-                                        print_current(f"⚠️ Warning: Tool call format invalid: {tool_call}")
+                                        content_for_parsing = content
                                 
-                                # 调试：检查转换结果
-                                if not standardized_tool_calls and tool_calls:
-                                    print_current(f"⚠️ Warning: Failed to convert tool calls to standard format. Parsed tool_calls: {tool_calls}")
-                                    print_current(f"Content for parsing length: {len(content_for_parsing)}")
-                                    #print_current(f"Content snippet: {content_for_parsing[:500]}...")
-                                
-                                # 添加换行（仅限chat接口）
-                                if not content_for_parsing.endswith('\n'):
-                                    content_for_parsing += '\n'
-                                return content_for_parsing, standardized_tool_calls
-                            elif has_json_block:
-                                # 只有一个工具调用，正常解析并返回
-                                # 确保JSON块完整
-                                content_for_parsing = self._ensure_first_json_block_complete(content)
-                                
-                                # Parse tool calls from the accumulated content
+                                # Parse tool calls from the accumulated content (只解析第一个块)
                                 tool_calls = self.parse_tool_calls(content_for_parsing)
                                 
-                                # 只保留第一个工具调用
+                                # 只保留第一个工具调用（双重保险）
                                 if tool_calls and len(tool_calls) > 1:
+                                    print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
                                     tool_calls = [tool_calls[0]]
                                 
                                 # Convert tool calls to standard format for compatibility
@@ -5275,10 +5079,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     content = message.content or ""
 
                     # Handle thinking field for OpenAI o1 models and other reasoning models
-                    thinking = getattr(message, 'thinking', None)
-                    if thinking:
-                        # Combine thinking and content with clear separation
-                        content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
+                    if self.enable_thinking:
+                        thinking = getattr(message, 'thinking', None)
+                        if thinking:
+                            # Combine thinking and content with clear separation
+                            content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                     # Check for hallucination patterns in non-streaming response - strict match
                     if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
@@ -5288,11 +5093,19 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             content += '\n'
                         return content, []
 
-                # Parse tool calls from the response content
-                tool_calls = self.parse_tool_calls(content)
+                # 🎯 关键修复：只解析第一个工具调用，符合"每轮只能调用一个工具"的规则
+                # 如果内容包含多个JSON块，只解析第一个块
+                if '```json' in content:
+                    content_for_parsing = self._get_content_before_second_json(content)
+                else:
+                    content_for_parsing = content
                 
-                # 🎯 关键修改：只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
+                # Parse tool calls from the response content (只解析第一个块)
+                tool_calls = self.parse_tool_calls(content_for_parsing)
+                
+                # 只保留第一个工具调用（双重保险）
                 if tool_calls and len(tool_calls) > 1:
+                    print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
                     tool_calls = [tool_calls[0]]
                 
                 # Convert tool calls to standard format for compatibility
@@ -5848,10 +5661,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     content = message.content or ""
 
                     # Handle thinking field for OpenAI o1 models and other reasoning models
-                    thinking = getattr(message, 'thinking', None)
-                    if thinking:
-                        # Combine thinking and content with clear separation
-                        content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
+                    if self.enable_thinking:
+                        thinking = getattr(message, 'thinking', None)
+                        if thinking:
+                            # Combine thinking and content with clear separation
+                            content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                     # Check for hallucination patterns in non-streaming response - strict match
                     if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
@@ -6297,18 +6111,36 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     )
                     
                     content = ""
+                    thinking = ""
                     tool_calls = []
+                    
+                    # Extract thinking and content from Anthropic response
+                    if self.enable_thinking:
+                        # Check if response has thinking attribute (for reasoning models)
+                        thinking = getattr(response, 'thinking', None) or ""
                     
                     # Extract content and tool use blocks
                     for content_block in response.content:
-                        if content_block.type == "text":
-                            content += content_block.text
-                        elif content_block.type == "tool_use":
-                            tool_calls.append({
-                                "id": content_block.id,
-                                "name": content_block.name,
-                                "input": content_block.input
-                            })
+                        if hasattr(content_block, 'type'):
+                            if content_block.type == "thinking":
+                                # Extract thinking content from thinking blocks
+                                if self.enable_thinking:
+                                    if hasattr(content_block, 'text'):
+                                        thinking += content_block.text
+                                    elif hasattr(content_block, 'thinking'):
+                                        thinking += content_block.thinking
+                            elif content_block.type == "text":
+                                content += content_block.text
+                            elif content_block.type == "tool_use":
+                                tool_calls.append({
+                                    "id": content_block.id,
+                                    "name": content_block.name,
+                                    "input": content_block.input
+                                })
+                    
+                    # Combine thinking and content if thinking exists
+                    if self.enable_thinking and thinking:
+                        content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                     # Check for hallucination patterns in non-streaming response - strict match
                     if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
@@ -6534,60 +6366,45 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         try:
             import json
             
-            # Use default path if none provided
-            if json_file_path is None:
-                json_file_path = os.path.join(self.prompts_folder, "tool_prompt.json")
-            
-            # 🚀 优化：使用文件修改时间检测缓存是否有效
+            # Check cache first (unless force_reload is True)
             if not force_reload and self._tool_definitions_cache is not None:
-                # 检查所有相关文件的修改时间
-                cache_valid = True
-                for cached_file, cached_mtime in getattr(self, '_tool_defs_file_mtimes', {}).items():
-                    if os.path.exists(cached_file):
-                        current_mtime = os.path.getmtime(cached_file)
-                        if current_mtime != cached_mtime:
-                            cache_valid = False
-                            break
-                    else:
-                        cache_valid = False
-                        break
-                
-                if cache_valid:
-                    print_debug("✅ 工具定义缓存命中（文件未修改）")
+                # Check if cache is still valid (within 60 seconds)
+                current_time = time.time()
+                if (self._tool_definitions_cache_timestamp is not None and 
+                    current_time - self._tool_definitions_cache_timestamp < 60):
+                    # Using cached tool definitions (avoiding repeated FastMCP loading)
                     return self._tool_definitions_cache
-            
-            # 缓存未命中或强制重新加载，记录文件修改时间
-            if not hasattr(self, '_tool_defs_file_mtimes'):
-                self._tool_defs_file_mtimes = {}
             
             # Load basic tool definitions
             tool_definitions = {}
+            
+            # Use default path if none provided
+            if json_file_path is None:
+                json_file_path = os.path.join(self.prompts_folder, "tool_prompt.json")
             
             # Try to load from the provided path
             if os.path.exists(json_file_path):
                 with open(json_file_path, 'r', encoding='utf-8') as f:
                     tool_definitions = json.load(f)
-                    self._tool_defs_file_mtimes[json_file_path] = os.path.getmtime(json_file_path)
-                    print_debug(f"📝 加载工具定义: {json_file_path}")
+                    # print_current(f"✅ Loaded basic tool definitions from {json_file_path}")
             else:
+                # print_current(f"⚠️  Tool definitions file not found: {json_file_path}")
                 # No fallback definitions available
                 tool_definitions = {}
-                print_debug(f"⚠️ 工具定义文件不存在: {json_file_path}")
             
-            # Load memory tool definitions (only if long-term memory is enabled)
-            if self._is_long_term_memory_enabled():
-                memory_tools_file = os.path.join(self.prompts_folder, "memory_tools.json")
-                if os.path.exists(memory_tools_file):
-                    try:
-                        with open(memory_tools_file, 'r', encoding='utf-8') as f:
-                            memory_tools = json.load(f)
-                            tool_definitions.update(memory_tools)
-                            self._tool_defs_file_mtimes[memory_tools_file] = os.path.getmtime(memory_tools_file)
-                            print_debug("✅ Long-term memory tool definitions loaded")
-                    except Exception as e:
-                        print_current(f"⚠️ Error loading memory tools: {e}")
+            # Load memory tool definitions
+            memory_tools_file = os.path.join(self.prompts_folder, "memory_tools.json")
+            if os.path.exists(memory_tools_file):
+                try:
+                    with open(memory_tools_file, 'r', encoding='utf-8') as f:
+                        memory_tools = json.load(f)
+                        tool_definitions.update(memory_tools)
+                        # print_current(f"✅ Loaded memory tool definitions from {memory_tools_file}")
+                except Exception as e:
+                    print_current(f"⚠️ Error loading memory tools: {e}")
             else:
-                print_debug("ℹ️ Long-term memory is disabled, skipping memory tool definitions")
+                # print_current(f"⚠️ Memory tools file not found: {memory_tools_file}")
+                pass
             
             # Check if multi-agent mode is enabled
             multi_agent_enabled = self._is_multi_agent_enabled()
@@ -6599,14 +6416,21 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     with open(multiagent_file_path, 'r', encoding='utf-8') as f:
                         multiagent_tools = json.load(f)
                         tool_definitions.update(multiagent_tools)
-                        self._tool_defs_file_mtimes[multiagent_file_path] = os.path.getmtime(multiagent_file_path)
+                        # print_current(f"✅ Loaded multi-agent tool definitions from {multiagent_file_path}")
+                else:
+                    # print_current(f"⚠️  Multi-agent tool definitions file not found: {multiagent_file_path}")
+                    pass
+            else:
+                # print_current("🔒 Multi-agent mode disabled - skipping multi-agent tool definitions")
+                pass
             
             # 🔧 NEW: Load FastMCP tool definitions dynamically
-            # 🚀 优化：只在direct_mcp_client已初始化时才加载FastMCP工具定义
             try:
-                # 检查MCP客户端是否已初始化
-                if self.direct_mcp_client is not None:
-                    fastmcp_tools = self.direct_mcp_client.get_available_tools()
+                from tools.fastmcp_wrapper import get_fastmcp_wrapper
+
+                fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
+                if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
+                    fastmcp_tools = fastmcp_wrapper.get_available_tools()
                     if fastmcp_tools:
                         # Only print loading info on first load or force reload
                         should_print = force_reload or not hasattr(self, '_fastmcp_loaded_before')
@@ -6616,8 +6440,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         
                         for tool_name in fastmcp_tools:
                             try:
-                                # Get tool definition from direct MCP client
-                                tool_def = self.direct_mcp_client.get_tool_definition(tool_name)
+                                # Get tool definition from FastMCP wrapper
+                                tool_def = fastmcp_wrapper.get_tool_definition(tool_name)
                                 if tool_def:
                                     # Convert to the format expected by our tool definitions
                                     tool_definitions[tool_name] = {
@@ -6640,10 +6464,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         # Mark that we've loaded FastMCP tools before
                         self._fastmcp_loaded_before = True
                 else:
-                    # If FastMCP is not initialized yet, skip loading (will be loaded when MCP is actually used)
-                    if not force_reload and not hasattr(self, '_fastmcp_skip_warned'):
-                        print_debug("ℹ️ FastMCP not initialized yet, skipping tool definitions (will load when MCP is used)")
-                        self._fastmcp_skip_warned = True
+                    # If FastMCP is not initialized yet, invalidate cache to force reload later
+                    if not force_reload:
+                        print_debug("⚠️ FastMCP not initialized yet, will retry on next tool definition load")
+                        self._tool_definitions_cache = None
+                        self._tool_definitions_cache_timestamp = None
                     
             except Exception as e:
                 print_debug(f"⚠️ Failed to load FastMCP tool definitions: {e}")
@@ -6777,36 +6602,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             print_current(f"⚠️  Error checking multi-agent configuration: {e}")
             # Default to True if configuration cannot be read
             return True
-    
-    def _is_long_term_memory_enabled(self) -> bool:
-        """
-        Check if long-term memory is enabled from configuration or environment variable.
-        
-        Returns:
-            True if long-term memory is enabled, False otherwise
-        """
-        # First check environment variable (GUI setting takes precedence)
-        env_value = os.environ.get('AGIBOT_LONG_TERM_MEMORY', '').lower()
-        if env_value:
-            return env_value in ('true', '1', 'yes', 'on')
-        
-        # Then check config file
-        try:
-            from config_loader import get_config_value
-            long_term_memory_config = get_config_value("enable_long_term_memory", "False")
-            
-            # Handle different possible values
-            if isinstance(long_term_memory_config, str):
-                return long_term_memory_config.lower() in ["true", "1", "yes", "on"]
-            elif isinstance(long_term_memory_config, bool):
-                return long_term_memory_config
-            else:
-                return bool(long_term_memory_config)
-                
-        except Exception as e:
-            print_debug(f"⚠️  Error checking long-term memory configuration: {e}")
-            # Default to False if configuration cannot be read
-            return False
     
     # Tool prompt generation function moved to utils/parse.py
     
@@ -6959,10 +6754,33 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         if execution_round == 1:
             processed_prompt, image_data_list = self._parse_image_tags(user_prompt)
         
+        # Read unread inbox messages and merge into user requirement
+        inbox_messages_content = self._get_and_read_inbox_messages()
+        
         message_parts = []
         
-        # 1. Pure user requirement (first)
-        message_parts.append(processed_prompt)
+        # 1. Pure user requirement (first) - merge with inbox messages
+        # IMPORTANT: Inbox messages should be prioritized and clearly marked as NEW incoming messages
+        if inbox_messages_content:
+            # If there are inbox messages, display them prominently as NEW INCOMING MESSAGES
+            message_parts.append("=" * 60)
+            message_parts.append("🔔 URGENT: NEW MESSAGES RECEIVED FROM INBOX!")
+            message_parts.append("=" * 60)
+            message_parts.append("⚠️ ATTENTION: You have just received the following messages.")
+            message_parts.append("⚠️ These are REAL-TIME messages that require your IMMEDIATE attention and action.")
+            message_parts.append("")
+            message_parts.append(inbox_messages_content)
+            message_parts.append("")
+            message_parts.append("=" * 60)
+            message_parts.append("👆 END OF NEW MESSAGES - Please respond to the above messages immediately!")
+            message_parts.append("=" * 60)
+            message_parts.append("")
+            # Original prompt follows as additional context
+            if processed_prompt.strip():
+                message_parts.append("Original Task Context:")
+                message_parts.append(processed_prompt)
+        else:
+            message_parts.append(processed_prompt)
         message_parts.append("")  # Empty line for separation
         
         # 2. Load and add rules and tools prompts
@@ -6981,13 +6799,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             message_parts.append(prompt_components['system_environment'])
             message_parts.append("")
         
-        # 3.5. Mailbox status information (if multi-agent mode is enabled)
-        mailbox_status = self._get_mailbox_status_info()
-        if mailbox_status:
-            message_parts.append("---")
-            message_parts.append("")
-            message_parts.append(mailbox_status)
-            message_parts.append("")
+        # 3.5. Mailbox status information removed - inbox messages are now merged into user requirement above
         
         # 4. Workspace information
         if prompt_components['workspace_info']:
@@ -7007,14 +6819,13 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             # 🔧 优化：计算历史记录长度时，只计算result字段，因为prompt字段只在第一轮存在
             total_history_length = sum(len(str(record.get("result", ""))) for record in processed_history)
             
-            # Check if we need to trim the history when it's too long
-            max_history_length = 50000  # Default maximum history length
-            if total_history_length > max_history_length:
-                print_system(f"📊 History length ({total_history_length} chars) exceeds maximum ({max_history_length} chars)")
+            # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
+            if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
+                print_system(f"📊 History length ({total_history_length} chars) exceeds trigger length ({self.summary_trigger_length} chars)")
                 print_system("⚠️ History is very long. Using recent history subset to keep context manageable.")
                 
                 # Use recent history subset as fallback when history is still too long
-                recent_history = self._get_recent_history_subset(processed_history, max_length=max_history_length // 2)
+                recent_history = self._get_recent_history_subset(processed_history, max_length=self.summary_trigger_length // 2)
                 self._add_full_history_to_message(message_parts, recent_history)
                 print_system(f"📋 Using recent history subset: {len(recent_history)} records instead of {len(processed_history)} records")
             else:
@@ -7025,6 +6836,16 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         message_parts.append("---")
         message_parts.append("")
         message_parts.append("## Execution Instructions:")
+        
+        # 🔧 CRITICAL: Remind about inbox messages if they exist
+        if inbox_messages_content:
+            message_parts.append("")
+            message_parts.append("CRITICAL REMINDER")
+            message_parts.append("🔔 You have received NEW MESSAGES in your inbox!")
+            message_parts.append("📨 The messages contain REAL-TIME information that requires your IMMEDIATE action.")
+            message_parts.append("⚠️ Do NOT ignore these messages! Please respond to them in this round immediately.")
+            message_parts.append("END OF REMINDER")
+            message_parts.append("")
         
         # Check if we're in infinite loop mode
         infinite_loop_mode = (self.subtask_loops == -1)
@@ -7063,72 +6884,101 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         
         return final_message
 
-    def _get_mailbox_status_info(self) -> Optional[str]:
+    def _get_and_read_inbox_messages(self) -> Optional[str]:
         """
-        Get mailbox status information for the current agent.
+        Get unread inbox messages content and mark them as read.
+        Returns formatted message content string, or None if no messages.
         
         Returns:
-            Mailbox status information string if there are unread messages, None otherwise
+            Formatted message content string if there are unread messages, None otherwise
         """
         try:
-            # Only check mailbox status in multi-agent mode
+            # Only check mailbox in multi-agent mode
             if not self.multi_agent:
+                if self.debug_mode:
+                    print_current(f"⚠️ [DEBUG] multi_agent mode is disabled, skipping inbox check")
                 return None
             
             # Get current agent ID
             from src.tools.agent_context import get_current_agent_id
             current_agent_id = get_current_agent_id()
+            
+            # If no agent_id is set, treat as manager
             if not current_agent_id:
-                return None
+                current_agent_id = "manager"
+            
+            if self.debug_mode:
+                print_current(f"🔍 [DEBUG] Current agent ID: {current_agent_id}")
             
             # Get message router and mailbox
             from src.tools.message_system import get_message_router
             router = get_message_router(self.workspace_dir, cleanup_on_init=False)
             if not router:
+                if self.debug_mode:
+                    print_current(f"⚠️ [DEBUG] Failed to get message router")
                 return None
             
             mailbox = router.get_mailbox(current_agent_id)
             if not mailbox:
+                # Try to register the agent
+                try:
+                    mailbox = router.register_agent(current_agent_id)
+                    if not mailbox:
+                        if self.debug_mode:
+                            print_current(f"⚠️ [DEBUG] Failed to get mailbox for agent {current_agent_id}")
+                        return None
+                except Exception as e:
+                    if self.debug_mode:
+                        import traceback
+                        print_current(f"⚠️ [DEBUG] Exception while registering mailbox for {current_agent_id}: {e}")
+                        print_current(f"⚠️ [DEBUG] Traceback: {traceback.format_exc()}")
+                    return None
+            
+            # Get unread messages
+            unread_messages = mailbox.get_unread_messages()
+            if self.debug_mode:
+                print_current(f"🔍 [DEBUG] Found {len(unread_messages) if unread_messages else 0} unread messages")
+            if not unread_messages:
                 return None
             
-            # Get unread messages count
-            unread_messages = mailbox.get_unread_messages()
-            unread_count = len(unread_messages)
-            
-            if unread_count > 0:
-                # Format mailbox status information
-                status_info = f"## 📬 Mailbox Status\n"
-                status_info += f"**Agent {current_agent_id}** has **{unread_count} unread message(s)** in mailbox.\n\n"
-                status_info += f"💡 **Action Required**: You can use the `read_received_messages` tool to read these messages.\n"
-                status_info += f"   - Use `read_received_messages(include_read=False)` to read only unread messages\n"
-                status_info += f"   - Use `read_received_messages(include_read=True)` to read all messages (including already read ones)\n\n"
-                
-                # Add priority information if available
-                if unread_messages:
-                    priority_counts = {}
-                    for msg in unread_messages:
-                        if hasattr(msg, 'priority') and hasattr(msg.priority, 'value'):
-                            priority = msg.priority.value
+            # Format messages content - extract only the text content
+            message_contents = []
+            for i, message in enumerate(unread_messages, 1):
+                # Extract content text
+                content = message.content
+                if isinstance(content, dict):
+                    # Try common content fields
+                    text_content = content.get('text') or content.get('message') or content.get('content')
+                    if text_content:
+                        # Format message based on sender - user messages are primary requirements
+                        if message.sender_id == "user":
+                            message_contents.append(f"**USER REQUIREMENT {i}:** {text_content}")
                         else:
-                            priority = 'normal'
-                        priority_counts[priority] = priority_counts.get(priority, 0) + 1
-                    
-                    if priority_counts:
-                        status_info += f"📊 **Message Priority Breakdown**:\n"
-                        for priority, count in sorted(priority_counts.items(), reverse=True):
-                            # Ensure priority is a string before calling upper()
-                            priority_str = str(priority).upper()
-                            status_info += f"   - {priority_str}: {count} message(s)\n"
-                        status_info += "\n"
+                            message_contents.append(f"**Message {i} from {message.sender_id}:** {text_content}")
+                    else:
+                        # Fallback: format the whole content dict
+                        message_contents.append(f"**Message {i} from {message.sender_id}:** {str(content)}")
+                else:
+                    message_contents.append(f"**Message {i} from {message.sender_id}:** {str(content)}")
                 
-                return status_info
+                # Mark message as read
+                try:
+                    mailbox.mark_as_read(message.message_id)
+                    print_current(f"✅ Marked inbox message {message.message_id} as read")
+                except Exception as e:
+                    print_current(f"⚠️ Warning: Could not mark message {message.message_id} as read: {e}")
+            
+            if message_contents:
+                formatted_content = "\n\n".join(message_contents)
+                print_current(f"📬 Read {len(unread_messages)} unread message(s) from inbox and merged into user requirement")
+                return formatted_content
             
             return None
             
         except Exception as e:
             # Silently fail to avoid disrupting normal operation
             if self.debug_mode:
-                print_current(f"⚠️ Error checking mailbox status: {e}")
+                print_current(f"⚠️ Error reading inbox messages: {e}")
             return None
 
     def enhanced_tool_help(self, tool_name: str, **kwargs) -> Dict[str, Any]:
@@ -7285,7 +7135,9 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         try:
             # Log detailed parameters to file
             detailed_params = str(params)
-            print_debug(f"Tool {tool_name} with parameters: {detailed_params}")
+            from datetime import datetime
+            timestamp = datetime.now().isoformat()
+            print_debug(f"Tool {tool_name} at {timestamp} with parameters: {detailed_params}")
             print_debug(f"   Working directory: {os.getcwd()}")
             print_debug(f"   Status: Executing...")
             
@@ -7649,10 +7501,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 vision_analysis = message.content or ""
 
                 # Handle thinking field for OpenAI o1 models and other reasoning models
-                thinking = getattr(message, 'thinking', None)
-                if thinking:
-                    # Combine thinking and content with clear separation
-                    vision_analysis = f"## Thinking Process\n\n{thinking}\n\n## Analysis Result\n\n{vision_analysis}"
+                if self.enable_thinking:
+                    thinking = getattr(message, 'thinking', None)
+                    if thinking:
+                        # Combine thinking and content with clear separation
+                        vision_analysis = f"## Thinking Process\n\n{thinking}\n\n## Analysis Result\n\n{vision_analysis}"
             
             print_current(f"✅ Vision analysis completed: {len(vision_analysis)} characters")
             return f"## Vision Analysis Results:\n\n{vision_analysis}"

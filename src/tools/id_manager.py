@@ -36,7 +36,7 @@ class IDManager:
         
         # Counters
         self._agent_counter = 1
-        self._message_counter = 1
+        self._message_counter = 0
         
         # Thread locks
         self._agent_lock = threading.Lock()
@@ -53,14 +53,14 @@ class IDManager:
                     state = json.load(f)
                 
                 self._agent_counter = state.get('agent_counter', 1)
-                self._message_counter = state.get('message_counter', 1)
+                self._message_counter = state.get('message_counter', 0)
                 
                 print_current(f"📊 ID state loaded - Agent: {self._agent_counter}, Message: {self._message_counter}")
         except Exception as e:
             print_current(f"⚠️ Unable to load ID state file: {e}")
             # Use default values
             self._agent_counter = 1
-            self._message_counter = 1
+            self._message_counter = 0
     
     def _save_state(self):
         """Save ID state"""
@@ -102,13 +102,12 @@ class IDManager:
             'message_counter': self._message_counter
         }
     
-    def reset_counters(self, agent_counter: int = 1, message_counter: int = 1):
+    def reset_counters(self, agent_counter: int = 1, message_counter: int = 0):
         """Reset counters (use with caution)"""
         with self._agent_lock, self._message_lock:
             self._agent_counter = agent_counter
             self._message_counter = message_counter
             self._save_state()
-            print_current(f"🔄 ID counters reset - Agent: {agent_counter}, Message: {message_counter}")
 
 
 # Global instance getter function

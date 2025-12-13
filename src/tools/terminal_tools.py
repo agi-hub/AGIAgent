@@ -723,8 +723,8 @@ class TerminalTools:
                     # Use 2 minutes (120 seconds) timeout when no output
                     timeout_inactive = 120
                     # Keep max_total_time at default or use a reasonable value
-                    if max_total_time < 600:
-                        max_total_time = 600  # 10 minutes maximum execution time
+                    if max_total_time < 3000:
+                        max_total_time = 3000  # 50 minutes maximum execution time
                     print_current(f"⏱️  Detected pip install command, using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                     
                     # Ensure pip uses unbuffered output for better visibility

@@ -267,5 +267,22 @@
       },
       "required": ["query"]
     }
+  },
+  "idle": {
+    "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'task_completed', 'no_action_needed')"
+        },
+        "sleep": {
+          "type": "number",
+          "description": "Sleep time in seconds (default: 10). Set to 0 to skip sleep. Set to -1 for infinite sleep mode (only wakes up when user sends a message) - ONLY use this when manager has completed all tasks and there are no other active agents."
+        }
+      },
+      "required": []
+    }
   }
 } 

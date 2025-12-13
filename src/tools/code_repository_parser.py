@@ -121,9 +121,10 @@ def _ensure_jieba_loaded():
             if JIEBA_ENABLED:
                 print_debug("⏳ 首次使用中文分词，正在加载 jieba...")
                 
-                # Suppress jieba initialization output
+                # Suppress jieba initialization output and pkg_resources deprecation warning
                 import warnings
                 warnings.filterwarnings('ignore', category=UserWarning, module='jieba')
+                warnings.filterwarnings('ignore', category=UserWarning, message='.*pkg_resources.*')
                 
                 # Redirect jieba stderr to suppress prints
                 import contextlib

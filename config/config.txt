@@ -105,6 +105,14 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # Default: True (use standard tool calling when available)
 Tool_calling_format=False
 
+# Thinking support configuration
+# Controls whether to enable and display thinking process from reasoning models (e.g., OpenAI o1, Claude Sonnet 4.5)
+# When enabled (True), the thinking field from model responses will be extracted and displayed
+# When disabled (False), thinking content will be ignored even if the model returns it
+# This applies to both standard tool calling and chat-based tool calling formats
+# Default: True (enabled for models that support thinking)
+enable_thinking=True
+
 # Truncation Length Configuration
 # These configurations control the length of information returned by tool calls to the large model,
 # preventing overly long content from affecting performance
@@ -123,7 +131,7 @@ enable_debug_system=False
 # - Tool parameter displays
 # - Search result summaries
 # - Output limits in debug logs
-truncation_length=20000
+truncation_length=100000
 
 # Web content truncation length, default 50000 characters, uses 5x truncation_length if not set
 # Used for truncating large-capacity content like web search results
@@ -139,6 +147,81 @@ web_content_truncation_length=20000
 # 2. If using models with large context windows (>128K), you can appropriately increase truncation values
 # 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
 # 4. Changes to configuration require program restart to take effect
+
+
+# History Summarization Configuration
+# Controls whether to use AI to summarize conversation history to reduce context length
+# When enabled, conversation history is summarized using the large model when it exceeds trigger length
+# This replaces truncation with intelligent summarization to maintain important context
+summary_history=False
+
+# Maximum length for conversation history summary (in characters)
+# Used when summary_history=True to control the length of the generated summary
+# Recommended values: 3000-8000 characters
+# Lower values save more context but may lose some detail
+# Higher values preserve more information but use more context
+summary_max_length=10000
+
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+summary_trigger_length=100000
+
+# History summarization usage recommendations:
+# 1. Enable summary_history=True for long conversation sessions to control context length
+# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
+# 3. Adjust summary_max_length based on your model's context window and task complexity
+# 4. For critical tasks requiring full context, keep summary_history=False
+# 5. When enabled, the latest tool result is always preserved in full text
+# 6. Summarization only occurs when conversation exceeds trigger length, not every round
+# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities# History Summarization Configuration
+# Controls whether to use AI to summarize conversation history to reduce context length
+# When enabled, conversation history is summarized using the large model when it exceeds trigger length
+# This replaces truncation with intelligent summarization to maintain important context
+summary_history=False
+
+# Maximum length for conversation history summary (in characters)
+# Used when summary_history=True to control the length of the generated summary
+# Recommended values: 3000-8000 characters
+# Lower values save more context but may lose some detail
+# Higher values preserve more information but use more context
+summary_max_length=10000
+
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+summary_trigger_length=100000
+
+# History summarization usage recommendations:
+# 1. Enable summary_history=True for long conversation sessions to control context length
+# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
+# 3. Adjust summary_max_length based on your model's context window and task complexity
+# 4. For critical tasks requiring full context, keep summary_history=False
+# 5. When enabled, the latest tool result is always preserved in full text
+# 6. Summarization only occurs when conversation exceeds trigger length, not every round
+# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities# History Summarization Configuration
+# Controls whether to use AI to summarize conversation history to reduce context length
+# When enabled, conversation history is summarized using the large model when it exceeds trigger length
+# This replaces truncation with intelligent summarization to maintain important context
+summary_history=False
+
+# Maximum length for conversation history summary (in characters)
+# Used when summary_history=True to control the length of the generated summary
+# Recommended values: 3000-8000 characters
+# Lower values save more context but may lose some detail
+# Higher values preserve more information but use more context
+summary_max_length=10000
+
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+summary_trigger_length=100000
 
 # Minimum content length to trigger compression (in characters)
 # Content shorter than this will not be compressed
@@ -205,7 +288,7 @@ auto_fix_interactive_commands=True
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=False
+multi_agent=True
 
 # Round Synchronization Barrier (experimental)
 # When enabled, all agents will execute in lockstep windows.
@@ -214,7 +297,7 @@ multi_agent=False
 # it releases a sync signal so each agent can proceed to next N rounds.
 # Set enable_round_sync to true to enable; sync_round must be >= 1 (default: 2)
 enable_round_sync=True
-sync_round=2
+sync_round=5
 
 # Jieba Chinese Segmentation Configuration
 # Controls whether to enable jieba Chinese text segmentation for code parsing
