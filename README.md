@@ -1,338 +1,335 @@
 # AGI Agent
 
-**中文** | [**English**](README_en.md)
+[**中文**](README_zh.md) | **English**
 
-## 🚀 项目简介
+## 🚀 Project Introduction
 
-**AGI Agent** 是一个由大语言模型（LLM）驱动的L3级别全流程自动化通用智能体。其采用多轮迭代的工作机制，大模型可在每轮进行工具调用并收到反馈结果。用于根据用户需求，更新工作区的文件或通过工具改变外部环境。AGIAgent可以自主调用广泛的MCP工具及操作系统工具，具有多智能体协同、多层次长期记忆、具身智能感知等特色。强调智能体的通用性及自主决策能力。AGIAgent广泛的操作系统支持、大模型支持、多种运行模态支持，可用于构建拟人的通用智能系统，实现复杂报告调研与生成、项目级代码编写、计算机自动运行、多智能体研究（如竞争、辩论、协作）等应用。
+**AGI Agent** is an L3-level fully automated general-purpose intelligent agent powered by Large Language Models (LLM). It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIAgent can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIAgent's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
 
 
 <div align="center">
-      <img src="md/images/AGIAgent.png" alt="AGI Agent" width="800"/>
+      <img src="md/images/AGIAgent.png" alt="AGI Agent - L3 Autonomous Programming System" width="800"/>
 </div>
 
-## 🚀 最新动态
-2025/10/27 AGIAgent 在线注册已开启，点击<https://agiagentonline.com>右侧注册账号按钮，可以注册使用。
-2025/10/12 AGIAgent富图像文档撰写功能介绍已发布，详见 [colourfuldoc/ColourfulDoc_zh.md](colourfuldoc/ColourfulDoc_zh.md) 和 [colourfuldoc/ColourfulDoc.md](colourfuldoc/ColourfulDoc.md)（英文版）。
+## 🚀 News
 
-2025/10/10 Windows安装包（在线/离线版本）已准备就绪！请查看[发布页面](https://github.com/agi-hub/AGIAgent/releases/)。
+2025/10/27 AGIAgent online registration is now open! Click the registration button on the right side of <https://agiagentonline.com> to register and start using.
 
-2025/9/15 在线网站（中文版）已上线。访问 <https://agiagentonline.com>，无需APIKey即可登录，您可以找到许多示例。项目介绍主页：<https://agiagentonline.com/intro>（中文版）已可用。
+2025/10/12 An introduction of AGIAgent for Article Generation with Rich Images is provided in [colourfuldoc/ColourfulDoc.md](colourfuldoc/ColourfulDoc.md) and [colourfuldoc/ColourfulDoc_zh.md](colourfuldoc/ColourfulDoc_zh.md) (in Chinese).
 
-2025/7/21 AGIAgent 用户界面（GUI）已上线， 可支持远程/单机，具备Markdown/PDF/源代码预览、SVG图片编辑和Mermaid流程图编辑能力。详情请参见 [GUI/README_GUI_zh.md](GUI/README_GUI_zh.md) （同款GUI已部署在 <https://agiagentonline.com> 上）。
+2025/10/10 Windows installation package (online / offline) is ready! See [release page](https://github.com/agi-hub/AGIAgent/releases/).
 
+2025/9/15 Online website (in Chinese) is available. Access <https://agiagentonline.com>，login without APIKey, you can find many examples. Project introduction homepage: <https://agiagentonline.com/intro> (in Chinese) is avaliable. 
 
-## ✨ 核心特性
+2025/7/21 GUI is available, with markdown/PDF/sourcecode preview, with svg image edit and mermaid edit capability, visit [GUI/README_GUI_en.md](GUI/README_GUI_en.md) for more information, and the same GUI is deployed on <https://agiagentonline.com>.
 
-### 🤖 自主多智能体协作
-- **智能体自主创建**：系统可自主决定创建新的专业智能体，为每个智能体配置独特的提示词、模型类型和专用工具库
-- **角色专业化**：构建不同角色、术业专攻的子智能体，在共享工作空间下高效协同工作
-- **通信机制**：智能体间具备点对点及广播消息通信能力，集成邮箱信件查看机制，实现无缝互联互通
+## ✨ Core Features
 
-### 🔧 广泛的工具调用能力
-- **内置工具库**：集成文件检索、网页浏览、文件修改等10余种常用开发工具
-- **MCP协议支持**：支持模型上下文协议（MCP），可外接GitHub、Slack等数千种扩展工具
-- **系统集成**：全面支持终端命令、Python包管理、操作系统软件包等通用工具
-- **自主安装**：智能体可根据任务需求自动安装系统软件、pip包和MCP工具
+### 🤖 Autonomous Multi-Agent Collaboration
+- **Autonomous Agent Creation**: The system can autonomously decide to create new professional agents, configuring unique prompts, model types, and dedicated tool libraries for each agent
+- **Role Specialization**: Build sub-agents with different roles and specialized expertise working efficiently together in a shared workspace
+- **Communication Mechanism**: Agents have point-to-point and broadcast message communication capabilities, integrated with email viewing mechanisms for seamless interconnection
 
-### 🧠 长程记忆与学习
-- **持久化记忆**：解决传统智能体只关注当前任务的局限，将历史执行情况摘要存储形成长期记忆
-- **智能检索**：通过RAG（检索增强生成）方式提取对当前工作有价值的历史记忆元素
-- **上下文管理**：集成长上下文总结机制，确保记忆的连续性和相关性
+### 🔧 Extensive Tool Calling Capabilities
+- **Built-in Tool Library**: Integrates over 10 common development tools including file retrieval, web browsing, and file modification
+- **MCP Protocol Support**: Supports Model Context Protocol (MCP) for connecting thousands of extended tools such as GitHub and Slack
+- **System Integration**: Full support for terminal commands, Python package management, and operating system software packages
+- **Autonomous Installation**: Agents can automatically install system software, pip packages, and MCP tools according to task requirements
 
-### 👁️ 具身智能与多模态
-- **多模态感知**：内置视觉、传感器等多模态能力，不局限于文本世界
-- **物理世界交互**：可处理丰富的物理世界信息场景
-- **多路信息处理**：通过多智能体架构实现并行信息感知与交互
+### 🧠 Long-term Memory and Learning
+- **Persistent Memory**: Solves the limitation of traditional agents that only focus on current tasks by storing historical execution summaries to form long-term memory
+- **Intelligent Retrieval**: Extracts valuable historical memory elements for current work through RAG (Retrieval-Augmented Generation)
+- **Context Management**: Integrates long-context summarization mechanisms to ensure memory continuity and relevance
 
-### 🔗 灵活的部署方式
-- **独立运行**：可作为完整的自主系统独立运行
-- **嵌入式集成**：作为Python组件嵌入其他软件流程
-- **模块化设计**：采用搭积木方式构建强大的智能系统
-- **轻量级部署**：仅依赖少量核心库，软件包小巧，系统兼容性强
+### 👁️ Embodied Intelligence and Multimodal
+- **Multimodal Perception**: Built-in vision, sensors, and other multimodal capabilities, not limited to the text world
+- **Physical World Interaction**: Can handle rich physical world information scenarios
+- **Multi-channel Information Processing**: Achieves parallel information perception and interaction through multi-agent architecture
 
-## 🔄 工作原理
+### 🔗 Flexible Deployment Methods
+- **Independent Operation**: Can run independently as a complete autonomous system
+- **Embedded Integration**: Can be embedded as a Python component into other software processes
+- **Modular Design**: Uses a building-block approach to construct powerful intelligent systems
+- **Lightweight Deployment**: Depends only on a few core libraries, with a compact software package and strong system compatibility
 
-### 输入输出机制
-AGI Agent接收**用户提示词**和**工作目录**作为输入，输出**处理后的工作目录**，所有生成的代码、文档等文件都统一放置在workspace文件夹中。
+## 🔄 Working Principle
 
-### 多轮迭代流程
-1. **任务分析阶段**：系统将用户提示词、历史聊天记录、上轮工具执行结果发送给大模型
-2. **决策制定阶段**：大模型自主决定下一轮的工具调用策略（文件编写、代码搜索、终端命令等）
-3. **工具执行阶段**：工具执行模块解析并执行大模型的指令（支持tool_call和JSON格式）
-4. **结果反馈阶段**：执行结果在下一轮传递给大模型，形成闭环反馈
-5. **任务完成阶段**：大模型判断任务完成后发出结束信号，可选择性生成任务总结
+### Input-Output Mechanism
+AGI Agent receives **user prompts** and **working directory** as input, and outputs **processed working directory**. All generated code, documents, and other files are uniformly placed in the workspace folder.
 
-### 智能优化特性
-- **上下文管理**：当聊天历史超过阈值时自动触发历史总结，保持高效运行
-- **网络搜索优化**：搜索结果可选择性总结，提取关键信息
-- **安全边界**：所有编辑操作限制在用户定义的工作目录内，确保系统安全
+### Multi-round Iterative Process
+1. **Task Analysis Phase**: The system sends user prompts, historical chat records, and previous tool execution results to the large model
+2. **Decision Making Phase**: The large model autonomously decides the tool calling strategy for the next round (file writing, code search, terminal commands, etc.)
+3. **Tool Execution Phase**: The tool execution module parses and executes the large model's instructions (supports tool_call and JSON formats)
+4. **Result Feedback Phase**: Execution results are passed to the large model in the next round, forming a closed-loop feedback
+5. **Task Completion Phase**: The large model issues an end signal when it determines the task is complete, and can optionally generate a task summary
 
-## ⚠️ 安全提醒
+### Intelligent Optimization Features
+- **Context Management**: Automatically triggers historical summarization when chat history exceeds the threshold to maintain efficient operation
+- **Network Search Optimization**: Search results can be selectively summarized to extract key information
+- **Security Boundaries**: All editing operations are limited within the user-defined working directory to ensure system security
 
-AGI Agent作为通用任务智能体，具备调用系统终端命令的能力。虽然通常不会操作工作目录外的文件，但大模型可能会执行软件安装命令（如pip、apt等）。请在使用时注意：
-- 仔细审查执行的命令
-- 建议在沙盒环境中运行重要任务
-- 定期备份重要数据
+## ⚠️ Security Notice
 
-## 🌐 平台兼容性
+As a general-purpose task agent, AGI Agent has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
+- Carefully review executed commands
+- Recommend running important tasks in a sandbox environment
+- Regularly backup important data
 
-### 操作系统支持
-- ✅ **Linux** - 完全支持
-- ✅ **Windows** - 完全支持  
-- ✅ **MacOS** - 完全支持
+## 🌐 Platform Compatibility
 
-### 大模型支持
-- **Anthropic Claude** - Claude 3.5 Sonnet、Claude 3 Opus等
-- **OpenAI GPT** - GPT-4、GPT-4 Turbo、GPT-3.5等
-- **Google Gemini** - Gemini Pro、Gemini Ultra等
-- **国产模型** - Kimi K2、DeepSeek、火山大模型、Qwen3（8B及以上）
+### Operating System Support
+- ✅ **Linux** - Full support
+- ✅ **Windows** - Full support  
+- ✅ **MacOS** - Full support
 
-### 接口与模式
-- **API接口**：支持Anthropic接口和OpenAI兼容接口
-- **输出模式**：支持流式（Streaming）输出和批量输出
-- **调用模式**：支持Tool Calling模式和传统Chat模式（工具调用模式效果更佳）
+### Large Model Support
+- **Anthropic Claude** - Claude 3.5 Sonnet, Claude 3 Opus, etc.
+- **OpenAI GPT** - GPT-4, GPT-4 Turbo, GPT-3.5, etc.
+- **Google Gemini** - Gemini Pro, Gemini Ultra, etc.
+- **Domestic Models** - Kimi K2, DeepSeek, Volcano Large Model, Qwen3 (8B and above)
 
-### 运行界面
-- **终端模式**：纯命令行界面，适合服务器和自动化场景
-- **Python库模式**：作为组件嵌入其他Python应用
-- **Web界面模式**：现代化网页界面，提供可视化操作体验
+### Interfaces and Modes
+- **API Interface**: Supports Anthropic interface and OpenAI-compatible interface
+- **Output Mode**: Supports streaming output and batch output
+- **Calling Mode**: Supports Tool Calling mode and traditional Chat mode (tool calling mode works better)
 
-### 交互模式
-- **全自动模式**：完全自主执行，无需人工干预
-- **交互模式**：支持用户确认和指导，提供更多控制权
+### Runtime Interfaces
+- **Terminal Mode**: Pure command-line interface, suitable for servers and automation scenarios
+- **Python Library Mode**: Embedded as a component in other Python applications
+- **Web Interface Mode**: Modern web interface providing visual operation experience
+
+### Interaction Modes
+- **Fully Automatic Mode**: Completely autonomous execution without human intervention
+- **Interactive Mode**: Supports user confirmation and guidance, providing more control
 
 
 <br/>
 
-## 🎬 演示视频
+## 🎬 Demo Video
 
-[![观看演示视频](./md/images/AGIAgent_CLI.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+[![Watch Demo Video](./md/images/AGIAgent_CLI.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
-> 如果无法直接播放，请[点击这里观看演示视频](https://www.youtube.com/watch?v=7kW_mH18YFM)
+> If you cannot play directly, please [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
 
-## 📋 演示案例
+## 📋 Demo Cases
 
-想要了解 AGI Agent 在各种场景下的综合能力展示，请查看我们的[演示案例](md/DEMO_zh.md)。这包括真实的使用案例、输出文件和 AGI Agent 能够完成的详细示例。
+To understand AGI Agent's comprehensive capabilities in various scenarios, please check our [Demo Cases](md/DEMO.md). This includes real use cases, output files, and detailed examples of what AGI Agent can accomplish.
 
-## 🔗 扩展功能
+## 🔗 Extended Features
 
-### 🐍 Python 库接口
-AGI Agent 现在支持作为 Python 库直接在代码中调用，提供类似 OpenAI Chat API 的编程接口。
+### 🐍 Python Library Interface
+AGI Agent now supports being called directly as a Python library in code, providing a programming interface similar to the OpenAI Chat API.
 
-**📖 [查看 Python 库使用指南 →](md/README_python_lib_zh.md)**
+**📖 [View Python Library Usage Guide →](md/README_python_lib.md)**
 
-- 🐍 纯 Python 接口，无需命令行
-- 💬 OpenAI 风格 API，易于集成
-- 🔧 编程式配置，灵活控制
-- 📊 详细返回信息和状态
+- 🐍 Pure Python interface, no command line needed
+- 💬 OpenAI-style API, easy to integrate
+- 🔧 Programmatic configuration, flexible control
+- 📊 Detailed return information and status
 
-### 🔌 MCP 协议支持
-支持 Model Context Protocol (MCP) 协议，可与外部工具服务器通信，大大扩展系统工具生态。
+### 🔌 MCP Protocol Support
+Supports Model Context Protocol (MCP) for communication with external tool servers, greatly expanding the system's tool ecosystem.
 
-**📖 [查看 MCP 集成指南 →](md/README_MCP_zh.md)**
+**📖 [View MCP Integration Guide →](md/README_MCP.md)**
 
-- 🌐 标准化工具调用协议
-- 🔧 支持官方和第三方 MCP 服务器
-- 📁 文件系统、GitHub、Slack 等服务集成
-- ⚡ 动态工具发现和注册
+- 🌐 Standardized tool calling protocol
+- 🔧 Support for official and third-party MCP servers
+- 📁 File system, GitHub, Slack, and other service integrations
+- ⚡ Dynamic tool discovery and registration
 
-## 🚀 立即体验
+## 🚀 Quick Start
 
-**在Google Colab中免费体验AGI Agent，无需任何配置！**
+**Experience AGI Agent for free in Google Colab with no configuration required!**
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eFtyTz1ictFBDDJFvI0viImfNvkTFOVc)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
-*点击上方徽章，直接在浏览器中启动AGI Agent并开始体验自主AI编程。*
+*Click the badge above to launch AGI Agent directly in your browser and start experiencing autonomous AI programming.*
 
-### 基本使用
+### Basic Usage
 
-#### 🔥 单任务模式（推荐）
-适合Bug修复、功能优化等单一目标任务。如果没有指定`-r`参数，程序会提示您输入任务描述，支持多行复杂提示词。
+#### 🔥 Single Task Mode (Recommended)
+Suitable for single-objective tasks such as bug fixes and feature optimization. If no `-r` parameter is specified, the program will prompt you to enter a task description, supporting multi-line complex prompts.
 
 ```bash
-python agia.py --requirement "搜索今日新闻"
-python agia.py -r "写一个笑话"
+python agia.py --requirement "Search today's news"
+python agia.py -r "Write a joke"
 
-# 图像输入支持
-python agia.py -r "分析这张图表：[img=chart.png]"
+# Image input support
+python agia.py -r "Analyze this chart: [img=chart.png]"
 
-# MCP工具集成
-python agia.py -r "使用AISearch_search搜索AI新闻"
+# MCP tool integration
+python agia.py -r "Use AISearch_search to search for AI news"
 ```
 
-#### 💬 交互模式
-提供更灵活的交互体验，系统会引导您输入任务需求。
+#### 💬 Interactive Mode
+Provides a more flexible interactive experience where the system guides you to input task requirements.
 
 ```bash
 python agia.py -i
 python agia.py --interactive 
 ```
 
-#### 📁 指定输出目录
-自定义项目输出位置。如果不指定，系统会自动创建带时间戳的`output_`目录。
+#### 📁 Specify Output Directory
+Customize project output location. If not specified, the system will automatically create an `output_` directory with timestamp.
 
 ```bash
 python agia.py --dir "my_dir"
 ```
 
-#### 🔄 继续执行任务
-恢复之前的任务继续执行。AGI Agent会记住最后一次使用的输出目录。
+#### 🔄 Continue Task Execution
+Resume previous task execution. AGI Agent remembers the last used output directory.
 
 ```bash
 python agia.py -c
 python agia.py --continue
 ```
 
-> **注意**：继续执行仅恢复工作目录和上一次的需求提示词，不会恢复大模型的上下文。
+> **Note**: Continue execution only restores the working directory and the last requirement prompt, not the large model's context.
 
-#### ⚡ 设置执行轮数
-控制任务执行的最大轮数，避免无限循环。
+#### ⚡ Set Execution Rounds
+Control the maximum number of task execution rounds to avoid infinite loops.
 
 ```bash
-python agia.py --loops 5 -r "需求描述"
-python agia.py -d "my_dir" -l 10 -r "需求描述"
+python agia.py --loops 5 -r "Requirement description"
+python agia.py -d "my_dir" -l 10 -r "Requirement description"
 ```
 
-> **说明**：轮数不等于模型调用次数。每轮通常调用一次大模型，但在聊天历史过长时会额外调用一次进行总结，任务完成后也可能进行总结。
+> **Note**: Rounds do not equal model call count. Each round usually calls the large model once, but may call it an additional time for summarization when chat history is too long, and may also summarize after task completion.
 
-#### 🔧 自定义模型配置
-直接通过命令行指定API配置，但建议在`config/config.txt`中配置以便重复使用。
+#### 🔧 Custom Model Configuration
+Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
 
 ```bash
 python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
 ```
 
-## 🎯 核心特性
+## 🎯 Core Features
 
-- **🧠 智能任务分解**：AI自动将复杂需求分解为可执行子任务
-- **🔄 多轮迭代执行**：每个任务支持多轮优化，确保质量（默认50轮）
-- **🔍 智能代码搜索**：语义搜索 + 关键词搜索，快速定位代码
-- **🌐 网络搜索集成**：实时网络搜索获取最新信息和解决方案
-- **📚 代码库检索**：高级代码仓库分析和智能代码索引
-- **🛠️ 丰富工具生态**：完备的本地工具+操作系统命令调用能力，支持完整开发流程
-- **🖼️ 图像输入支持**：使用`[img=路径]`语法在需求中包含图像，支持Claude和OpenAI视觉模型
-- **🔗 MCP集成支持**：通过模型上下文协议集成外部工具，包含AI搜索等第三方服务
-- **🖥️ Web界面**：直观的网页界面，实时执行监控
-- **📊 双格式报告**：JSON详细日志 + Markdown可读报告
-- **⚡ 实时反馈**：详细的执行进度和状态显示
-- **🤝 交互式控制**：可选的用户确认模式，每步骤可控
-- **📁 灵活输出**：自定义输出目录，自动时间戳命名新工程
+- **🧠 Intelligent Task Decomposition**: AI automatically decomposes complex requirements into executable subtasks
+- **🔄 Multi-round Iterative Execution**: Each task supports multi-round optimization to ensure quality (default 50 rounds)
+- **🔍 Intelligent Code Search**: Semantic search + keyword search for quick code location
+- **🌐 Network Search Integration**: Real-time network search for latest information and solutions
+- **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
+- **🛠️ Rich Tool Ecosystem**: Complete local tools + operating system command calling capabilities, supporting full development processes
+- **🖼️ Image Input Support**: Use `[img=path]` syntax to include images in requirements, supporting Claude and OpenAI vision models
+- **🔗 MCP Integration Support**: Integrate external tools through Model Context Protocol, including third-party services like AI search
+- **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
+- **📊 Dual Format Reports**: JSON detailed logs + Markdown readable reports
+- **⚡ Real-time Feedback**: Detailed execution progress and status display
+- **🤝 Interactive Control**: Optional user confirmation mode with step-by-step control
+- **📁 Flexible Output**: Custom output directory with automatic timestamp naming for new projects
 
-## 🌐 网络搜索功能
+## 🌐 Network Search Function
 
-AGI Agent 集成了强大的网络搜索功能，可以获取实时信息：
+AGI Agent integrates powerful network search functionality to obtain real-time information:
 
-使用方式：在需求提示词中加入"搜索网页"则会进行搜索，"不要搜索网页"则不会搜索，如不注明则大模型会自行判断。
+Usage: Add "search web" in the requirement prompt to perform search, "don't search web" to avoid search. If not specified, the large model will decide autonomously.
 
-## 📚 代码库检索系统
+## 📚 Codebase Retrieval System
 
-AGI Agent配备了实时代码库的向量化和检索功能，在每轮工具调用结束后，会搜索新修改的文件，进行动态增量入库，并支持大模型的模糊语义检索能力。此外，大模型也可以调用grep等命令观察工作空间的情况。
+AGI Agent is equipped with real-time codebase vectorization and retrieval functionality. After each round of tool calls, it searches for newly modified files, performs dynamic incremental indexing, and supports the large model's fuzzy semantic retrieval capability. Additionally, the large model can call commands like grep to observe the workspace situation.
 
+## 🛠️ Tool Library
 
-## 🛠️ 工具库
+AGI Agent has a comprehensive tool library:
 
-AGI Agent 拥有全面的工具库：
+### File System Tools
+- **File Operations**: Create, read, update, delete files and directories
+- **Directory Management**: Navigate and organize project structure
+- **File Search**: Find files by name, content, or pattern
 
-### 文件系统工具
-- **文件操作**：创建、读取、更新、删除文件和目录
-- **目录管理**：导航和组织项目结构
-- **文件搜索**：按名称、内容或模式查找文件
+### Code Analysis Tools
+- **Syntax Analysis**: Parse and understand code structure
+- **Dependency Analysis**: Map code relationships and imports
+- **Code Quality**: Identify issues and suggest improvements
 
-### 代码分析工具
-- **语法分析**：解析和理解代码结构
-- **依赖分析**：映射代码关系和导入
-- **代码质量**：识别问题并提出改进建议
+### Network and Web Tools
+- **Web Search**: Real-time information retrieval
+- **API Testing**: Test and validate API endpoints
+- **Documentation Retrieval**: Retrieve technical documentation
 
-### 网络和网络工具
-- **网络搜索**：实时信息检索
-- **API测试**：测试和验证API端点
-- **文档获取**：检索技术文档
+### Terminal and Execution Tools
+- **Command Execution**: Run system commands and scripts
+- **Process Management**: Monitor and control running processes
+- **Environment Setup**: Configure development environments
 
-### 终端和执行工具
-- **命令执行**：运行系统命令和脚本
-- **进程管理**：监控和控制运行中的进程
-- **环境设置**：配置开发环境
+### Development Tools
+- **Code Generation**: Create boilerplate and template code
+- **Testing Tools**: Generate and run test cases
+- **Build Tools**: Compile and package applications
 
-### 开发工具
-- **代码生成**：创建样板和模板代码
-- **测试工具**：生成和运行测试用例
-- **构建工具**：编译和打包应用程序
+## 🖥️ Web GUI Interface
 
-## 🖥️ Web GUI 界面
+AGI Agent provides a modern, intuitive web interface to enhance user experience:
 
-AGI Agent 提供现代化、直观的网页界面，提升用户体验：
+### Main Features
+- **Real-time Execution Monitoring**: Real-time observation of task execution and detailed logs
+- **Interactive Task Management**: Start, stop, and monitor tasks through the web interface
+- **File Management**: Upload, download, and manage project files directly in the browser
+- **Directory Operations**: Create, rename, and organize project directories
+- **Multi-language Support**: Includes Chinese and English interfaces, configure language in config/config.txt
 
-### 主要功能
-- **实时执行监控**：实时观察任务执行和详细日志
-- **交互式任务管理**：通过网页界面启动、停止和监控任务
-- **文件管理**：直接在浏览器中上传、下载和管理项目文件
-- **目录操作**：创建、重命名和组织项目目录
-- **多语言支持**：包含中英文界面，请在config/config.txt中配置语言
-
-### 启动 GUI
+### Launch GUI
 ```bash
 cd GUI
 python app.py
 
-# 通过浏览器访问 http://localhost:5001
+# Access through browser at http://localhost:5001
 ```
-Web GUI会显示文件列表，默认带有workspace子目录的文件夹都会被列出，否则不会被列出。根目录位置可以在config/config.txt中配置。
-注：目前Web GUI处于实验阶段，仅提供单用户开发版本（不适合工业部署）。
+Web GUI displays file lists. Folders with workspace subdirectories are listed by default, otherwise they won't be shown. The root directory location can be configured in config/config.txt.
+Note: Web GUI is currently experimental, providing only a single-user development version (not suitable for industrial deployment).
 
+## 🤖 Model Selection
 
-## 🤖 模型选择
+AGI Agent supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets.
 
-AGI Agent 支持多种主流AI模型，包括Claude、GPT-4、DeepSeek V3、Kimi K2等，满足不同用户的需求和预算。
+**🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
 
-**🎯 [查看详细模型选择指南 →](md/MODELS_zh.md)**
+### Quick Recommendations
 
-### 快速推荐
+- **🏆 Quality First**: Claude Sonnet 4 - Best intelligence and code quality
+- **⚡ Balanced Performance**: GPT-4 Turbo - Perfect balance of speed and quality  
+- **💰 Cost-Effective**: DeepSeek V3 - Excellent cost-effectiveness ratio
+- **🤖 Agent Optimized**: Kimi K2 - Excellent Agent and coding performance
+- **🆓 Free Trial**: Qwen2.5-7B - Zero cost learning and simple tasks
 
-- **🏆 追求质量**：Claude Sonnet 4 - 最佳智能程度和代码质量
-- **⚡ 平衡性能**：GPT-4 Turbo - 速度与质量的完美平衡  
-- **💰 性价比高**：DeepSeek V3 - 极佳的成本效益比
-- ** Agent 优化**：Kimi K2 - 优秀的Agent和编码性能
-- **🆓 免费试用**：Qwen2.5-7B - 零成本学习和简单任务
+> 💡 **Tip**: For detailed model comparisons, configuration methods, and performance optimization suggestions, please refer to [MODELS.md](md/MODELS.md)
 
-> 💡 **提示**：详细的模型对比、配置方法、性能优化建议请参考 [MODELS_zh.md](md/MODELS_zh.md)
+## ⚙️ Configuration Files
 
-## ⚙️ 配置文件
+AGI Agent uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
 
-AGI Agent 使用 `config/config.txt` 和 `config/config_memory.txt` 文件进行系统配置。
-
-
-### 快速配置
-安装完成后，请配置以下基本选项：
+### Quick Configuration
+After installation, please configure the following basic options:
 
 ```ini
-# 必需配置：API密钥和模型
+# Required configuration: API key and model
 api_key=your_api_key
 api_base=https://api.openai.com/v1
 model=gpt-4
 
-# 语言设置
-LANG=zh
+# Language setting
+LANG=en
 ```
 
-> 💡 **提示**：详细的配置选项、使用建议和故障排除请参考 [CONFIG_zh.md](md/CONFIG_zh.md)
+> 💡 **Tip**: For detailed configuration options, usage suggestions, and troubleshooting, please refer to [CONFIG.md](md/CONFIG.md)
 
-## 🔧 环境要求与安装
+## 🔧 Environment Requirements and Installation
 
-### 系统要求
+### System Requirements
 - **Python 3.6+**
-- **网络连接**：用于API调用和网络搜索功能
+- **Network Connection**: For API calls and network search functionality
 
-### 安装步骤
+### Installation Steps
 
 ```bash
-# 从源码安装
+# Install from source
 pip install -r requirements.txt
 
-# 安装网页抓取工具(如果需要网页抓取)
+# Install web scraping tools (if web scraping is needed)
 playwright install-deps
 playwright install chromium
-
 ```
 
-安装完成后，请不要忘记到config/config.txt中配置api key, api base和model, 以及语言设置LANG=zh.
+After installation, don't forget to configure api key, api base, model, and language setting LANG=en in config/config.txt. 
