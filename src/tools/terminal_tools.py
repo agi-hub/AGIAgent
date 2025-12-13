@@ -154,8 +154,8 @@ class TerminalTools:
                     if not chunk:
                         break
                     # Debug: track that we're receiving data
-                    if chunk.strip():
-                        stderr_queue.put(('debug', f"[DEBUG] Received stderr chunk: {len(chunk)} chars", time.time(), False))
+                    #if chunk.strip():
+                    #    stderr_queue.put(('debug', f"[DEBUG] Received stderr chunk: {len(chunk)} chars", time.time(), False))
                     buffer += chunk
                     
                     # Process buffer for \r and \n
@@ -224,16 +224,19 @@ class TerminalTools:
                             got_output = True
                             continue
                         
-                        # Clean line: remove \r and trailing whitespace
-                        line_clean = line.replace('\r', '').rstrip()
-                        stdout_lines.append(line_clean)
-                        # Always display the line, even if empty (to preserve formatting)
+                        # For progress bar updates (is_update=True), use \r for single-line updates
                         if is_update:
-                            # For progress bar updates, avoid showing duplicate progress lines
+                            # Remove trailing \n and whitespace, but use \r at end to overwrite current line
+                            line_clean = line.rstrip('\n').rstrip()
+                            stdout_lines.append(line_clean)  # Store clean version
+                            # Use \r at end to overwrite current line (tqdm uses \r to return to line start)
                             if line_clean != last_progress_line:
-                                print_current(f"📤 {line_clean}")
+                                print_current(f"📤 {line_clean}", end='\r')
                                 last_progress_line = line_clean
                         else:
+                            # For regular output, remove \r and trailing whitespace
+                            line_clean = line.replace('\r', '').rstrip()
+                            stdout_lines.append(line_clean)
                             print_current(f"📤 {line_clean}")
                             # Reset progress line tracking for non-progress output
                             last_progress_line = None
@@ -259,15 +262,17 @@ class TerminalTools:
                             got_output = True
                             continue
                         
-                        # Clean line: remove \r and trailing whitespace
-                        line_clean = line.replace('\r', '').rstrip()
-                        stderr_lines.append(line_clean)
-                        # Always display the line, even if empty (to preserve formatting)
+                        # For progress bar updates (is_update=True), use \r for single-line updates
                         if is_update:
-                            # For progress bar updates in GUI, don't use \r as it causes display issues
-                            # Just print normally to avoid overwriting previous lines
-                            print_current(f"⚠️  {line_clean}")
+                            # Remove trailing \n and whitespace, but use \r at end to overwrite current line
+                            line_clean = line.rstrip('\n').rstrip()
+                            stderr_lines.append(line_clean)  # Store clean version
+                            # Use \r at end to overwrite current line (tqdm uses \r to return to line start)
+                            print_current(f"⚠️  {line_clean}", end='\r')
                         else:
+                            # For regular output, remove \r and trailing whitespace
+                            line_clean = line.replace('\r', '').rstrip()
+                            stderr_lines.append(line_clean)
                             print_current(f"⚠️  {line_clean}")
                         last_output_time = timestamp
                         got_output = True
@@ -313,14 +318,17 @@ class TerminalTools:
                         output_type, line, timestamp = item
                         is_update = False
                     
-                    # Clean line: remove \r and trailing whitespace
-                    line_clean = line.replace('\r', '').rstrip()
-                    stdout_lines.append(line_clean)
-                    # Always display the line, even if empty
+                    # For progress bar updates (is_update=True), use \r for single-line updates
                     if is_update:
-                        # For progress bar updates in GUI, don't use \r as it causes display issues
-                        print_current(f"📤 {line_clean}")
+                        # Remove trailing \n and whitespace, but use \r at end to overwrite current line
+                        line_clean = line.rstrip('\n').rstrip()
+                        stdout_lines.append(line_clean)  # Store clean version
+                        # Use \r at end to overwrite current line (tqdm uses \r to return to line start)
+                        print_current(f"📤 {line_clean}", end='\r')
                     else:
+                        # For regular output, remove \r and trailing whitespace
+                        line_clean = line.replace('\r', '').rstrip()
+                        stdout_lines.append(line_clean)
                         print_current(f"📤 {line_clean}")
             except queue.Empty:
                 pass
@@ -335,14 +343,17 @@ class TerminalTools:
                         output_type, line, timestamp = item
                         is_update = False
                     
-                    # Clean line: remove \r and trailing whitespace
-                    line_clean = line.replace('\r', '').rstrip()
-                    stderr_lines.append(line_clean)
-                    # Always display the line, even if empty
+                    # For progress bar updates (is_update=True), use \r for single-line updates
                     if is_update:
-                        # For progress bar updates in GUI, don't use \r as it causes display issues
-                        print_current(f"⚠️  {line_clean}")
+                        # Remove trailing \n and whitespace, but use \r at end to overwrite current line
+                        line_clean = line.rstrip('\n').rstrip()
+                        stderr_lines.append(line_clean)  # Store clean version
+                        # Use \r at end to overwrite current line (tqdm uses \r to return to line start)
+                        print_current(f"⚠️  {line_clean}", end='\r')
                     else:
+                        # For regular output, remove \r and trailing whitespace
+                        line_clean = line.replace('\r', '').rstrip()
+                        stderr_lines.append(line_clean)
                         print_current(f"⚠️  {line_clean}")
             except queue.Empty:
                 pass

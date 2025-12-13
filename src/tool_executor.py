@@ -6936,11 +6936,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             Formatted message content string if there are unread messages, None otherwise
         """
         try:
-            # Only check mailbox in multi-agent mode
-            if not self.multi_agent:
-                if self.debug_mode:
-                    print_current(f"⚠️ [DEBUG] multi_agent mode is disabled, skipping inbox check")
-                return None
+
             
             # Get current agent ID
             from src.tools.agent_context import get_current_agent_id
