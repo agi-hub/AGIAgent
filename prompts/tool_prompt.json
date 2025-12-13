@@ -45,20 +45,16 @@
     }
   },
   "run_terminal_cmd": {
-    "description": "PROPOSE a command to run on behalf of the user. For ANY commands that would use a pager or require user interaction, you should append ` | cat` to the command. For commands that are long running/expected to run indefinitely until interruption, please run them in the background.",
+    "description": "PROPOSE a command to run on behalf of the user. For ANY commands that would use a pager or require user interaction, you should append ` | cat` to the command.",
     "parameters": {
       "type": "object",
       "properties": {
         "command": {
           "type": "string",
           "description": "The terminal command to execute"
-        },
-        "is_background": {
-          "type": "boolean",
-          "description": "Whether the command should be run in the background"
         }
       },
-      "required": ["command", "is_background"]
+      "required": ["command"]
     }
   },
   "grep_search": {

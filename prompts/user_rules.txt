@@ -1,4 +1,4 @@
-Chinese font configuration: For matplotlib with Chinese text, configure fonts properly using 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', with 'DejaVu Sans' fallback
+Chinese font configuration: For matplotlib, using English text, if user requires Chinese text, configure fonts properly using 'Noto Sans CJK SC'
 
 Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
 

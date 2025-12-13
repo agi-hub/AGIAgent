@@ -42,7 +42,7 @@ from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
 from src.tools.cli_mcp_wrapper import get_cli_mcp_wrapper, initialize_cli_mcp_wrapper, safe_cleanup_cli_mcp_wrapper
 from src.tools.mcp_client import safe_cleanup_mcp_client
-from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length, get_enable_thinking
+from src.config_loader import get_api_key, get_api_base, get_model, get_max_tokens, get_streaming, get_language, get_truncation_length, get_summary_history, get_summary_max_length, get_summary_trigger_length, get_simplified_search_output, get_web_search_summary, get_multi_agent, get_tool_calling_format, get_compression_min_length, get_compression_head_length, get_compression_tail_length, get_enable_thinking, get_admit_task_completed_with_tools, get_temperature, get_top_p
 from src.tools.message_system import get_message_router
 
 # Initialize logger
@@ -268,6 +268,10 @@ class ToolExecutor:
         # Load thinking support configuration from config/config.txt
         # True = enable thinking, False = disable thinking
         self.enable_thinking = get_enable_thinking()
+        
+        # Load LLM output control parameters from config/config.txt
+        self.temperature = get_temperature()
+        self.top_p = get_top_p()
         
         # Print system is ready to use
         
@@ -1654,10 +1658,22 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             # CONFLICT DETECTION: Both tool calls and TASK_COMPLETED present
             conflict_detected = has_tool_calls and has_task_completed
             if conflict_detected:
-                #print_current(f"⚠️ CONFLICT DETECTED: Both tool calls and TASK_COMPLETED flag found, executing tools first then completing task")
-                # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
-                content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
-                has_task_completed = False # Ensure the flag is updated after removal
+                # Check configuration: whether to admit TASK_COMPLETED signal when it appears with tool calls
+                admit_task_completed_with_tools = get_admit_task_completed_with_tools()
+                
+                if admit_task_completed_with_tools:
+                    # Configuration is True: execute tools first, then complete task
+                    # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                    # The flag will be re-added after tool execution to complete the task
+                    content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                    has_task_completed = False # Ensure the flag is updated after removal
+                    # Keep original_has_task_completed = True so we can re-add it after tool execution
+                else:
+                    # Configuration is False: drop TASK_COMPLETED signal and execute tools without completing
+                    # Remove the TASK_COMPLETED flag from the content to ensure tool execution proceeds
+                    content = re.sub(r'TASK_COMPLETED:.*', '', content).strip()
+                    has_task_completed = False # Ensure the flag is updated after removal
+                    original_has_task_completed = False # Don't re-add the flag after tool execution
             
             # If TASK_COMPLETED but no tool calls, complete the task
             if has_task_completed and not has_tool_calls:
@@ -4624,7 +4640,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 max_tokens=self._get_max_tokens_for_model(self.model),
                                 system=system_message,
                                 messages=claude_messages,
-                                temperature=0.7
+                                temperature=self.temperature
                             ) as stream:
                                 content = ""
                                 hallucination_detected = False
@@ -4636,12 +4652,15 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 min_buffer_size = 100
                                 total_printed = 0
                                 
+                                # 标志：是否因为检测到第一个完整的工具调用而提前停止
+                                tool_call_detected_early = False
+                                
                                 try:
                                     for text in stream.text_stream:
                                         buffer += text
                                         content += text
                                         
-                                        # Check for hallucination patterns - strict match (检查整个 content，避免打印幻觉字符串)
+                                        # # Check for hallucination patterns - strict match (检查整个 content，避免打印幻觉字符串)
                                         hallucination_patterns = [
                                             "**LLM Called Following Tools in this round",
                                             "**Tool Execution Results:**"
@@ -4673,12 +4692,33 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                 content = ""
                                             break
                                         
+                                        # 🎯 检测第二个```json标记，如果发现则立即停止流
+                                        # 只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
+                                        first_json_pos = content.find('```json')
+                                        if first_json_pos != -1:
+                                            # 查找第二个```json标记
+                                            second_json_pos = content.find('```json', first_json_pos + len('```json'))
+                                            if second_json_pos != -1:
+                                                # 检测到第二个 JSON 块，立即停止流
+                                                print_debug("\n🛑 Multiple tool calls detected, stopping stream after first JSON block")
+                                                tool_call_detected_early = True
+                                                # 截断 content 到第二个 JSON 块之前
+                                                content = content[:second_json_pos].rstrip()
+                                                # 调整 buffer
+                                                if len(buffer) > len(content) - total_printed:
+                                                    buffer = content[total_printed:] if len(content) > total_printed else ""
+                                                break
+                                        
                                         # 当缓冲区达到最小大小时，打印缓冲区内容
                                         if len(buffer) >= min_buffer_size:
                                             # 正常打印
                                             printer.write(buffer)
                                             total_printed += len(buffer)
                                             buffer = ""
+                                        
+                                        # 如果因为检测到工具调用而提前停止，跳出循环
+                                        if tool_call_detected_early:
+                                            break
                                 except Exception as e:
                                     # 捕获流式处理中的异常
                                     stream_error_occurred = True
@@ -4687,16 +4727,18 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                     print_current(f"⚠️ Claude API streaming error: {str(e)}")
                                     # 继续处理已接收的内容
                                 finally:
-                                    # 确保流被正确关闭
+                                    # 确保流被正确关闭（无论是正常结束还是提前停止）
                                     try:
                                         if hasattr(stream, 'close'):
                                             stream.close()
+                                        if tool_call_detected_early:
+                                            print_debug("🔌 Stream closed early due to multiple tool calls detection")
                                     except Exception as close_error:
                                         print_debug(f"⚠️ Error closing Anthropic stream: {close_error}")
                                 
                                 # 如果发生流错误，记录并继续处理
                                 if stream_error_occurred:
-                                    print_current(f"⚠️ 流式响应中断，已处理内容长度: {len(content)} 字符")
+                                    print_current(f"⚠️ Streaming response interrupted, processed content length: {len(content)} characters")
                                     if not content:
                                         # 如果没有接收到任何内容，重新抛出异常
                                         raise Exception(f"Anthropic API streaming failed: {stream_error_message}")
@@ -4704,6 +4746,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 # 打印剩余缓冲区
                                 if buffer:
                                     printer.write(buffer)
+                                
                                 
                                 # If hallucination was detected, return early
                                 if hallucination_detected:
@@ -4776,7 +4819,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             max_tokens=self._get_max_tokens_for_model(self.model),
                             system=system_message,
                             messages=claude_messages,
-                            temperature=0.7
+                            temperature=self.temperature
                         )
                         
                         content = ""
@@ -4829,8 +4872,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 model=self.model,
                                 messages=api_messages,
                                 max_tokens=self._get_max_tokens_for_model(self.model),
-                                temperature=0.7,
-                                top_p=0.8,
+                                temperature=self.temperature,
+                                top_p=self.top_p,
                                 stream=True
                             )
 
@@ -5012,8 +5055,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             model=self.model,
                             messages=api_messages,
                             max_tokens=self._get_max_tokens_for_model(self.model),
-                            temperature=0.7,
-                            top_p=0.8,
+                            temperature=self.temperature,
+                            top_p=self.top_p,
                             stream=False
                     )
 
@@ -5214,7 +5257,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             system=system_message,
                             messages=claude_messages,
                             tools=tools,
-                            temperature=0.7
+                            temperature=self.temperature
                         ) as stream:
                             try:
                                 for event in stream:
@@ -5377,7 +5420,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         system=system_message,
                         messages=claude_messages,
                         tools=tools,
-                        temperature=0.7
+                        temperature=self.temperature
                     )
                     
                     content = ""
@@ -5481,92 +5524,92 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         printer.write(f"\n💬 ")
                         hallucination_detected = False
 
-                        response = self.client.chat.completions.create(
-                            model=self.model,
-                            messages=api_messages,
-                            tools=tools,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            temperature=0.7,
-                            top_p=0.8,
-                            stream=True
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=api_messages,
+                        tools=tools,
+                        max_tokens=self._get_max_tokens_for_model(self.model),
+                        temperature=self.temperature,
+                        top_p=self.top_p,
+                        stream=True
                         )
 
-                        try:
-                            tool_calls_completed = False
-                            empty_chunks_after_tool_calls = 0
-                            max_empty_chunks = 3  # 允许在工具调用完成后最多接收3个空chunk来捕获后续文本
-                            
-                            for chunk in response:
-                                if chunk.choices and len(chunk.choices) > 0:
-                                    delta = chunk.choices[0].delta
-                                    finish_reason = chunk.choices[0].finish_reason
-                                    
-                                    # 处理文本内容的流式输出
-                                    if delta.content is not None:
-                                        printer.write(delta.content)
-                                        content += delta.content
-                                        # 如果工具调用已完成但仍有文本内容，重置空chunk计数
-                                        if tool_calls_completed:
-                                            empty_chunks_after_tool_calls = 0
-                                    
-                                    # 处理工具调用的增量更新
-                                    if delta.tool_calls:
-                                        for tool_call_delta in delta.tool_calls:
-                                            idx = tool_call_delta.index
-                                            if idx not in tool_calls_buffer:
-                                                tool_calls_buffer[idx] = {
-                                                    "id": "",
-                                                    "type": "function",
-                                                    "function": {
-                                                        "name": "",
-                                                        "arguments": ""
-                                                    }
+                    try:
+                        tool_calls_completed = False
+                        empty_chunks_after_tool_calls = 0
+                        max_empty_chunks = 3  # 允许在工具调用完成后最多接收3个空chunk来捕获后续文本
+                        
+                        for chunk in response:
+                            if chunk.choices and len(chunk.choices) > 0:
+                                delta = chunk.choices[0].delta
+                                finish_reason = chunk.choices[0].finish_reason
+                                
+                                # 处理文本内容的流式输出
+                                if delta.content is not None:
+                                    printer.write(delta.content)
+                                    content += delta.content
+                                    # 如果工具调用已完成但仍有文本内容，重置空chunk计数
+                                    if tool_calls_completed:
+                                        empty_chunks_after_tool_calls = 0
+                                
+                                # 处理工具调用的增量更新
+                                if delta.tool_calls:
+                                    for tool_call_delta in delta.tool_calls:
+                                        idx = tool_call_delta.index
+                                        if idx not in tool_calls_buffer:
+                                            tool_calls_buffer[idx] = {
+                                                "id": "",
+                                                "type": "function",
+                                                "function": {
+                                                    "name": "",
+                                                    "arguments": ""
                                                 }
-                                            
-                                            # 累积工具调用信息
-                                            if tool_call_delta.id:
-                                                tool_calls_buffer[idx]["id"] = tool_call_delta.id
-                                            if tool_call_delta.function:
-                                                if tool_call_delta.function.name:
-                                                    tool_calls_buffer[idx]["function"]["name"] = tool_call_delta.function.name
-                                                if tool_call_delta.function.arguments:
-                                                    tool_calls_buffer[idx]["function"]["arguments"] += tool_call_delta.function.arguments
-                                    
-                                    # 检查finish_reason
-                                    if finish_reason is not None:
-                                        if finish_reason == "tool_calls":
-                                            # 工具调用完成，但可能还有后续文本，继续处理
-                                            tool_calls_completed = True
-                                            print_debug("🔧 工具调用完成，继续接收可能的后续文本...")
-                                        else:
-                                            # 其他结束原因（如"stop"），正常结束
-                                            print_debug(f"✅ 流式响应结束: {finish_reason}")
-                                            break
+                                            }
+                                        
+                                        # 累积工具调用信息
+                                        if tool_call_delta.id:
+                                            tool_calls_buffer[idx]["id"] = tool_call_delta.id
+                                        if tool_call_delta.function:
+                                            if tool_call_delta.function.name:
+                                                tool_calls_buffer[idx]["function"]["name"] = tool_call_delta.function.name
+                                            if tool_call_delta.function.arguments:
+                                                tool_calls_buffer[idx]["function"]["arguments"] += tool_call_delta.function.arguments
+                                
+                                # 检查finish_reason
+                                if finish_reason is not None:
+                                    if finish_reason == "tool_calls":
+                                        # 工具调用完成，但可能还有后续文本，继续处理
+                                        tool_calls_completed = True
+                                        print_debug("🔧 工具调用完成，继续接收可能的后续文本...")
                                     else:
-                                        # 如果没有finish_reason，检查是否在工具调用完成后收到空chunk
-                                        if tool_calls_completed:
-                                            # 检查当前chunk是否为空（没有内容和工具调用）
-                                            has_content = delta.content is not None and len(delta.content.strip()) > 0
-                                            has_tool_calls = delta.tool_calls is not None and len(delta.tool_calls) > 0
-                                            
-                                            if not has_content and not has_tool_calls:
-                                                empty_chunks_after_tool_calls += 1
-                                                # 如果连续收到多个空chunk，可能流已结束
-                                                if empty_chunks_after_tool_calls >= max_empty_chunks:
-                                                    print_debug(f"🔚 工具调用完成后收到{max_empty_chunks}个空chunk，结束接收")
-                                                    break
-                                            else:
-                                                # 有内容，重置计数
-                                                empty_chunks_after_tool_calls = 0
-                        finally:
-                            # 显式关闭streaming连接，通知服务器停止生成
-                            # 这确保了服务器端能够感知到客户端已停止接收
-                            if hasattr(response, 'close'):
-                                try:
-                                    response.close()
-                                    print_debug("🔌 已显式关闭streaming连接")
-                                except Exception as e:
-                                    print_debug(f"⚠️ 关闭streaming连接时出错: {e}")
+                                        # 其他结束原因（如"stop"），正常结束
+                                        print_debug(f"✅ 流式响应结束: {finish_reason}")
+                                        break
+                                else:
+                                    # 如果没有finish_reason，检查是否在工具调用完成后收到空chunk
+                                    if tool_calls_completed:
+                                        # 检查当前chunk是否为空（没有内容和工具调用）
+                                        has_content = delta.content is not None and len(delta.content.strip()) > 0
+                                        has_tool_calls = delta.tool_calls is not None and len(delta.tool_calls) > 0
+                                        
+                                        if not has_content and not has_tool_calls:
+                                            empty_chunks_after_tool_calls += 1
+                                            # 如果连续收到多个空chunk，可能流已结束
+                                            if empty_chunks_after_tool_calls >= max_empty_chunks:
+                                                print_debug(f"🔚 工具调用完成后收到{max_empty_chunks}个空chunk，结束接收")
+                                                break
+                                        else:
+                                            # 有内容，重置计数
+                                            empty_chunks_after_tool_calls = 0
+                    finally:
+                        # 显式关闭streaming连接，通知服务器停止生成
+                        # 这确保了服务器端能够感知到客户端已停止接收
+                        if hasattr(response, 'close'):
+                            try:
+                                response.close()
+                                print_debug("🔌 已显式关闭streaming连接")
+                            except Exception as e:
+                                print_debug(f"⚠️ 关闭streaming连接时出错: {e}")
                         
                         print_current("")
                     
@@ -5634,8 +5677,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         messages=api_messages,
                         tools=tools,
                         max_tokens=self._get_max_tokens_for_model(self.model),
-                        temperature=0.7,
-                        top_p=0.8,
+                        temperature=self.temperature,
+                        top_p=self.top_p,
                         stream=False
                     )
 
@@ -5842,7 +5885,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             system=system_message,
                             messages=claude_messages,
                             tools=tools,
-                            temperature=0.7
+                            temperature=self.temperature
                         ) as stream:
                             try:
                                 for event in stream:
@@ -6107,7 +6150,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         system=system_message,
                         messages=claude_messages,
                         tools=tools,
-                        temperature=0.7
+                        temperature=self.temperature
                     )
                     
                     content = ""
@@ -7477,7 +7520,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     max_tokens=self._get_max_tokens_for_model(self.model),
                     system=vision_system_prompt,
                     messages=[{"role": "user", "content": vision_content}],
-                    temperature=0.7
+                    temperature=self.temperature
                 )
                 
                 vision_analysis = ""
@@ -7491,8 +7534,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     model=self.model,
                     messages=vision_messages,
                     max_tokens=self._get_max_tokens_for_model(self.model),
-                    temperature=0.7,
-                    top_p=0.8,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
                     stream=False
                 )
 

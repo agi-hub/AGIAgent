@@ -1015,3 +1015,85 @@ def has_vision_config(config_file: str = "config/config.txt") -> bool:
         return True
     
     return False
+
+def get_admit_task_completed_with_tools(config_file: str = "config/config.txt") -> bool:
+    """
+    Get TASK_COMPLETED signal handling configuration from configuration file
+    
+    Controls whether to admit TASK_COMPLETED signal when it appears along with tool calls.
+    When enabled (True), if LLM outputs TASK_COMPLETED along with tool calls, the task will be completed immediately.
+    When disabled (False), TASK_COMPLETED signal will be dropped and tools will be executed.
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to admit TASK_COMPLETED with tools (default: False)
+    """
+    config = load_config(config_file)
+    admit_str = config.get('admit_task_completed_with_tools', 'False').lower()
+    
+    # Convert string to boolean
+    if admit_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif admit_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        # Default to False if invalid value
+        return False
+
+def get_temperature(config_file: str = "config/config.txt") -> float:
+    """
+    Get temperature parameter from configuration file
+    
+    Controls randomness in output (0.0 to 2.0)
+    Lower values: More deterministic, focused output
+    Higher values: More creative and diverse output
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Temperature float value (default: 0.7)
+    """
+    config = load_config(config_file)
+    temperature_str = config.get('temperature', '0.7').strip()
+    
+    try:
+        temperature = float(temperature_str)
+        # Validate range
+        if temperature < 0.0 or temperature > 2.0:
+            print(f"Warning: Invalid temperature value '{temperature_str}' in config file, must be between 0.0 and 2.0, using default 0.7")
+            return 0.7
+        return temperature
+    except ValueError:
+        print(f"Warning: Invalid temperature value '{temperature_str}' in config file, must be a float, using default 0.7")
+        return 0.7
+
+def get_top_p(config_file: str = "config/config.txt") -> float:
+    """
+    Get top_p (nucleus sampling) parameter from configuration file
+    
+    Controls diversity via nucleus sampling (0.0 to 1.0)
+    Lower values: More focused, conservative output
+    Higher values: More diverse output
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Top-p float value (default: 0.8)
+    """
+    config = load_config(config_file)
+    top_p_str = config.get('top_p', '0.8').strip()
+    
+    try:
+        top_p = float(top_p_str)
+        # Validate range
+        if top_p < 0.0 or top_p > 1.0:
+            print(f"Warning: Invalid top_p value '{top_p_str}' in config file, must be between 0.0 and 1.0, using default 0.8")
+            return 0.8
+        return top_p
+    except ValueError:
+        print(f"Warning: Invalid top_p value '{top_p_str}' in config file, must be a float, using default 0.8")
+        return 0.8

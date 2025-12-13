@@ -1983,6 +1983,20 @@ def create_temp_session_id(request, api_key=None):
 def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
     
+    def safe_emit(event, data=None, room=None):
+        """安全地发送消息，捕获所有异常以避免线程崩溃"""
+        try:
+            if data is None:
+                socketio.emit(event, room=room or session_id)
+            else:
+                socketio.emit(event, data, room=room or session_id)
+        except Exception as emit_error:
+            # 如果发送失败（通常是客户端已断开），静默处理
+            # 如果是因为客户端断开，应该退出线程
+            if 'disconnected' in str(emit_error).lower() or 'not connected' in str(emit_error).lower():
+                return False
+        return True
+    
     if session_id not in gui_instance.user_sessions:
         return
     
@@ -2104,25 +2118,25 @@ def queue_reader_thread(session_id):
                     # If we found query (either from stored value or from queue), send the request
                     if query:
                         # Send user_input_request event to GUI
-                        import logging
-                        logging.info(f"Sending user_input_request event: query length={len(query)}, timeout={timeout}")
-                        socketio.emit('user_input_request', {
+                        if not safe_emit('user_input_request', {
                             'query': query,
                             'timeout': timeout
-                        }, room=session_id)
+                        }):
+                            break
                         # Emit pending messages that were read while looking for QUERY/TIMEOUT
                         for pending_msg in pending_messages:
-                            socketio.emit(pending_msg['event'], pending_msg.get('data', {}), room=session_id)
+                            if not safe_emit(pending_msg['event'], pending_msg.get('data', {})):
+                                break
                         continue  # Don't emit the marker message itself
                     else:
-                        # If query not found after all attempts, log error and emit all pending messages
-                        import logging
-                        logging.error(f"GUI_USER_INPUT_REQUEST detected but QUERY not found. Message: {msg_text}")
+                        # If query not found after all attempts, emit all pending messages
                         # Emit all pending messages including the marker
                         for pending_msg in pending_messages:
-                            socketio.emit(pending_msg['event'], pending_msg.get('data', {}), room=session_id)
+                            if not safe_emit(pending_msg['event'], pending_msg.get('data', {})):
+                                break
                         # Still emit the original marker message so user can see something happened
-                        socketio.emit(message['event'], message.get('data', {}), room=session_id)
+                        if not safe_emit(message['event'], message.get('data', {})):
+                            break
             
             # If task completion message, save last used directory and clear current directory mark
             if message.get('event') in ['task_completed', 'error']:
@@ -2160,10 +2174,12 @@ def queue_reader_thread(session_id):
                 if '🔔 GUI_USER_INPUT_REQUEST' in msg_text or msg_text.startswith('QUERY: ') or msg_text.startswith('TIMEOUT: '):
                     continue  # Skip emitting these system messages
             
-            socketio.emit(message['event'], message.get('data', {}), room=session_id)
+            if not safe_emit(message['event'], message.get('data', {})):
+                break  # 客户端已断开，退出线程
         except queue.Empty:
             continue
         except Exception as e:
+            # 静默处理异常，避免线程崩溃
             break
     
     if user_session.current_process and hasattr(user_session.current_process, '_popen') and user_session.current_process._popen is not None:
@@ -3465,23 +3481,37 @@ def handle_disconnect():
         user_session = gui_instance.user_sessions[session_id]
 
         # Leave room and clean up session immediately
-        leave_room(session_id)
+        try:
+            leave_room(session_id)
+        except Exception:
+            pass
 
         # Terminate any running processes
         if user_session.current_process and user_session.current_process.is_alive():
-            user_session.current_process.terminate()
-            user_session.current_process.join(timeout=5)
+            try:
+                user_session.current_process.terminate()
+                user_session.current_process.join(timeout=5)
+            except Exception:
+                pass
 
         # Clean up active task if exists
-        gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        try:
+            gui_instance.concurrency_manager.finish_task(session_id, success=False)
+        except Exception:
+            pass
 
         # Clean up session
-        gui_instance.auth_manager.destroy_session(session_id)
-        del gui_instance.user_sessions[session_id]
-
+        try:
+            gui_instance.auth_manager.destroy_session(session_id)
+            del gui_instance.user_sessions[session_id]
+        except Exception:
+            pass
 
         # Get updated metrics
-        metrics = gui_instance.concurrency_manager.get_metrics()
+        try:
+            metrics = gui_instance.concurrency_manager.get_metrics()
+        except Exception:
+            pass
     else:
         pass
 

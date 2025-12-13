@@ -4108,6 +4108,8 @@
                 // If task is running, give special prompt
                 if (isTaskRunning) {
                     addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
+                    // 连接中断时，清除所有蓝色勾选状态
+                    clearAllDirectorySelections();
                 }
             });
 
@@ -4143,6 +4145,8 @@
                 isAutoReconnectInProgress = false;
                 wasReconnected = true; // 标记为重连
                 addMessage(I18N.reconnect_success || '已重新连接到服务器', 'success');
+                // 重连后，清除所有蓝色勾选状态
+                clearAllDirectorySelections();
                 ensureTaskTriggerReady();
             });
 
@@ -4158,6 +4162,8 @@
             });
 
             socket.on('task_started', function(data) {
+                // 任务成功启动后，清空pendingUserInput
+                pendingUserInput = '';
                 // 任务开始时重置消息状态，确保新的任务从新的info消息框开始
                 lastMessageType = null;
                 lastMessageDiv = null;
@@ -4449,11 +4455,24 @@
             socket.on('error', function(data) {
                 addMessage(data.message, 'error');
                 setTaskRunning(false);
+                // 特别处理"请先创建或者选择一个工作目录"的错误，确保恢复用户输入
+                const isDirectorySelectionError = data.message && (
+                    data.message.includes('请先创建或者选择一个工作目录') || 
+                    data.message.includes('Please create or select a workspace directory')
+                );
+                
                 // 如果有待执行的用户输入，恢复到输入框
                 if (pendingUserInput) {
-                    userInput.value = pendingUserInput;
-                    pendingUserInput = '';
-                    resizeTextarea();
+                    // 如果是目录选择错误，或者输入框为空，恢复用户输入
+                    if (isDirectorySelectionError || !userInput.value.trim()) {
+                        userInput.value = pendingUserInput;
+                        resizeTextarea();
+                    }
+                    // 注意：对于目录选择错误，不清空pendingUserInput，以便用户可以重新尝试
+                    // 只有在任务成功启动时才清空pendingUserInput（在task_started事件中处理）
+                    if (!isDirectorySelectionError) {
+                        pendingUserInput = '';
+                    }
                 }
                 // Reset plan mode state
                 currentTaskPlanMode = false;
@@ -5077,6 +5096,22 @@
         function addMessageImmediate(message, type = 'info', isUpdate = false) {
             const shouldScroll = shouldAutoScroll();
             
+            // 🔧 Fix: 全局检测💬标志，无论当前处于什么状态，都强制结束工具调用框
+            // 检测消息中是否包含💬（无论位置）
+            if (message.includes('💬')) {
+                // 如果当前正在收集JSON或等待JSON结束/开始，强制结束
+                if (jsonCollectingState.isCollecting || 
+                    jsonCollectingState.waitingForJsonEnd || 
+                    jsonCollectingState.waitingForJsonStart) {
+                    // 完成收集，重置状态
+                    resetJsonCollectingState();
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                    // 继续处理当前消息（不会return，继续执行下面的逻辑）
+                }
+            }
+            
             // 如果是更新类型的消息（进度条更新），更新最后一行而不是添加新行
             if (isUpdate) {
                 // 优先更新最后一条 info 类型的消息
@@ -5116,11 +5151,10 @@
             // 注意：空行检查在JSON检测之后进行，因为JSON检测可能需要这些标记
             // 如果正在收集JSON，继续追加内容
             if (jsonCollectingState.isCollecting) {
-                // 强制检测：如果消息中间包含💬（不是开头），强制结束JSON收集，将💬显示到框外
-                // 如果💬在开头，则将其包含在JSON内容中（会在filterJsonMarkers中移除）
-                const trimmedMsg = message.trim();
-                const hasEmojiInMiddle = trimmedMsg.includes('💬') && !trimmedMsg.startsWith('💬');
-                if (hasEmojiInMiddle) {
+                // 🔧 Fix: 如果消息包含💬（无论位置），强制结束JSON收集
+                // 由于全局检测已经在函数开始处处理了💬，这里作为双重检查
+                // 如果全局检测没有捕获到（理论上不应该发生），这里也能确保结束
+                if (message.includes('💬')) {
                     // 完成JSON收集（不包含💬消息）
                     resetJsonCollectingState();
                     lastMessageType = null;
@@ -6067,6 +6101,8 @@
 
             if (!selectedDirectory && !ensureSelectedDirectoryFromUI()) {
                 addMessage(I18N.select_directory_first, 'error');
+                // 显示错误消息时不清空用户输入框，保留用户输入的内容
+                // pendingUserInput 已经保存了用户输入，不需要额外处理
                 return;
             }
 
@@ -6149,9 +6185,10 @@
                     gui_config: guiConfig
                 });
                 
-                // 任务发送成功后立即清空输入框
+                // 任务发送后立即清空输入框（但保留pendingUserInput以便错误时恢复）
                 userInput.value = '';
-                pendingUserInput = '';
+                // 注意：不清空pendingUserInput，以便在错误时可以恢复用户输入
+                // pendingUserInput 将在任务成功启动或确认失败后清空
                 // 清空文件引用（已在sendMessage中处理并清空，这里确保清空）
                 if (window.attachedFiles) {
                     window.attachedFiles.clear();
@@ -6219,6 +6256,17 @@
             }
 
             return false;
+        }
+
+        /**
+         * 清除所有目录项的选中状态（蓝色勾选）
+         */
+        function clearAllDirectorySelections() {
+            document.querySelectorAll('.directory-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            selectedDirectory = null;
+            console.log('🧹 Cleared all directory selections');
         }
 
         function selectAndToggleDirectory(dirName) {

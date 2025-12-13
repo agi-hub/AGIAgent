@@ -326,3 +326,30 @@ auto_convert_to_word=True
 auto_convert_to_pdf=True
 auto_convert_to_latex=False
 
+# TASK_COMPLETED signal handling configuration
+# Controls whether to admit TASK_COMPLETED signal when it appears along with tool calls
+# When enabled (True), if LLM outputs TASK_COMPLETED along with tool calls:
+#   - Tools will be executed first
+#   - Then the task will be completed with TASK_COMPLETED signal
+# When disabled (False), TASK_COMPLETED signal will be dropped and tools will be executed without completing the task
+# Default: False (drop TASK_COMPLETED signal and execute tools without completing)
+admit_task_completed_with_tools=True
+
+# LLM Output Control Parameters
+# These parameters control the strictness and randomness of LLM output generation
+
+# Temperature: Controls randomness in output (0.0 to 2.0)
+# Lower values (0.0-0.3): More deterministic, focused output
+# Medium values (0.4-0.8): Balanced creativity and consistency
+# Higher values (0.9-2.0): More creative and diverse output
+# Default: 0.7 (balanced)
+temperature=0
+
+# Top-p (nucleus sampling): Controls diversity via nucleus sampling (0.0 to 1.0)
+# Lower values (0.1-0.5): More focused, conservative output
+# Medium values (0.6-0.9): Balanced diversity
+# Higher values (0.95-1.0): More diverse output
+# Default: 0.8 (balanced)
+top_p=0.8
+
+

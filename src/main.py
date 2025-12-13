@@ -197,6 +197,37 @@ def load_last_requirement() -> Optional[str]:
         print_current(f"⚠️ Failed to load last requirement: {e}")
         return None
 
+def get_multiline_input(prompt: str) -> str:
+    """
+    Get multiline input from user until an empty line is entered
+    
+    Supports pasting multiline text - reads all lines until an empty line is encountered.
+    If the first line is empty, returns empty string immediately.
+    
+    Args:
+        prompt: Prompt message to display
+        
+    Returns:
+        Multiline string entered by user
+    """
+    lines = []
+    print(prompt, end='', flush=True)
+    
+    try:
+        while True:
+            line = input()
+            # If we get an empty line, end input
+            if line.strip() == '':
+                # If we already have content, empty line means end
+                # If first line is empty, also end (user didn't enter anything)
+                break
+            lines.append(line)
+    except (KeyboardInterrupt, EOFError):
+        # User cancelled or reached EOF
+        pass
+    
+    return '\n'.join(lines).strip()
+
 def get_user_requirement_interactive(requirement: Optional[str] = None, 
                                     last_requirement: Optional[str] = None) -> Optional[str]:
     """
@@ -227,11 +258,11 @@ def get_user_requirement_interactive(requirement: Optional[str] = None,
     if last_requirement:
         print_system(f"🔄 Using last requirement from continue mode:")
         print_system(f"   {last_requirement}")
-        print_system("   (Press Enter to use this requirement, or type a new one)")
+        print_system("   (Press Enter twice to use this requirement, or type a new one)")
         print_system("-" * 50)
         
         try:
-            user_input = input("New requirement (or press Enter to continue): ").strip()
+            user_input = get_multiline_input("New requirement (or press Enter twice to continue): ")
             if user_input:
                 # Merge new requirement with previous requirement
                 merged_requirement = f"{user_input}. This is a task that continues to be executed. The previous task requirements is: {last_requirement}"
@@ -248,11 +279,11 @@ def get_user_requirement_interactive(requirement: Optional[str] = None,
     # Interactive input
     print_system(f"=== {APP_NAME} Automated Task Processing System ===")
     print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
-    print_system("(Press Enter to finish)")
+    print_system("(Enter your requirement, then press Enter twice to finish)")
     print_system("-" * 50)
     
     try:
-        requirement = input("Enter your requirement: ").strip()
+        requirement = get_multiline_input("Enter your requirement: ")
         if not requirement:
             print_current("No valid requirement entered")
             return None
@@ -480,11 +511,11 @@ class AGIAgentMain:
         if hasattr(self, 'last_requirement') and self.last_requirement:
             print_system(f"🔄 Using last requirement from continue mode:")
             print_system(f"   {self.last_requirement}")
-            print_system("   (Press Enter to use this requirement, or type a new one)")
+            print_system("   (Press Enter twice to use this requirement, or type a new one)")
             print_system("-" * 50)
             
             try:
-                user_input = input("New requirement (or press Enter to continue): ").strip()
+                user_input = get_multiline_input("New requirement (or press Enter twice to continue): ")
                 if user_input:
                     # Merge new requirement with previous requirement
                     merged_requirement = f"{user_input}. This is a task that continues to be executed. The previous task requirements is: {self.last_requirement}"
@@ -500,11 +531,11 @@ class AGIAgentMain:
         
         print_system(f"=== {APP_NAME} Automated Task Processing System ===")
         print_system("Please describe your requirements, the system will automatically decompose tasks and execute:")
-        print_system("(Press Enter to finish)")
+        print_system("(Enter your requirement, then press Enter twice to finish)")
         print_system("-" * 50)
         
         try:
-            requirement = input("Enter your requirement: ").strip()
+            requirement = get_multiline_input("Enter your requirement: ")
             if not requirement:
                 print_current("No valid requirement entered")
                 sys.exit(1)

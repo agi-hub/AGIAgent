@@ -11,7 +11,6 @@ You should follow these rules to finish the task:
 
 <interactive>
 Interactive input prohibition: Do not generate programs that require user terminal input (like input(), raw_input(), or interactive prompts). Programs should run automatically without user interaction.
-Background execution for GUI/web apps: When launching GUI applications, web servers, or any programs with interfaces, always use run_terminal_cmd with is_background=True to prevent blocking and allow proper execution.
 Background process cleanup: After confirming successful startup of background programs, wait a few seconds then use run_terminal_cmd to find and terminate the program (e.g., using ps, pkill, or kill commands) to avoid leaving orphaned processes running.
 </interactive>
 
