@@ -3347,6 +3347,9 @@
                             <button class="send-button" id="quickUploadButton" title="{{ i18n.get('quick_upload_tooltip', '上传文件到当前工作目录' if lang == 'zh' else 'Upload files to current workspace') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0;">
                                 <i class="fas fa-upload"></i>
                             </button>
+                            <button class="send-button" id="thinkingButton" title="{{ i18n.get('enable_thinking', '启用思考模式' if lang == 'zh' else 'Enable Thinking') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
+                                <i class="fas fa-lightbulb"></i>
+                            </button>
                             <input type="file" id="quickFileInput" multiple style="display: none;">
                             <div class="button-row">
                                 <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
@@ -5810,8 +5813,8 @@
                 return;
             }
 
-            // Get selected model configuration
-            const modelConfig = getSelectedModelConfig();
+            // Get selected model configuration (async)
+            const modelConfig = await getSelectedModelConfig();
             if (!modelConfig) {
                 addMessage(I18N.select_valid_config, 'error');
                 return;
@@ -5853,6 +5856,7 @@
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
                     enable_jieba: document.getElementById('enableJieba').checked,
+                    enable_thinking: thinkingMode,
                     routine_file: document.getElementById('routineSelect').value,
                     // Add model configuration
                     selected_model: modelConfig.model,
@@ -5871,6 +5875,10 @@
                 // 通过检查 modelSelect 的值来判断是否为自定义配置
                 const modelSelect = document.getElementById('modelSelect');
                 if (modelSelect && modelSelect.value === 'custom' && modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    guiConfig.model_api_key = modelConfig.api_key;
+                    guiConfig.model_api_base = modelConfig.api_base;
+                } else if (modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    // 对于从服务器获取的内置配置，也发送api_key和api_base
                     guiConfig.model_api_key = modelConfig.api_key;
                     guiConfig.model_api_base = modelConfig.api_base;
                 }
@@ -6106,8 +6114,8 @@
                 return;
             }
 
-            // Get selected model configuration
-            const modelConfig = getSelectedModelConfig();
+            // Get selected model configuration (async)
+            const modelConfig = await getSelectedModelConfig();
             if (!modelConfig) {
                 addMessage(I18N.select_valid_config, 'error');
                 return;
@@ -6145,6 +6153,7 @@
                     enable_long_term_memory: document.getElementById('enableLongTermMemory').checked,
                     enable_mcp: document.getElementById('enableMCP').checked,
                     enable_jieba: document.getElementById('enableJieba').checked,
+                    enable_thinking: thinkingMode,
                     routine_file: document.getElementById('routineSelect').value,
                     // Add model configuration
                     selected_model: modelConfig.model,
@@ -6166,6 +6175,10 @@
                 // 通过检查 modelSelect 的值来判断是否为自定义配置
                 const modelSelect = document.getElementById('modelSelect');
                 if (modelSelect && modelSelect.value === 'custom' && modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    guiConfig.model_api_key = modelConfig.api_key;
+                    guiConfig.model_api_base = modelConfig.api_base;
+                } else if (modelConfig && modelConfig.api_key && modelConfig.api_base) {
+                    // 对于从服务器获取的内置配置，也发送api_key和api_base
                     guiConfig.model_api_key = modelConfig.api_key;
                     guiConfig.model_api_base = modelConfig.api_base;
                 }
@@ -13215,6 +13228,25 @@
             });
         }
 
+        // Thinking按钮点击处理
+        const thinkingButton = document.getElementById('thinkingButton');
+        let thinkingMode = false; // 默认关闭
+        if (thinkingButton) {
+            thinkingButton.addEventListener('click', function() {
+                thinkingMode = !thinkingMode;
+                // 更新按钮样式以显示激活状态
+                if (thinkingMode) {
+                    thinkingButton.style.background = 'var(--color-accent)';
+                    thinkingButton.style.color = 'white';
+                    thinkingButton.style.borderColor = 'var(--color-accent)';
+                } else {
+                    thinkingButton.style.background = 'transparent';
+                    thinkingButton.style.color = 'var(--color-accent)';
+                    thinkingButton.style.borderColor = 'var(--color-accent)';
+                }
+            });
+        }
+
         // 快速上传按钮点击处理
         // 等待DOM加载完成后再设置事件监听器
         const quickUploadButton = document.getElementById('quickUploadButton');
@@ -13755,14 +13787,35 @@
                         // 清空现有选项
                         modelSelect.innerHTML = '';
                         
+                        // 确定默认选择的配置ID
+                        let defaultConfigId = null;
+                        if (data.current_model && data.current_api_base) {
+                            // 查找匹配当前激活配置的选项
+                            const currentConfigId = `${data.current_model}__${data.current_api_base}`;
+                            const matchingConfig = data.configs.find(c => c.value === currentConfigId);
+                            if (matchingConfig) {
+                                defaultConfigId = currentConfigId;
+                            }
+                        }
+                        
+                        // 如果没有找到匹配的配置，使用第一个非custom配置
+                        if (!defaultConfigId) {
+                            const firstNonCustom = data.configs.find(c => c.value !== 'custom');
+                            if (firstNonCustom) {
+                                defaultConfigId = firstNonCustom.value;
+                            } else if (data.configs.length > 0) {
+                                defaultConfigId = data.configs[0].value;
+                            }
+                        }
+                        
                         // 添加所有配置选项
                         data.configs.forEach((config, index) => {
                             const option = document.createElement('option');
                             option.value = config.value;
                             option.textContent = config.label;
                             
-                            // 设置第一个选项为默认选择
-                            if (index === 0) {
+                            // 设置匹配的配置为默认选择
+                            if (config.value === defaultConfigId) {
                                 option.selected = true;
                             }
                             
@@ -13779,7 +13832,7 @@
                         // 添加点击事件监听器来处理重复选择自定义选项的情况
                         modelSelect.addEventListener('click', handleModelSelectClick);
                         
-                        console.log(`已加载 ${data.configs.length} 个模型配置`);
+                        console.log(`已加载 ${data.configs.length} 个模型配置，默认选择: ${defaultConfigId || '无'}`);
                     } else {
                         // 如果没有配置或加载失败，显示默认选项
                         allModelConfigs = [];
@@ -13987,9 +14040,9 @@
         }
 
         /**
-         * 根据选择的配置ID获取配置信息
+         * 根据选择的配置ID获取配置信息（异步，需要从服务器获取敏感信息）
          */
-        function getSelectedModelConfig() {
+        async function getSelectedModelConfig() {
             const modelSelect = document.getElementById('modelSelect');
             if (!modelSelect || !modelSelect.value) {
                 return null;
@@ -14002,7 +14055,7 @@
                 return customModelConfig;
             }
             
-            // 查找内置配置
+            // 查找内置配置的基本信息
             const config = allModelConfigs.find(c => c.value === selectedValue);
             
             if (!config) {
@@ -14010,14 +14063,49 @@
                 return null;
             }
             
-            // 对于内置配置，api_key 和 api_base 不再从配置中返回（安全考虑）
-            // 这些信息只在后端任务执行时从服务器端读取
-            return {
-                value: config.value,
-                model: config.model,
-                max_tokens: config.max_tokens || 8192,
-                display_name: config.display_name
-            };
+            // 对于内置配置，需要从服务器获取api_key和api_base
+            try {
+                const response = await fetch('/api/get-model-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        config_id: selectedValue
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.config) {
+                    return {
+                        value: result.config.value,
+                        model: result.config.model,
+                        api_key: result.config.api_key,
+                        api_base: result.config.api_base,
+                        max_tokens: result.config.max_tokens || 8192,
+                        display_name: result.config.display_name || config.display_name
+                    };
+                } else {
+                    console.error('Failed to get model config details:', result.error);
+                    // 返回基本信息（不包含敏感信息）
+                    return {
+                        value: config.value,
+                        model: config.model,
+                        max_tokens: config.max_tokens || 8192,
+                        display_name: config.display_name
+                    };
+                }
+            } catch (error) {
+                console.error('Error fetching model config details:', error);
+                // 返回基本信息（不包含敏感信息）
+                return {
+                    value: config.value,
+                    model: config.model,
+                    max_tokens: config.max_tokens || 8192,
+                    display_name: config.display_name
+                };
+            }
         }
 
         /**

@@ -1097,3 +1097,242 @@ def get_top_p(config_file: str = "config/config.txt") -> float:
     except ValueError:
         print(f"Warning: Invalid top_p value '{top_p_str}' in config file, must be a float, using default 0.8")
         return 0.8
+
+def get_all_model_configs(config_file: str = "config/config.txt") -> list:
+    """
+    Get all model configurations from config file (including commented ones)
+    
+    Parses the config file to find all model configuration blocks, including those
+    that are commented out. Each configuration block should contain:
+    - api_key: API key for the model
+    - api_base: Base URL for the API
+    - model: Model name
+    - max_tokens: Maximum tokens (optional)
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        List of dictionaries, each containing a model configuration with keys:
+        - name: Display name (from comment or model name)
+        - api_key: API key
+        - api_base: API base URL
+        - model: Model name
+        - max_tokens: Max tokens (default: 8192)
+        - enabled: Whether this configuration is currently active (not commented)
+    """
+    all_configs = []
+    
+    if not os.path.exists(config_file):
+        return all_configs
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Find the start marker: "# Model configuration section"
+        start_index = -1
+        for i, line in enumerate(lines):
+            if line.strip() == '# Model configuration section':
+                start_index = i
+                break
+        
+        # If start marker not found, return empty list
+        if start_index == -1:
+            return []
+        
+        # Start parsing from the line after the start marker
+        i = start_index + 1
+        while i < len(lines):
+            line = lines[i].rstrip('\n\r')
+            stripped_line = line.strip()
+            
+            # Stop parsing if we reach the end marker
+            if stripped_line == '# This is the end of model config.':
+                break
+            
+            # Check for configuration section headers
+            # Look for lines starting with # that contain configuration-related keywords
+            # and are followed by api_key/api_base/model lines
+            # But exclude lines that are actual config lines (contain = immediately after #)
+            is_config_header = False
+            if stripped_line.startswith('#'):
+                # Skip if this is a config line (contains = after removing #)
+                header_without_hash = stripped_line[1:].strip()
+                if '=' in header_without_hash and not header_without_hash.startswith('#'):
+                    # This is a config line, not a header
+                    i += 1
+                    continue
+                
+                header_lower = stripped_line.lower()
+                # Remove # and check for common patterns
+                header_content = header_lower.replace('#', '').strip()
+                
+                # Check if it looks like a configuration section header
+                # Must NOT be a config line (no = sign), and must contain keywords
+                if '=' not in header_content and (
+                    'configuration' in header_content or 
+                    ('api' in header_content and 'configuration' in header_content) or
+                    ('api' in header_content and len(header_content.split()) <= 4) or  # Short API-related lines
+                    ('model' in header_content and len(header_content.split()) <= 4) or  # Short model-related lines
+                    any(provider in header_content for provider in 
+                        ['openai', 'anthropic', 'zhipu', 'bailian', 'gemini', 'deepseek', 
+                         'doubao', 'moonshot', 'siliconflow', 'ollama', 'openrouter', 'volcengine', 'google'])):
+                    # Check if next few lines contain config keys (api_key, api_base, model)
+                    if i + 1 < len(lines):
+                        next_lines = ''.join(lines[i+1:min(i+5, len(lines))])  # Check next 4 lines
+                        if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
+                            is_config_header = True
+            
+            if is_config_header:
+                # Extract section name
+                section_name = stripped_line.replace('#', '').strip()
+                
+                # Extract provider name for display
+                display_name = section_name
+                if 'API configuration' in section_name:
+                    parts = section_name.split()
+                    if len(parts) > 0:
+                        if parts[0] == 'GUI':
+                            display_name = 'GUI' + ((' ' + parts[1]) if len(parts) > 1 else '')
+                        else:
+                            display_name = parts[0]
+                elif section_name.endswith('models'):
+                    display_name = section_name.replace(' models', '').replace(' model', '')
+                elif section_name.startswith('# '):
+                    display_name = section_name[2:]
+                
+                # Start collecting config from next lines
+                i += 1
+                current_config = {'name': display_name}
+                section_enabled = True  # Track if section is enabled
+                found_model = False
+                found_api_base = False
+                last_line_was_commented = False
+                
+                # Read config lines until we hit another section or non-config content
+                while i < len(lines):
+                    line = lines[i].rstrip('\n\r')
+                    stripped_line = line.strip()
+                    
+                    # Stop if we hit the end marker
+                    if stripped_line == '# This is the end of model config.':
+                        break
+                    
+                    # Stop if we hit another configuration section header
+                    # Check if this is a header (not a config line)
+                    if stripped_line.startswith('#'):
+                        header_without_hash = stripped_line[1:].strip()
+                        # If it's a header (no = sign) and contains keywords, it's a new section
+                        if '=' not in header_without_hash:
+                            header_lower = stripped_line.lower()
+                            header_content = header_lower.replace('#', '').strip()
+                            if ('configuration' in header_content or 
+                                ('api' in header_content and 'configuration' in header_content) or
+                                ('api' in header_content and len(header_content.split()) <= 4) or
+                                ('model' in header_content and len(header_content.split()) <= 4) or
+                                any(provider in header_content for provider in 
+                                    ['openai', 'anthropic', 'zhipu', 'bailian', 'gemini', 'deepseek', 
+                                     'doubao', 'moonshot', 'siliconflow', 'ollama', 'openrouter', 'volcengine', 'google'])):
+                                # Check if next lines contain config keys
+                                if i + 1 < len(lines):
+                                    next_lines = ''.join(lines[i+1:min(i+5, len(lines))])
+                                    if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
+                                        break
+                    
+                    # Stop if we hit a non-empty, non-comment line that's not a config line
+                    # (but allow config lines even if commented)
+                    if stripped_line and not stripped_line.startswith('#') and '=' not in stripped_line:
+                        # Check if we've collected enough config (at least model and api_base)
+                        if found_model and found_api_base:
+                            break
+                    
+                    # Process configuration lines (including commented ones)
+                    if '=' in stripped_line:
+                        # Check if line is commented
+                        line_is_commented = stripped_line.startswith('#')
+                        last_line_was_commented = line_is_commented
+                        config_line = stripped_line
+                        if line_is_commented:
+                            config_line = config_line[1:].strip()
+                            # If first config line is commented, whole section is likely commented
+                            if not found_model and not found_api_base:
+                                section_enabled = False
+                        
+                        # Handle inline comments
+                        if '#' in config_line:
+                            config_line = config_line.split('#')[0].strip()
+                        
+                        if '=' in config_line:
+                            key, value = config_line.split('=', 1)
+                            key = key.strip()
+                            value = value.strip()
+                            
+                            if key == 'api_key':
+                                current_config['api_key'] = value
+                            elif key == 'api_base':
+                                current_config['api_base'] = value
+                                found_api_base = True
+                            elif key == 'model':
+                                current_config['model'] = value
+                                found_model = True
+                                # Use model name as fallback display name
+                                if not current_config.get('name') or current_config['name'] == 'Unknown':
+                                    current_config['name'] = value
+                            elif key == 'max_tokens':
+                                try:
+                                    current_config['max_tokens'] = int(value)
+                                except ValueError:
+                                    current_config['max_tokens'] = 8192
+                    
+                    i += 1
+                
+                # Save config if it has required fields
+                # Only save if the config is enabled (not fully commented out)
+                if current_config.get('model') and current_config.get('api_base'):
+                    current_config['enabled'] = section_enabled and not last_line_was_commented
+                    # Set default max_tokens if not set
+                    if 'max_tokens' not in current_config:
+                        current_config['max_tokens'] = 8192
+                    # Only include enabled (non-commented) configurations
+                    if current_config['enabled']:
+                        all_configs.append(current_config.copy())
+                
+                # Continue to next iteration (don't increment i here as it's already incremented)
+                continue
+            
+            i += 1
+        
+        # Remove duplicates and filter invalid configs
+        seen = set()
+        unique_configs = []
+        for config in all_configs:
+            model = config.get('model', '').strip()
+            api_base = config.get('api_base', '').strip()
+            api_key = config.get('api_key', '').strip()
+            
+            # Skip if missing required fields
+            if not model or not api_base:
+                continue
+            
+            # Include all configs, even with placeholder api_key values
+            # Users can still select them and provide their own keys
+            
+            key = (model, api_base)
+            if key not in seen:
+                seen.add(key)
+                # Create display name: provider name + model name
+                name = config.get('name', model)
+                if name != model and name != 'Unknown':
+                    config['display_name'] = f"{name} - {model}"
+                else:
+                    config['display_name'] = model
+                unique_configs.append(config)
+        
+        return unique_configs
+        
+    except Exception as e:
+        print(f"Error reading all model configurations from {config_file}: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

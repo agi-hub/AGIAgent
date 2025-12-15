@@ -68,7 +68,8 @@ class MultiRoundTaskExecutor:
                  interactive_mode: bool = False, streaming: bool = None,
                  MCP_config_file: str = None, prompts_folder: str = None,
                  user_id: str = None,
-                 plan_mode: bool = False):
+                 plan_mode: bool = False,
+                 enable_thinking: bool = None):
         """
         Initialize multi-round task executor
         
@@ -86,6 +87,7 @@ class MultiRoundTaskExecutor:
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             user_id: User ID for MCP knowledge base tools
+            enable_thinking: Whether to enable thinking mode (None to use config.txt)
         """
         # Ensure subtask_loops is an integer to prevent type comparison errors
         self.subtask_loops = int(subtask_loops) 
@@ -104,6 +106,7 @@ class MultiRoundTaskExecutor:
         self.MCP_config_file = MCP_config_file
         self.prompts_folder = prompts_folder
         self.user_id = user_id
+        self.enable_thinking = enable_thinking
         self.task_summaries = []  # Store summaries of all tasks
         
         # Extract session timestamp
@@ -132,7 +135,8 @@ class MultiRoundTaskExecutor:
             prompts_folder=prompts_folder,
             user_id=user_id,
             subtask_loops=subtask_loops,
-            plan_mode=plan_mode
+            plan_mode=plan_mode,
+            enable_thinking=enable_thinking
         )
         
         # Initialize module components

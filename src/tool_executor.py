@@ -171,7 +171,8 @@ class ToolExecutor:
                  prompts_folder: Optional[str] = None,
                  user_id: Optional[str] = None,
                  subtask_loops: Optional[int] = None,
-                 plan_mode: bool = False):
+                 plan_mode: bool = False,
+                 enable_thinking: Optional[bool] = None):
         """
         Initialize the ToolExecutor
 
@@ -189,6 +190,7 @@ class ToolExecutor:
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             user_id: User ID for MCP knowledge base tools
             subtask_loops: Number of subtask loops (-1 for infinite loop)
+            enable_thinking: Whether to enable thinking mode (None to use config.txt)
         """
         # Load API key from config/config.txt if not provided
         if api_key is None:
@@ -267,7 +269,11 @@ class ToolExecutor:
         
         # Load thinking support configuration from config/config.txt
         # True = enable thinking, False = disable thinking
-        self.enable_thinking = get_enable_thinking()
+        # Parameter overrides config.txt value if provided
+        if enable_thinking is not None:
+            self.enable_thinking = enable_thinking
+        else:
+            self.enable_thinking = get_enable_thinking()
         
         # Load LLM output control parameters from config/config.txt
         self.temperature = get_temperature()
@@ -1324,6 +1330,22 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 continue
             
             elif "result" in record:
+                # 🔧 检查是否是错误反馈记录
+                is_error_feedback = record.get("error", False)
+                
+                if is_error_feedback:
+                    # 错误反馈记录：显眼地显示在最前面
+                    message_parts.append("=" * 80)
+                    message_parts.append("🚨🚨🚨 CRITICAL ERROR FEEDBACK FROM PREVIOUS ROUND 🚨🚨🚨")
+                    message_parts.append("=" * 80)
+                    message_parts.append("")
+                    error_response = record['result'].strip()
+                    message_parts.append(error_response)
+                    message_parts.append("")
+                    message_parts.append("=" * 80)
+                    message_parts.append("")
+                    continue  # 跳过后续处理，错误反馈已经完整显示
+                
                 '''
                 # Add clear separator line for each round with improved labeling
                 if record.get("is_summary", False):
@@ -1533,6 +1555,122 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         if hasattr(self, 'last_summarized_history_length'):
             self.last_summarized_history_length = 0
 
+    def _add_error_feedback_to_history(self, task_history: Optional[List[Dict[str, Any]]] = None, 
+                                       error_type: str = "", error_message: str = "", 
+                                       execution_round: int = None) -> None:
+        """
+        将错误反馈添加到task_history中，以便在下一轮次中显眼地显示给大模型
+        
+        Args:
+            task_history: 任务历史记录列表（如果为None，则从self._current_task_history获取）
+            error_type: 错误类型 ('json_parse_error', 'hallucination_detected', 'multiple_tools_detected')
+            error_message: 错误消息
+            execution_round: 当前执行轮次（如果为None，则从self._current_execution_round获取）
+        """
+        # 如果没有提供task_history，尝试从self获取
+        if task_history is None:
+            task_history = getattr(self, '_current_task_history', None)
+        
+        if task_history is None:
+            return
+        
+        # 如果没有提供execution_round，尝试从self获取
+        if execution_round is None:
+            execution_round = getattr(self, '_current_execution_round', 1)
+        
+        # 构建显眼的错误反馈消息
+        if error_type == 'json_parse_error':
+            feedback_message = f"""
+🚨🚨🚨 CRITICAL ERROR FEEDBACK - JSON PARSING FAILED 🚨🚨🚨
+
+⚠️⚠️⚠️ YOUR PREVIOUS TOOL CALL JSON FORMAT WAS INVALID ⚠️⚠️⚠️
+
+The system failed to parse your tool call JSON format in the previous round.
+This means your tool call was NOT executed successfully.
+
+Error details: {error_message}
+
+🔴 IMPORTANT REMINDERS:
+1. Ensure your JSON format is valid and properly escaped
+2. Check that all string values are properly quoted
+3. Verify that all brackets and braces are properly matched
+4. Do NOT include markdown code block markers (```json) inside JSON string values
+5. Make sure boolean values are lowercase (true/false, not True/False)
+6. Ensure numeric values are not quoted
+
+Please regenerate your tool call with correct JSON format.
+
+🚨🚨🚨 END OF ERROR FEEDBACK 🚨🚨🚨
+"""
+        elif error_type == 'hallucination_detected':
+            feedback_message = f"""
+🚨🚨🚨 CRITICAL ERROR FEEDBACK - HALLUCINATION DETECTED 🚨🚨🚨
+
+⚠️⚠️⚠️ YOUR PREVIOUS RESPONSE CONTAINED HALLUCINATED CONTENT ⚠️⚠️⚠️
+
+The system detected that you tried to output tool execution results or tool call sections
+that were NOT actually executed. This is a hallucination and was stopped.
+
+Error details: {error_message}
+
+🔴 IMPORTANT REMINDERS:
+1. NEVER output "**LLM Called Following Tools in this round" or similar text
+2. NEVER output "**Tool Execution Results:**" or similar text
+3. Do NOT fabricate tool execution results - wait for actual tool execution results
+4. Your response was truncated at the hallucination point, 
+   the tools you called before this point should be executed successfully.
+
+Please regenerate your response without hallucinated content.
+
+🚨🚨🚨 END OF ERROR FEEDBACK 🚨🚨🚨
+"""
+        elif error_type == 'multiple_tools_detected':
+            feedback_message = f"""
+🚨🚨🚨 CRITICAL ERROR FEEDBACK - MULTIPLE TOOL CALLS DETECTED 🚨🚨🚨
+
+⚠️⚠️⚠️ YOUR PREVIOUS RESPONSE CONTAINED MULTIPLE TOOL CALLS ⚠️⚠️⚠️
+
+The system detected multiple tool calls in your response, but only ONE tool call
+is allowed per round. Your response was truncated after the first tool call.
+
+Error details: {error_message}
+
+🔴 IMPORTANT REMINDERS:
+1. You can ONLY call ONE tool per round
+2. If you need to call multiple tools, call them sequentially in separate rounds
+3. Wait for the tool execution result before calling the next tool
+4. Do NOT include multiple ```json blocks with tool calls in a single response
+5. Your response was truncated after the first tool call
+
+Please regenerate your response with only ONE tool call.
+
+🚨🚨🚨 END OF ERROR FEEDBACK 🚨🚨🚨
+"""
+        else:
+            feedback_message = f"""
+🚨🚨🚨 CRITICAL ERROR FEEDBACK 🚨🚨🚨
+
+⚠️⚠️⚠️ AN ERROR OCCURRED IN THE PREVIOUS ROUND ⚠️⚠️⚠️
+
+Error type: {error_type}
+Error details: {error_message}
+
+Please review the error and adjust your response accordingly.
+
+🚨🚨🚨 END OF ERROR FEEDBACK 🚨🚨🚨
+"""
+        
+        # 添加错误反馈记录到历史
+        error_record = {
+            "task_round": execution_round,
+            "result": feedback_message,
+            "error": True,
+            "error_type": error_type,
+            "task_completed": False,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        task_history.append(error_record)
+
     def execute_subtask(self, prompt: str, prompts_file: str = "", 
                        task_history: Optional[List[Dict[str, Any]]] = None, 
                        execution_round: int = 1) -> Union[str, Tuple[str, List[Dict[str, Any]]]]:
@@ -1560,6 +1698,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         
         # Store current task history reference for history compression tool
         self._current_task_history = task_history
+        self._current_execution_round = execution_round
         
         original_history_id = id(task_history)  # Track if we modify the history
         history_was_optimized = False
@@ -1833,7 +1972,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 result_parts = [content]
                 if tool_calls_formatted:
                     result_parts.append("\n\n--- Tool Calls ---\n" + tool_calls_formatted)
-                result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
                 
                 # Check if this was originally intended to be task completion after tool execution
                 if original_has_task_completed:
@@ -1844,12 +1982,20 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                         if task_completed_match:
                             completion_message = task_completed_match.group(1).strip()
                     
-                    # Re-add TASK_COMPLETED flag to the result so task_checker can detect it
+                    # Re-add TASK_COMPLETED flag BEFORE tool execution results so task_checker can detect it
+                    # task_checker only checks content before "--- Tool Execution Results ---" marker
                     if completion_message:
-                        combined_result = "".join(result_parts) + f"\n\nTASK_COMPLETED: {completion_message}"
+                        result_parts.append(f"\n\nTASK_COMPLETED: {completion_message}")
                     else:
-                        combined_result = "".join(result_parts) + "\n\nTASK_COMPLETED"
-                    
+                        result_parts.append("\n\nTASK_COMPLETED")
+                
+                result_parts.append("\n\n--- Tool Execution Results ---\n" + tool_results_message)
+                
+                # Build combined result
+                combined_result = "".join(result_parts)
+                
+                # Check if this was originally intended to be task completion after tool execution
+                if original_has_task_completed:
                     # Save final debug log
                     if self.debug_mode:
                         try:
@@ -1883,7 +2029,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     return combined_result
 
                 # Store task completion in long-term memory (normal tool execution)
-                combined_result = "".join(result_parts)
                 self._store_task_completion_memory(prompt, combined_result, {
                     "task_completed": False,  # Not task completion, just tool execution
                     "completion_method": "tool_execution",
@@ -1939,6 +2084,15 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             print_debug(error_msg)
             print_debug(f"📄 This usually means the model generated invalid JSON in tool arguments")
             print_debug(f"💡 Try regenerating the response or check the model's tool calling format")
+            
+            # 添加错误反馈到历史记录，以便在下一轮次中显眼地显示给大模型
+            self._add_error_feedback_to_history(
+                task_history=task_history,
+                error_type='json_parse_error',
+                error_message=error_msg,
+                execution_round=round_counter
+            )
+            
             finish_operation(f"executing task (round {round_counter})")
             return error_msg
         except Exception as e:
@@ -1951,6 +2105,13 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 print_current(f"🔧 The model may have generated malformed JSON - try regenerating")
             elif "json.loads" in str(e) or "JSONDecodeError" in str(e):
                 print_current(f"💡 JSON parsing error detected - check tool argument formatting")
+                # 添加JSON解析错误反馈到历史记录
+                self._add_error_feedback_to_history(
+                    task_history=task_history,
+                    error_type='json_parse_error',
+                    error_message=error_msg,
+                    execution_round=round_counter
+                )
             
             finish_operation(f"executing task (round {round_counter})")
             return error_msg
@@ -4632,16 +4793,23 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     
                     if self.streaming:
                         with streaming_context(show_start_message=False) as printer:
-                            # 显示LLM开始说话的emoji
-                            printer.write(f"\n💬 ")
+                            # Prepare parameters for Anthropic API
+                            # Note: When thinking is enabled, temperature MUST be 1.0
+                            temperature = 1.0 if self.enable_thinking else self.temperature
                             
-                            with self.client.messages.stream(
-                                model=self.model,
-                                max_tokens=self._get_max_tokens_for_model(self.model),
-                                system=system_message,
-                                messages=claude_messages,
-                                temperature=self.temperature
-                            ) as stream:
+                            api_params = {
+                                "model": self.model,
+                                "max_tokens": self._get_max_tokens_for_model(self.model),
+                                "system": system_message,
+                                "messages": claude_messages,
+                                "temperature": temperature
+                            }
+                            
+                            # Enable thinking for reasoning-capable models
+                            if self.enable_thinking:
+                                api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                            
+                            with self.client.messages.stream(**api_params) as stream:
                                 content = ""
                                 hallucination_detected = False
                                 stream_error_occurred = False
@@ -4655,70 +4823,110 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 # 标志：是否因为检测到第一个完整的工具调用而提前停止
                                 tool_call_detected_early = False
                                 
+                                # Thinking tracking
+                                thinking_printed_header = False
+                                answer_started = False
+                                
                                 try:
-                                    for text in stream.text_stream:
-                                        buffer += text
-                                        content += text
+                                    # Use event-based streaming to capture thinking
+                                    for event in stream:
+                                        event_type = getattr(event, 'type', None)
                                         
-                                        # # Check for hallucination patterns - strict match (检查整个 content，避免打印幻觉字符串)
-                                        hallucination_patterns = [
-                                            "**LLM Called Following Tools in this round",
-                                            "**Tool Execution Results:**"
-                                        ]
-                                        hallucination_detected_flag = False
-                                        hallucination_start = -1
-                                        for pattern in hallucination_patterns:
-                                            if pattern in content:
-                                                hallucination_start = content.find(pattern)
-                                                hallucination_detected_flag = True
-                                                break
+                                        # Handle content block start
+                                        if event_type == "content_block_start":
+                                            content_block = getattr(event, 'content_block', None)
+                                            if content_block:
+                                                block_type = getattr(content_block, 'type', None)
+                                                if block_type == "thinking" and self.enable_thinking:
+                                                    printer.write("\n🧠 ")
+                                                    thinking_printed_header = True
+                                                elif block_type == "text":
+                                                    if thinking_printed_header:
+                                                        printer.write("\n\n💬 ")
+                                                    else:
+                                                        printer.write("\n💬 ")
+                                                    answer_started = True
                                         
-                                        if hallucination_detected_flag:
-                                            print_debug("\n🚨 Hallucination Detected, stop chat")
-                                            hallucination_detected = True
-                                            # 截断 buffer 和 content 到幻觉位置之前，避免打印幻觉字符串
-                                            if hallucination_start > 0:
-                                                content = content[:hallucination_start].rstrip()
-                                                # 检查 buffer 中是否已经包含了幻觉字符串
-                                                if len(buffer) > len(content) - total_printed:
-                                                    # buffer 中包含幻觉字符串，需要截断
-                                                    buffer = content[total_printed:] if len(content) > total_printed else ""
-                                                else:
-                                                    # buffer 还没有包含幻觉字符串，保持原样
-                                                    pass
-                                            else:
-                                                # 幻觉字符串在开头，清空 buffer 和 content
-                                                buffer = ""
-                                                content = ""
-                                            break
-                                        
-                                        # 🎯 检测第二个```json标记，如果发现则立即停止流
-                                        # 只保留第一个工具调用，符合"每轮只能调用一个工具"的规则
-                                        first_json_pos = content.find('```json')
-                                        if first_json_pos != -1:
-                                            # 查找第二个```json标记
-                                            second_json_pos = content.find('```json', first_json_pos + len('```json'))
-                                            if second_json_pos != -1:
-                                                # 检测到第二个 JSON 块，立即停止流
-                                                print_debug("\n🛑 Multiple tool calls detected, stopping stream after first JSON block")
-                                                tool_call_detected_early = True
-                                                # 截断 content 到第二个 JSON 块之前
-                                                content = content[:second_json_pos].rstrip()
-                                                # 调整 buffer
-                                                if len(buffer) > len(content) - total_printed:
-                                                    buffer = content[total_printed:] if len(content) > total_printed else ""
-                                                break
-                                        
-                                        # 当缓冲区达到最小大小时，打印缓冲区内容
-                                        if len(buffer) >= min_buffer_size:
-                                            # 正常打印
-                                            printer.write(buffer)
-                                            total_printed += len(buffer)
-                                            buffer = ""
-                                        
-                                        # 如果因为检测到工具调用而提前停止，跳出循环
-                                        if tool_call_detected_early:
-                                            break
+                                        # Handle content block deltas
+                                        elif event_type == "content_block_delta":
+                                            delta = getattr(event, 'delta', None)
+                                            if delta:
+                                                delta_type = getattr(delta, 'type', None)
+                                                
+                                                # Thinking content
+                                                if delta_type == "thinking_delta" and self.enable_thinking:
+                                                    thinking_text = getattr(delta, 'thinking', '')
+                                                    printer.write(thinking_text)
+                                                
+                                                # Text content
+                                                elif delta_type == "text_delta":
+                                                    text = getattr(delta, 'text', '')
+                                                    buffer += text
+                                                    content += text
+                                                    
+                                                    # Check for hallucination patterns
+                                                    # 使用更严格的匹配：只检查完整模式，避免部分匹配误判
+                                                    # 流式输出可能被截断，但只有在匹配完整模式时才判定为幻觉
+                                                    hallucination_patterns = [
+                                                        "**LLM Called Following Tools in this round",
+                                                        "**Tool Execution Results:**"
+                                                    ]
+                                                    hallucination_detected_flag = False
+                                                    hallucination_start = -1
+                                                    
+                                                    # 只检查完整模式匹配，避免部分字符串误判
+                                                    for pattern in hallucination_patterns:
+                                                        if pattern in content:
+                                                            hallucination_start = content.find(pattern)
+                                                            hallucination_detected_flag = True
+                                                            break
+                                                    
+                                                    # 如果完整模式未匹配，检查是否在代码块中（代码块中的匹配不应视为幻觉）
+                                                    if not hallucination_detected_flag:
+                                                        # 检查是否在代码块中
+                                                        code_block_markers = ['```json', '```python', '```bash', '```']
+                                                        in_code_block = False
+                                                        for marker in code_block_markers:
+                                                            if marker in content:
+                                                                # 检查匹配位置是否在代码块内
+                                                                marker_pos = content.rfind(marker)
+                                                                if marker_pos != -1:
+                                                                    # 简单检查：如果最后出现的代码块标记后面还有内容，可能在代码块中
+                                                                    in_code_block = True
+                                                                    break
+                                                    
+                                                    if hallucination_detected_flag:
+                                                        print_debug("\n🚨 Hallucination Detected, stop chat")
+                                                        hallucination_detected = True
+                                                        if hallucination_start > 0:
+                                                            content = content[:hallucination_start].rstrip()
+                                                            if len(buffer) > len(content) - total_printed:
+                                                                buffer = content[total_printed:] if len(content) > total_printed else ""
+                                                        else:
+                                                            buffer = ""
+                                                            content = ""
+                                                        break
+                                                    
+                                                    # Check for multiple tool calls
+                                                    first_json_pos = content.find('```json')
+                                                    if first_json_pos != -1:
+                                                        second_json_pos = content.find('```json', first_json_pos + len('```json'))
+                                                        if second_json_pos != -1:
+                                                            print_debug("\n🛑 Multiple tool calls detected, stopping stream after first JSON block")
+                                                            tool_call_detected_early = True
+                                                            content = content[:second_json_pos].rstrip()
+                                                            if len(buffer) > len(content) - total_printed:
+                                                                buffer = content[total_printed:] if len(content) > total_printed else ""
+                                                            break
+                                                    
+                                                    # Buffer and print text content
+                                                    if len(buffer) >= min_buffer_size:
+                                                        printer.write(buffer)
+                                                        total_printed += len(buffer)
+                                                        buffer = ""
+                                                    
+                                                    if tool_call_detected_early:
+                                                        break
                                 except Exception as e:
                                     # 捕获流式处理中的异常
                                     stream_error_occurred = True
@@ -4750,6 +4958,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 
                                 # If hallucination was detected, return early
                                 if hallucination_detected:
+                                    # 添加错误反馈到历史记录
+                                    self._add_error_feedback_to_history(
+                                        error_type='hallucination_detected',
+                                        error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                    )
                                     # 添加换行（仅限chat接口）
                                     if not content.endswith('\n'):
                                         content += '\n'
@@ -4782,6 +4995,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                     # 只保留第一个工具调用（双重保险）
                                     if tool_calls and len(tool_calls) > 1:
                                         print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
+                                        # 添加错误反馈到历史记录
+                                        self._add_error_feedback_to_history(
+                                            error_type='multiple_tools_detected',
+                                            error_message=f"Multiple tool calls detected ({len(tool_calls)}), only the first one was executed"
+                                        )
                                         tool_calls = [tool_calls[0]]
                                     
                                     # Convert tool calls to standard format for compatibility
@@ -4814,13 +5032,23 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 return content, []
                     else:
                         # print_current("🔄 LLM is thinking:")
-                        response = self.client.messages.create(
-                            model=self.model,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            system=system_message,
-                            messages=claude_messages,
-                            temperature=self.temperature
-                        )
+                        # Prepare parameters for Anthropic API
+                        # Note: When thinking is enabled, temperature MUST be 1.0
+                        temperature = 1.0 if self.enable_thinking else self.temperature
+                        
+                        api_params = {
+                            "model": self.model,
+                            "max_tokens": self._get_max_tokens_for_model(self.model),
+                            "system": system_message,
+                            "messages": claude_messages,
+                            "temperature": temperature
+                        }
+                        
+                        # Enable thinking for reasoning-capable models
+                        if self.enable_thinking:
+                            api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                        
+                        response = self.client.messages.create(**api_params)
                         
                         content = ""
                         thinking = ""
@@ -4849,7 +5077,18 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
                         # Check for hallucination patterns in non-streaming response - strict match
-                        if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
+                        # 统一使用完整模式，避免部分匹配误判
+                        hallucination_patterns = [
+                            "**LLM Called Following Tools in this round",
+                            "**Tool Execution Results:**"
+                        ]
+                        hallucination_detected = any(pattern in content for pattern in hallucination_patterns)
+                        if hallucination_detected:
+                            # 添加错误反馈到历史记录
+                            self._add_error_feedback_to_history(
+                                error_type='hallucination_detected',
+                                error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                            )
                             # print_current("\n🚨 Hallucination Detected, stop chat")  # Reduced verbose output
                             # 添加换行（仅限chat接口）
                             if not content.endswith('\n'):
@@ -4900,12 +5139,16 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             # 严格匹配两个幻觉标志：
                                             # 1. "**LLM Called Following Tools in this round"
                                             # 2. "**Tool Execution Results:**"
+                                            # 统一使用带**的完整模式，与Anthropic API保持一致
                                             hallucination_patterns = [
+                                                "**LLM Called Following Tools in this round",
                                                 "LLM Called Following Tools in this round",
                                                 "**Tool Execution Results:**"
                                             ]
                                             hallucination_detected_flag = False
                                             hallucination_start = -1
+                                            
+                                            # 只检查完整模式匹配，避免部分字符串误判
                                             for pattern in hallucination_patterns:
                                                 if pattern in content:
                                                     hallucination_start = content.find(pattern)
@@ -4915,6 +5158,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             if hallucination_detected_flag:
                                                 print_debug("\n🚨 Hallucination Detected, stop chat")
                                                 hallucination_detected = True
+                                                # 添加错误反馈到历史记录
+                                                self._add_error_feedback_to_history(
+                                                    error_type='hallucination_detected',
+                                                    error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                                )
                                                 # 截断内容到幻觉开始位置，避免打印幻觉字符串
                                                 if hallucination_start > 0:
                                                     content_to_print = content[:hallucination_start].rstrip()
@@ -4987,6 +5235,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                             
                             # If hallucination was detected, return early
                             if hallucination_detected:
+                                # 添加错误反馈到历史记录
+                                self._add_error_feedback_to_history(
+                                    error_type='hallucination_detected',
+                                    error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                )
                                 # 添加换行（仅限chat接口）
                                 if not content.endswith('\n'):
                                     content += '\n'
@@ -5019,6 +5272,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                 # 只保留第一个工具调用（双重保险）
                                 if tool_calls and len(tool_calls) > 1:
                                     print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
+                                    # 添加错误反馈到历史记录
+                                    self._add_error_feedback_to_history(
+                                        error_type='multiple_tools_detected',
+                                        error_message=f"Multiple tool calls detected ({len(tool_calls)}), only the first one was executed"
+                                    )
                                     tool_calls = [tool_calls[0]]
                                 
                                 # Convert tool calls to standard format for compatibility
@@ -5149,6 +5407,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 # 只保留第一个工具调用（双重保险）
                 if tool_calls and len(tool_calls) > 1:
                     print_current(f"⚠️ Warning: Multiple tool calls detected ({len(tool_calls)}), keeping only the first one")
+                    # 添加错误反馈到历史记录
+                    self._add_error_feedback_to_history(
+                        error_type='multiple_tools_detected',
+                        error_message=f"Multiple tool calls detected ({len(tool_calls)}), only the first one was executed"
+                    )
                     tool_calls = [tool_calls[0]]
                 
                 # Convert tool calls to standard format for compatibility
@@ -5243,40 +5506,71 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     tool_calls = []
 
                     with streaming_context(show_start_message=True) as printer:
-                        # 显示LLM开始说话的emoji
-                        printer.write(f"\n💬 ")
-
                         hallucination_detected = False
                         stream_error_occurred = False
                         last_event_type = None
                         error_details = None
+                        
+                        # Thinking tracking
+                        thinking_printed_header = False
+                        answer_started = False
 
-                        with self.client.messages.stream(
-                            model=self.model,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            system=system_message,
-                            messages=claude_messages,
-                            tools=tools,
-                            temperature=self.temperature
-                        ) as stream:
+                        # Prepare parameters for Anthropic API
+                        # Note: When thinking is enabled, temperature MUST be 1.0
+                        temperature = 1.0 if self.enable_thinking else self.temperature
+                        
+                        api_params = {
+                            "model": self.model,
+                            "max_tokens": self._get_max_tokens_for_model(self.model),
+                            "system": system_message,
+                            "messages": claude_messages,
+                            "tools": tools,
+                            "temperature": temperature
+                        }
+                        
+                        # Enable thinking for reasoning-capable models
+                        if self.enable_thinking:
+                            api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+
+                        with self.client.messages.stream(**api_params) as stream:
                             try:
                                 for event in stream:
                                     try:
                                         event_type = getattr(event, 'type', None)
                                         last_event_type = event_type
 
-                                        # Only handle text content streaming events
-                                        if event_type == "content_block_delta":
+                                        # Handle content block start
+                                        if event_type == "content_block_start":
+                                            content_block = getattr(event, 'content_block', None)
+                                            if content_block:
+                                                block_type = getattr(content_block, 'type', None)
+                                                if block_type == "thinking" and self.enable_thinking:
+                                                    printer.write("\n🧠 ")
+                                                    thinking_printed_header = True
+                                                elif block_type == "text":
+                                                    if thinking_printed_header:
+                                                        printer.write("\n\n💬 ")
+                                                    else:
+                                                        printer.write("\n💬 ")
+                                                    answer_started = True
+
+                                        # Handle content streaming events
+                                        elif event_type == "content_block_delta":
                                             try:
                                                 delta = getattr(event, 'delta', None)
 
                                                 if delta:
                                                     delta_type = getattr(delta, 'type', None)
 
-                                                    if delta_type == "text_delta":
-                                                        # 文本内容流式输出
+                                                    # Thinking content
+                                                    if delta_type == "thinking_delta" and self.enable_thinking:
+                                                        thinking_text = getattr(delta, 'thinking', '')
+                                                        printer.write(thinking_text)
+
+                                                    # Text content
+                                                    elif delta_type == "text_delta":
                                                         text = getattr(delta, 'text', '')
-                                                        # 检测幻觉模式 - 严格匹配两个标志
+                                                        # Check for hallucination
                                                         if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
@@ -5285,7 +5579,7 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                         content += text
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_delta: {type(e).__name__}: {str(e)}")
-                                                # 继续处理其他事件
+                                                # Continue processing other events
 
                                         # 处理消息统计信息
                                         elif event_type == "message_delta":
@@ -5328,6 +5622,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                             if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                 print_current("\n🚨 Hallucination detected, stopping conversation")
                                                 hallucination_detected = True
+                                                # 添加错误反馈到历史记录
+                                                self._add_error_feedback_to_history(
+                                                    error_type='hallucination_detected',
+                                                    error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                                )
                                                 break
                                             printer.write(text)
                                             content += text
@@ -5414,14 +5713,24 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     return content, tool_calls
                 else:
                     # print_current("🔄 LLM is thinking: ")
-                    response = self.client.messages.create(
-                        model=self.model,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        system=system_message,
-                        messages=claude_messages,
-                        tools=tools,
-                        temperature=self.temperature
-                    )
+                    # Prepare parameters for Anthropic API
+                    # Note: When thinking is enabled, temperature MUST be 1.0
+                    temperature = 1.0 if self.enable_thinking else self.temperature
+                    
+                    api_params = {
+                        "model": self.model,
+                        "max_tokens": self._get_max_tokens_for_model(self.model),
+                        "system": system_message,
+                        "messages": claude_messages,
+                        "tools": tools,
+                        "temperature": temperature
+                    }
+                    
+                    # Enable thinking for reasoning-capable models
+                    if self.enable_thinking:
+                        api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                    
+                    response = self.client.messages.create(**api_params)
                     
                     content = ""
                     tool_calls = []
@@ -5634,6 +5943,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                     print_error(f"❌ Tool {i + 1} ({tool_name}) JSON解析失败:")
                                     print_error(f"   {error_msg}")
                                     print_debug(f"   Raw arguments: {tool_params_str[:200]}...")
+                                    # 添加错误反馈到历史记录
+                                    self._add_error_feedback_to_history(
+                                        error_type='json_parse_error',
+                                        error_message=f"Tool {i + 1} ({tool_name}) JSON解析失败: {error_msg}"
+                                    )
                                     continue
                                 
                                 #print_current(f"🎯 Tool {i + 1}: {tool_name}")
@@ -5666,6 +5980,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
 
                     # If hallucination was detected, return early with empty tool calls
                     if hallucination_detected:
+                        # 添加错误反馈到历史记录
+                        self._add_error_feedback_to_history(
+                            error_type='hallucination_detected',
+                            error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                        )
                         return content, []
 
                     # print_current("\n✅ Streaming completed")
@@ -5871,22 +6190,33 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     current_block_type = None
 
                     with streaming_context(show_start_message=True) as printer:
-                        # 显示LLM开始说话的emoji
-                        printer.write(f"\n💬 ")
-                        
                         hallucination_detected = False
                         stream_error_occurred = False
                         last_event_type = None
                         error_details = None
+                        
+                        # Thinking tracking
+                        thinking_printed_header = False
+                        answer_started = False
 
-                        with self.client.messages.stream(
-                            model=self.model,
-                            max_tokens=self._get_max_tokens_for_model(self.model),
-                            system=system_message,
-                            messages=claude_messages,
-                            tools=tools,
-                            temperature=self.temperature
-                        ) as stream:
+                        # Prepare parameters for Anthropic API
+                        # Note: When thinking is enabled, temperature MUST be 1.0
+                        temperature = 1.0 if self.enable_thinking else self.temperature
+                        
+                        api_params = {
+                            "model": self.model,
+                            "max_tokens": self._get_max_tokens_for_model(self.model),
+                            "system": system_message,
+                            "messages": claude_messages,
+                            "tools": tools,
+                            "temperature": temperature
+                        }
+                        
+                        # Enable thinking for reasoning-capable models
+                        if self.enable_thinking:
+                            api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+
+                        with self.client.messages.stream(**api_params) as stream:
                             try:
                                 for event in stream:
                                     # 在每个事件处理前检查是否已经检测到幻觉
@@ -5942,7 +6272,18 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                         current_block_index = block_index
                                                         current_block_type = block_type
                                                         
-                                                        if block_type == "tool_use":
+                                                        if block_type == "thinking" and self.enable_thinking:
+                                                            # Thinking block started
+                                                            printer.write("\n🧠 ")
+                                                            thinking_printed_header = True
+                                                        elif block_type == "text":
+                                                            # Text block started
+                                                            if thinking_printed_header:
+                                                                printer.write("\n\n💬 ")
+                                                            else:
+                                                                printer.write("\n💬 ")
+                                                            answer_started = True
+                                                        elif block_type == "tool_use":
                                                             # 开始一个新的工具调用
                                                             tool_id = getattr(content_block, 'id', '')
                                                             tool_name = getattr(content_block, 'name', '')
@@ -5969,13 +6310,23 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                 if delta:
                                                     delta_type = getattr(delta, 'type', None)
                                                     
-                                                    if delta_type == "text_delta":
+                                                    if delta_type == "thinking_delta" and self.enable_thinking:
+                                                        # Thinking content streaming
+                                                        thinking_text = getattr(delta, 'thinking', '')
+                                                        printer.write(thinking_text)
+                                                    
+                                                    elif delta_type == "text_delta":
                                                         # 文本内容流式输出
                                                         text = getattr(delta, 'text', '')
                                                         # 检测幻觉模式 - 严格匹配两个标志
                                                         if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                                             hallucination_detected = True
+                                                            # 添加错误反馈到历史记录
+                                                            self._add_error_feedback_to_history(
+                                                                error_type='hallucination_detected',
+                                                                error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                                            )
                                                             break
                                                         printer.write(text)
                                                         content += text
@@ -6017,6 +6368,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                                         print_error(f"❌ Tool call JSON validation failed for {tool_name}:")
                                                         print_error(f"   {error_msg}")
                                                         print_debug(f"   Raw JSON: {json_str[:200]}...")
+                                                        # 添加错误反馈到历史记录
+                                                        self._add_error_feedback_to_history(
+                                                            error_type='json_parse_error',
+                                                            error_message=f"Tool call JSON validation failed for {tool_name}: {error_msg}"
+                                                        )
                                             except Exception as e:
                                                 print_debug(f"⚠️ Error processing content_block_stop: {type(e).__name__}: {str(e)}")
 
@@ -6057,6 +6413,11 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                                         if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
                                             print_current("\n🚨 Hallucination detected, stopping conversation")
                                             hallucination_detected = True
+                                            # 添加错误反馈到历史记录
+                                            self._add_error_feedback_to_history(
+                                                error_type='hallucination_detected',
+                                                error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                            )
                                             break
                                         printer.write(text)
                                         content += text
@@ -6144,14 +6505,24 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                     return content, tool_calls
                 else:
                     # print_current("🔄 LLM is thinking: ")
-                    response = self.client.messages.create(
-                        model=self.model,
-                        max_tokens=self._get_max_tokens_for_model(self.model),
-                        system=system_message,
-                        messages=claude_messages,
-                        tools=tools,
-                        temperature=self.temperature
-                    )
+                    # Prepare parameters for Anthropic API
+                    # Note: When thinking is enabled, temperature MUST be 1.0
+                    temperature = 1.0 if self.enable_thinking else self.temperature
+                    
+                    api_params = {
+                        "model": self.model,
+                        "max_tokens": self._get_max_tokens_for_model(self.model),
+                        "system": system_message,
+                        "messages": claude_messages,
+                        "tools": tools,
+                        "temperature": temperature
+                    }
+                    
+                    # Enable thinking for reasoning-capable models
+                    if self.enable_thinking:
+                        api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                    
+                    response = self.client.messages.create(**api_params)
                     
                     content = ""
                     thinking = ""
@@ -7511,13 +7882,23 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             
             # Call LLM with vision data
             if self.is_claude:
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self._get_max_tokens_for_model(self.model),
-                    system=vision_system_prompt,
-                    messages=[{"role": "user", "content": vision_content}],
-                    temperature=self.temperature
-                )
+                # Prepare parameters for Anthropic API
+                # Note: When thinking is enabled, temperature MUST be 1.0
+                temperature = 1.0 if self.enable_thinking else self.temperature
+                
+                api_params = {
+                    "model": self.model,
+                    "max_tokens": self._get_max_tokens_for_model(self.model),
+                    "system": vision_system_prompt,
+                    "messages": [{"role": "user", "content": vision_content}],
+                    "temperature": temperature
+                }
+                
+                # Enable thinking for reasoning-capable models
+                if self.enable_thinking:
+                    api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                
+                response = self.client.messages.create(**api_params)
                 
                 vision_analysis = ""
                 for content_block in response.content:

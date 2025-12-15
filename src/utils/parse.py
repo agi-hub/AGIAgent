@@ -49,7 +49,8 @@ def smart_escape_quotes_in_json_values(json_str: str) -> str:
     """
     Smart method to escape unescaped quotes in JSON values while preserving JSON structure.
     
-    This method uses a simple but effective approach: find JSON values and escape quotes within them.
+    优化版本：对于超长文本（>5000字符），直接使用更可靠的字符级状态机方法。
+    对于短文本，使用正则表达式快速修复。
     
     Args:
         json_str: Raw JSON string that may have unescaped quotes in values
@@ -57,150 +58,129 @@ def smart_escape_quotes_in_json_values(json_str: str) -> str:
     Returns:
         JSON string with properly escaped quotes in values
     """
+    # 对于超长文本，直接使用更可靠的方法
+    if len(json_str) > 5000:
+        return fix_json_string_values_robust(json_str)
+    
     try:
-        # More robust approach: find JSON string values and escape unescaped characters
-        # This handles multiline strings with unescaped newlines, quotes, etc.
+        # 对于短文本，使用优化的正则表达式方法
+        def escape_value_content(content: str) -> str:
+            """
+            转义字符串值中的未转义字符。
+            使用字符级处理，避免正则表达式在长文本时的性能问题。
+            """
+            result = []
+            i = 0
+            escape_count = 0
+            
+            while i < len(content):
+                char = content[i]
+                
+                # 统计连续的反斜杠
+                if char == '\\':
+                    j = i
+                    while j < len(content) and content[j] == '\\':
+                        j += 1
+                    escape_count = j - i
+                    
+                    # 如果前面有奇数个反斜杠，当前反斜杠是转义序列的一部分
+                    if escape_count % 2 == 1:
+                        result.append(char)
+                        i += 1
+                        continue
+                    else:
+                        # 偶数个反斜杠，这些反斜杠都是字面量
+                        result.append('\\\\' * (escape_count // 2))
+                        i = j
+                        continue
+                
+                # 重置转义计数
+                escape_count = 0
+                
+                # 转义未转义的引号
+                if char == '"':
+                    # 检查前面是否有转义
+                    prev_pos = i - 1
+                    backslash_count = 0
+                    while prev_pos >= 0 and content[prev_pos] == '\\':
+                        backslash_count += 1
+                        prev_pos -= 1
+                    
+                    if backslash_count % 2 == 0:
+                        # 未转义的引号，需要转义
+                        result.append('\\"')
+                    else:
+                        result.append(char)
+                elif ord(char) < 32:  # 控制字符
+                    # 检查前面是否有转义
+                    prev_pos = i - 1
+                    backslash_count = 0
+                    while prev_pos >= 0 and content[prev_pos] == '\\':
+                        backslash_count += 1
+                        prev_pos -= 1
+                    
+                    if backslash_count % 2 == 0:
+                        # 未转义的控制字符，需要转义
+                        if char == '\n':
+                            result.append('\\n')
+                        elif char == '\r':
+                            result.append('\\r')
+                        elif char == '\t':
+                            result.append('\\t')
+                        elif char == '\b':
+                            result.append('\\b')
+                        elif char == '\f':
+                            result.append('\\f')
+                        else:
+                            result.append(f'\\u{ord(char):04x}')
+                    else:
+                        result.append(char)
+                else:
+                    result.append(char)
+                
+                i += 1
+            
+            return ''.join(result)
+        
+        # 改进的模式：匹配 "field": "value" 格式
+        # 使用更精确的结束标记检测
+        pattern = r'("[^"]*"\s*:\s*")(.*?)(?="\s*[,}\n])'
         
         def escape_value_quotes(match):
             prefix = match.group(1)  # "field": "
             content = match.group(2)  # content that may contain quotes, newlines, etc.
             
-            # Escape unescaped quotes in the content
-            escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
-            
-            # Also escape other common problematic characters (newlines, tabs, carriage returns)
-            escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
-            escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
-            escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
+            # 使用字符级处理转义
+            escaped_content = escape_value_content(content)
             
             return f'{prefix}{escaped_content}"'
         
-        # Improved pattern: matches "field": "value" where value can contain newlines
-        # Uses non-greedy matching with DOTALL flag to handle multiline strings
-        # The pattern looks for: "field": "content" where content may span multiple lines
-        pattern = r'("[^"]*"\s*:\s*")(.*?)(?="\s*[,}])'
-        
         fixed_json = re.sub(pattern, escape_value_quotes, json_str, flags=re.DOTALL)
         
-        # Handle edge case: if the pattern didn't match properly, try a different approach
+        # 如果正则表达式方法没有修复，尝试使用字符级状态机方法
         if fixed_json == json_str:
-            # Alternative approach: specifically target code_edit field which commonly has this issue
-            # This handles SVG XML content and other complex content with multiline strings
-            code_edit_pattern = r'("code_edit"\s*:\s*")(.*?)(?="\s*[,}])'
-            def fix_code_edit_quotes(match):
-                prefix = match.group(1)
-                content = match.group(2)
-                # Escape unescaped quotes, but preserve SVG/XML structure
-                escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
-                # Also escape newlines and tabs for JSON compatibility
-                escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
-                escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
-                escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
-                return f'{prefix}{escaped_content}"'
-            
-            fixed_json = re.sub(code_edit_pattern, fix_code_edit_quotes, json_str, flags=re.DOTALL)
-            
-            # If still not fixed, try handling any field that contains XML-like content
-            if fixed_json == json_str:
-                # Pattern to match any field value that contains XML/SVG tags
-                xml_content_pattern = r'("[\w_]+"\s*:\s*")(.*?<svg.*?>.*?)(?="\s*[,}])'
-                def fix_xml_content_quotes(match):
-                    prefix = match.group(1)
-                    content = match.group(2)
-                    # Escape unescaped quotes in XML content
-                    escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
-                    escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
-                    escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
-                    escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
-                    return f'{prefix}{escaped_content}"'
-                
-                fixed_json = re.sub(xml_content_pattern, fix_xml_content_quotes, json_str, flags=re.DOTALL)
+            return fix_json_string_values_robust(json_str)
         
-        # If still not fixed, try a more aggressive approach: find unescaped newlines in string values
-        # This handles cases where the string doesn't have a proper closing quote
-        if fixed_json == json_str:
-            # Look for patterns like "field": "value with\nnewline" where the newline is not escaped
-            # and try to escape it
-            lines = json_str.split('\n')
-            fixed_lines = []
-            in_string_value = False
-            string_start_key = None
-            
-            for i, line in enumerate(lines):
-                # Check if this line starts a string value
-                string_value_match = re.match(r'(\s*"[^"]*"\s*:\s*")(.*)', line)
-                if string_value_match:
-                    in_string_value = True
-                    string_start_key = string_value_match.group(1)
-                    content = string_value_match.group(2)
-                    # Check if the line ends with a closing quote
-                    if re.search(r'"\s*[,}]', line):
-                        # String ends on this line
-                        escaped_content = re.sub(r'(?<!\\)"', '\\"', content)
-                        escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
-                        escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
-                        escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
-                        fixed_lines.append(f'{string_start_key}{escaped_content}')
-                        in_string_value = False
-                        string_start_key = None
-                    else:
-                        # String continues on next line(s)
-                        fixed_lines.append(line)
-                elif in_string_value:
-                    # This line is part of a multiline string value
-                    # Check if this line ends the string
-                    if re.search(r'"\s*[,}]', line):
-                        # String ends on this line
-                        escaped_content = re.sub(r'(?<!\\)"', '\\"', line)
-                        escaped_content = re.sub(r'(?<!\\)\n', '\\n', escaped_content)
-                        escaped_content = re.sub(r'(?<!\\)\t', '\\t', escaped_content)
-                        escaped_content = re.sub(r'(?<!\\)\r', '\\r', escaped_content)
-                        fixed_lines.append(escaped_content.replace('\n', '\\n'))
-                        in_string_value = False
-                        string_start_key = None
-                    else:
-                        # Still in the string value, escape the line
-                        escaped_line = line.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r')
-                        fixed_lines.append(escaped_line)
-                else:
-                    fixed_lines.append(line)
-            
-            if fixed_lines != lines:
-                fixed_json = '\n'.join(fixed_lines)
-        
-        return fixed_json
+        # 验证修复后的JSON是否有效
+        try:
+            json.loads(fixed_json)
+            return fixed_json
+        except json.JSONDecodeError:
+            # 如果修复后仍然无效，使用更可靠的方法
+            return fix_json_string_values_robust(json_str)
         
     except Exception as e:
         _log_warning(f"⚠️ Error in smart quote escaping: {e}")
-        # Ultimate fallback: target the most common problematic patterns
-        try:
-            fixed = json_str
-            
-            # Common Python code patterns that cause issues
-            patterns_to_fix = [
-                (r'if __name__ == "__main__"', r'if __name__ == \"__main__\"'),
-                (r'print\("([^"]*)"', r'print(\"\\1\"'),
-                (r'input\("([^"]*)"', r'input(\"\\1\"'),
-                (r'open\("([^"]*)"', r'open(\"\\1\"'),
-                (r'== "__main__"', r'== \"__main__\"'),
-                (r'!= "__main__"', r'!= \"__main__\"'),
-            ]
-            
-            for pattern, replacement in patterns_to_fix:
-                fixed = re.sub(pattern, replacement, fixed)
-            
-            return fixed
-            
-        except Exception:
-            return json_str
+        # 如果出错，回退到更可靠的方法
+        return fix_json_string_values_robust(json_str)
 
 
 def fix_json_string_values_robust(json_str: str) -> str:
     """
     使用字符级状态机修复JSON字符串值，更可靠地处理超长和复杂嵌套的字符串。
     
-    特殊优化：对于tool_name/parameters格式的JSON，利用结尾的 }\n} 模式来
-    更准确地判断字符串值的结束位置。
+    优化版本：改进了转义字符处理逻辑，特别是对\n等控制字符的转义。
+    使用更可靠的字符串边界检测算法，能够正确处理超长文本。
     
     这个函数使用逐字符解析的方式，比正则表达式更可靠，特别是对于：
     - 包含大量未转义换行符的长字符串
@@ -220,216 +200,65 @@ def fix_json_string_values_robust(json_str: str) -> str:
     try:
         json.loads(json_str)
         return json_str
-    except json.JSONDecodeError as e:
-        # 检查是否是控制字符错误（换行符等未转义）
-        error_msg = str(e).lower()
-        if 'control character' not in error_msg:
-            # 如果不是控制字符错误，可能无法通过简单修复解决
-            pass
+    except json.JSONDecodeError:
         # 继续处理，尝试修复
+        pass
     
-    # 特殊优化：对于tool_name/parameters格式，先尝试直接修复code_edit字段
-    # 利用结尾的 }\n} 模式来定位值结束位置
-    # 策略：找到最后的}，然后在它之前找引号
-    if '"code_edit": "' in json_str:
-        code_edit_marker = '"code_edit": "'
-        code_start = json_str.find(code_edit_marker) + len(code_edit_marker)
-        
-        # 找到最后的}（JSON对象结束）
-        last_brace = json_str.rfind('}')
-        if last_brace > code_start:
-            # 改进的引号查找策略：从后往前查找，找到第一个未转义的引号
-            # 这个引号应该是code_edit值的结束引号
-            quote_end_pos = -1
-            i = last_brace - 1
-            escape_count = 0
-            
-            # 从最后的}往前查找引号
-            while i >= code_start:
-                if json_str[i] == '\\':
-                    escape_count += 1
-                    i -= 1
-                    continue
-                elif json_str[i] == '"':
-                    # 如果escape_count是偶数，说明这是未转义的引号
-                    if escape_count % 2 == 0:
-                        # 检查这个引号后面是否跟着结束标记（, } 或换行+}）
-                        remaining = json_str[i+1:last_brace+1].lstrip()
-                        if (remaining.startswith(',') or remaining.startswith('}') or 
-                            remaining.startswith('\n') or remaining.startswith('\r')):
-                            quote_end_pos = i
-                            break
-                    escape_count = 0
-                else:
-                    escape_count = 0
-                i -= 1
-            
-            # 如果没找到，使用原来的方法：在最后的}之前找最后一个引号
-            if quote_end_pos == -1:
-                quote_end_pos = json_str.rfind('"', code_start, last_brace)
-            
-            if quote_end_pos > code_start:
-                value_content = json_str[code_start:quote_end_pos]
-                # 转义控制字符和未转义的引号
-                # 策略：只转义未转义的控制字符和引号
-                fixed_value = []
-                i = 0
-                while i < len(value_content):
-                    char = value_content[i]
-                    if char == '\\' and i + 1 < len(value_content):
-                        # 已经是转义字符，保留
-                        fixed_value.append(char)
-                        fixed_value.append(value_content[i+1])
-                        i += 2
-                    elif char == '"':
-                        # 未转义的引号，需要转义
-                        fixed_value.append('\\"')
-                        i += 1
-                    elif ord(char) < 32:  # 控制字符
-                        # 转义控制字符
-                        if char == '\n':
-                            fixed_value.append('\\n')
-                        elif char == '\r':
-                            fixed_value.append('\\r')
-                        elif char == '\t':
-                            fixed_value.append('\\t')
-                        elif char == '\b':
-                            fixed_value.append('\\b')
-                        elif char == '\f':
-                            fixed_value.append('\\f')
-                        else:
-                            fixed_value.append(f'\\u{ord(char):04x}')
-                        i += 1
-                    else:
-                        fixed_value.append(char)
-                        i += 1
-                
-                fixed_value_str = ''.join(fixed_value)
-                
-                # 尝试解析修复后的JSON
-                test_json = json_str[:code_start] + fixed_value_str + json_str[quote_end_pos:]
-                try:
-                    json.loads(test_json)
-                    return test_json
-                except json.JSONDecodeError as e:
-                    # 如果还有问题，使用通用逻辑继续修复
-                    # 但至少控制字符已经修复了
-                    json_str = test_json  # 使用部分修复的JSON继续
-                    pass  # 继续使用通用逻辑
-    
+    # 使用字符级状态机进行修复
     result = []
     i = 0
     in_string = False
-    escape_next = False
-    string_start_pos = -1
+    next_char_escaped = False  # 标志：下一个字符是否被转义
+    brace_depth = 0  # 大括号嵌套深度，用于辅助判断字符串边界
+    bracket_depth = 0  # 方括号嵌套深度
     
     while i < len(json_str):
         char = json_str[i]
         
-        # 处理转义字符
-        if escape_next:
-            escape_next = False
+        # 处理转义序列
+        if next_char_escaped:
+            # 当前字符被转义，直接添加到结果中
             result.append(char)
+            next_char_escaped = False
             i += 1
             continue
         
+        # 统计连续的反斜杠
         if char == '\\':
-            escape_next = True
-            result.append(char)
-            i += 1
-            continue
+            j = i
+            while j < len(json_str) and json_str[j] == '\\':
+                j += 1
+            backslash_count = j - i
+            
+            # 如果不在字符串中，反斜杠应该被保留（可能是JSON结构的一部分）
+            if not in_string:
+                result.append(char)
+                i += 1
+                continue
+            
+            # 在字符串中，需要判断这是转义序列还是字面量反斜杠
+            if backslash_count % 2 == 1:
+                # 奇数个反斜杠，下一个字符会被转义
+                result.append(char)
+                next_char_escaped = True  # 标记下一个字符被转义
+                i += 1
+                continue
+            else:
+                # 偶数个反斜杠，这些反斜杠都是字面量
+                result.append('\\\\' * (backslash_count // 2))
+                i = j
+                continue
         
         # 处理字符串开始/结束
         if char == '"':
             if not in_string:
                 # 字符串开始
                 in_string = True
-                string_start_pos = len(result)
                 result.append(char)
             else:
                 # 检查是否是字符串结束
-                # 策略：向前查看最近的字符，向后查看后续字符
-                # 如果前面是空白或标点，后面跟着逗号、右括号等，可能是字符串结束
-                # 如果前后都是普通字符（中英文、数字），则是字符串内部的引号
-                
-                # 向前查看（跳过空白）
-                prev_pos = i - 1
-                while prev_pos >= 0 and json_str[prev_pos] in ' \t\n\r':
-                    prev_pos -= 1
-                prev_char = json_str[prev_pos] if prev_pos >= 0 else None
-                
-                # 向后查看（跳过空白）
-                next_pos = i + 1
-                while next_pos < len(json_str) and json_str[next_pos] in ' \t\n\r':
-                    next_pos += 1
-                next_char = json_str[next_pos] if next_pos < len(json_str) else None
-                
-                # 判断逻辑：
-                # 1. 特殊优化：对于tool_name/parameters格式的JSON，结尾通常是 }\n}
-                #    如果引号后面跟着 }\n} 模式，几乎肯定是字符串结束
-                # 2. 如果后面是明确的结束标记（, } ]），且前面不是普通字符，则是字符串结束
-                # 3. 如果后面跟着普通字符（字母、数字、中文等），则是字符串内部的引号
-                # 4. 如果后面是引号，更可能是字符串内部的引号（需要转义）
-                
-                is_string_end = False
-                
-                # 特殊检查：看后面是否有 }\n} 或 "\n  }\n}" 模式（这是我们的JSON格式特征）
-                # 对于tool_name/parameters格式，code_edit字段的值通常以 "\n  }\n}" 结尾
-                remaining = json_str[i+1:]
-                # 检查多种可能的结尾模式
-                remaining_stripped = remaining.lstrip(' \t\n\r')
-                # 模式1: 引号后直接是 }\n}
-                if remaining_stripped.startswith('}\n}') or remaining_stripped.startswith('}\n  }'):
-                    is_string_end = True
-                # 模式2: 引号后是换行，然后是 }\n}
-                elif remaining.startswith('\n  }\n}') or remaining.startswith('\n}\n}') or remaining.startswith(' \n  }\n}'):
-                    is_string_end = True
-                # 模式3: 检查是否是 "\n  }\n}" 完整模式（最典型的情况）
-                elif i + 1 < len(json_str):
-                    # 对于超长内容，扩大查找范围
-                    # 查看引号后面最多100个字符，看是否有 }\n} 模式
-                    lookahead_size = 100 if len(json_str) > 10000 else 20
-                    lookahead = json_str[i+1:min(i+lookahead_size+1, len(json_str))]
-                    # 查找 }\n} 或 }\n  } 模式
-                    if ('}\n}' in lookahead or '}\n  }' in lookahead):
-                        # 找到第一个}的位置
-                        first_brace_pos = lookahead.find('}')
-                        if first_brace_pos > 0:
-                            # 检查在}之前是否有其他引号
-                            before_brace = lookahead[:first_brace_pos]
-                            if '"' not in before_brace:
-                                # 如果找到了结尾模式，且之间没有其他引号，说明这是字符串结束
-                                is_string_end = True
-                        else:
-                            # 如果直接找到}，也认为是字符串结束
-                            is_string_end = True
-                elif next_char is None:
-                    # 到达末尾，字符串结束
-                    is_string_end = True
-                elif next_char in ',}]':
-                    # 后面是结束标记，但需要更仔细地判断
-                    # 如果前面是普通字符（字母、数字、中文等），说明这是字符串内部的引号
-                    # 如果前面是空白、换行、引号等，可能是字符串结束
-                    if prev_char:
-                        # 检查前一个字符是否是普通文本字符
-                        # 如果是中文字符、字母、数字等，说明引号在字符串内部
-                        if (prev_char.isalnum() or 
-                            '\u4e00' <= prev_char <= '\u9fff' or  # 中文字符范围
-                            prev_char in '，。！？；：、'):
-                            # 前面是普通字符，这是字符串内部的引号，需要转义
-                            is_string_end = False
-                        else:
-                            # 前面是标点或空白，可能是字符串结束
-                            is_string_end = True
-                    else:
-                        # 没有前一个字符，可能是字符串结束
-                        is_string_end = True
-                elif next_char == '"':
-                    # 后面是引号，可能是 "key": "value"，但更可能是字符串内部的引号
-                    is_string_end = False
-                else:
-                    # 后面跟着其他字符，肯定是字符串内部的引号
-                    is_string_end = False
+                # 关键改进：使用更可靠的算法判断字符串边界
+                is_string_end = _is_string_end(json_str, i, brace_depth, bracket_depth)
                 
                 if is_string_end:
                     in_string = False
@@ -440,22 +269,37 @@ def fix_json_string_values_robust(json_str: str) -> str:
             i += 1
             continue
         
-        # 在字符串内部，转义特殊字符
+        # 更新嵌套深度（不在字符串中时）
+        if not in_string:
+            if char == '{':
+                brace_depth += 1
+            elif char == '}':
+                brace_depth -= 1
+            elif char == '[':
+                bracket_depth += 1
+            elif char == ']':
+                bracket_depth -= 1
+        
+        # 在字符串内部，转义控制字符和特殊字符
         if in_string:
             # 转义所有控制字符（JSON不允许未转义的控制字符）
-            if char == '\n':
-                result.append('\\n')
-            elif char == '\t':
-                result.append('\\t')
-            elif char == '\r':
-                result.append('\\r')
-            elif char == '\b':
-                result.append('\\b')
-            elif char == '\f':
-                result.append('\\f')
-            elif ord(char) < 32:  # 所有控制字符（ASCII < 32）都需要转义
-                # JSON中控制字符必须转义为 \uXXXX 格式
-                result.append(f'\\u{ord(char):04x}')
+            # 关键改进：如果 next_char_escaped 为 True，说明字符已经被转义，不需要再次转义
+            if ord(char) < 32:  # 控制字符
+                # 如果字符已经被转义（通过转义序列），直接添加
+                # 注意：next_char_escaped 标志已经在上面处理了，所以这里不会遇到已转义的字符
+                # 未转义的控制字符，需要转义
+                if char == '\n':
+                    result.append('\\n')
+                elif char == '\r':
+                    result.append('\\r')
+                elif char == '\t':
+                    result.append('\\t')
+                elif char == '\b':
+                    result.append('\\b')
+                elif char == '\f':
+                    result.append('\\f')
+                else:
+                    result.append(f'\\u{ord(char):04x}')
             else:
                 result.append(char)
         else:
@@ -473,6 +317,89 @@ def fix_json_string_values_robust(json_str: str) -> str:
     except json.JSONDecodeError:
         # 如果修复后仍然无效，返回原字符串让其他方法处理
         return json_str
+
+
+def _is_string_end(json_str: str, quote_pos: int, brace_depth: int, bracket_depth: int) -> bool:
+    """
+    判断引号是否是字符串结束引号。
+    
+    使用多种策略来判断：
+    1. 检查引号后面的内容是否符合JSON结构
+    2. 检查大括号和方括号的嵌套深度
+    3. 检查是否有明确的结束标记（逗号、右括号等）
+    
+    Args:
+        json_str: JSON字符串
+        quote_pos: 引号的位置
+        brace_depth: 当前大括号嵌套深度
+        bracket_depth: 当前方括号嵌套深度
+        
+    Returns:
+        True如果这是字符串结束引号，False如果是字符串内部的引号
+    """
+    if quote_pos + 1 >= len(json_str):
+        # 到达末尾，肯定是字符串结束
+        return True
+    
+    # 跳过引号后的空白字符
+    next_pos = quote_pos + 1
+    while next_pos < len(json_str) and json_str[next_pos] in ' \t\n\r':
+        next_pos += 1
+    
+    if next_pos >= len(json_str):
+        return True
+    
+    next_char = json_str[next_pos]
+    
+    # 如果后面是明确的结束标记，很可能是字符串结束
+    if next_char in ',}':
+        # 检查前面是否有未闭合的结构
+        # 如果大括号深度为0或1，且后面是}，很可能是字符串结束
+        if next_char == '}' and brace_depth <= 1:
+            return True
+        if next_char == ',':
+            return True
+    
+    # 关键修复：如果后面是冒号，说明这是键名的结束引号
+    if next_char == ':':
+        return True
+    
+    # 检查后面是否有 }\n} 或 }\n  } 模式（tool_name/parameters格式的特征）
+    remaining = json_str[quote_pos + 1:]
+    remaining_stripped = remaining.lstrip(' \t\n\r')
+    
+    if remaining_stripped.startswith('}\n}') or remaining_stripped.startswith('}\n  }'):
+        return True
+    
+    # 对于超长内容，扩大查找范围
+    if len(json_str) > 1000:
+        lookahead_size = min(200, len(json_str) - quote_pos - 1)
+        lookahead = json_str[quote_pos + 1:quote_pos + 1 + lookahead_size]
+        
+        # 查找 }\n} 或 }\n  } 模式
+        if '}\n}' in lookahead or '}\n  }' in lookahead:
+            # 找到第一个}的位置
+            first_brace_pos = lookahead.find('}')
+            if first_brace_pos > 0:
+                # 检查在}之前是否有其他未转义的引号
+                before_brace = lookahead[:first_brace_pos]
+                # 简单检查：如果引号数量是偶数，说明没有未闭合的字符串
+                quote_count = before_brace.count('"')
+                # 粗略估计：如果引号数量很少，可能是字符串结束
+                if quote_count <= 2:
+                    return True
+    
+    # 如果后面跟着普通字符（字母、数字、中文等），可能是字符串内部的引号
+    if next_char.isalnum() or '\u4e00' <= next_char <= '\u9fff':
+        return False
+    
+    # 如果后面是引号，可能是 "key": "value" 格式，但也可能是字符串内部的引号
+    # 保守策略：假设是字符串内部的引号
+    if next_char == '"':
+        return False
+    
+    # 默认情况：如果后面是结束标记，认为是字符串结束
+    return next_char in ',}]'
 
 
 def rebuild_json_structure(json_str: str) -> str:

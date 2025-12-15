@@ -475,6 +475,20 @@ Usage Examples:
         help="Enable plan mode: interact with user to create plan.md document, then exit without executing tasks"
     )
     
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        default=None,
+        help="Enable thinking mode to display model reasoning process. Overrides config.txt setting."
+    )
+    
+    parser.add_argument(
+        "--no-thinking",
+        action="store_true",
+        default=False,
+        help="Disable thinking mode. Overrides config.txt setting."
+    )
+    
     args = parser.parse_args()
     
     # Handle requirement argument priority: positional argument takes precedence over --requirement/-r
@@ -532,7 +546,6 @@ Usage Examples:
     from src.tools.id_manager import get_id_manager
     id_manager = get_id_manager(args.dir)
     id_manager.reset_counters(agent_counter=1, message_counter=0)
-    print_current("🔄 ID counters reset at startup - agent from 1, message from 0")
     
     # Install debug system after setting output directory
     from src.config_loader import load_config
@@ -565,6 +578,13 @@ Usage Examples:
     # Get plan mode
     plan_mode = args.plan if hasattr(args, 'plan') else False
     
+    # Determine thinking mode (command line args override config.txt)
+    enable_thinking = None  # None means use config.txt value
+    if args.no_thinking:
+        enable_thinking = False
+    elif args.thinking:
+        enable_thinking = True
+    
     # Create and run main program
     try:
         main_app = AGIAgentMain(
@@ -579,7 +599,8 @@ Usage Examples:
             continue_mode=args.continue_mode,
             link_dir=args.link_dir,
             routine_file=args.routine,
-            plan_mode=plan_mode
+            plan_mode=plan_mode,
+            enable_thinking=enable_thinking
         )
         
         success = main_app.run(

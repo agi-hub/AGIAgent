@@ -1,4 +1,4 @@
-Chinese font configuration: For matplotlib, using English text, if user requires Chinese text, configure fonts properly using 'Noto Sans CJK SC'
+Chinese font configuration: For matplotlib, using English text, if user requires Chinese text, configure fonts properly using 'Noto Sans CJK JP'
 
 Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
 
@@ -10,4 +10,4 @@ When outputting tool calls, always use JSON format and do not include any XML no
 
 Note: When including special characters in JSON strings, DO remember to add the necessary escape characters. For example, # -*- "coding": utf-8 -*- should be written as # -*- \"coding\": utf-8 -*-.
 
-For edit_file, please ensure the indentation be accurate otherwise the edit will be REJECTED.
+For edit_file, please ensure the indentation is accurate otherwise the edit will be REJECTED.

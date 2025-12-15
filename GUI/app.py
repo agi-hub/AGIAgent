@@ -467,6 +467,7 @@ I18N_TEXTS = {
         'enable_long_term_memory': '启动长期记忆',
         'enable_mcp': 'MCP工具配置',
         'enable_jieba': '启用中文分词',
+        'enable_thinking': '启用思考模式',
         'execution_mode': '执行模式',
         'agent_mode': 'Agent模式',
         'plan_mode': 'Plan模式',
@@ -836,6 +837,7 @@ I18N_TEXTS = {
         'enable_long_term_memory': 'Long-term Memory',
         'enable_mcp': 'Enable MCP',
         'enable_jieba': 'Chinese Segmentation',
+        'enable_thinking': 'Enable Thinking',
         'execution_mode': 'Execution Mode',
         'agent_mode': 'Agent Mode',
         'plan_mode': 'Plan Mode',
@@ -1131,6 +1133,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         enable_long_term_memory = gui_config.get('enable_long_term_memory', True)  # Default selection
         enable_mcp = gui_config.get('enable_mcp', False)
         enable_jieba = gui_config.get('enable_jieba', True)  # Default selection
+        enable_thinking = gui_config.get('enable_thinking', False)  # Default disabled
         
         # Execution rounds configuration from GUI
         execution_rounds = gui_config.get('execution_rounds', 50)  # Default to 50 if not provided
@@ -1160,20 +1163,43 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         model_api_base = gui_config.get('model_api_base')
         
         # 如果前端没有提供 api_key 和 api_base（内置配置），从服务器端读取
-        # 对于内置配置，前端不会发送 api_key 和 api_base，需要从服务器端读取
+        # 对于内置配置，前端可能会发送 api_key 和 api_base（从服务器获取的），也可能不发送
         if not model_api_key or not model_api_base:
-            from src.config_loader import get_gui_config
-            gui_config_from_server = get_gui_config()
+            from src.config_loader import get_gui_config, get_all_model_configs
             
-            # 如果服务器端有配置，就使用它
-            if gui_config_from_server.get('api_key') and gui_config_from_server.get('api_base'):
-                if not model_api_key:
-                    model_api_key = gui_config_from_server.get('api_key')
-                if not model_api_base:
-                    model_api_base = gui_config_from_server.get('api_base')
-                # 如果 selected_model 为空、None、空字符串或为默认值，使用服务器端的模型名称
-                if not selected_model or selected_model == '' or selected_model == 'claude-sonnet-4':
-                    selected_model = gui_config_from_server.get('model', selected_model or 'claude-sonnet-4')
+            # 首先尝试从所有配置中找到匹配selected_model的配置
+            if selected_model:
+                all_configs = get_all_model_configs()
+                matching_config = None
+                for config in all_configs:
+                    if config.get('model', '').strip() == selected_model.strip():
+                        # 优先选择enabled的配置
+                        if config.get('enabled', True):
+                            matching_config = config
+                            break
+                        elif not matching_config:
+                            # 如果没有enabled的，保存第一个匹配的作为备选
+                            matching_config = config
+                
+                if matching_config:
+                    if not model_api_key:
+                        model_api_key = matching_config.get('api_key', '')
+                    if not model_api_base:
+                        model_api_base = matching_config.get('api_base', '')
+            
+            # 如果还是没有找到，使用GUI API配置作为fallback
+            if not model_api_key or not model_api_base:
+                gui_config_from_server = get_gui_config()
+                
+                # 如果服务器端有配置，就使用它
+                if gui_config_from_server.get('api_key') and gui_config_from_server.get('api_base'):
+                    if not model_api_key:
+                        model_api_key = gui_config_from_server.get('api_key')
+                    if not model_api_base:
+                        model_api_base = gui_config_from_server.get('api_base')
+                    # 如果 selected_model 为空、None、空字符串或为默认值，使用服务器端的模型名称
+                    if not selected_model or selected_model == '' or selected_model == 'claude-sonnet-4':
+                        selected_model = gui_config_from_server.get('model', selected_model or 'claude-sonnet-4')
         
         # 验证配置是否完整
         if not model_api_key or not model_api_base or not selected_model:
@@ -1259,7 +1285,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             MCP_config_file=mcp_config_file,  # Set based on GUI MCP option
             user_id=user_id,  # Pass user ID for MCP knowledge base tools
             routine_file=routine_file,  # Pass routine file to main application
-            plan_mode=plan_mode  # Pass plan_mode to AGIAgentMain
+            plan_mode=plan_mode,  # Pass plan_mode to AGIAgentMain
+            enable_thinking=enable_thinking  # Pass thinking mode to AGIAgentMain
         )
         
         # Use detailed_requirement if provided (contains conversation history)
@@ -5021,39 +5048,133 @@ def reparse_markdown_diagrams():
 def get_gui_configs():
     """Get available GUI model configurations (without sensitive information)"""
     try:
-        from src.config_loader import get_gui_config
+        from src.config_loader import get_all_model_configs, get_gui_config
         
-        # 读取GUI配置
+        # 读取所有模型配置（包括注释掉的）
+        all_configs = get_all_model_configs()
+        
+        # 读取当前激活的GUI配置（用于确定默认选择）
         gui_config = get_gui_config()
+        current_model = gui_config.get('model', '')
+        current_api_base = gui_config.get('api_base', '')
         
-        # 返回固定的两个选项：从配置读取的模型 和自定义
-        # 注意：不返回 api_key 和 api_base，这些敏感信息只在发起任务时从服务器端读取
         i18n = get_i18n_texts()
-        model_name = gui_config.get('model', 'glm-4.5')
-        configs = [
-            {
-                'value': model_name,
-                'label': model_name,
+        configs = []
+        
+        # 添加所有找到的配置
+        for config in all_configs:
+            model = config.get('model', '')
+            api_base = config.get('api_base', '')
+            display_name = config.get('display_name', model)
+            
+            # 创建唯一标识符（使用model和api_base的组合）
+            config_id = f"{model}__{api_base}"
+            
+            configs.append({
+                'value': config_id,
+                'label': display_name,
                 # 不返回 api_key 和 api_base，保护敏感信息
-                'model': gui_config.get('model', ''),
-                'max_tokens': gui_config.get('max_tokens', 8192),
-                'display_name': model_name
-            },
-            {
-                'value': 'custom',
-                'label': i18n['custom_label'],
-                'model': '',
-                'max_tokens': 8192,
-                'display_name': i18n['custom_label']
-            }
-        ]
+                'model': model,
+                'max_tokens': config.get('max_tokens', 8192),
+                'display_name': display_name,
+                'enabled': config.get('enabled', True)
+            })
+        
+        # 添加自定义选项
+        configs.append({
+            'value': 'custom',
+            'label': i18n['custom_label'],
+            'model': '',
+            'max_tokens': 8192,
+            'display_name': i18n['custom_label'],
+            'enabled': True
+        })
         
         return jsonify({
             'success': True,
-            'configs': configs
+            'configs': configs,
+            'current_model': current_model,
+            'current_api_base': current_api_base
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@app.route('/api/get-model-config', methods=['POST'])
+def get_model_config():
+    """Get model configuration details by config ID (including sensitive information)"""
+    try:
+        from src.config_loader import get_all_model_configs
+        
+        data = request.json
+        config_id = data.get('config_id', '')
+        
+        if not config_id:
+            return jsonify({
+                'success': False,
+                'error': 'Config ID is required'
+            })
+        
+        # Handle custom config
+        if config_id == 'custom':
+            return jsonify({
+                'success': True,
+                'config': {
+                    'value': 'custom',
+                    'model': '',
+                    'api_key': '',
+                    'api_base': '',
+                    'max_tokens': 8192
+                }
+            })
+        
+        # Parse config_id (format: "model__api_base")
+        if '__' not in config_id:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid config ID format'
+            })
+        
+        model, api_base = config_id.split('__', 1)
+        
+        # Get all configs and find matching one
+        all_configs = get_all_model_configs()
+        matching_config = None
+        
+        for config in all_configs:
+            if config.get('model', '').strip() == model.strip() and \
+               config.get('api_base', '').strip() == api_base.strip():
+                matching_config = config
+                break
+        
+        if not matching_config:
+            return jsonify({
+                'success': False,
+                'error': 'Configuration not found'
+            })
+        
+        # Return config with sensitive information (only for server-side use)
+        return jsonify({
+            'success': True,
+            'config': {
+                'value': config_id,
+                'model': matching_config.get('model', ''),
+                'api_key': matching_config.get('api_key', ''),
+                'api_base': matching_config.get('api_base', ''),
+                'max_tokens': matching_config.get('max_tokens', 8192),
+                'display_name': matching_config.get('display_name', matching_config.get('model', ''))
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)

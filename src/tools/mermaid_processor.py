@@ -626,8 +626,8 @@ class MermaidProcessor:
                         if caption:
                             alt_text = caption
                         elif chart_data['base_filename'].startswith('mermaid_sha'):
-                            # For SHA-based filenames, use figure number
-                            alt_text = f"Figure {chart_data['index']}"
+                            # For SHA-based filenames, use empty string when no caption is provided
+                            alt_text = ""
                         else:
                             # For named files, use the filename as title
                             alt_text = chart_data['base_filename'].replace('_', ' ').title()

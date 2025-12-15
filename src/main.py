@@ -336,7 +336,8 @@ class AGIAgentMain:
                  link_dir: Optional[str] = None,
                  user_id: Optional[str] = None,
                  routine_file: Optional[str] = None,
-                 plan_mode: bool = False):
+                 plan_mode: bool = False,
+                 enable_thinking: Optional[bool] = None):
 
         """
         Initialize AGI Agent main program
@@ -356,6 +357,7 @@ class AGIAgentMain:
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             link_dir: Link to external code directory (optional)
             routine_file: Routine file path to include in task planning (optional)
+            enable_thinking: Whether to enable thinking mode (None to use config.txt value)
         """
         # Handle last requirement loading for continue mode
         self.last_requirement = None
@@ -401,6 +403,7 @@ class AGIAgentMain:
         self.user_id = user_id
         self.routine_file = routine_file
         self.plan_mode = plan_mode
+        self.enable_thinking = enable_thinking  # Store thinking parameter (None means use config.txt)
         
         # Ensure output directory exists
         os.makedirs(out_dir, exist_ok=True)
@@ -578,7 +581,8 @@ class AGIAgentMain:
                 MCP_config_file=self.MCP_config_file,
                 prompts_folder=self.prompts_folder,
                 user_id=self.user_id,
-                plan_mode=True  # Enable plan mode
+                plan_mode=True,  # Enable plan mode
+                enable_thinking=self.enable_thinking
             )
             
             # Construct single task for plan creation
@@ -666,7 +670,8 @@ class AGIAgentMain:
                 streaming=self.streaming,
                 MCP_config_file=self.MCP_config_file,
                 prompts_folder=self.prompts_folder,
-                user_id=self.user_id
+                user_id=self.user_id,
+                enable_thinking=self.enable_thinking
             )
             
             # 🔧 Ensure executor uses correct agent_id
@@ -882,7 +887,8 @@ class AGIAgentClient:
                  link_dir: Optional[str] = None,
                  user_id: Optional[str] = None,
                  agent_id: Optional[str] = None,
-                 routine_file: Optional[str] = None):
+                 routine_file: Optional[str] = None,
+                 enable_thinking: Optional[bool] = None):
         """
         Initialize AGI Agent Client
         
@@ -899,6 +905,7 @@ class AGIAgentClient:
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
             link_dir: Link to external code directory (optional)
             routine_file: Routine file path to include in task planning (optional)
+            enable_thinking: Whether to enable thinking mode (None to use config.txt)
         """
         # Import config loader functions
         from .config_loader import get_api_key, get_model, get_api_base
@@ -923,6 +930,7 @@ class AGIAgentClient:
         self.prompts_folder = prompts_folder
         self.link_dir = link_dir
         self.routine_file = routine_file
+        self.enable_thinking = enable_thinking
         # Store agent id and publish to agent context
         # If no agent_id is provided, this is the manager
         self.agent_id = agent_id if agent_id else "manager"
@@ -1017,7 +1025,8 @@ class AGIAgentClient:
                 MCP_config_file=self.MCP_config_file,
                 prompts_folder=self.prompts_folder,
                 link_dir=self.link_dir,
-                routine_file=self.routine_file
+                routine_file=self.routine_file,
+                enable_thinking=self.enable_thinking
             )
             
             # 🔧 If agent_id exists
