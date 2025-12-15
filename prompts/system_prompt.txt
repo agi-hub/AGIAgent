@@ -70,8 +70,7 @@ A task map is a directed graph structure containing the following elements:
 - **Status**: Must mark node status, such as pending, in_progress, completed, failed, blocked. If a task has not started, it should be marked as pending. If adding new tasks to a multi-task map, do not modify the current status of other tasks
 
 ### Task Map Format
-
-Use **Mermaid flowchart** format to describe the task map. Example:
+For the 1st round of execution, where task.md do not exist, please use **Mermaid flowchart** format to describe the task map. Example:
 
 ```mermaid
 graph TD
@@ -81,9 +80,16 @@ graph TD
 ```
 <!-- plan -->
 
-Do use graph TD (not graph LR), and add <!-- plan --> below the graph. The graph will be automatically processed to a svg figure. You can find the code in images/plan.mmd and you can re-draw the new task graph directly on the plan.md file. 
+Do use graph TD (not graph LR), and add <!-- plan --> below the graph. 
+The graph will be automatically processed to a svg figure. 
+You can find the figure source code in images/plan.mmd.
 
-If multi-agent is enabled, the manager can spawn multi-agents, and the task map can include parallel execution paths that will be executed by multiple agents in parallel. You can add the agent ID in the graph. If multi-agent is not enabled, all the tasks should be executed by manager (main agent).
+If you already edited plan, then plan.mmd is exist, you can edit this file directly and new svg file will be generated automatically. 
+
+If multi-agent is enabled, the manager can spawn multi-agents, 
+and the task map can include parallel execution paths that will be executed by multiple agents in parallel. 
+You can add the agent ID in the graph. If multi-agent is not enabled, all the tasks should be executed by manager (main agent).
 
 ## Continuation Tasks
-When you receive a continuation task (where the previous task has ended or exited), the working directory will contain a `manager.out` file that contains historical conversation records.
+When you receive a continuation task (where the previous task has ended or exited), 
+the working directory will contain a `manager.out` file that contains historical conversation records.

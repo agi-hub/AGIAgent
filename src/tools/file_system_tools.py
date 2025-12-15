@@ -654,6 +654,64 @@ class FileSystemTools:
                             'message': f'Mermaid processing error: {e}'
                         }
             
+            # Process .mmd files - convert Mermaid code to SVG and PNG
+            mermaid_mmd_result = None
+            if target_file.lower().endswith('.mmd'):
+                # 🚀 延迟加载：只在需要处理 Mermaid 图表时才加载处理器
+                processor = _get_mermaid_processor()
+                if processor:
+                    try:
+                        from pathlib import Path
+                        print_debug(f"🎨 Detected .mmd file, converting to SVG and PNG...")
+                        
+                        # Read the mermaid code from the .mmd file
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            mermaid_code = f.read().strip()
+                        
+                        if not mermaid_code:
+                            print_debug(f"⚠️ .mmd file is empty, skipping conversion")
+                            mermaid_mmd_result = {
+                                'status': 'skipped',
+                                'message': 'File is empty'
+                            }
+                        else:
+                            # Generate output paths (same directory, same filename, different extensions)
+                            mmd_path = Path(file_path)
+                            svg_path = mmd_path.with_suffix('.svg')
+                            png_path = mmd_path.with_suffix('.png')
+                            
+                            # Generate SVG and PNG images
+                            svg_success, png_success = processor._generate_mermaid_image(mermaid_code, svg_path, png_path)
+                            
+                            if svg_success and png_success:
+                                print_debug(f"✅ Successfully converted .mmd to SVG and PNG")
+                                mermaid_mmd_result = {
+                                    'status': 'success',
+                                    'message': f'Successfully converted to {svg_path.name} and {png_path.name}',
+                                    'svg_path': str(svg_path),
+                                    'png_path': str(png_path)
+                                }
+                            elif svg_success:
+                                print_debug(f"⚠️ SVG conversion succeeded but PNG conversion failed")
+                                mermaid_mmd_result = {
+                                    'status': 'partial',
+                                    'message': f'SVG conversion succeeded but PNG conversion failed',
+                                    'svg_path': str(svg_path)
+                                }
+                            else:
+                                print_debug(f"❌ Failed to convert .mmd file")
+                                mermaid_mmd_result = {
+                                    'status': 'failed',
+                                    'message': 'Failed to convert .mmd file to SVG/PNG'
+                                }
+                    except Exception as e:
+                        print_debug(f"⚠️ Error during .mmd file processing: {e}")
+                        mermaid_mmd_result = {
+                            'status': 'failed',
+                            'error': str(e),
+                            'message': f'.mmd processing error: {e}'
+                        }
+            
             # Process SVG code blocks if this is a markdown file
             svg_result = None
             if target_file.lower().endswith('.md') and SVG_PROCESSOR_AVAILABLE:
@@ -725,6 +783,10 @@ class FileSystemTools:
             # Add Mermaid processing result if applicable
             if mermaid_result is not None:
                 result['mermaid_processing'] = mermaid_result
+            
+            # Add .mmd file processing result if applicable
+            if mermaid_mmd_result is not None:
+                result['mermaid_mmd_processing'] = mermaid_mmd_result
             
             # Add SVG processing result if applicable
             if svg_result is not None:
