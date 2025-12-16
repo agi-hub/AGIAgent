@@ -441,6 +441,7 @@ class ToolExecutor:
             "workspace_search": self.tools.workspace_search,
             "read_file": self.tools.read_file,
             "run_terminal_cmd": self.tools.run_terminal_cmd,
+            "run_claude": self.tools.run_claude,  # Add run_claude tool
             "list_dir": self.tools.list_dir,
             "grep_search": self.tools.grep_search,
             "edit_file": self.tools.edit_file,

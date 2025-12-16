@@ -81,9 +81,8 @@ graph TD
 <!-- plan -->
 
 Do use graph TD (not graph LR), and add <!-- plan --> below the graph. 
-The graph will be automatically processed to a svg figure. 
-You can find the figure source code in images/plan.mmd.
-
+The graph will be automatically processed to a svg figure.
+You can mark the first node as 'in_progress' and then you do not need to update it before start your work. 
 If you already edited plan, then plan.mmd is exist, you can edit this file directly and new svg file will be generated automatically. 
 
 If multi-agent is enabled, the manager can spawn multi-agents, 

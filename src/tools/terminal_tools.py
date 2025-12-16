@@ -87,6 +87,7 @@ class TerminalTools:
         last_output_time = time.time()
         start_time = time.time()
         last_progress_line = None  # Track last progress line to avoid duplicates
+        has_received_output = False  # Track if we've ever received output
         
         stdout_queue = queue.Queue()
         stderr_queue = queue.Queue()
@@ -101,8 +102,8 @@ class TerminalTools:
                     if not chunk:
                         break
                     # Debug: track that we're receiving data
-                    if chunk.strip():
-                        stdout_queue.put(('debug', f"[DEBUG] Received stdout chunk: {len(chunk)} chars", time.time(), False))
+                    #if chunk.strip():
+                    #    stdout_queue.put(('debug', f"[DEBUG] Received stdout chunk: {len(chunk)} chars", time.time(), False))
                     buffer += chunk
                     
                     # Process buffer for \r (carriage return) and \n (newline)
@@ -222,6 +223,7 @@ class TerminalTools:
                             print_current(line)  # Debug messages already formatted
                             last_output_time = timestamp
                             got_output = True
+                            has_received_output = True  # Mark that we've received output
                             continue
                         
                         # For progress bar updates (is_update=True), use \r for single-line updates
@@ -242,6 +244,8 @@ class TerminalTools:
                             last_progress_line = None
                         last_output_time = timestamp
                         got_output = True
+                        has_received_output = True  # Mark that we've received output
+                        has_received_output = True  # Mark that we've received output
                 except queue.Empty:
                     pass
                 
@@ -260,6 +264,7 @@ class TerminalTools:
                             print_current(line)  # Debug messages already formatted
                             last_output_time = timestamp
                             got_output = True
+                            has_received_output = True  # Mark that we've received output
                             continue
                         
                         # For progress bar updates (is_update=True), use \r for single-line updates
@@ -276,8 +281,13 @@ class TerminalTools:
                             print_current(f"⚠️  {line_clean}")
                         last_output_time = timestamp
                         got_output = True
+                        has_received_output = True  # Mark that we've received output
                 except queue.Empty:
                     pass
+                
+                # If we've received output before, use longer timeout (3x the original)
+                # This gives more time for processes that are actively producing output
+                effective_timeout = timeout_inactive * 3 if has_received_output else timeout_inactive
                 
                 time_since_last_output = current_time - last_output_time
                 total_time = current_time - start_time
@@ -286,8 +296,8 @@ class TerminalTools:
                     print_current(f"\n⏰ Process execution exceeded maximum time limit of {max_total_time} seconds, force terminating")
                     timed_out = True
                     break
-                elif time_since_last_output > timeout_inactive:
-                    print_current(f"\n⏰ Process has no output for more than {timeout_inactive} seconds, may be stuck, force terminating")
+                elif time_since_last_output > effective_timeout:
+                    print_current(f"\n⏰ Process has no output for more than {effective_timeout} seconds, may be stuck, force terminating")
                     timed_out = True
                     break
                 
@@ -861,4 +871,125 @@ class TerminalTools:
                 'error': str(e),
                 'working_directory': self.workspace_root,
                 'was_interactive': is_interactive
+            }
+    
+    def run_claude(self, prompt: str, work_dir: str = None, **kwargs) -> Dict[str, Any]:
+        """
+        Run claude command using claude_shell.py as a separate process.
+        
+        Args:
+            prompt: Prompt to send to claude
+            work_dir: Working directory path for claude_shell.py execution (if None, uses workspace_root)
+        
+        Returns:
+            Dictionary with execution results including status, stdout, stderr, and return_code
+        """
+        # Ignore additional parameters
+        if kwargs:
+            print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+        
+        # Determine working directory
+        if work_dir is None or work_dir == "./" or work_dir == ".":
+            # Use workspace_root when work_dir is None, "./", or "."
+            work_dir = self.workspace_root
+        else:
+            # Resolve the path
+            work_dir = os.path.expanduser(work_dir)
+            # If it's a relative path, resolve it relative to workspace_root
+            if not os.path.isabs(work_dir):
+                work_dir = os.path.join(self.workspace_root, work_dir)
+        
+        # Always convert to absolute path before passing to claude_shell.py
+        work_dir = os.path.abspath(work_dir)
+        
+        if not os.path.exists(work_dir):
+            return {
+                'status': 'failed',
+                'error': f'Working directory does not exist: {work_dir}',
+                'prompt': prompt,
+                'work_dir': work_dir
+            }
+        if not os.path.isdir(work_dir):
+            return {
+                'status': 'failed',
+                'error': f'Path is not a directory: {work_dir}',
+                'prompt': prompt,
+                'work_dir': work_dir
+            }
+        
+        # Find claude_shell.py path (should be in src/utils/)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        claude_shell_path = os.path.join(project_root, 'src', 'utils', 'claude_shell.py')
+        
+        if not os.path.exists(claude_shell_path):
+            return {
+                'status': 'failed',
+                'error': f'claude_shell.py not found at: {claude_shell_path}',
+                'prompt': prompt,
+                'work_dir': work_dir
+            }
+        
+        # Build command
+        cmd = [sys.executable, claude_shell_path, prompt]
+        if work_dir:
+            cmd.extend(['-d', work_dir])
+        
+        try:
+            print_current(f"🤖 Running claude with prompt: {prompt[:100]}..." if len(prompt) > 100 else f"🤖 Running claude with prompt: {prompt}")
+            print_current(f"📁 Working directory: {work_dir}")
+            
+            # Run claude_shell.py as subprocess
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                cwd=work_dir
+            )
+            
+            # Read output with timeout (claude commands can take a while)
+            timeout_inactive = 300  # 5 minutes for no output
+            max_total_time = 600    # 10 minutes maximum
+            
+            stdout, stderr, return_code, timed_out = self._read_process_output_with_timeout_and_input(
+                process, timeout_inactive, max_total_time
+            )
+            
+            status = 'success'
+            if timed_out:
+                status = 'failed'
+            elif return_code != 0:
+                status = 'failed'
+            
+            result = {
+                'status': status,
+                'prompt': prompt,
+                'stdout': stdout,
+                'stderr': stderr,
+                'return_code': return_code,
+                'work_dir': work_dir,
+                'timeout_inactive': timeout_inactive,
+                'max_total_time': max_total_time
+            }
+            
+            if timed_out:
+                result['timeout_reason'] = 'Process timed out due to inactivity or maximum time limit'
+            
+            return result
+            
+        except FileNotFoundError:
+            return {
+                'status': 'failed',
+                'error': f'Python interpreter not found: {sys.executable}',
+                'prompt': prompt,
+                'work_dir': work_dir
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'error': str(e),
+                'prompt': prompt,
+                'work_dir': work_dir
             } 

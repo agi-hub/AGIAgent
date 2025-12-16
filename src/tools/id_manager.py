@@ -55,9 +55,8 @@ class IDManager:
                 self._agent_counter = state.get('agent_counter', 1)
                 self._message_counter = state.get('message_counter', 0)
                 
-                print_current(f"📊 ID state loaded - Agent: {self._agent_counter}, Message: {self._message_counter}")
+                #print_current(f"📊 ID state loaded - Agent: {self._agent_counter}, Message: {self._message_counter}")
         except Exception as e:
-            print_current(f"⚠️ Unable to load ID state file: {e}")
             # Use default values
             self._agent_counter = 1
             self._message_counter = 0

@@ -2,17 +2,16 @@
 #LANG=en
 LANG=zh
 
-# GUI API configuration
+# Model configuration section
+# Please fill in each config in 5 lines, i.e.
+# name (with comment #), key, base, model, max_output_tokens
+# the configuration in comment will not be valid.
+
+# GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.6
 max_tokens=16384
-
-# OpenAI API configuration 
-# api_key=your key
-# api_base=https://pmpjfbhq.cn-nb1.rainapp.top/v1
-# model=gpt-4.1
-# max_tokens=8192
 
 # Anthropic models
 # api_key=your key
@@ -25,24 +24,6 @@ max_tokens=16384
 # api_base=https://openrouter.ai/api/v1
 # model=qwen/qwen3-30b-a3b-instruct-2507
 # max_tokens=32768
-
-# Zhipu API configuration 
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.5
-# max_tokens=16384
-
-# Bailian API configuration 
-# api_key=your key
-# api_base=https://dashscope.aliyuncs.com/compatible-mode/v1
-# model=qwen3-coder-480b-a35b-instruct
-# max_tokens=65536
-
-# Google gemini model
-# api_key=your key
-# api_base=https://api.openai-proxy.org/v1
-# model=gemini-2.5-pro
-# max_tokens=8192
 
 # DeepSeek API configuration
 # api_key=your key
@@ -148,81 +129,6 @@ web_content_truncation_length=20000
 # 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
 # 4. Changes to configuration require program restart to take effect
 
-
-# History Summarization Configuration
-# Controls whether to use AI to summarize conversation history to reduce context length
-# When enabled, conversation history is summarized using the large model when it exceeds trigger length
-# This replaces truncation with intelligent summarization to maintain important context
-summary_history=False
-
-# Maximum length for conversation history summary (in characters)
-# Used when summary_history=True to control the length of the generated summary
-# Recommended values: 3000-8000 characters
-# Lower values save more context but may lose some detail
-# Higher values preserve more information but use more context
-summary_max_length=10000
-
-# Trigger length for conversation history summarization (in characters)
-# Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 50000-120000 characters
-# Lower values trigger summarization earlier, saving more context
-# Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=100000
-
-# History summarization usage recommendations:
-# 1. Enable summary_history=True for long conversation sessions to control context length
-# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
-# 3. Adjust summary_max_length based on your model's context window and task complexity
-# 4. For critical tasks requiring full context, keep summary_history=False
-# 5. When enabled, the latest tool result is always preserved in full text
-# 6. Summarization only occurs when conversation exceeds trigger length, not every round
-# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities# History Summarization Configuration
-# Controls whether to use AI to summarize conversation history to reduce context length
-# When enabled, conversation history is summarized using the large model when it exceeds trigger length
-# This replaces truncation with intelligent summarization to maintain important context
-summary_history=False
-
-# Maximum length for conversation history summary (in characters)
-# Used when summary_history=True to control the length of the generated summary
-# Recommended values: 3000-8000 characters
-# Lower values save more context but may lose some detail
-# Higher values preserve more information but use more context
-summary_max_length=10000
-
-# Trigger length for conversation history summarization (in characters)
-# Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 50000-120000 characters
-# Lower values trigger summarization earlier, saving more context
-# Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=100000
-
-# History summarization usage recommendations:
-# 1. Enable summary_history=True for long conversation sessions to control context length
-# 2. Adjust summary_trigger_length based on when you want summarization to start (100000 is good for most cases)
-# 3. Adjust summary_max_length based on your model's context window and task complexity
-# 4. For critical tasks requiring full context, keep summary_history=False
-# 5. When enabled, the latest tool result is always preserved in full text
-# 6. Summarization only occurs when conversation exceeds trigger length, not every round
-# 7. Summary generation uses the same model configured above, ensure it has good summarization capabilities# History Summarization Configuration
-# Controls whether to use AI to summarize conversation history to reduce context length
-# When enabled, conversation history is summarized using the large model when it exceeds trigger length
-# This replaces truncation with intelligent summarization to maintain important context
-summary_history=False
-
-# Maximum length for conversation history summary (in characters)
-# Used when summary_history=True to control the length of the generated summary
-# Recommended values: 3000-8000 characters
-# Lower values save more context but may lose some detail
-# Higher values preserve more information but use more context
-summary_max_length=10000
-
-# Trigger length for conversation history summarization (in characters)
-# Only when the total conversation history exceeds this length will summarization be triggered
-# Recommended values: 50000-120000 characters
-# Lower values trigger summarization earlier, saving more context
-# Higher values delay summarization, preserving more detailed conversation history
-summary_trigger_length=100000
-
 # Minimum content length to trigger compression (in characters)
 # Content shorter than this will not be compressed
 # Lower values compress more aggressively, higher values preserve more content
@@ -325,31 +231,4 @@ emoji_disabled=False
 auto_convert_to_word=True
 auto_convert_to_pdf=True
 auto_convert_to_latex=False
-
-# TASK_COMPLETED signal handling configuration
-# Controls whether to admit TASK_COMPLETED signal when it appears along with tool calls
-# When enabled (True), if LLM outputs TASK_COMPLETED along with tool calls:
-#   - Tools will be executed first
-#   - Then the task will be completed with TASK_COMPLETED signal
-# When disabled (False), TASK_COMPLETED signal will be dropped and tools will be executed without completing the task
-# Default: False (drop TASK_COMPLETED signal and execute tools without completing)
-admit_task_completed_with_tools=True
-
-# LLM Output Control Parameters
-# These parameters control the strictness and randomness of LLM output generation
-
-# Temperature: Controls randomness in output (0.0 to 2.0)
-# Lower values (0.0-0.3): More deterministic, focused output
-# Medium values (0.4-0.8): Balanced creativity and consistency
-# Higher values (0.9-2.0): More creative and diverse output
-# Default: 0.7 (balanced)
-temperature=0
-
-# Top-p (nucleus sampling): Controls diversity via nucleus sampling (0.0 to 1.0)
-# Lower values (0.1-0.5): More focused, conservative output
-# Medium values (0.6-0.9): Balanced diversity
-# Higher values (0.95-1.0): More diverse output
-# Default: 0.8 (balanced)
-top_p=0.8
-
 

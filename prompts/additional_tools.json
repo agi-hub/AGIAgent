@@ -82,6 +82,23 @@
       "required": ["type", "source"]
     }
   },
+  "run_claude": {
+    "description": "Run claude command using claude_shell.py as a separate process. This tool executes claude in a separate process and passes the working directory to claude_shell.py.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The prompt to send to claude"
+        },
+        "work_dir": {
+          "type": "string",
+          "description": "Optional working directory path for claude_shell.py execution. If not specified, uses the workspace root directory."
+        }
+      },
+      "required": ["prompt"]
+    }
+  },
   "mouse_control": {
     "description": "Control mouse operations, including moving the mouse to a specified coordinate, single clicking the left mouse button, double clicking, right mouse button clicking, and scrolling the mouse wheel. This is a cross-platform mouse control tool that prioritizes using the PyAutoGUI or PyNput libraries, and falls back to system commands if those are not available.",
     "parameters": {
