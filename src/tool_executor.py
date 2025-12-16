@@ -1322,6 +1322,18 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
             message_parts: List to append history content to
             task_history: Previous task execution history
         """
+        # 🔧 BUG FIX: 清理已经显示过的临时错误反馈，防止指数级增长
+        # 只保留最近的一个错误反馈（如果有的话），移除更早的错误反馈
+        error_feedback_indices = [i for i, record in enumerate(task_history) 
+                                 if record.get("temporary_error_feedback", False)]
+        if len(error_feedback_indices) > 1:
+            # 保留最后一个错误反馈，移除其他的
+            indices_to_remove = error_feedback_indices[:-1]
+            # 从后往前删除，避免索引变化
+            for idx in sorted(indices_to_remove, reverse=True):
+                task_history.pop(idx)
+            print_debug(f"🧹 Cleaned {len(indices_to_remove)} old temporary error feedback records")
+        
         message_parts.append("## Previous Round Context:")
         message_parts.append("Below is the context from previous tasks in this session:")
         message_parts.append("")
@@ -1662,13 +1674,15 @@ Please review the error and adjust your response accordingly.
 """
         
         # 添加错误反馈记录到历史
+        # 注意：添加一个标志表示这是临时的错误反馈，应该在下一轮成功后被清理
         error_record = {
             "task_round": execution_round,
             "result": feedback_message,
             "error": True,
             "error_type": error_type,
             "task_completed": False,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().isoformat(),
+            "temporary_error_feedback": True  # 标记为临时错误反馈
         }
         task_history.append(error_record)
 

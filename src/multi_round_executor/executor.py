@@ -917,6 +917,16 @@ class MultiRoundTaskExecutor:
                         "task_completed": task_completed,
                         "timestamp": datetime.now().isoformat()
                     }
+                
+                # 🔧 BUG FIX: 在成功执行后清理临时错误反馈，防止历史记录指数级增长
+                # 这些错误反馈已经在本轮中显示给LLM了，不需要继续保留
+                initial_length = len(task_history)
+                task_history[:] = [record for record in task_history 
+                                  if not record.get("temporary_error_feedback", False)]
+                removed_count = initial_length - len(task_history)
+                if removed_count > 0:
+                    print_current(f"🧹 Cleaned {removed_count} temporary error feedback record(s) after successful execution")
+                
                 task_history.append(round_record)
                 
 
