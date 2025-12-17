@@ -62,9 +62,9 @@ The plan should use a dynamic Task Map method based on graph structure. A task m
 - **Choice Node**: Multi-choice branch selection, each branch needs to be marked with priority or selection conditions
 - **Loop Node**: Tasks that need to be executed repeatedly
 - **IDLE Node**: Each mermaid diagram must have exactly one IDLE node, and it should not be connected to other nodes. It is used to indicate that no tasks are currently being executed
-- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing. It should be displayed in red
-- **Start Node**: Task start node, displayed in yellow
-- **End Node**: Task completion node, displayed in blue
+- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing.
+- **Start Node**: Task start node
+- **End Node**: Task completion node
 
 ### Node Attributes
 - **ID**: Unique identifier for the node

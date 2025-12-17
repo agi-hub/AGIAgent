@@ -891,8 +891,8 @@ class MultiRoundTaskExecutor:
                     # In infinite loop mode, task is never considered completed by TASK_COMPLETED flag
                     task_completed = False
                     # Log if TASK_COMPLETED was detected but ignored
-                    if self.task_checker.check_task_completion(result):
-                        print_current(f"⚠️ TASK_COMPLETED flag detected but ignored in infinite loop mode")
+                    #if self.task_checker.check_task_completion(result):
+                    #    print_current(f"⚠️ TASK_COMPLETED flag detected but ignored in infinite loop mode")
                 else:
                     task_completed = self.task_checker.check_task_completion(result)
                 
@@ -924,8 +924,8 @@ class MultiRoundTaskExecutor:
                 task_history[:] = [record for record in task_history 
                                   if not record.get("temporary_error_feedback", False)]
                 removed_count = initial_length - len(task_history)
-                if removed_count > 0:
-                    print_current(f"🧹 Cleaned {removed_count} temporary error feedback record(s) after successful execution")
+                #if removed_count > 0:
+                #    print_current(f"🧹 Cleaned {removed_count} temporary error feedback record(s) after successful execution")
                 
                 task_history.append(round_record)
                 

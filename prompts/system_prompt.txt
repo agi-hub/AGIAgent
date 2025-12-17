@@ -48,7 +48,7 @@ Do not upload files or write files outside working directory via terminal tool o
 
 ## Plan Structure
 
-Before execution, you should establish a plan in plan.md. If it already exists, please read it. The plan in plan.md should use a dynamic Task Map method based on graph structure. If you update it, you should strictly follow the original graph and make minor modifications.
+Before execution, you should establish a plan in file plan.md (using edit_file). If it already exists, please read it. The plan in plan.md should include a dynamic Task Map on graph structure. If you update it, you should strictly follow the original graph and make minor modifications.
 A task map is a directed graph structure containing the following elements:
 
 ### Node Types
@@ -57,9 +57,9 @@ A task map is a directed graph structure containing the following elements:
 - **Choice Node**: Multi-choice branch selection, each branch needs to be marked with priority or selection conditions
 - **Loop Node**: Tasks that need to be executed repeatedly
 - **IDLE Node**: Each mermaid diagram must have exactly one IDLE node, and it should not be connected to other nodes. It is used to indicate that no tasks are currently being executed
-- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing. It should be displayed in red
-- **Start Node**: Task start node, displayed in yellow
-- **End Node**: Task completion node, displayed in blue
+- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing.
+- **Start Node**: Task start node
+- **End Node**: Task completion node
 
 ### Node Attributes
 - **ID**: Unique identifier for the node
@@ -74,16 +74,14 @@ For the 1st round of execution, where task.md do not exist, please use **Mermaid
 
 ```mermaid
 graph TD
-    Start([Start]):::yellow --> Task1["T1: Task 1 Description<br/>Completion Criteria: Criteria description<br/>Cost: 30s<br/>Status: pending"]
+    Start([Start]) --> Task1["T1: Task 1 Description<br/>Completion Criteria: Criteria description<br/>Cost: 30s<br/>Status: pending"]
     ...
     
 ```
 <!-- plan -->
 
-Do use graph TD (not graph LR), and add <!-- plan --> below the graph. 
-The graph will be automatically processed to a svg figure.
 You can mark the first node as 'in_progress' and then you do not need to update it before start your work. 
-If you already edited plan, then plan.mmd is exist, you can edit this file directly and new svg file will be generated automatically. 
+You should always update the task map along with the task execution status, you can edit this the graph directly using edit_file tool. 
 
 If multi-agent is enabled, the manager can spawn multi-agents, 
 and the task map can include parallel execution paths that will be executed by multiple agents in parallel. 

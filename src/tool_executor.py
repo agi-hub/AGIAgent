@@ -1945,7 +1945,10 @@ Please review the error and adjust your response accordingly.
                                 'tool_params': tool_params,
                                 'tool_result': tool_result
                             })
-                            successful_executions += 1
+                            
+                            # Only count as successful if the tool didn't return an error
+                            if not (isinstance(tool_result, dict) and tool_result.get('status') in ['error', 'failed']):
+                                successful_executions += 1
                             
                             # Tool result is already displayed by streaming output, no need to duplicate
                             
@@ -1965,6 +1968,11 @@ Please review the error and adjust your response accordingly.
                 
                 # 🔧 NEW: Format tool results with base64 data detection
                 tool_results_message = self._format_tool_results_for_llm(all_tool_results, include_base64_info=current_round_has_sensor_data)
+                
+                # Debug: Print tool results message for verification
+                if self.debug_mode:
+                    print_current(f"📋 Tool results message for LLM ({len(tool_results_message)} chars):")
+                    print_current(tool_results_message[:500] + "..." if len(tool_results_message) > 500 else tool_results_message)
                 
                 # Save debug log with tool execution info
                 if self.debug_mode:
@@ -2008,6 +2016,18 @@ Please review the error and adjust your response accordingly.
                 
                 # Build combined result
                 combined_result = "".join(result_parts)
+                
+                # Debug: Print combined result structure
+                if self.debug_mode:
+                    print_current(f"📦 Combined result structure:")
+                    print_current(f"  - Content length: {len(content)}")
+                    print_current(f"  - Tool calls formatted: {'Yes' if tool_calls_formatted else 'No'}")
+                    print_current(f"  - Tool results length: {len(tool_results_message)}")
+                    print_current(f"  - Total combined length: {len(combined_result)}")
+                    if "--- Tool Execution Results ---" in combined_result:
+                        print_current(f"  ✅ Tool Execution Results section is included")
+                    else:
+                        print_current(f"  ⚠️ Tool Execution Results section is MISSING!")
                 
                 # Check if this was originally intended to be task completion after tool execution
                 if original_has_task_completed:
@@ -7624,18 +7644,18 @@ Please review the error and adjust your response accordingly.
                         # Format the result content appropriately - NO TRUNCATION
                         if isinstance(tool_result_content, str):
                             # For string results, show directly without truncation
-                            print_debug(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{tool_result_content}")
                         elif isinstance(tool_result_content, dict):
                             # For dict results, format as text without truncation
                             formatted_result = self._format_dict_as_text(tool_result_content, for_terminal_display=True, tool_name=tool_name, tool_params=tool_params)
-                            print_debug(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result:\n{formatted_result}")
                         else:
-                            print_debug(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
+                            print_current(f"✅ {tool_source.upper()} Tool Result: {str(tool_result_content)}")
                     elif result.get('status') == 'error':
                         error_msg = result.get('error', 'Unknown error')
-                        print_debug(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
+                        print_current(f"❌ {tool_source.upper()} Tool Error: {error_msg}")
                     else:
-                        print_debug(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
+                        print_current(f"ℹ️  {tool_source.upper()} Tool Status: {result.get('status', 'unknown')}")
                 
                 # For file operations, show results for edit_file tool and errors for others
                 elif 'status' in result:
@@ -7646,13 +7666,13 @@ Please review the error and adjust your response accordingly.
                         action = result.get('action', 'processed')
 
                         if status == 'success':
-                            print_debug(f"✅ File Operation Succeed: {action} {file_path}")
+                            print_current(f"✅ File Operation Succeed: {action} {file_path}")
                         elif status in ['error', 'failed']:
                             error_msg = result.get('error')
-                            print_debug(f"❌ File Operation Failed: {file_path} - {error_msg}")
+                            print_current(f"❌ File Operation Failed: {file_path} - {error_msg}")
                     elif result.get('status') in ['error', 'failed']:
                         status = result.get('status', 'unknown')
-                        print_debug(f"Status: {status}")
+                        print_current(f"Status: {status}")
             
         except Exception as e:
             print_error(f"⚠️ Error streaming tool result: {e}")

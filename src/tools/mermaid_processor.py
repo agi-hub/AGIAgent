@@ -371,6 +371,17 @@ class MermaidProcessor:
             # Check if this is a plan.md file (case-insensitive)
             is_plan_file = md_path.name.lower() == 'plan.md'
             
+            # Skip processing for plan.md files - keep mermaid source code as-is
+            if is_plan_file:
+                print_debug(f"📝 Skipping Mermaid processing for plan.md (keeping source code)")
+                return {
+                    'status': 'skipped',
+                    'file': md_file_path,
+                    'message': 'Skipped processing for plan.md - mermaid source code preserved',
+                    'charts_found': 0,
+                    'charts_processed': 0
+                }
+            
             # Use markdown file directory if no output dir specified
             if not output_dir:
                 output_dir = md_dir
@@ -647,16 +658,8 @@ class MermaidProcessor:
                         start_pos = chart_data['match'].start()
                         end_pos = chart_data['match'].end()
                         
-                        # Get the original mermaid code block
-                        original_mermaid_block = content[start_pos:end_pos]
-                        
-                        # For plan.md files, keep the mermaid source code and add image after it
-                        if is_plan_file:
-                            # Keep the mermaid code block and add image reference after it
-                            replacement = f"{original_mermaid_block}\n\n![{alt_text}]({display_path})\n\n{format_info}<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
-                        else:
-                            # For other files, replace mermaid code block with image (original behavior)
-                            replacement = f"\n![{alt_text}]({display_path})\n\n{format_info}<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
+                        # Replace mermaid code block with image reference
+                        replacement = f"\n![{alt_text}]({display_path})\n\n{format_info}<!-- Source code file: {chart_data['rel_mermaid_path']} -->\n"
                         
                         # Replace original content
                         content = content[:start_pos] + replacement + content[end_pos:]
