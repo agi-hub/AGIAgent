@@ -3713,6 +3713,8 @@
 
     <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+    <!-- Mermaid.js for diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script id="i18nData" type="application/json">{{ i18n | tojson }}</script>
     <script>
         // Internationalization configuration
@@ -3731,7 +3733,7 @@
         let isAutoReconnectInProgress = false;
         let wasReconnected = false; // 标记是否是重连后的连接
         let heartbeatInterval = null;  // 心跳定时器
-        const HEARTBEAT_INTERVAL = 50000;  // 每50秒发送一次心跳（小于服务器ping_timeout=75秒）
+        const HEARTBEAT_INTERVAL = 55000;  // 每55秒发送一次心跳（小于服务器ping_interval=60秒）
         
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
@@ -4015,7 +4017,7 @@
             // 立即发送一次心跳
             sendHeartbeat();
             
-            // 设置定时器，每50秒发送一次心跳（小于服务器ping_timeout=75秒）
+            // 设置定时器，每55秒发送一次心跳（小于服务器ping_interval=60秒）
             heartbeatInterval = setInterval(function() {
                 if (socket && socket.connected) {
                     // 始终发送心跳保持连接，即使在任务执行时也需要保持连接活跃
@@ -4034,9 +4036,13 @@
         function sendHeartbeat() {
             if (socket && socket.connected) {
                 // 发送心跳消息，服务器会响应以保持连接活跃
+                const ts = Date.now();
+                console.log(`[${new Date().toISOString()}] 💓 发送心跳, timestamp=${ts}`);
                 socket.emit('heartbeat', {
-                    timestamp: Date.now()
+                    timestamp: ts
                 });
+            } else {
+                console.log(`[${new Date().toISOString()}] ⚠️ 心跳跳过: socket=${!!socket}, connected=${socket?.connected}`);
             }
         }
         
@@ -4045,6 +4051,7 @@
             if (!socket) return;
             
             socket.on('connect', function() {
+                console.log(`[${new Date().toISOString()}] ✅ WebSocket连接成功, transport=${socket.io.engine.transport.name}`);
                 const shouldAutoSelectFirst = wasReconnected && !selectedDirectory;
                 wasReconnected = false; // 重置标志
                 isAutoReconnectInProgress = false;
@@ -4093,13 +4100,22 @@
                 }
 
                 updateUserStatus('connected', I18N.user_connected, identity, isGuest);
+                
+                // 检查是否是恢复的会话
+                if (data.recovered && data.task_running) {
+                    console.log(`[${new Date().toISOString()}] 🔄 会话已恢复，任务仍在运行`);
+                    addMessage('🔄 连接已恢复，任务继续运行中...', 'info');
+                    setTaskRunning(true);
+                }
             });
 
             socket.on('disconnect', function(reason) {
+                console.log(`[${new Date().toISOString()}] ❌ 连接断开! reason=${reason}, isTaskRunning=${isTaskRunning}, isManualDisconnect=${isManualDisconnect}`);
                 // 停止心跳
                 stopHeartbeat();
                 
                 if (isManualDisconnect) {
+                    console.log(`[${new Date().toISOString()}] 手动断开，跳过重连`);
                     isManualDisconnect = false;
                     return;
                 }
@@ -4110,6 +4126,7 @@
                 
                 // If task is running, give special prompt
                 if (isTaskRunning) {
+                    console.log(`[${new Date().toISOString()}] ⚠️ 任务运行中断开连接!`);
                     addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
                     // 连接中断时，清除所有蓝色勾选状态
                     clearAllDirectorySelections();
@@ -4160,8 +4177,18 @@
             });
 
             socket.on('heartbeat_ack', function(data) {
-                // 心跳响应，连接正常，静默处理（不显示消息）
-                // 可以用于调试：console.log('Heartbeat acknowledged:', data);
+                // 心跳响应，连接正常
+                const latency = Date.now() - data.timestamp;
+                console.log(`[${new Date().toISOString()}] 💚 心跳响应, 延迟=${latency}ms, server_time=${data.server_time}`);
+            });
+
+            // 监听底层 engine 的 ping/pong 事件
+            socket.io.engine.on('ping', function() {
+                console.log(`[${new Date().toISOString()}] 🏓 收到服务器ping`);
+            });
+            
+            socket.io.engine.on('pong', function(latency) {
+                console.log(`[${new Date().toISOString()}] 🏓 pong响应, 延迟=${latency}ms`);
             });
 
             socket.on('task_started', function(data) {
@@ -7841,6 +7868,16 @@
                 renderer.code = function(code, language) {
                     const validLanguage = language && typeof language === 'string' ? language : 'text';
                     const escapedCode = escapeHtml(code);
+                    
+                    // 检查是否为mermaid代码块，直接在预览中渲染
+                    if (validLanguage.toLowerCase() === 'mermaid') {
+                        // 为mermaid图表生成唯一ID
+                        const mermaidId = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                        return `<div class="mermaid-container" style="background: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0; text-align: center;">
+                            <div class="mermaid" id="${mermaidId}">${code}</div>
+                        </div>`;
+                    }
+                    
                     return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
                 };
                 
@@ -7970,6 +8007,16 @@
                     
                     // 触发数学公式渲染（智能fallback）
                     renderMath(document.getElementById('markdownPreview'));
+                    
+                    // 触发Mermaid图表渲染
+                    if (typeof mermaid !== 'undefined') {
+                        try {
+                            mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                            mermaid.run({ querySelector: '.mermaid' });
+                        } catch (e) {
+                            console.warn('Mermaid rendering failed:', e);
+                        }
+                    }
                 }, 100);
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
@@ -11001,6 +11048,16 @@
                 renderer.code = function(code, language) {
                     const validLanguage = language && typeof language === 'string' ? language : 'text';
                     const escapedCode = escapeHtml(code);
+                    
+                    // 检查是否为mermaid代码块，直接在预览中渲染
+                    if (validLanguage.toLowerCase() === 'mermaid') {
+                        // 为mermaid图表生成唯一ID
+                        const mermaidId = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                        return `<div class="mermaid-container" style="background: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0; text-align: center;">
+                            <div class="mermaid" id="${mermaidId}">${code}</div>
+                        </div>`;
+                    }
+                    
                     return `<pre class="language-${validLanguage}" style="background: #1e1e1e; border: 1px solid #404040; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 16px 0;"><code class="language-${validLanguage}" style="color: #ffffff !important; font-weight: normal !important; font-size: 14px !important; background: transparent !important;">${escapedCode}</code></pre>`;
                 };
                 
@@ -11085,6 +11142,16 @@
                         
                         // 触发数学公式渲染
                         renderMath(previewDiv);
+                        
+                        // 触发Mermaid图表渲染
+                        if (typeof mermaid !== 'undefined') {
+                            try {
+                                mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                                mermaid.run({ querySelector: '.mermaid' });
+                            } catch (e) {
+                                console.warn('Mermaid rendering failed:', e);
+                            }
+                        }
                     }, 50);
                 }
             } catch (e) {

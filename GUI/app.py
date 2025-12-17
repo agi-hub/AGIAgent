@@ -16,6 +16,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+# 尝试使用 gevent 进行 monkey patching 以支持异步
+try:
+    from gevent import monkey
+    monkey.patch_all()
+    ASYNC_MODE = 'gevent'
+except ImportError:
+    ASYNC_MODE = 'threading'
+
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request, abort, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
@@ -337,10 +345,11 @@ class ConcurrencyManager:
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
-# 调整心跳间隔为25秒，确保即使nginx的proxy_read_timeout为300秒也能保持连接
-# ping_timeout设置为ping_interval的3倍，确保有足够的容错时间
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', 
-                   ping_timeout=75, ping_interval=25)  
+# 增加ping超时时间，防止任务执行期间主线程阻塞导致连接断开
+# ping_interval=60秒发送一次ping，ping_timeout=300秒超时（5分钟）
+# 使用 gevent 异步模式（如果可用），否则回退到 threading
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE, 
+                   ping_timeout=300, ping_interval=60)  
 
 
 import logging
@@ -3436,8 +3445,28 @@ def get_performance_metrics():
 @socketio.on('connect')
 def handle_connect(auth):
     """WebSocket connection processing with authentication"""
+    import datetime
     i18n = get_i18n_texts()
     session_id = request.sid
+    print(f"[{datetime.datetime.now().isoformat()}] ✅ 新连接: session_id={session_id}")
+    
+    # Get user authentication info
+    api_key = None
+    if auth and 'api_key' in auth:
+        api_key = auth['api_key']
+    
+    # 检查是否有待恢复的会话（同一用户重连）
+    recovered_session = None
+    for old_sid, pending_info in list(_pending_cleanup_sessions.items()):
+        if pending_info['api_key'] == api_key and api_key:
+            # 找到同一用户的待清理会话，恢复它
+            recovered_session = pending_info['user_session']
+            del _pending_cleanup_sessions[old_sid]
+            # 也从旧的 user_sessions 中移除
+            if old_sid in gui_instance.user_sessions:
+                del gui_instance.user_sessions[old_sid]
+            print(f"[{datetime.datetime.now().isoformat()}] 🔄 恢复会话: old_session={old_sid} -> new_session={session_id}")
+            break
     
     # Check if new connections can be accepted
     if not gui_instance.concurrency_manager.can_accept_connection():
@@ -3446,13 +3475,15 @@ def handle_connect(auth):
         }, room=session_id)
         return False
     
-    # Get user authentication info
-    api_key = None
-    if auth and 'api_key' in auth:
-        api_key = auth['api_key']
-    
     # Create or get user session with authentication
-    user_session = gui_instance.get_user_session(session_id, api_key)
+    if recovered_session:
+        # 使用恢复的会话
+        user_session = recovered_session
+        gui_instance.user_sessions[session_id] = user_session
+        # 重新创建认证会话
+        gui_instance.auth_manager.create_session(session_id, user_session.user_info)
+    else:
+        user_session = gui_instance.get_user_session(session_id, api_key)
     
     if not user_session:
         # Authentication failed
@@ -3481,6 +3512,9 @@ def handle_connect(auth):
     metrics = gui_instance.concurrency_manager.get_metrics()
     
     
+    # 检查是否有正在运行的任务（重连恢复的情况）
+    task_running = user_session.current_process and user_session.current_process.is_alive()
+    
     # Send status with guest indicator and performance info
     connection_data = {
         'message': i18n['connected'],
@@ -3491,56 +3525,114 @@ def handle_connect(auth):
             'active_connections': metrics['active_connections'],
             'active_tasks': metrics['active_tasks'],
             'queue_size': metrics['queue_size']
-        }
+        },
+        'task_running': task_running,  # 告知客户端是否有任务在运行
+        'recovered': recovered_session is not None  # 告知客户端这是恢复的会话
     }
     
     emit('status', connection_data, room=session_id)
+    
+    # 如果是恢复的会话且有任务在运行，重新启动 queue_reader_thread
+    if recovered_session and task_running:
+        print(f"[{datetime.datetime.now().isoformat()}] 🔄 重新启动消息读取线程: session_id={session_id}")
+        threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
+
+# 存储待清理的会话（等待重连）
+_pending_cleanup_sessions = {}  # {session_id: {'user_session': ..., 'disconnect_time': ..., 'api_key': ...}}
+RECONNECT_GRACE_PERIOD = 120  # 等待重连的时间（秒）
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle user disconnection"""
+    """Handle user disconnection - 延迟清理，等待可能的重连"""
     session_id = request.sid
+    import datetime
+    disconnect_reason = getattr(request, 'disconnect_reason', 'unknown')
+    print(f"[{datetime.datetime.now().isoformat()}] ❌ Server detected connection disconnect: session_id={session_id}, reason={disconnect_reason}")
 
     # Remove connection from concurrency manager
     gui_instance.concurrency_manager.remove_connection()
 
     if session_id in gui_instance.user_sessions:
         user_session = gui_instance.user_sessions[session_id]
-
-        # Leave room and clean up session immediately
+        api_key = user_session.user_info.get('api_key', '')
+        
+        # 判断等待时间：有任务运行时等待更长时间，空闲时等待较短时间
+        has_running_task = user_session.current_process and user_session.current_process.is_alive()
+        grace_period = RECONNECT_GRACE_PERIOD if has_running_task else 30  # 空闲时等待30秒
+        
+        print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: session_id={session_id}, has_task={has_running_task}")
+        
+        # 保存到待清理列表
+        _pending_cleanup_sessions[session_id] = {
+            'user_session': user_session,
+            'disconnect_time': time.time(),
+            'api_key': api_key,
+            'has_running_task': has_running_task
+        }
+        
+        # 从当前会话中移除，但不终止进程
         try:
             leave_room(session_id)
         except Exception:
             pass
-
-        # Terminate any running processes
-        if user_session.current_process and user_session.current_process.is_alive():
-            try:
-                user_session.current_process.terminate()
-                user_session.current_process.join(timeout=5)
-            except Exception:
-                pass
-
-        # Clean up active task if exists
-        try:
-            gui_instance.concurrency_manager.finish_task(session_id, success=False)
-        except Exception:
-            pass
-
-        # Clean up session
-        try:
-            gui_instance.auth_manager.destroy_session(session_id)
-            del gui_instance.user_sessions[session_id]
-        except Exception:
-            pass
-
-        # Get updated metrics
-        try:
-            metrics = gui_instance.concurrency_manager.get_metrics()
-        except Exception:
-            pass
+        
+        # 不删除 user_sessions 中的记录，让重连时可以恢复
+        # 启动延迟清理线程
+        def delayed_cleanup(sid, wait_time):
+            time.sleep(wait_time)
+            if sid in _pending_cleanup_sessions:
+                print(f"[{datetime.datetime.now().isoformat()}] ⏰ Reconnection timeout, cleaning up session: session_id={sid}")
+                _cleanup_disconnected_session(sid)
+        
+        cleanup_thread = threading.Thread(target=delayed_cleanup, args=(session_id, grace_period), daemon=True)
+        cleanup_thread.start()
     else:
         pass
+
+def _cleanup_disconnected_session(session_id):
+    """清理断开的会话"""
+    import datetime
+    
+    # 从待清理列表中移除
+    pending_info = _pending_cleanup_sessions.pop(session_id, None)
+    
+    if session_id in gui_instance.user_sessions:
+        user_session = gui_instance.user_sessions[session_id]
+    elif pending_info:
+        user_session = pending_info['user_session']
+    else:
+        return
+
+    # Leave room
+    try:
+        leave_room(session_id)
+    except Exception:
+        pass
+
+    # Terminate any running processes
+    if user_session.current_process and user_session.current_process.is_alive():
+        try:
+            print(f"[{datetime.datetime.now().isoformat()}] 🛑 终止运行中的任务: session_id={session_id}")
+            user_session.current_process.terminate()
+            user_session.current_process.join(timeout=5)
+        except Exception:
+            pass
+
+    # Clean up active task if exists
+    try:
+        gui_instance.concurrency_manager.finish_task(session_id, success=False)
+    except Exception:
+        pass
+
+    # Clean up session
+    try:
+        gui_instance.auth_manager.destroy_session(session_id)
+        if session_id in gui_instance.user_sessions:
+            del gui_instance.user_sessions[session_id]
+    except Exception:
+        pass
+
+    print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: session_id={session_id}")
 
 @socketio.on('heartbeat')
 def handle_heartbeat(data):
@@ -5023,7 +5115,7 @@ def reparse_markdown_diagrams():
         fs_tools = FileSystemTools(workspace_root=user_base_dir)
         result = fs_tools.process_markdown_diagrams(rel_path)
         
-        if result.get('status') == 'success':
+        if result.get('status') in ['success', 'skipped']:
             return jsonify({
                 'success': True,
                 'message': result.get('message', 'Processing completed'),
