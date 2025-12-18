@@ -53,11 +53,8 @@ A task map is a directed graph structure containing the following elements:
 
 ### Node Types
 - **Task Node**: Specific execution tasks
-- **Decision Node**: Conditional judgment that determines execution path
 - **Choice Node**: Multi-choice branch selection, each branch needs to be marked with priority or selection conditions
 - **Loop Node**: Tasks that need to be executed repeatedly
-- **IDLE Node**: Each mermaid diagram must have exactly one IDLE node, and it should not be connected to other nodes. It is used to indicate that no tasks are currently being executed
-- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing.
 - **Start Node**: Task start node
 - **End Node**: Task completion node
 
@@ -65,12 +62,11 @@ A task map is a directed graph structure containing the following elements:
 - **ID**: Unique identifier for the node
 - **Task Description**: Clear task description
 - **Completion Criteria**: How to determine task completion
-- **Cost Estimate**: Display estimated time consumption at each node (in seconds)
-- **Agent ID**: For multi-agent, the agent ID of the executor. 
+- **Agent ID**: For multi-agent, the agent ID of the executor
 - **Status**: Must mark node status, such as pending, in_progress, completed, failed, blocked. If a task has not started, it should be marked as pending. If adding new tasks to a multi-task map, do not modify the current status of other tasks
 
 ### Task Map Format
-For the 1st round of execution, where task.md do not exist, please use **Mermaid flowchart** format to describe the task map. Example:
+For the 1st round of execution, where task.md do not exist, please use **Mermaid flowchart** graph TD (not LR graph) to describe the task map. Example:
 
 ```mermaid
 graph TD
@@ -82,6 +78,7 @@ graph TD
 
 You can mark the first node as 'in_progress' and then you do not need to update it before start your work. 
 You should always update the task map along with the task execution status, you can edit this the graph directly using edit_file tool. 
+If update is rejected, please use edit_file with fully_replace.
 
 If multi-agent is enabled, the manager can spawn multi-agents, 
 and the task map can include parallel execution paths that will be executed by multiple agents in parallel. 

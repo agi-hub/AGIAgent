@@ -8,11 +8,27 @@ import os
 import json
 import glob
 import re
+import hashlib
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import argparse
+
+# Import Mermaid processor
+try:
+    from src.tools.mermaid_processor import mermaid_processor
+    MERMAID_PROCESSOR_AVAILABLE = True
+except ImportError:
+    try:
+        import sys
+        # Try to add parent directory to path
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+        from src.tools.mermaid_processor import mermaid_processor
+        MERMAID_PROCESSOR_AVAILABLE = True
+    except ImportError:
+        MERMAID_PROCESSOR_AVAILABLE = False
+        print("⚠️ Mermaid processor not available")
 
 app = Flask(__name__)
 CORS(app)
@@ -217,7 +233,12 @@ def find_tool_calls_from_logs(output_dir):
 
 
 def find_mermaid_figures_from_plan(output_dir):
-    """Find all mermaid figure paths from plan.md"""
+    """Find all mermaid figure paths from plan.md
+    
+    This function:
+    1. First tries to find existing image references in plan.md (legacy support)
+    2. If no images found, parses mermaid code blocks and generates images
+    """
     figures = []
     workspace_dir = os.path.join(output_dir, 'workspace')
     plan_md_path = os.path.join(workspace_dir, 'plan.md')
@@ -229,36 +250,100 @@ def find_mermaid_figures_from_plan(output_dir):
         with open(plan_md_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
             
+            # First, try to find existing image references (legacy support)
             # Pattern to match: ![Figure X](path/to/image.svg)
             # Matches both SVG and PNG formats
             figure_pattern = re.compile(r'!\[Figure\s+(\d+)\]\(([^)]+\.(?:svg|png))\)', re.IGNORECASE)
+            existing_figures = list(figure_pattern.finditer(content))
             
-            for match in figure_pattern.finditer(content):
-                figure_num = match.group(1)
-                image_path = match.group(2)
-                
-                # Convert relative path to absolute path
-                if not os.path.isabs(image_path):
-                    # If path starts with images/, it's relative to workspace
-                    if image_path.startswith('images/'):
-                        abs_image_path = os.path.join(workspace_dir, image_path)
+            if existing_figures:
+                # Use existing image references
+                for match in existing_figures:
+                    figure_num = match.group(1)
+                    image_path = match.group(2)
+                    
+                    # Convert relative path to absolute path
+                    if not os.path.isabs(image_path):
+                        # If path starts with images/, it's relative to workspace
+                        if image_path.startswith('images/'):
+                            abs_image_path = os.path.join(workspace_dir, image_path)
+                        else:
+                            abs_image_path = os.path.join(workspace_dir, image_path)
                     else:
-                        abs_image_path = os.path.join(workspace_dir, image_path)
-                else:
-                    abs_image_path = image_path
+                        abs_image_path = image_path
+                    
+                    # Check if file exists
+                    if os.path.exists(abs_image_path):
+                        # Use relative path from output_dir for serving
+                        rel_path = os.path.relpath(abs_image_path, output_dir)
+                        figures.append({
+                            'figure_number': figure_num,
+                            'path': rel_path,
+                            'absolute_path': abs_image_path,
+                            'filename': os.path.basename(image_path)
+                        })
+            else:
+                # No existing images found, parse mermaid code blocks and generate images
+                # Pattern to match mermaid code blocks: ```mermaid ... ```
+                mermaid_pattern = re.compile(r'```mermaid\s*\n(.*?)\n```', re.DOTALL)
+                mermaid_blocks = list(mermaid_pattern.finditer(content))
                 
-                # Check if file exists
-                if os.path.exists(abs_image_path):
-                    # Use relative path from output_dir for serving
-                    rel_path = os.path.relpath(abs_image_path, output_dir)
-                    figures.append({
-                        'figure_number': figure_num,
-                        'path': rel_path,
-                        'absolute_path': abs_image_path,
-                        'filename': os.path.basename(image_path)
-                    })
+                if mermaid_blocks and MERMAID_PROCESSOR_AVAILABLE:
+                    # Create images directory if it doesn't exist
+                    images_dir = os.path.join(workspace_dir, 'images')
+                    os.makedirs(images_dir, exist_ok=True)
+                    
+                    # Process each mermaid block
+                    for idx, match in enumerate(mermaid_blocks, start=1):
+                        mermaid_code = match.group(1).strip()
+                        
+                        if not mermaid_code:
+                            continue
+                        
+                        # Generate filename for the image
+                        # Use hash of mermaid code for unique filename
+                        hash_object = hashlib.sha256(mermaid_code.encode('utf-8'))
+                        hash_hex = hash_object.hexdigest()[:16]
+                        filename_base = f"mermaid_plan_{hash_hex}"
+                        
+                        svg_path = os.path.join(images_dir, f"{filename_base}.svg")
+                        png_path = os.path.join(images_dir, f"{filename_base}.png")
+                        
+                        # Generate images using mermaid processor
+                        try:
+                            svg_success, png_success = mermaid_processor._generate_mermaid_image(
+                                mermaid_code,
+                                Path(svg_path),
+                                Path(png_path)
+                            )
+                            
+                            # Prefer SVG, fallback to PNG
+                            if svg_success and os.path.exists(svg_path):
+                                rel_path = os.path.relpath(svg_path, output_dir)
+                                figures.append({
+                                    'figure_number': str(idx),
+                                    'path': rel_path,
+                                    'absolute_path': svg_path,
+                                    'filename': os.path.basename(svg_path)
+                                })
+                            elif png_success and os.path.exists(png_path):
+                                rel_path = os.path.relpath(png_path, output_dir)
+                                figures.append({
+                                    'figure_number': str(idx),
+                                    'path': rel_path,
+                                    'absolute_path': png_path,
+                                    'filename': os.path.basename(png_path)
+                                })
+                        except Exception as e:
+                            print(f"Error generating mermaid image {idx}: {e}")
+                            continue
+                elif mermaid_blocks and not MERMAID_PROCESSOR_AVAILABLE:
+                    print("⚠️ Mermaid code blocks found in plan.md but mermaid processor is not available")
+                    
     except Exception as e:
         print(f"Error reading plan.md: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Sort by figure number
     figures.sort(key=lambda x: int(x.get('figure_number', 0)))

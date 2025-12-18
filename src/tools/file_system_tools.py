@@ -1066,9 +1066,11 @@ class FileSystemTools:
             )
         
         # Clean the old_code in the same way as code_edit
+        # Note: We don't call _process_markdown_content on old_code because it's just a code snippet
+        # for matching, not a complete file. Adding newlines at the end would break the match.
         cleaned_old_code = self._clean_markdown_markers(old_code)
         cleaned_old_code = self._fix_html_entities(cleaned_old_code)
-        cleaned_old_code = self._process_markdown_content(cleaned_old_code, target_file)
+        # cleaned_old_code = self._process_markdown_content(cleaned_old_code, target_file)  # Removed: breaks matching
         
         # Clean the new code_edit 
         cleaned_code_edit = self._clean_markdown_markers(code_edit)

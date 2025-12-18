@@ -299,6 +299,10 @@ class ToolExecutor:
         self._tool_definitions_cache = None
         self._tool_definitions_cache_timestamp = None
         
+        # Track last warning length to avoid duplicate warnings during streaming
+        self._last_parse_warning_length = -1
+        self._last_parse_warning_threshold = 500  # 只有当内容长度变化超过此阈值时才打印新警告
+        
         # print_system(f"🤖 LLM Configuration:")  # Commented out to reduce terminal noise
         # print_system(f"   Model: {self.model}")  # Commented out to reduce terminal noise
         # print_system(f"   API Base: {self.api_base}")  # Commented out to reduce terminal noise
@@ -3347,11 +3351,23 @@ Please review the error and adjust your response accordingly.
                 print_current(debug_msg)
             elif has_json_markers:
                 # Even in non-debug mode, log a warning if we expected to find JSON
-                warning_msg = f"⚠️ Warning: Found JSON markers but failed to parse tool calls. Content length: {len(content)}"
-                # 检查是否有code_edit字段（可能是超长内容导致解析失败）
-                if 'code_edit' in content:
-                    warning_msg += f" (Contains 'code_edit' field, may be due to very long content)"
-                print_current(warning_msg)
+                # 但为了避免在流式输出时刷屏，只有当内容长度显著变化时才打印新警告
+                content_length = len(content)
+                should_print_warning = False
+                
+                # 如果是第一次警告，或者内容长度变化超过阈值，才打印
+                if self._last_parse_warning_length == -1:
+                    should_print_warning = True
+                elif abs(content_length - self._last_parse_warning_length) >= self._last_parse_warning_threshold:
+                    should_print_warning = True
+                
+                if should_print_warning:
+                    warning_msg = f"⚠️ Warning: Found JSON markers but failed to parse tool calls. Content length: {content_length}"
+                    # 检查是否有code_edit字段（可能是超长内容导致解析失败）
+                    if 'code_edit' in content:
+                        warning_msg += f" (Contains 'code_edit' field, may be due to very long content)"
+                    print_current(warning_msg)
+                    self._last_parse_warning_length = content_length
                 # Try one last aggressive attempt: look for any JSON-like structure
                 try:
                     # Try to find and extract any dictionary-like structure
@@ -4818,6 +4834,9 @@ Please review the error and adjust your response accordingly.
         Returns:
             Tuple of (content, tool_calls)
         """
+        # 重置警告跟踪，避免在新的LLM调用中携带旧的警告状态
+        self._last_parse_warning_length = -1
+        
         # Retry logic for retryable errors
         max_retries = 3
         for attempt in range(max_retries + 1):  # 0, 1, 2, 3 (4 total attempts)
@@ -4933,13 +4952,15 @@ Please review the error and adjust your response accordingly.
                                                     if hallucination_detected_flag:
                                                         print_debug("\n🚨 Hallucination Detected, stop chat")
                                                         hallucination_detected = True
-                                                        if hallucination_start > 0:
+                                                        # 计算幻觉开始位置相对于已打印内容的位置
+                                                        if hallucination_start >= total_printed:
+                                                            # 幻觉字符串还在buffer中，未被打印
                                                             content = content[:hallucination_start].rstrip()
-                                                            if len(buffer) > len(content) - total_printed:
-                                                                buffer = content[total_printed:] if len(content) > total_printed else ""
+                                                            buffer = content[total_printed:] if len(content) > total_printed else ""
                                                         else:
+                                                            # 幻觉字符串已经被部分打印了，只能截断剩余的
+                                                            content = content[:hallucination_start].rstrip()
                                                             buffer = ""
-                                                            content = ""
                                                         break
                                                     
                                                     # Check for multiple tool calls
@@ -4954,11 +4975,39 @@ Please review the error and adjust your response accordingly.
                                                                 buffer = content[total_printed:] if len(content) > total_printed else ""
                                                             break
                                                     
-                                                    # Buffer and print text content
+                                                    # 🔧 关键修复：在打印之前，检查content末尾是否包含幻觉模式的部分匹配
+                                                    # 如果包含部分匹配，则保留该部分在buffer中不打印，等待更多字符确认
+                                                    can_print_buffer = True
                                                     if len(buffer) >= min_buffer_size:
-                                                        printer.write(buffer)
-                                                        total_printed += len(buffer)
-                                                        buffer = ""
+                                                        # 检查content末尾是否有幻觉模式的部分匹配
+                                                        # 从content末尾往前检查，看是否匹配任何幻觉模式的前缀
+                                                        max_check_length = max(len(pattern) for pattern in hallucination_patterns)
+                                                        check_text = content[-max_check_length:] if len(content) > max_check_length else content
+                                                        
+                                                        for pattern in hallucination_patterns:
+                                                            # 检查是否有部分匹配（从pattern的前缀开始）
+                                                            for prefix_len in range(1, len(pattern)):
+                                                                prefix = pattern[:prefix_len]
+                                                                if check_text.endswith(prefix) and prefix_len >= 3:  # 至少3个字符才考虑部分匹配
+                                                                    # 发现部分匹配，需要保留这部分不打印
+                                                                    # 计算需要保留的字符数
+                                                                    keep_in_buffer = prefix_len
+                                                                    # 只打印buffer中可以安全打印的部分
+                                                                    safe_print_length = len(buffer) - keep_in_buffer
+                                                                    if safe_print_length > 0:
+                                                                        printer.write(buffer[:safe_print_length])
+                                                                        total_printed += safe_print_length
+                                                                        buffer = buffer[safe_print_length:]
+                                                                    can_print_buffer = False
+                                                                    break
+                                                            if not can_print_buffer:
+                                                                break
+                                                        
+                                                        # 如果没有部分匹配，正常打印整个buffer
+                                                        if can_print_buffer:
+                                                            printer.write(buffer)
+                                                            total_printed += len(buffer)
+                                                            buffer = ""
                                                     
                                                     if tool_call_detected_early:
                                                         break
@@ -5199,13 +5248,16 @@ Please review the error and adjust your response accordingly.
                                                     error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
                                                 )
                                                 # 截断内容到幻觉开始位置，避免打印幻觉字符串
-                                                if hallucination_start > 0:
+                                                if hallucination_start >= total_printed:
+                                                    # 幻觉字符串还在buffer中，未被打印
                                                     content_to_print = content[:hallucination_start].rstrip()
-                                                    # 打印幻觉之前的内容（如果还有未打印的）
                                                     remaining_to_print = content_to_print[total_printed:]
                                                     if remaining_to_print:
                                                         printer.write(remaining_to_print)
                                                     content = content_to_print
+                                                else:
+                                                    # 幻觉字符串已经被部分打印了，只能截断剩余的
+                                                    content = content[:hallucination_start].rstrip()
                                                 buffer = ""
                                                 break
                                             
@@ -5234,11 +5286,39 @@ Please review the error and adjust your response accordingly.
                                                 except Exception as e:
                                                     print_debug(f"⚠️ 检测多工具调用时出错: {e}")
                                             
-                                            # 当缓冲区达到最小大小时，打印缓冲区内容
+                                            # 🔧 关键修复：在打印之前，检查content末尾是否包含幻觉模式的部分匹配
+                                            # 如果包含部分匹配，则保留该部分在buffer中不打印，等待更多字符确认
+                                            can_print_buffer = True
                                             if len(buffer) >= min_buffer_size:
-                                                printer.write(buffer)
-                                                total_printed += len(buffer)
-                                                buffer = ""
+                                                # 检查content末尾是否有幻觉模式的部分匹配
+                                                # 从content末尾往前检查，看是否匹配任何幻觉模式的前缀
+                                                max_check_length = max(len(pattern) for pattern in hallucination_patterns)
+                                                check_text = content[-max_check_length:] if len(content) > max_check_length else content
+                                                
+                                                for pattern in hallucination_patterns:
+                                                    # 检查是否有部分匹配（从pattern的前缀开始）
+                                                    for prefix_len in range(1, len(pattern)):
+                                                        prefix = pattern[:prefix_len]
+                                                        if check_text.endswith(prefix) and prefix_len >= 3:  # 至少3个字符才考虑部分匹配
+                                                            # 发现部分匹配，需要保留这部分不打印
+                                                            # 计算需要保留的字符数
+                                                            keep_in_buffer = prefix_len
+                                                            # 只打印buffer中可以安全打印的部分
+                                                            safe_print_length = len(buffer) - keep_in_buffer
+                                                            if safe_print_length > 0:
+                                                                printer.write(buffer[:safe_print_length])
+                                                                total_printed += safe_print_length
+                                                                buffer = buffer[safe_print_length:]
+                                                            can_print_buffer = False
+                                                            break
+                                                    if not can_print_buffer:
+                                                        break
+                                                
+                                                # 如果没有部分匹配，正常打印整个buffer
+                                                if can_print_buffer:
+                                                    printer.write(buffer)
+                                                    total_printed += len(buffer)
+                                                    buffer = ""
                             except Exception as e:
                                 # 捕获流式处理中的异常
                                 stream_error_occurred = True
@@ -5513,6 +5593,9 @@ Please review the error and adjust your response accordingly.
         """
         Call GLM with standard tool calling format.
         """
+        # 重置警告跟踪，避免在新的LLM调用中携带旧的警告状态
+        self._last_parse_warning_length = -1
+        
         # Get standard tools for Anthropic
         tools = self._convert_tools_to_standard_format("anthropic")
         
@@ -5831,6 +5914,9 @@ Please review the error and adjust your response accordingly.
         """
         Call OpenAI with standard tool calling format.
         """
+        # 重置警告跟踪，避免在新的LLM调用中携带旧的警告状态
+        self._last_parse_warning_length = -1
+        
         # Get standard tools for OpenAI
         tools = self._convert_tools_to_standard_format("openai")
         
@@ -6192,6 +6278,9 @@ Please review the error and adjust your response accordingly.
         """
         Call Claude with standard tool calling format.
         """
+        # 重置警告跟踪，避免在新的LLM调用中携带旧的警告状态
+        self._last_parse_warning_length = -1
+        
         # Get standard tools for Anthropic
         tools = self._convert_tools_to_standard_format("anthropic")
         

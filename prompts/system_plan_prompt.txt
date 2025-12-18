@@ -58,11 +58,8 @@ The plan should use a dynamic Task Map method based on graph structure. A task m
 
 ### Node Types
 - **Task Node**: Specific execution tasks
-- **Decision Node**: Conditional judgment that determines execution path
 - **Choice Node**: Multi-choice branch selection, each branch needs to be marked with priority or selection conditions
 - **Loop Node**: Tasks that need to be executed repeatedly
-- **IDLE Node**: Each mermaid diagram must have exactly one IDLE node, and it should not be connected to other nodes. It is used to indicate that no tasks are currently being executed
-- **BLOCKED Node**: Each mermaid diagram must have exactly one BLOCKED node, and it should not be connected to other nodes. When tasks cannot proceed and need reflection, you can jump to this node and wait for user processing.
 - **Start Node**: Task start node
 - **End Node**: Task completion node
 
@@ -70,7 +67,7 @@ The plan should use a dynamic Task Map method based on graph structure. A task m
 - **ID**: Unique identifier for the node
 - **Task Description**: Clear task description
 - **Completion Criteria**: How to determine task completion
-- **Cost Estimate**: Display estimated time consumption at each node (in seconds)
+- **Agent ID**: For multi-agent, the agent ID of the executor
 - **Status**: Must mark node status, such as pending, in_progress, completed, failed, blocked. If a task has not started, it should be marked as pending. If adding new tasks to a multi-task map, do not modify the current status of other tasks
 
 ### Task Map Format

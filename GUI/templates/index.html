@@ -1004,7 +1004,9 @@
         }
 
         .detail-info-container {
-            width: 400px;
+            width: min(400px, 30vw);
+            max-width: 800px;
+            min-width: 200px;
             min-height: 0;
             background: var(--bg-container);
             border: 1px solid var(--border-primary);
@@ -1421,6 +1423,10 @@
             box-shadow: 0 0 0 2px var(--shadow-focus);
         }
 
+        .file-item-container {
+            position: relative; /* 为绝对定位的按钮提供定位上下文 */
+        }
+
         .file-item-container.dragging {
             opacity: 0.5;
             cursor: default;
@@ -1733,6 +1739,8 @@
             gap: 6px; /* 从8px减少到6px */
             cursor: pointer;
             transition: all 0.3s ease;
+            position: relative; /* 为绝对定位的按钮提供定位上下文 */
+            word-break: break-word; /* 允许长文件名换行 */
         }
 
         .file-item:hover {
@@ -1752,7 +1760,6 @@
 
         .file-item.previewable:hover {
             color: var(--text-file-item);
-            font-weight: 500;
         }
 
         .file-item i {
@@ -1779,23 +1786,75 @@
             padding-left: 5px;
         }
 
+        /* 文件操作按钮组容器 */
+        .file-item-buttons {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            gap: 2px; /* 缩小按钮间距 */
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            background: var(--bg-file-tree); /* 使用文件树背景色遮挡文字 */
+            padding: 0 2px;
+            border-radius: 3px;
+        }
+
+        .file-item-container:hover .file-item-buttons,
+        .file-item.directory:hover .file-item-buttons {
+            opacity: 1;
+        }
+
+        /* 当文件项悬停时，给按钮组添加更明显的背景 */
+        .file-item-container:hover .file-item-buttons {
+            background: var(--bg-directory-item-hover);
+        }
+
+        .file-item.directory:hover .file-item-buttons {
+            background: var(--bg-directory-item-hover);
+        }
+
+        /* 下载文件按钮样式 */
+        .download-file-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            padding: 2px 4px; /* 缩小padding */
+            border-radius: 3px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .download-file-btn:hover {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+        }
+
+        .download-file-btn:active {
+            transform: scale(0.95);
+        }
+
         /* 删除文件按钮样式 */
         .delete-file-btn {
             background: none;
             border: none;
             color: #888;
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 2px 4px; /* 缩小padding */
             border-radius: 3px;
             font-size: 12px;
-            opacity: 0;
             transition: all 0.2s ease;
-            margin-left: 8px;
-        }
-
-        .file-item-container:hover .delete-file-btn,
-        .file-item.directory:hover .delete-file-btn {
-            opacity: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .delete-file-btn:hover {
@@ -1997,7 +2056,9 @@
             }
             
             .sidebar {
-                width: 100%;
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
                 flex-shrink: 0;
                 border-radius: 0;
                 border-left: none;
@@ -2029,6 +2090,9 @@
                 flex-direction: column;
                 gap: 10px;
                 margin-bottom: 10px;
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
             }
 
             /* Hide vertical resizer on mobile */
@@ -2038,12 +2102,29 @@
 
             /* Detail info container on mobile */
             .detail-info-container {
-                width: 100%;
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
                 order: 2;
             }
 
             .detail-info-container.hidden {
                 display: none;
+            }
+            
+            .detail-info-header {
+                font-size: 0.85em !important;
+                padding: 8px 12px !important;
+            }
+            
+            .detail-info-header span {
+                font-size: 1em !important;
+            }
+            
+            .detail-info-messages {
+                min-height: 250px;
+                max-height: 400px;
+                overflow-y: auto !important;
             }
 
             /* Chat container optimization */
@@ -2055,14 +2136,27 @@
                 order: 1;
                 flex-direction: column;
                 max-height: none; /* 不限制最大高度，让内容自然流动 */
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
+            }
+            
+            .chat-header {
+                font-size: 0.85em !important;
+                padding: 8px 12px !important;
+            }
+            
+            .chat-header span {
+                font-size: 1em !important;
             }
             
             
             .chat-messages {
                 padding: 10px;
                 flex: none; /* 不占据固定空间，随内容自然增长 */
-                min-height: 0;
-                overflow: visible; /* 在手机端不内部滚动，让页面统一滚动 */
+                min-height: 250px;
+                max-height: 400px;
+                overflow-y: auto !important; /* 启用内部滚动 */
             }
             
             .message {
@@ -2136,6 +2230,10 @@
             .sidebar-header {
                 padding: 8px 12px;
                 flex-shrink: 0;
+            }
+            
+            .sidebar-header h3 {
+                font-size: 0.9em !important;
             }
             
             .directory-list {
@@ -2315,15 +2413,28 @@
             }
             
             .modal-header {
-                padding: 10px 15px;
+                padding: 10px 12px;
             }
             
             .modal-header h3 {
                 font-size: 1em;
+                margin-right: 8px;
+            }
+            
+            .modal-header-buttons {
+                gap: 5px;
+            }
+            
+            .modal-button {
+                width: 22px;
+                height: 22px;
+                font-size: 16px;
+                padding: 3px;
             }
             
             .close {
-                font-size: 24px;
+                font-size: 22px;
+                height: 22px;
             }
             
             .modal-body {
@@ -2421,13 +2532,13 @@
                 z-index: 100;
             }
             
-            /* New message indicator mobile optimization */
-            .new-message-indicator {
+            /* New message indicator mobile optimization (已禁用) */
+            /* .new-message-indicator {
                 bottom: 135px;
                 right: 15px;
                 padding: 8px 12px;
                 font-size: 0.85em;
-            }
+            } */
         }
 
         /* Tablet optimization (768px to 1024px) */
@@ -2500,15 +2611,81 @@
             background-color: rgba(0, 0, 0, 0.5);
         }
 
-        /* 预览窗口特殊样式 - 更强的背景遮罩和阻止交互 */
+        /* 预览窗口特殊样式 - 无背景遮罩，可拖动 */
         #previewModal {
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: transparent;
             z-index: 2000;
+            pointer-events: none; /* 允许点击穿透到下层 */
         }
 
         #previewModal .modal-content {
-            position: relative;
+            position: absolute;
             z-index: 2001;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            margin: 0;
+            pointer-events: auto; /* 窗口本身可以交互 */
+        }
+        
+        #previewModal .modal-header {
+            cursor: move;
+            user-select: none;
+        }
+
+        /* Modal resizer styles */
+        .modal-resizer {
+            position: absolute;
+            z-index: 10;
+            transition: background-color 0.2s;
+        }
+
+        /* 左右调整器 */
+        .modal-resizer-left,
+        .modal-resizer-right {
+            top: 0;
+            bottom: 0;
+            width: 8px;
+            cursor: ew-resize;
+        }
+
+        .modal-resizer-left {
+            left: 0;
+        }
+
+        .modal-resizer-right {
+            /* 调整位置，避免与滚动条重合，滚动条通常在右侧，宽度约15-17px */
+            right: -4px; /* 稍微向外偏移，确保可以拖动，避免与滚动条重合 */
+        }
+
+        /* 上下调整器 */
+        .modal-resizer-top,
+        .modal-resizer-bottom {
+            left: 0;
+            right: 0;
+            height: 8px;
+            cursor: ns-resize;
+        }
+
+        .modal-resizer-top {
+            top: 0;
+        }
+
+        .modal-resizer-bottom {
+            bottom: 0;
+        }
+
+        .modal-resizer:hover {
+            background-color: rgba(66, 133, 244, 0.3);
+        }
+
+        .modal-resizer:active {
+            background-color: rgba(66, 133, 244, 0.5);
+        }
+
+        /* Hide resizers when maximized */
+        #previewModal.maximized .modal-resizer {
+            display: none;
         }
 
         /* SVG编辑器窗口特殊样式 - 显示在预览窗口上方 */
@@ -2559,7 +2736,7 @@
         .modal-header {
             background: var(--color-accent);
             color: white;
-            padding: 15px 20px;
+            padding: 12px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -2570,18 +2747,88 @@
         .modal-header h3 {
             margin: 0;
             font-size: 1.2em;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-right: 10px;
+        }
+
+        .modal-header-buttons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .modal-button {
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+        }
+
+        .modal-button:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .maximize-button i {
+            font-size: 14px;
+        }
+
+        .maximize-button {
+            position: relative;
+            top: 2px;
         }
 
         .close {
             color: white;
-            font-size: 28px;
+            font-size: 24px;
             font-weight: bold;
             cursor: pointer;
             line-height: 1;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
         }
 
         .close:hover {
             opacity: 0.7;
+        }
+
+        /* 最大化状态的样式 */
+        #previewModal.maximized .modal-content {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+        }
+
+        #previewModal.maximized .modal-header {
+            cursor: default;
+        }
+
+        #previewModal.maximized #previewContent iframe {
+            height: calc(100vh - 70px) !important;
+        }
+
+        #previewModal.maximized .modal-body {
+            height: calc(100vh - 70px);
         }
 
         .modal-body {
@@ -2591,6 +2838,26 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 0;
+        }
+
+        /* 预览模态框滚动条样式，增加宽度避免与调整器重合 */
+        #previewModal .modal-body::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        #previewModal .modal-body::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+
+        #previewModal .modal-body::-webkit-scrollbar-thumb {
+            background: var(--border-resizer);
+            border-radius: 6px;
+            border: 2px solid var(--bg-secondary);
+        }
+
+        #previewModal .modal-body::-webkit-scrollbar-thumb:hover {
+            background: var(--border-resizer-hover);
         }
 
         /* Special handling for preview modal */
@@ -2877,8 +3144,8 @@
             }
         }
 
-        /* New message indicator */
-        .new-message-indicator {
+        /* New message indicator (已禁用) */
+        /* .new-message-indicator {
             position: absolute;
             bottom: 80px;
             right: 20px;
@@ -2898,7 +3165,7 @@
 
         .new-message-indicator.show {
             display: flex;
-        }
+        } */
 
         @keyframes slideInRight {
             from {
@@ -3076,7 +3343,7 @@
             border-radius: 6px;
             padding: 16px;
             overflow-x: auto;
-            margin: 16px 0;
+            margin: 8px 0;
             font-size: inherit !important;
         }
 
@@ -3280,11 +3547,11 @@
                         <i class="fas fa-chevron-down"></i>
                     </button>
                     
-                    <!-- New message indicator -->
-                    <div class="new-message-indicator" id="newMessageIndicator">
+                    <!-- New message indicator (已禁用) -->
+                    <!-- <div class="new-message-indicator" id="newMessageIndicator">
                         <i class="fas fa-bell"></i>
                         <span id="newMessageCount">1</span> {{ i18n.get('new_messages', '条新消息' if lang == 'zh' else 'new messages') }}
-                    </div>
+                    </div> -->
                     
 
                 </div>
@@ -3414,9 +3681,18 @@
     <!-- File preview modal -->
     <div id="previewModal" class="modal">
         <div class="modal-content">
+            <div class="modal-resizer modal-resizer-left"></div>
+            <div class="modal-resizer modal-resizer-right"></div>
+            <div class="modal-resizer modal-resizer-top"></div>
+            <div class="modal-resizer modal-resizer-bottom"></div>
             <div class="modal-header">
                 <h3 id="previewTitle">{{ i18n.get('file_preview', '文件预览' if lang == 'zh' else 'File Preview') }}</h3>
-                <span class="close" id="previewClose">&times;</span>
+                <div class="modal-header-buttons">
+                    <span class="modal-button maximize-button" id="previewMaximize" title="最大化">
+                        <i class="fas fa-expand"></i>
+                    </span>
+                    <span class="close" id="previewClose">&times;</span>
+                </div>
             </div>
             <div class="modal-body">
                 <div id="previewContent"></div>
@@ -3735,15 +4011,34 @@
         let heartbeatInterval = null;  // 心跳定时器
         const HEARTBEAT_INTERVAL = 55000;  // 每55秒发送一次心跳（小于服务器ping_interval=60秒）
         
+        // 生成或获取持久化的客户端会话ID
+        function getOrCreateClientSessionId() {
+            try {
+                let clientSessionId = localStorage.getItem('agia_client_session_id');
+                if (!clientSessionId) {
+                    // 生成一个唯一的客户端会话ID
+                    clientSessionId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('agia_client_session_id', clientSessionId);
+                }
+                return clientSessionId;
+            } catch (error) {
+                // 如果localStorage不可用，生成一个临时ID
+                return 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+        }
+        
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
+            const clientSessionId = getOrCreateClientSessionId();
+            console.log(`[${new Date().toISOString()}] 📱 使用客户端会话ID: ${clientSessionId}`);
+            
             return io({
                 reconnection: true,
                 reconnectionAttempts: MAX_AUTO_RECONNECT_ATTEMPTS,
                 reconnectionDelay: 2000,
                 reconnectionDelayMax: 10000,
-                timeout: 60000,                 // 连接超时60秒
-                forceNew: true,
+                timeout: 120000,                // 🔧 增加连接超时到120秒，匹配服务器配置
+                forceNew: true,                 // 🔧 改为true，确保每次创建全新的socket实例，避免事件监听器重复注册
                 // 🔧 修复传输配置：优先使用WebSocket，fallback到polling
                 transports: ['websocket', 'polling'],
                 upgrade: true,                  // 允许传输升级
@@ -3755,7 +4050,8 @@
                     }
                 },
                 auth: {
-                    api_key: apiKey || null
+                    api_key: apiKey || null,
+                    client_session_id: clientSessionId  // 发送客户端会话ID
                 }
             });
         }
@@ -3796,7 +4092,7 @@
         let lastScrollTop = 0;
         let isGuest = false; // 添加guest状态跟踪
         let pendingUploadFiles = null; // 用于存储待上传的文件（当需要先创建目录时）
-        let newMessageCount = 0; // New message counter
+        // let newMessageCount = 0; // New message counter (已禁用)
         let lastMessageTime = 0;
         let pendingUserInput = ''; // 保存等待执行的用户输入
         let isCreatingDirectoryForTask = false; // 标记是否因为发送任务而创建目录
@@ -3878,6 +4174,14 @@
             isAutoReconnectInProgress = false;
             
             updateUserStatus('connecting', I18N.connecting);
+            
+            // 🔧 修复：在创建新socket之前，先关闭并清理旧的socket连接
+            if (socket) {
+                console.log('⚠️ 检测到旧的socket连接，先关闭它以避免重复消息');
+                socket.removeAllListeners();  // 移除所有事件监听器
+                socket.disconnect();
+                socket = null;
+            }
             
             // Create socket connection
             socket = createSocket(apiKey);
@@ -4037,7 +4341,6 @@
             if (socket && socket.connected) {
                 // 发送心跳消息，服务器会响应以保持连接活跃
                 const ts = Date.now();
-                console.log(`[${new Date().toISOString()}] 💓 发送心跳, timestamp=${ts}`);
                 socket.emit('heartbeat', {
                     timestamp: ts
                 });
@@ -4050,9 +4353,33 @@
         function setupSocketListeners() {
             if (!socket) return;
             
+            // 🔧 防止监听器重复注册：在注册新监听器之前，移除所有旧的监听器
+            socket.off('connect');
+            socket.off('status');
+            socket.off('disconnect');
+            socket.off('auth_failed');
+            socket.off('connect_error');
+            socket.off('reconnect_attempt');
+            socket.off('reconnect_error');
+            socket.off('reconnect');
+            socket.off('reconnect_failed');
+            socket.off('heartbeat_ack');
+            socket.off('task_started');
+            socket.off('output');
+            socket.off('user_input_request');
+            socket.off('task_completed');
+            socket.off('task_stopped');
+            socket.off('append_task_success');
+            socket.off('error');
+            socket.off('directory_selected');
+            socket.off('directory_created');
+            socket.off('chat_cleared');
+            
             socket.on('connect', function() {
                 console.log(`[${new Date().toISOString()}] ✅ WebSocket连接成功, transport=${socket.io.engine.transport.name}`);
-                const shouldAutoSelectFirst = wasReconnected && !selectedDirectory;
+                
+                // 🔧 修改：无论是首次连接还是重连，只要没有选择目录，就自动选择第一个目录
+                const shouldAutoSelectFirst = !selectedDirectory;
                 wasReconnected = false; // 重置标志
                 isAutoReconnectInProgress = false;
                 // 等待status事件获取用户名，如果还没有获取到则暂时显示API Key
@@ -4102,10 +4429,38 @@
                 updateUserStatus('connected', I18N.user_connected, identity, isGuest);
                 
                 // 检查是否是恢复的会话
-                if (data.recovered && data.task_running) {
-                    console.log(`[${new Date().toISOString()}] 🔄 会话已恢复，任务仍在运行`);
-                    addMessage('🔄 连接已恢复，任务继续运行中...', 'info');
-                    setTaskRunning(true);
+                if (data.recovered) {
+                    console.log(`[${new Date().toISOString()}] 🔄 会话已恢复`);
+                    
+                    // 🔧 恢复任务状态
+                    if (data.task_running) {
+                        console.log(`[${new Date().toISOString()}] 🔄 任务仍在运行`);
+                        addMessage('🔄 连接已恢复，任务继续运行中...', 'info');
+                        setTaskRunning(true);
+                    }
+                    
+                    // 🔧 恢复文件夹选择状态
+                    if (data.selected_output_dir) {
+                        console.log(`[${new Date().toISOString()}] 🔄 恢复选中的文件夹: ${data.selected_output_dir}`);
+                        selectedDirectory = data.selected_output_dir;
+                        taskMode = 'selected';
+                        // 更新UI显示选中状态
+                        setTimeout(() => {
+                            const selectedItem = document.querySelector(`[data-dir="${data.selected_output_dir}"]`);
+                            if (selectedItem) {
+                                selectedItem.classList.add('selected');
+                            }
+                        }, 500); // 延迟一点，等待目录列表加载
+                    } else if (data.last_output_dir) {
+                        console.log(`[${new Date().toISOString()}] 🔄 恢复上次使用的文件夹: ${data.last_output_dir}`);
+                        // 如果没有选中的文件夹但有上次使用的，也显示出来
+                        setTimeout(() => {
+                            const lastItem = document.querySelector(`[data-dir="${data.last_output_dir}"]`);
+                            if (lastItem) {
+                                // 可以用不同的样式标记上次使用的（如果需要的话）
+                            }
+                        }, 500);
+                    }
                 }
             });
 
@@ -4127,7 +4482,7 @@
                 // If task is running, give special prompt
                 if (isTaskRunning) {
                     console.log(`[${new Date().toISOString()}] ⚠️ 任务运行中断开连接!`);
-                    addMessage('⚠️ 连接中断，任务可能已停止。请手动刷新页面。', 'warning');
+                    addMessage('⚠️ 连接中断，正在尝试重新连接...', 'warning');
                     // 连接中断时，清除所有蓝色勾选状态
                     clearAllDirectorySelections();
                 }
@@ -4152,6 +4507,7 @@
             socket.on('reconnect_attempt', function(attemptNumber) {
                 isAutoReconnectInProgress = true;
                 const attempt = Math.min(attemptNumber || 1, MAX_AUTO_RECONNECT_ATTEMPTS);
+                console.log(`[${new Date().toISOString()}] 🔁 重连尝试 ${attempt}/${MAX_AUTO_RECONNECT_ATTEMPTS}`);
                 addMessage(`🔁 ${(I18N.reconnect_attempt || '正在尝试重新连接')} (${attempt}/${MAX_AUTO_RECONNECT_ATTEMPTS})`, 'warning');
                 updateUserStatus('connecting', I18N.reconnecting || I18N.connecting);
             });
@@ -4164,6 +4520,7 @@
             socket.on('reconnect', function(attemptNumber) {
                 isAutoReconnectInProgress = false;
                 wasReconnected = true; // 标记为重连
+                console.log(`[${new Date().toISOString()}] ✅ 重连成功！尝试次数: ${attemptNumber}`);
                 addMessage(I18N.reconnect_success || '已重新连接到服务器', 'success');
                 // 重连后，清除所有蓝色勾选状态
                 clearAllDirectorySelections();
@@ -4171,6 +4528,7 @@
             });
 
             socket.on('reconnect_failed', function() {
+                console.log(`[${new Date().toISOString()}] ❌ 重连失败：已达到最大重连次数`);
                 isAutoReconnectInProgress = false;
                 addMessage(I18N.reconnect_failed_cleanup || '多次重连失败，已断开连接', 'error');
                 handleAutoReconnectFailure();
@@ -4179,7 +4537,6 @@
             socket.on('heartbeat_ack', function(data) {
                 // 心跳响应，连接正常
                 const latency = Date.now() - data.timestamp;
-                console.log(`[${new Date().toISOString()}] 💚 心跳响应, 延迟=${latency}ms, server_time=${data.server_time}`);
             });
 
             // 监听底层 engine 的 ping/pong 事件
@@ -4188,7 +4545,6 @@
             });
             
             socket.io.engine.on('pong', function(latency) {
-                console.log(`[${new Date().toISOString()}] 🏓 pong响应, 延迟=${latency}ms`);
             });
 
             socket.on('task_started', function(data) {
@@ -4210,6 +4566,8 @@
             });
 
             socket.on('output', function(data) {
+                // 🔧 添加调试日志以跟踪output事件
+                console.log('[DEBUG] socket.on(output) triggered:', data.message, 'type:', data.type);
                 // Pass is_update flag to addMessage
                 addMessage(data.message, data.type || 'info', data.is_update || false);
                 
@@ -4515,6 +4873,100 @@
                     refreshDirectories();
                     // 启动文件监测
                     startFileMonitoring();
+                    
+                    // 无论是否有manager.out内容，都先清空聊天记录框
+                    // 这样可以确保切换目录时总是清空旧内容
+                    const chatMessages = document.getElementById('chatMessages');
+                    if (chatMessages) {
+                        // 清空聊天框并显示欢迎信息
+                        chatMessages.innerHTML = `
+                            <div class="message system">
+                                <strong><i class="fas fa-info-circle"></i> ${I18N.system_message || '系统消息'}</strong><br>
+                                ${I18N.welcome_message || '欢迎使用 AGI Agent！请在下方输入您的需求，系统将自动为您处理任务。'}
+                            </div>
+                        `;
+                    }
+                    
+                    // 重置消息跟踪变量
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                    
+                    // 重置JSON收集状态
+                    resetJsonCollectingState();
+                    
+                    // 清空工具调用信息显示框
+                    const detailInfoMessages = document.getElementById('detailInfoMessages');
+                    if (detailInfoMessages) {
+                        detailInfoMessages.innerHTML = '';
+                    }
+                    
+                    // 清理批处理队列和定时器
+                    clearTimeout(batchProcessingTimer);
+                    batchProcessingTimer = null;
+                    messageBatchQueue = [];
+                    isBatchProcessing = false;
+                    batchScrollPending = false;
+                    
+                    // 如果有manager.out内容，解析并显示到聊天记录对话框
+                    if (data.manager_out_content) {
+                        // 稍等一下，确保欢迎信息先显示，然后再加载manager.out内容
+                        setTimeout(function() {
+                            // 逐行解析并显示manager.out内容，模拟真实的agent输出流
+                            const lines = data.manager_out_content.split('\n');
+                            let currentIndex = 0;
+                            
+                            function processNextLine() {
+                                if (currentIndex >= lines.length) {
+                                    return; // 处理完成
+                                }
+                                
+                                const line = lines[currentIndex];
+                                currentIndex++;
+                                
+                                // 跳过空行（但保留换行符以维持格式）
+                                const lineTrimmed = line.trim();
+                                if (!lineTrimmed && currentIndex < lines.length) {
+                                    // 空行也发送，但可以快速处理
+                                    addMessage(line, 'info');
+                                    setTimeout(processNextLine, 1);
+                                    return;
+                                }
+                                
+                                // 判断消息类型
+                                let messageType = 'info';
+                                
+                                // 检测用户输入消息
+                                if (lineTrimmed.startsWith('Received user requirement:')) {
+                                    messageType = 'user';
+                                }
+                                // 检测错误消息
+                                else if (lineTrimmed.startsWith('⚠️') || lineTrimmed.startsWith('Status: failed') || lineTrimmed.includes('Permission denied')) {
+                                    messageType = 'error';
+                                }
+                                // 检测成功消息
+                                else if (lineTrimmed.startsWith('✅') || lineTrimmed.startsWith('Status: success')) {
+                                    messageType = 'success';
+                                }
+                                // 检测工具调用标记（💬开头的消息）
+                                else if (lineTrimmed.startsWith('💬')) {
+                                    messageType = 'info';
+                                }
+                                
+                                // 添加消息到聊天记录（使用现有的解析逻辑，包括工具调用解析）
+                                addMessage(line, messageType);
+                                
+                                // 继续处理下一行，使用较小的延迟以模拟流式输出
+                                // 对于JSON块内的行，使用更小的延迟以保持连续性
+                                const isJsonBlock = lineTrimmed === '```json' || lineTrimmed === '```' || 
+                                                   (currentIndex > 0 && lines[currentIndex - 2] && lines[currentIndex - 2].trim() === '```json');
+                                setTimeout(processNextLine, isJsonBlock ? 1 : 5);
+                            }
+                            
+                            // 开始处理
+                            processNextLine();
+                        }, 100); // 延迟100ms，确保欢迎信息先显示
+                    }
                 } else {
                     // 停止文件监测
                     stopFileMonitoring();
@@ -4925,7 +5377,7 @@
                 });
             } else if (!shouldScroll && batchScrollPending) {
                 // 如果不能自动滚动，显示新消息指示器
-                showNewMessageIndicator();
+                // showNewMessageIndicator(); // 已禁用
                 batchScrollPending = false;
             }
         }
@@ -5237,7 +5689,7 @@
                     if (shouldScroll) {
                         throttledAutoScroll(true);
                     } else {
-                        showNewMessageIndicator();
+                        // showNewMessageIndicator(); // 已禁用
                     }
                     return;
                 }
@@ -5286,7 +5738,7 @@
                         if (shouldScroll) {
                             throttledAutoScroll(true);
                         } else {
-                            showNewMessageIndicator();
+                            // showNewMessageIndicator(); // 已禁用
                         }
                         return;
                     } else {
@@ -5354,7 +5806,7 @@
                     if (shouldScroll) {
                         throttledAutoScroll(true);
                     } else {
-                        showNewMessageIndicator();
+                        // showNewMessageIndicator(); // 已禁用
                     }
                     return;
                 } else {
@@ -5413,7 +5865,7 @@
                     if (shouldScroll) {
                         throttledAutoScroll(true);
                     } else {
-                        showNewMessageIndicator();
+                        // showNewMessageIndicator(); // 已禁用
                     }
                     return;
                 }
@@ -5465,7 +5917,7 @@
                 if (shouldScroll) {
                     throttledAutoScroll(true);
                 } else {
-                    showNewMessageIndicator();
+                    // showNewMessageIndicator(); // 已禁用
                 }
                 return;
             }
@@ -5501,7 +5953,7 @@
                     throttledAutoScroll(true);
                 } else {
                     // If can't auto-scroll, show new message indicator
-                    showNewMessageIndicator();
+                    // showNewMessageIndicator(); // 已禁用
                 }
                 return;
             }
@@ -5531,7 +5983,7 @@
                     throttledAutoScroll(true);
                 } else {
                     // If can't auto-scroll, show new message indicator
-                    showNewMessageIndicator();
+                    // showNewMessageIndicator(); // 已禁用
                 }
                 return;
             }
@@ -5673,7 +6125,7 @@
             } else {
                 // If can't auto-scroll, show new message indicator (except for user messages)
                 if (type !== 'user') {
-                    showNewMessageIndicator();
+                    // showNewMessageIndicator(); // 已禁用
                 }
             }
 
@@ -5717,12 +6169,11 @@
             if (running) {
                 sendButton.style.display = 'none';
                 newTaskButton.style.display = 'none';
-                // 在多智能体模式下显示追加按钮，否则显示停止按钮
+                // 在多智能体模式下同时显示停止按钮和追加按钮
+                stopButton.style.display = 'flex';
                 if (multiAgentMode && appendTaskButton) {
-                    stopButton.style.display = 'none';
                     appendTaskButton.style.display = 'flex';
                 } else {
-                    stopButton.style.display = 'flex';
                     if (appendTaskButton) {
                         appendTaskButton.style.display = 'none';
                     }
@@ -5911,14 +6362,17 @@
                 }
 
                 if (taskMode === 'selected' && selectedDirectory) {
+                    console.log('[DEBUG] Emitting execute_task with type=selected, taskMode:', taskMode, 'selectedDirectory:', selectedDirectory);
                     socket.emit('execute_task', {
                         requirement: message,
                         type: 'selected',
                         plan_mode: planMode,
                         gui_config: guiConfig,
-                        attached_files: attachedFilePaths
+                        attached_files: attachedFilePaths,
+                        selected_directory: selectedDirectory  // 🔧 确保发送选中的目录
                     });
                 } else {
+                    console.log('[DEBUG] Emitting execute_task with type=continue, taskMode:', taskMode);
                     socket.emit('execute_task', {
                         requirement: message,
                         type: 'continue',
@@ -5927,6 +6381,9 @@
                         attached_files: attachedFilePaths
                     });
                 }
+                
+                // 🔧 任务发送后立即设置任务运行状态，防止重复提交
+                setTaskRunning(true);
                 
                 // 任务发送成功后立即清空输入框
                 userInput.value = '';
@@ -6224,6 +6681,9 @@
                     plan_mode: planMode,
                     gui_config: guiConfig
                 });
+                
+                // 🔧 任务发送后立即设置任务运行状态，防止重复提交
+                setTaskRunning(true);
                 
                 // 任务发送后立即清空输入框（但保留pendingUserInput以便错误时恢复）
                 userInput.value = '';
@@ -6727,9 +7187,11 @@
             if (scrollBtn && scrollBtn.classList.contains('show')) {
                 scrollBtn.classList.remove('show');
             }
-            hideNewMessageIndicator(); // Also hide new message indicator
+            // hideNewMessageIndicator(); // 已禁用 - Also hide new message indicator
         }
 
+        // 新消息指示器功能（已禁用）
+        /*
         function showNewMessageIndicator() {
             if (!autoScrollEnabled) {
                 newMessageCount++;
@@ -6749,6 +7211,7 @@
                 indicator.classList.remove('show');
             }
         }
+        */
 
         /**
          * 更新自动滚动状态指示器 (已移除UI指示器)
@@ -6779,17 +7242,23 @@
          * 绑定滚动到底部按钮的点击事件
          * @description 用户点击滚动按钮时，平滑滚动到聊天窗口底部
          */
-        document.getElementById('scrollToBottomBtn').addEventListener('click', () => {
-            scrollToBottom(true);
-        });
+        const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
+        if (scrollToBottomBtn) {
+            scrollToBottomBtn.addEventListener('click', () => {
+                scrollToBottom(true);
+            });
+        }
 
         /**
          * 绑定新消息提示的点击事件  
          * @description 用户点击新消息提示时，平滑滚动到聊天窗口底部
          */
-        document.getElementById('newMessageIndicator').addEventListener('click', () => {
-            scrollToBottom(true);
-        });
+        const newMessageIndicator = document.getElementById('newMessageIndicator');
+        if (newMessageIndicator) {
+            newMessageIndicator.addEventListener('click', () => {
+                scrollToBottom(true);
+            });
+        }
         
         /**
          * 工具调用详细显示框的自动滚动控制
@@ -6800,7 +7269,6 @@
             // 鼠标移出框时，启用自动滚动
             detailInfoMessages.addEventListener('mouseleave', function() {
                 detailInfoAutoScrollEnabled = true;
-                console.log('🔄 Mouse left detail info box, enabling auto-scroll');
                 // 立即滚动到底部
                 detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
             });
@@ -6808,7 +7276,6 @@
             // 鼠标移入框时，禁用自动滚动（允许用户查看内容）
             detailInfoMessages.addEventListener('mouseenter', function() {
                 detailInfoAutoScrollEnabled = false;
-                console.log('⏸️ Mouse entered detail info box, disabling auto-scroll');
             });
         }
         
@@ -6999,6 +7466,9 @@
          * - 文件树展开状态管理
          */
         function renderDirectories(directories) {
+            // 重置子目录ID计数器，确保每次渲染时ID保持一致
+            window.subDirIdCounter = 0;
+            
             if (directories.length === 0) {
                 directoryList.innerHTML = `
                     <div class="message system">
@@ -7086,6 +7556,27 @@
             `;
         }
 
+        /**
+         * 生成安全的HTML ID，确保中文和特殊字符不会导致DOM查找失败
+         * 使用简单的编码方案：将字符串转换为base64，然后替换掉不安全的字符
+         */
+        function generateSafeId(str) {
+            try {
+                // 使用btoa进行base64编码，但需要先将UTF-8字符串转换为Latin1
+                // 使用encodeURIComponent + btoa的组合来处理UTF-8
+                const encoded = btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, 
+                    function(match, p1) {
+                        return String.fromCharCode('0x' + p1);
+                    }));
+                // 替换base64中可能有问题的字符（+, /, =）为安全字符
+                return 'id_' + encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            } catch (e) {
+                // 如果编码失败，使用简单的替换方案
+                console.warn('Failed to encode ID, using fallback:', e);
+                return 'id_' + str.replace(/[^a-zA-Z0-9]/g, '_');
+            }
+        }
+
         function renderFileTree(files, dirName, indent = 0) {
             return files.map(file => {
                 const icon = file.type === 'directory' ? 'fas fa-folder' : getFileIcon(file.name);
@@ -7112,11 +7603,27 @@
                     relativePath = `${dirName}/${file.name}`;
                 }
                 
-                // 为子文件夹生成唯一ID
-                const subDirId = `${dirName}-${file.name}`;
+                // 为子文件夹生成唯一标识符：使用更简单可靠的方案
+                // 使用递增计数器确保每个子目录都有唯一ID，避免编码问题
+                if (typeof window.subDirIdCounter === 'undefined') {
+                    window.subDirIdCounter = 0;
+                }
+                const uniqueSubDirId = `subdir_${window.subDirIdCounter++}`;
+                const originalSubDirKey = `${dirName}-${file.name}`;
                 const hasChildren = file.children && file.children.length > 0;
-                // 子文件夹默认收起，只有在expandedSubDirectories中的才展开
-                const isSubDirExpanded = expandedSubDirectories && expandedSubDirectories.has(subDirId);
+                // 子文件夹默认收起，只有在expandedSubDirectories中的才展开（使用uniqueSubDirId）
+                const isSubDirExpanded = expandedSubDirectories && expandedSubDirectories.has(uniqueSubDirId);
+                
+                // 调试输出：显示ID生成过程
+                if (file.type === 'directory' && file.name.toLowerCase() === 'images') {
+                    console.log(`📝 Generating IDs for images folder:`, {
+                        dirName,
+                        fileName: file.name,
+                        originalSubDirKey,
+                        uniqueSubDirId,
+                        fullDomId: `subtree-${uniqueSubDirId}`
+                    });
+                }
                 
                 let html = '';
                 
@@ -7131,73 +7638,82 @@
                     if (shouldNotAutoExpand) {
                         // 对于不应该自动展开的目录，显示展开按钮和删除按钮，但默认收起
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
-                                     onclick="toggleSubDirectory('${subDirId}', event)">
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 80px;" 
+                                     data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)">
                                     <i class="${icon}"></i>
                                     ${file.name}
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 4px;">
+                                <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                                    <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
+                                        <i class="fas fa-download"></i>
+                                    </button>
                                     <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
                                         <i class="fas fa-trash"></i>
                                     </button>
-                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
-                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                    <button class="sub-folder-toggle" data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 4px; margin: 0; display: flex; align-items: center; justify-content: center;">
                                         <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 18px;"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
+                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${uniqueSubDirId}">
                                 ${renderFileTree(file.children, dirName, indent + 1)}
                             </div>
                         `;
                     } else if (shouldAutoExpand) {
                         // workspace目录：自动展开显示内容，但不展开子文件夹
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 80px;">
                                     <i class="${icon}"></i>
                                     ${file.name}
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 4px;">
+                                <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                                    <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
+                                        <i class="fas fa-download"></i>
+                                    </button>
                                     <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
                                         <i class="fas fa-trash"></i>
                                     </button>
-                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
-                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                    <button class="sub-folder-toggle" data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 4px; margin: 0; display: flex; align-items: center; justify-content: center;">
                                         <i class="fas fa-chevron-up" style="font-size: 18px;"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="sub-file-tree show" id="subtree-${subDirId}">
+                            <div class="sub-file-tree show" id="subtree-${uniqueSubDirId}">
                                 ${renderFileTree(file.children, dirName, indent + 1)}
                             </div>
                         `;
-                        // 将workspace目录标记为已展开
+                        // 将workspace目录标记为已展开（使用uniqueSubDirId）
                         if (!expandedSubDirectories) {
                             expandedSubDirectories = new Set();
                         }
-                        expandedSubDirectories.add(subDirId);
+                        expandedSubDirectories.add(uniqueSubDirId);
                     } else {
                         // 其他子文件夹：带展开/收起功能
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer;" 
-                                     onclick="toggleSubDirectory('${subDirId}', event)">
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 80px;" 
+                                     data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)">
                                     <i class="${icon}"></i>
                                     ${file.name}
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 4px;">
+                                <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                                    <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
+                                        <i class="fas fa-download"></i>
+                                    </button>
                                     <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
                                         <i class="fas fa-trash"></i>
                                     </button>
-                                    <button class="sub-folder-toggle" onclick="toggleSubDirectory('${subDirId}', event)" 
-                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 6px;">
+                                    <button class="sub-folder-toggle" data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)" 
+                                            style="background: none; border: none; color: #9cdcfe; cursor: pointer; padding: 2px 4px; margin: 0; display: flex; align-items: center; justify-content: center;">
                                         <i class="fas fa-chevron-${isSubDirExpanded ? 'up' : 'down'}" style="font-size: 18px;"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${subDirId}">
+                            <div class="sub-file-tree ${isSubDirExpanded ? 'show' : ''}" id="subtree-${uniqueSubDirId}">
                                 ${renderFileTree(file.children, dirName, indent + 1)}
                             </div>
                         `;
@@ -7205,31 +7721,41 @@
                 } else if (file.type === 'directory') {
                     // 空文件夹
                     html = `
-                        <div class="${className}" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                        <div class="${className}" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 60px;">
                                 <i class="${icon}"></i>
                                 ${file.name}
                             </div>
-                            <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                                <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="delete-file-btn" onclick="showDeleteFolderModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件夹 | Delete folder">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     `;
                 } else {
                     // 文件
                     html = `
-                        <div class="${className}${previewClass}${grayedClass} file-item-container" style="margin-left: ${indent * 12}px; display: flex; align-items: center; justify-content: space-between;"
+                        <div class="${className}${previewClass}${grayedClass} file-item-container" style="margin-left: ${indent * 12}px; display: flex; align-items: center;"
                              draggable="true" 
                              ondragstart="handleFileDragStart(event, '${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', '${dirName.replace(/'/g, "\\'")}')"
                              ondragend="handleFileDragEnd(event)">
-                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px; cursor: default;" 
+                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px; cursor: default; padding-right: 60px;" 
                                  ${isPreviewable ? `onclick="previewFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')"` : ''}>
                                 <i class="${icon}"></i>
                                 ${file.name}
                             </div>
-                            <button class="delete-file-btn" onclick="showDeleteFileModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件 | Delete file">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                                <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', false); event.stopPropagation();" title="下载文件 | Download file">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="delete-file-btn" onclick="showDeleteFileModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="删除文件 | Delete file">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     `;
                 }
@@ -7352,45 +7878,48 @@
             return false;
         }
 
-        function toggleSubDirectory(subDirId, event) {
+        function toggleSubDirectoryById(uniqueSubDirId, event) {
             // 阻止事件冒泡
             if (event) {
                 event.stopPropagation();
                 event.preventDefault();
             }
             
-            console.log(`🔄 Toggle sub-directory: ${subDirId}`);
+            console.log(`🔄 Toggle sub-directory ID: ${uniqueSubDirId}`);
             
-            // 获取DOM元素
-            const subTree = document.getElementById(`subtree-${subDirId}`);
+            // 直接使用ID查找DOM元素，无需编码
+            const lookupId = `subtree-${uniqueSubDirId}`;
+            const subTree = document.getElementById(lookupId);
             const button = event.target.closest('.sub-folder-toggle');
             const icon = button ? button.querySelector('i') : null;
             
-            console.log(`🔍 Sub-directory DOM elements:`, {
+            console.log(`🔍 Sub-directory DOM lookup:`, {
+                uniqueSubDirId: uniqueSubDirId,
+                lookupId: lookupId,
+                subTreeFound: !!subTree,
                 subTree: subTree,
-                subTreeId: `subtree-${subDirId}`,
                 button: button,
                 icon: icon,
                 subTreeClasses: subTree ? subTree.className : 'null'
             });
             
             if (!subTree) {
-                console.error(`❌ Sub-tree element not found: subtree-${subDirId}`);
+                console.error(`❌ Sub-tree element not found: ${lookupId}`);
                 return false;
             }
             
             // 检查当前状态
             const isCurrentlyExpanded = subTree.classList.contains('show');
-            console.log(`📊 Sub-directory current state: ${subDirId} expanded = ${isCurrentlyExpanded}`);
+            console.log(`📊 Sub-directory current state: expanded = ${isCurrentlyExpanded}`);
             
             if (isCurrentlyExpanded) {
                 // 收起子文件夹 - 不需要检查连接状态，因为这只是UI操作
                 subTree.classList.remove('show');
-                expandedSubDirectories.delete(subDirId);
+                expandedSubDirectories.delete(uniqueSubDirId);
                 if (icon) {
                     icon.className = 'fas fa-chevron-down';
                 }
-                console.log(`📥 Collapsed sub-directory: ${subDirId}`);
+                console.log(`📥 Collapsed sub-directory: ${uniqueSubDirId}`);
             } else {
                 // 展开子文件夹 - 需要检查连接状态
                 if (!isConnected) {
@@ -7399,11 +7928,11 @@
                 }
                 
                 subTree.classList.add('show');
-                expandedSubDirectories.add(subDirId);
+                expandedSubDirectories.add(uniqueSubDirId);
                 if (icon) {
                     icon.className = 'fas fa-chevron-up';
                 }
-                console.log(`📤 Expanded sub-directory: ${subDirId}`);
+                console.log(`📤 Expanded sub-directory: ${uniqueSubDirId}`);
             }
             
             console.log(`✅ Sub-directory toggle complete. Classes: ${subTree.className}`);
@@ -7421,6 +7950,34 @@
             const link = document.createElement('a');
             link.href = downloadUrl;
             link.download = `${dirName}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadFile(relativePath, fileName, isFolder) {
+            // 构建下载URL
+            let downloadUrl;
+            if (isFolder) {
+                // 对于文件夹，使用下载目录API（/api/download/<path:dir_name>）
+                downloadUrl = `/api/download/${encodeURIComponent(relativePath)}`;
+                // 添加API密钥参数
+                if (currentUser && currentUser !== 'default') {
+                    downloadUrl += `?api_key=${encodeURIComponent(currentUser)}`;
+                }
+            } else {
+                // 对于文件，使用下载文件API
+                downloadUrl = `/api/download-file/${encodeURIComponent(relativePath)}`;
+                // 添加API密钥参数
+                if (currentUser && currentUser !== 'default') {
+                    downloadUrl += `?api_key=${encodeURIComponent(currentUser)}`;
+                }
+            }
+            
+            // 创建隐藏的链接并触发下载
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = isFolder ? `${fileName}.zip` : fileName;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -7561,14 +8118,12 @@
             // 存储当前文件路径，用于Office预览返回功能
             currentFilePath = filePath;
             
-            previewTitle.textContent = `${I18N.preview}: ${fileName}`;
+            // 截断文件名到50字符以内
+            const truncatedFileName = fileName.length > 50 ? fileName.substring(0, 50) + '...' : fileName;
+            previewTitle.textContent = `${I18N.preview}: ${truncatedFileName}`;
+            previewTitle.title = `${I18N.preview}: ${fileName}`; // 完整文件名作为tooltip
             previewContent.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> ${I18N.loading}</div>`;
             previewModal.style.display = 'block';
-            
-            // 阻止其他内容的交互
-            document.body.style.overflow = 'hidden';
-            document.body.style.pointerEvents = 'none';
-            previewModal.style.pointerEvents = 'auto';
             
             console.log('🔍 Making API request to:', `/api/file/${filePath}`);
 
@@ -7742,7 +8297,7 @@
                 const previewUrl = `/api/html-preview/${file_path}${apiKeyParam}`;
                 
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: HTML
 
                     </div>
@@ -7955,7 +8510,7 @@
                 const escapedContent = escapeHtml(processedContent);
                 
                 previewContent.innerHTML = `
-                    <div class="markdown-toolbar-header" style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
+                    <div class="markdown-toolbar-header" style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
                         <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: Markdown</span>
                         <div class="markdown-toolbar-buttons" style="display: flex; gap: 8px; align-items: center;">
                             <button id="reparseMarkdownBtn" onclick="reparseMarkdownDiagrams()" style="background: #9c27b0; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; height: 36px; min-width: 120px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;" title="${I18N.reparse_diagrams_title || '重新解析Markdown中的Mermaid图表和SVG代码块'}">
@@ -8020,7 +8575,7 @@
                 }, 100);
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
-                    <div style="background: var(--bg-secondary); padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: var(--text-primary);">
+                    <div style="background: var(--bg-secondary); padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: var(--text-primary);">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: PDF
                     </div>
                     <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid var(--border-primary); border-radius: 4px; overflow: visible; background: var(--bg-primary); margin-top: 0;">
@@ -8034,7 +8589,7 @@
             } else if (type === 'office') {
                 const { file_ext } = data;
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${file_ext.toUpperCase()} ${I18N.office_preview_note || 'Office Document Preview'}
                     </div>
                     <div id="officeContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
@@ -8118,7 +8673,7 @@
                 `;
                 
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: CSV | ${I18N.total_rows || 'Total Rows'}: ${total_rows} | ${I18N.columns || 'Columns'}: ${headers.length}                                                                             
                         ${truncated ? ' | ⚠️ 大文件已截断显示' : ''}
                     </div>
@@ -8159,7 +8714,7 @@
                     // 为mermaid文件提供特殊的样式处理
                     if (language === 'mermaid') {
                         previewContent.innerHTML = `
-                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
                                 <span>${I18N.file_size || 'File Size'}: ${size} | ${I18N.language || 'Language'}: ${language}</span>
                                 <div style="display: flex; gap: 10px;">
                                     <button onclick="saveMermaidFile()" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px;" title="${I18N.save_mermaid_title || 'Save current Mermaid file'}">                                                       
@@ -8173,10 +8728,10 @@
                                     </button>
                                 </div>
                             </div>
-                            <div id="mermaid-source-view" style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
+                            <div id="mermaid-source-view" style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; margin-top: 5px;">
                                 <textarea id="mermaid-editor" style="width: 100%; height: calc(90vh - 200px); background: #1e1e1e; color: #ffffff; border: 1px solid #404040; font-size: 14px; line-height: 1.4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; resize: none; outline: none; padding: 15px; border-radius: 5px;" placeholder="${I18N.edit_mermaid_placeholder || 'Edit Mermaid content...'}">${content}</textarea>                                                                                      
                             </div>
-                            <div id="mermaid-chart-view" style="display: none; max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; background: white; border: 1px solid #ddd; padding: 20px; text-align: center;">
+                            <div id="mermaid-chart-view" style="display: none; max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px; background: white; border: 1px solid #ddd; padding: 20px; text-align: center; margin-top: 5px;">
                                 <div id="mermaid-chart-container">正在渲染图表...</div>
                             </div>
                         `;
@@ -8201,7 +8756,7 @@
                         }, 100);
                     } else {
                         previewContent.innerHTML = `
-                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                            <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                                 ${I18N.file_size || 'File Size'}: ${size} | ${I18N.language || 'Language'}: ${language}
                             </div>
                             <div style="max-height: calc(90vh - 160px); overflow: auto; border-radius: 5px;">
@@ -8223,7 +8778,7 @@
                 const { width, height, format } = image_info;
                 
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'} (${format}) | ${I18N.dimensions || 'Dimensions'}: ${width} × ${height}                                                                                          
                     </div>
                     <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
@@ -8931,12 +9486,6 @@
             const actualClose = () => {
                 modal.style.display = 'none';
                 modal.style.pointerEvents = '';
-                
-                // 如果预览窗口还在显示，恢复其pointer-events设置
-                const previewModal = document.getElementById('previewModal');
-                if (previewModal && previewModal.style.display === 'block') {
-                    previewModal.style.pointerEvents = 'auto';
-                }
             };
             
             if (window.svgModified) {
@@ -11734,16 +12283,366 @@
         // 关闭预览模态框的统一函数
         function closePreviewModal() {
             previewModal.style.display = 'none';
-            // 恢复其他内容的交互
-            document.body.style.overflow = '';
-            document.body.style.pointerEvents = '';
-            previewModal.style.pointerEvents = '';
         }
+
+        // 预览窗口拖拽功能变量
+        let previewModalDragOffset = { x: 0, y: 0 };
+        let previewModalDragging = false;
+        let previewModalDragStart = { x: 0, y: 0 };
+
+        // 初始化预览窗口拖拽功能
+        function initPreviewModalDrag() {
+            const modalContent = previewModal.querySelector('.modal-content');
+            const modalHeader = previewModal.querySelector('.modal-header');
+            
+            if (!modalContent || !modalHeader) {
+                console.error('预览窗口拖拽初始化失败: 找不到必要元素');
+                return;
+            }
+            
+            console.log('预览窗口拖拽功能已初始化');
+            
+            modalHeader.addEventListener('mousedown', function(e) {
+                // 如果点击的是关闭按钮或其他按钮，不触发拖拽
+                if (e.target.classList.contains('close') || e.target.closest('.close') ||
+                    e.target.classList.contains('modal-button') || e.target.closest('.modal-button')) {
+                    console.log('点击按钮，不触发拖拽');
+                    return;
+                }
+                
+                // 如果是最大化状态，不允许拖拽
+                if (previewModal.classList.contains('maximized')) {
+                    console.log('最大化状态，不允许拖拽');
+                    return;
+                }
+                
+                previewModalDragging = true;
+                previewModalDragStart.x = e.clientX - previewModalDragOffset.x;
+                previewModalDragStart.y = e.clientY - previewModalDragOffset.y;
+                console.log('开始拖拽', { x: e.clientX, y: e.clientY });
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!previewModalDragging) return;
+                
+                e.preventDefault();
+                
+                previewModalDragOffset.x = e.clientX - previewModalDragStart.x;
+                previewModalDragOffset.y = e.clientY - previewModalDragStart.y;
+                
+                if (modalContent) {
+                    modalContent.style.transform = `translate(calc(-50% + ${previewModalDragOffset.x}px), calc(-50% + ${previewModalDragOffset.y}px))`;
+                }
+            });
+            
+            document.addEventListener('mouseup', function(e) {
+                if (previewModalDragging) {
+                    console.log('结束拖拽');
+                    previewModalDragging = false;
+                }
+            });
+        }
+
+        // 预览窗口调整大小功能
+        function initPreviewModalResize() {
+            const modalContent = previewModal.querySelector('.modal-content');
+            const resizerLeft = previewModal.querySelector('.modal-resizer-left');
+            const resizerRight = previewModal.querySelector('.modal-resizer-right');
+            const resizerTop = previewModal.querySelector('.modal-resizer-top');
+            const resizerBottom = previewModal.querySelector('.modal-resizer-bottom');
+            
+            if (!modalContent || !resizerLeft || !resizerRight || !resizerTop || !resizerBottom) {
+                console.error('预览窗口调整大小初始化失败: 找不到必要元素');
+                return;
+            }
+            
+            let isResizing = false;
+            let resizeSide = null;
+            let startX = 0;
+            let startY = 0;
+            let startWidth = 0;
+            let startHeight = 0;
+            let startLeft = 0;
+            let startTop = 0;
+            let startOffsetX = 0; // 记录开始调整大小时的位置偏移
+            let startOffsetY = 0; // 记录开始调整大小时的位置偏移
+            
+            console.log('预览窗口调整大小功能已初始化');
+            
+            function startResize(e, side) {
+                // 如果是最大化状态，不允许调整大小
+                if (previewModal.classList.contains('maximized')) {
+                    return;
+                }
+                
+                isResizing = true;
+                resizeSide = side;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                const rect = modalContent.getBoundingClientRect();
+                startWidth = rect.width;
+                startHeight = rect.height;
+                startLeft = rect.left;
+                startTop = rect.top;
+                startOffsetX = previewModalDragOffset.x; // 记录初始位置偏移
+                startOffsetY = previewModalDragOffset.y; // 记录初始位置偏移
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('开始调整大小', { side, startX, startY, startWidth, startHeight, startOffsetX, startOffsetY });
+            }
+            
+            resizerLeft.addEventListener('mousedown', function(e) {
+                startResize(e, 'left');
+            });
+            
+            resizerRight.addEventListener('mousedown', function(e) {
+                startResize(e, 'right');
+            });
+            
+            resizerTop.addEventListener('mousedown', function(e) {
+                startResize(e, 'top');
+            });
+            
+            resizerBottom.addEventListener('mousedown', function(e) {
+                startResize(e, 'bottom');
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+                
+                e.preventDefault();
+                
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                let newWidth;
+                let newHeight;
+                
+                if (resizeSide === 'left') {
+                    // 左侧调整: 宽度减少，需要调整位置以保持右边缘不动
+                    newWidth = startWidth - deltaX;
+                    
+                    // 限制最小和最大宽度
+                    const minWidth = 400;
+                    const maxWidth = window.innerWidth * 0.95;
+                    if (newWidth < minWidth) {
+                        newWidth = minWidth;
+                    } else if (newWidth > maxWidth) {
+                        newWidth = maxWidth;
+                    }
+                    
+                    modalContent.style.width = newWidth + 'px';
+                    
+                    // 调整位置以保持右边缘不动
+                    // 基于初始偏移值计算，而不是累加
+                    const widthDiff = startWidth - newWidth;
+                    const newOffsetX = startOffsetX + widthDiff / 2;
+                    previewModalDragOffset.x = newOffsetX;
+                    modalContent.style.transform = `translate(calc(-50% + ${newOffsetX}px), calc(-50% + ${previewModalDragOffset.y}px))`;
+                    
+                    // 当宽度被限制时，更新基准值以避免累积误差
+                    if (newWidth === minWidth || newWidth === maxWidth) {
+                        startX = e.clientX;
+                        startWidth = newWidth;
+                        startOffsetX = newOffsetX; // 同时更新初始偏移值
+                    }
+                    
+                } else if (resizeSide === 'right') {
+                    // 右侧调整: 宽度增加，需要调整位置以保持左边缘不动
+                    newWidth = startWidth + deltaX;
+                    
+                    // 限制最小和最大宽度
+                    const minWidth = 400;
+                    const maxWidth = window.innerWidth * 0.95;
+                    if (newWidth < minWidth) {
+                        newWidth = minWidth;
+                    } else if (newWidth > maxWidth) {
+                        newWidth = maxWidth;
+                    }
+                    
+                    modalContent.style.width = newWidth + 'px';
+                    
+                    // 调整位置以保持左边缘不动
+                    // 基于初始偏移值计算，而不是累加
+                    const widthDiff = newWidth - startWidth;
+                    const newOffsetX = startOffsetX + widthDiff / 2;
+                    previewModalDragOffset.x = newOffsetX;
+                    modalContent.style.transform = `translate(calc(-50% + ${newOffsetX}px), calc(-50% + ${previewModalDragOffset.y}px))`;
+                    
+                    // 当宽度被限制时，更新基准值以避免累积误差
+                    if (newWidth === minWidth || newWidth === maxWidth) {
+                        startX = e.clientX;
+                        startWidth = newWidth;
+                        startOffsetX = newOffsetX; // 同时更新初始偏移值
+                    }
+                    
+                } else if (resizeSide === 'top') {
+                    // 上侧调整: 高度减少，需要调整位置以保持下边缘不动
+                    newHeight = startHeight - deltaY;
+                    
+                    // 限制最小和最大高度
+                    const minHeight = 300;
+                    const maxHeight = window.innerHeight * 0.95;
+                    if (newHeight < minHeight) {
+                        newHeight = minHeight;
+                    } else if (newHeight > maxHeight) {
+                        newHeight = maxHeight;
+                    }
+                    
+                    modalContent.style.height = newHeight + 'px';
+                    
+                    // 调整位置以保持下边缘不动
+                    // 基于初始偏移值计算，而不是累加
+                    const heightDiff = startHeight - newHeight;
+                    const newOffsetY = startOffsetY + heightDiff / 2;
+                    previewModalDragOffset.y = newOffsetY;
+                    modalContent.style.transform = `translate(calc(-50% + ${previewModalDragOffset.x}px), calc(-50% + ${newOffsetY}px))`;
+                    
+                    // 当高度被限制时，更新基准值以避免累积误差
+                    if (newHeight === minHeight || newHeight === maxHeight) {
+                        startY = e.clientY;
+                        startHeight = newHeight;
+                        startOffsetY = newOffsetY; // 同时更新初始偏移值
+                    }
+                    
+                } else if (resizeSide === 'bottom') {
+                    // 下侧调整: 高度增加，需要调整位置以保持上边缘不动
+                    newHeight = startHeight + deltaY;
+                    
+                    // 限制最小和最大高度
+                    const minHeight = 300;
+                    const maxHeight = window.innerHeight * 0.95;
+                    if (newHeight < minHeight) {
+                        newHeight = minHeight;
+                    } else if (newHeight > maxHeight) {
+                        newHeight = maxHeight;
+                    }
+                    
+                    modalContent.style.height = newHeight + 'px';
+                    
+                    // 调整位置以保持上边缘不动
+                    // 基于初始偏移值计算，而不是累加
+                    const heightDiff = newHeight - startHeight;
+                    const newOffsetY = startOffsetY + heightDiff / 2;
+                    previewModalDragOffset.y = newOffsetY;
+                    modalContent.style.transform = `translate(calc(-50% + ${previewModalDragOffset.x}px), calc(-50% + ${newOffsetY}px))`;
+                    
+                    // 当高度被限制时，更新基准值以避免累积误差
+                    if (newHeight === minHeight || newHeight === maxHeight) {
+                        startY = e.clientY;
+                        startHeight = newHeight;
+                        startOffsetY = newOffsetY; // 同时更新初始偏移值
+                    }
+                }
+            });
+            
+            document.addEventListener('mouseup', function(e) {
+                if (isResizing) {
+                    console.log('结束调整大小');
+                    isResizing = false;
+                    resizeSide = null;
+                }
+            });
+        }
+
+        // 重置预览窗口位置
+        function resetPreviewModalPosition() {
+            const modalContent = previewModal.querySelector('.modal-content');
+            if (modalContent) {
+                previewModalDragOffset = { x: 0, y: 0 };
+                modalContent.style.transform = 'translate(-50%, -50%)';
+                modalContent.style.width = ''; // 重置宽度为默认值
+                modalContent.style.height = ''; // 重置高度为默认值
+            }
+        }
+
+        // 修改关闭预览模态框函数，添加位置重置
+        const originalClosePreviewModal = closePreviewModal;
+        closePreviewModal = function() {
+            resetPreviewModalPosition();
+            originalClosePreviewModal();
+        };
 
         // 关闭预览模态框
         previewClose.onclick = function() {
+            console.log('点击关闭按钮');
             closePreviewModal();
         }
+
+        // 初始化拖拽功能
+        initPreviewModalDrag();
+        
+        // 初始化调整大小功能
+        initPreviewModalResize();
+
+        // 预览窗口最大化/还原功能
+        const previewMaximizeBtn = document.getElementById('previewMaximize');
+        let isPreviewMaximized = false;
+        let previewOriginalState = null;
+
+        if (previewMaximizeBtn) {
+            previewMaximizeBtn.onclick = function() {
+                const modalContent = previewModal.querySelector('.modal-content');
+                
+                if (!isPreviewMaximized) {
+                    // 最大化
+                    console.log('最大化预览窗口');
+                    
+                    // 保存当前状态
+                    previewOriginalState = {
+                        transform: modalContent.style.transform,
+                        width: modalContent.style.width,
+                        dragOffset: { ...previewModalDragOffset }
+                    };
+                    
+                    // 添加最大化类
+                    previewModal.classList.add('maximized');
+                    
+                    // 禁用拖拽
+                    previewModalDragging = false;
+                    
+                    // 更改图标
+                    previewMaximizeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+                    previewMaximizeBtn.title = '还原';
+                    
+                    isPreviewMaximized = true;
+                } else {
+                    // 还原
+                    console.log('还原预览窗口');
+                    
+                    // 移除最大化类
+                    previewModal.classList.remove('maximized');
+                    
+                    // 恢复原来的位置和宽度
+                    if (previewOriginalState) {
+                        modalContent.style.transform = previewOriginalState.transform;
+                        modalContent.style.width = previewOriginalState.width;
+                        previewModalDragOffset = { ...previewOriginalState.dragOffset };
+                    }
+                    
+                    // 更改图标
+                    previewMaximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                    previewMaximizeBtn.title = '最大化';
+                    
+                    isPreviewMaximized = false;
+                }
+            };
+        }
+
+        // 修改关闭函数，关闭时重置最大化状态
+        const originalClosePreviewModal2 = closePreviewModal;
+        closePreviewModal = function() {
+            if (isPreviewMaximized && previewMaximizeBtn) {
+                // 如果是最大化状态，先还原
+                previewModal.classList.remove('maximized');
+                previewMaximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                previewMaximizeBtn.title = '最大化';
+                isPreviewMaximized = false;
+            }
+            originalClosePreviewModal2();
+        };
 
         // 重命名功能
         const renameModal = document.getElementById('renameModal');
@@ -12458,9 +13357,58 @@
                 
                 // 动态设置容器高度
                 container.style.height = `calc(100vh - ${authAreaHeight}px)`;
-                
-                console.log(`Adjusted container height: 100vh - ${authAreaHeight}px`);
             }
+        }
+
+        // 调整chat-wrapper内部布局的全局辅助函数
+        function adjustChatWrapperLayout() {
+            const chatWrapper = document.querySelector('.chat-wrapper');
+            const chatContainer = document.querySelector('.chat-container');
+            const detailInfoContainer = document.getElementById('detailInfoContainer');
+            const verticalResizer = document.getElementById('verticalResizer');
+            
+            if (!chatWrapper || !chatContainer || !detailInfoContainer) return;
+            
+            // 如果细节窗口是隐藏状态，清除chat-container的固定宽度，让它自动填充
+            if (detailInfoContainer.classList.contains('hidden')) {
+                chatContainer.style.flex = '1';
+                chatContainer.style.minWidth = '';
+                return;
+            }
+            
+            const wrapperWidth = chatWrapper.offsetWidth;
+            const resizerWidth = verticalResizer ? (verticalResizer.offsetWidth || 5) : 5;
+            const availableWidth = wrapperWidth - resizerWidth;
+            
+            const currentDetailWidth = detailInfoContainer.offsetWidth;
+            
+            const minChatWidth = 300;
+            const minDetailWidth = 200;
+            const maxDetailWidth = 800;
+            
+            // 计算detail窗口的合理宽度
+            let newDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, currentDetailWidth));
+            
+            // 确保有足够空间给chat窗口
+            const maxAllowedDetailWidth = availableWidth - minChatWidth;
+            if (newDetailWidth > maxAllowedDetailWidth) {
+                newDetailWidth = Math.max(minDetailWidth, maxAllowedDetailWidth);
+            }
+            
+            // 计算chat窗口的宽度
+            let newChatWidth = availableWidth - newDetailWidth;
+            
+            // 确保chat窗口不小于最小宽度
+            if (newChatWidth < minChatWidth) {
+                newChatWidth = minChatWidth;
+                newDetailWidth = availableWidth - newChatWidth;
+            }
+            
+            // 设置固定宽度，确保两个容器充满整个可用空间
+            chatContainer.style.flex = '0 0 ' + newChatWidth + 'px';
+            chatContainer.style.minWidth = '';
+            detailInfoContainer.style.width = newDetailWidth + 'px';
+            detailInfoContainer.style.flexShrink = '0';
         }
 
         // 分隔条拖拽功能
@@ -12471,6 +13419,7 @@
             let isResizing = false;
             let startX = 0;
             let startWidth = 0;
+            let animationFrameId = null;
 
             resizer.addEventListener('mousedown', function(e) {
                 e.preventDefault();
@@ -12500,6 +13449,15 @@
                 const constrainedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
                 
                 sidebar.style.width = constrainedWidth + 'px';
+                
+                // 使用requestAnimationFrame节流，避免频繁调整
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                animationFrameId = requestAnimationFrame(() => {
+                    adjustChatWrapperLayout();
+                    animationFrameId = null;
+                });
             }
 
             function handleMouseUp(e) {
@@ -12514,6 +13472,15 @@
                 
                 // 移除视觉反馈
                 resizer.style.background = '';
+                
+                // 取消待处理的动画帧
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                
+                // 最终调整一次以确保布局正确
+                adjustChatWrapperLayout();
             }
         }
 
@@ -12557,17 +13524,47 @@
                 const dx = e.clientX - startX; // 向右拖拽为正值
                 const chatWrapper = document.querySelector('.chat-wrapper');
                 const chatWrapperWidth = chatWrapper.offsetWidth;
+                const resizerWidth = verticalResizer.offsetWidth || 5; // 分隔条宽度
+                
+                // 可用的总宽度
+                const availableWidth = chatWrapperWidth - resizerWidth;
                 
                 // 计算新的宽度
-                const newChatWidth = startChatWidth + dx;
-                const newDetailWidth = startDetailWidth - dx;
+                let newChatWidth = startChatWidth + dx;
+                let newDetailWidth = startDetailWidth - dx;
                 
-                // 限制最小宽度
+                // 限制最小和最大宽度
                 const minChatWidth = 300;
                 const minDetailWidth = 200;
                 const maxDetailWidth = 800;
                 
-                if (newChatWidth >= minChatWidth && newDetailWidth >= minDetailWidth && newDetailWidth <= maxDetailWidth) {
+                // 首先应用最小宽度限制
+                if (newChatWidth < minChatWidth) {
+                    newChatWidth = minChatWidth;
+                    newDetailWidth = availableWidth - newChatWidth;
+                }
+                if (newDetailWidth < minDetailWidth) {
+                    newDetailWidth = minDetailWidth;
+                    newChatWidth = availableWidth - newDetailWidth;
+                }
+                
+                // 应用最大宽度限制
+                if (newDetailWidth > maxDetailWidth) {
+                    newDetailWidth = maxDetailWidth;
+                    newChatWidth = availableWidth - newDetailWidth;
+                }
+                
+                // 确保总宽度不超过可用宽度
+                const totalWidth = newChatWidth + newDetailWidth;
+                if (totalWidth > availableWidth) {
+                    // 按比例缩小，保持拖动方向的意图
+                    const scale = availableWidth / totalWidth;
+                    newChatWidth = Math.floor(newChatWidth * scale);
+                    newDetailWidth = availableWidth - newChatWidth;
+                }
+                
+                // 最终检查并应用宽度
+                if (newChatWidth >= minChatWidth && newDetailWidth >= minDetailWidth) {
                     chatContainer.style.flex = '0 0 ' + newChatWidth + 'px';
                     detailInfoContainer.style.width = newDetailWidth + 'px';
                 }
@@ -12640,13 +13637,38 @@
                 verticalResizer.classList.remove('hidden');
                 verticalResizer.style.cursor = 'col-resize';
                 
-                // 如果之前保存了宽度值，恢复它们
-                if (savedChatWidth && chatContainer) {
+                // 获取当前页面宽度
+                const chatWrapper = document.querySelector('.chat-wrapper');
+                const currentWrapperWidth = chatWrapper ? chatWrapper.offsetWidth : window.innerWidth;
+                
+                // 计算合适的细节窗口宽度
+                let targetDetailWidth = savedDetailWidth ? parseInt(savedDetailWidth) : null;
+                
+                // 如果没有保存的宽度，或者保存的宽度不合适，则重新计算
+                const minDetailWidth = 200;
+                const maxDetailWidth = 800;
+                const defaultDetailWidth = Math.min(400, currentWrapperWidth * 0.3);
+                
+                if (!targetDetailWidth || targetDetailWidth < minDetailWidth || targetDetailWidth > maxDetailWidth) {
+                    targetDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, defaultDetailWidth));
+                }
+                
+                // 确保细节窗口宽度不会让聊天区域过窄
+                const minChatWidth = 300;
+                const maxAllowedDetailWidth = currentWrapperWidth - minChatWidth - 10; // 10px for resizer
+                targetDetailWidth = Math.min(targetDetailWidth, maxAllowedDetailWidth);
+                
+                // 应用宽度设置
+                if (savedChatWidth && chatContainer && targetDetailWidth === parseInt(savedDetailWidth)) {
+                    // 如果细节宽度没有变化，恢复原来的聊天宽度
                     chatContainer.style.flex = '0 0 ' + savedChatWidth + 'px';
+                } else {
+                    // 否则重新计算聊天宽度
+                    const newChatWidth = currentWrapperWidth - targetDetailWidth - 10;
+                    chatContainer.style.flex = '0 0 ' + newChatWidth + 'px';
                 }
-                if (savedDetailWidth && detailInfoContainer) {
-                    detailInfoContainer.style.width = savedDetailWidth + 'px';
-                }
+                
+                detailInfoContainer.style.width = targetDetailWidth + 'px';
                 
                 if (detailInfoRestoreTag) {
                     detailInfoRestoreTag.classList.remove('visible');
@@ -12681,6 +13703,60 @@
                     showDetailInfo();
                 });
             }
+            
+            // 监听窗口大小变化，自动调整细节窗口宽度
+            let resizeTimer;
+            window.addEventListener('resize', function() {
+                // 使用防抖避免频繁调整
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() {
+                    // 只在细节窗口可见时调整
+                    if (!detailInfoContainer.classList.contains('hidden')) {
+                        const chatWrapper = document.querySelector('.chat-wrapper');
+                        const currentWrapperWidth = chatWrapper ? chatWrapper.offsetWidth : window.innerWidth;
+                        const resizerWidth = verticalResizer ? (verticalResizer.offsetWidth || 5) : 5;
+                        const currentChatWidth = chatContainer ? chatContainer.offsetWidth : 0;
+                        const currentDetailWidth = detailInfoContainer.offsetWidth;
+                        
+                        const minDetailWidth = 200;
+                        const maxDetailWidth = 800;
+                        const minChatWidth = 300;
+                        
+                        // 可用的总宽度
+                        const availableWidth = currentWrapperWidth - resizerWidth;
+                        
+                        // 检查是否需要调整
+                        const totalWidth = currentChatWidth + currentDetailWidth;
+                        
+                        if (totalWidth > availableWidth || currentDetailWidth < minDetailWidth || currentDetailWidth > maxDetailWidth || currentChatWidth < minChatWidth) {
+                            // 计算目标宽度
+                            let targetDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, currentDetailWidth));
+                            let targetChatWidth = availableWidth - targetDetailWidth;
+                            
+                            // 确保聊天窗口不小于最小宽度
+                            if (targetChatWidth < minChatWidth) {
+                                targetChatWidth = minChatWidth;
+                                targetDetailWidth = availableWidth - targetChatWidth;
+                            }
+                            
+                            // 再次确保细节窗口不小于最小宽度
+                            if (targetDetailWidth < minDetailWidth) {
+                                targetDetailWidth = minDetailWidth;
+                                targetChatWidth = availableWidth - targetDetailWidth;
+                            }
+                            
+                            if (chatContainer) {
+                                chatContainer.style.flex = '0 0 ' + targetChatWidth + 'px';
+                            }
+                            detailInfoContainer.style.width = targetDetailWidth + 'px';
+                            
+                            // 更新保存的宽度值
+                            savedDetailWidth = targetDetailWidth.toString();
+                            savedChatWidth = targetChatWidth.toString();
+                        }
+                    }
+                }, 150); // 150ms防抖延迟
+            });
         }
 
         function initSidebarToggle() {
@@ -12723,6 +13799,9 @@
                     icon.className = 'fas fa-chevron-left';
                 }
                 toggleBtn.title = (I18N && I18N.lang === 'zh') ? '显示' : 'Show';
+                
+                // 隐藏sidebar后，main-content宽度会增加，需要调整内部布局
+                setTimeout(adjustChatWrapperLayout, 50);
             }
 
             function showSidebar() {
@@ -12746,6 +13825,9 @@
                     icon.className = 'fas fa-chevron-right';
                 }
                 toggleBtn.title = (I18N && I18N.lang === 'zh') ? '隐藏' : 'Hide';
+                
+                // 显示sidebar后，main-content宽度会减少，需要调整内部布局
+                setTimeout(adjustChatWrapperLayout, 50);
             }
 
             toggleBtn.addEventListener('click', function(e) {

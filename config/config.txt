@@ -20,10 +20,10 @@ max_tokens=16384
 # max_tokens=32768
 
 # Openrouter
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=qwen/qwen3-30b-a3b-instruct-2507
-# max_tokens=32768
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=xiaomi/mimo-v2-flash:free
+max_tokens=32768
 
 # DeepSeek API configuration
 # api_key=your key
@@ -231,4 +231,17 @@ emoji_disabled=False
 auto_convert_to_word=True
 auto_convert_to_pdf=True
 auto_convert_to_latex=False
+
+# TASK_COMPLETED with Tools Configuration
+# Controls whether to admit TASK_COMPLETED signal when it appears along with tool calls
+# When enabled (True), if LLM outputs TASK_COMPLETED along with tool calls:
+#   - Tools will be executed first
+#   - After tool execution, the TASK_COMPLETED flag will be re-added and the task will complete
+# When disabled (False), if LLM outputs TASK_COMPLETED along with tool calls:
+#   - The TASK_COMPLETED flag will be dropped
+#   - Tools will be executed
+#   - The task will NOT complete automatically (will continue to next round)
+# Default: False (execute tools but don't complete task)
+# Recommended: True (allows task completion after tool execution when LLM explicitly signals completion)
+admit_task_completed_with_tools=True
 

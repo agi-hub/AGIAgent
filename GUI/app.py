@@ -29,7 +29,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sys
 import threading
-from datetime import datetime
+import datetime
 import shutil
 import zipfile
 from werkzeug.utils import secure_filename
@@ -345,11 +345,16 @@ class ConcurrencyManager:
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key'
-# 增加ping超时时间，防止任务执行期间主线程阻塞导致连接断开
-# ping_interval=60秒发送一次ping，ping_timeout=300秒超时（5分钟）
+# 🔧 优化ping配置：增加ping超时时间到600秒（10分钟），防止任务执行期间连接断开
+# ping_interval=60秒发送一次ping，ping_timeout=600秒超时（10分钟）
+# 客户端每55秒发送心跳，服务器每60秒发送ping，双重保活机制
 # 使用 gevent 异步模式（如果可用），否则回退到 threading
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE, 
-                   ping_timeout=300, ping_interval=60)  
+                   ping_timeout=600, ping_interval=60, 
+                   # 🔧 添加更多配置以支持更好的重连
+                   logger=False, engineio_logger=False,
+                   # 允许HTTP长轮询作为fallback
+                   allow_upgrades=True)  
 
 
 import logging
@@ -1129,7 +1134,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             else:
                 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             out_dir = os.path.join(base_dir, f"output_{timestamp}")
         
         # Process GUI configuration options
@@ -1156,7 +1161,8 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
                 routine_file = os.path.join(os.getcwd(), routine_file)
             else:
                 # 根据语言配置选择routine文件夹
-                current_lang = get_language()
+                # 优先使用前端传递的语言参数，如果没有则使用服务器端配置
+                current_lang = gui_config.get('language') or get_language()
                 if current_lang == 'zh':
                     routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
                 else:
@@ -1860,13 +1866,13 @@ class AGIAgentGUI:
                         size = self.get_directory_size(item_path)
                         
                         result.append({
-                            'name': item,
-                            'path': item_path,
-                            'size': self.format_size(size),
-                            'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                            'files': self.get_directory_structure(item_path),
-                            'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
-                            'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
+                        'name': item,
+                        'path': item_path,
+                        'size': self.format_size(size),
+                        'modified_time': datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                        'files': self.get_directory_structure(item_path),
+                        'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
+                        'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
                             'is_last': item == user_session.last_output_dir  # Mark if it's last used directory
                         })
         except (OSError, PermissionError) as e:
@@ -1943,6 +1949,7 @@ class UserSession:
         self.session_id = session_id
         self.api_key = api_key
         self.user_info = user_info or {}
+        self.client_session_id = None  # 客户端持久化会话ID
         self.current_process = None
         self.output_queue = None
         self.input_queue = None  # Queue for user input in GUI mode
@@ -1950,6 +1957,8 @@ class UserSession:
         self.last_output_dir = None     # Track last used output directory
         self.selected_output_dir = None # Track user selected output directory
         self.conversation_history = []  # Store conversation history for this user
+        self.queue_reader_stop_flag = None  # 用于停止queue_reader_thread的标志
+        self.queue_reader_thread = None  # 当前运行的queue_reader_thread引用
         
         # Determine user directory based on user info
         if user_info and user_info.get("is_guest", False):
@@ -1982,7 +1991,7 @@ class UserSession:
     def add_to_conversation_history(self, user_input, result_summary=None):
         """Add a conversation turn to history"""
         conversation_entry = {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.datetime.now().isoformat(),
             'user_input': user_input,
             'result_summary': result_summary or "Task executed",
             'output_dir': self.current_output_dir
@@ -2016,6 +2025,18 @@ def create_temp_session_id(request, api_key=None):
     # Use consistent session ID based on IP and API key, not request ID
     return f"api_{request.remote_addr}_{api_key_hash}"
 
+def stop_queue_reader_thread(user_session):
+    """安全地停止queue_reader_thread"""
+    import datetime
+    if user_session.queue_reader_stop_flag:
+        print(f"[{datetime.datetime.now().isoformat()}] 🛑 Stopping old queue reader thread: session_id={user_session.session_id}")
+        user_session.queue_reader_stop_flag.set()
+        # 给线程一点时间退出
+        import time
+        time.sleep(0.5)
+        user_session.queue_reader_stop_flag = None
+        user_session.queue_reader_thread = None
+
 def queue_reader_thread(session_id):
     """Reads from the queue and emits messages to the client via SocketIO."""
     
@@ -2038,8 +2059,18 @@ def queue_reader_thread(session_id):
     
     user_session = gui_instance.user_sessions[session_id]
     
+    # 创建新的停止标志
+    import threading
+    stop_flag = threading.Event()
+    user_session.queue_reader_stop_flag = stop_flag
+    
     while True:
         try:
+            # 检查停止标志
+            if stop_flag.is_set():
+                print(f"[{datetime.datetime.now().isoformat()}] 🛑 Queue reader thread stopped by flag: session_id={session_id}")
+                break
+                
             if user_session.current_process and not user_session.current_process.is_alive() and user_session.output_queue.empty():
                 break
 
@@ -2098,6 +2129,9 @@ def queue_reader_thread(session_id):
                     # Read more messages to get query and timeout (increased from 15 to 30)
                     # Also increase timeout per message to handle slow message delivery
                     for _ in range(30):  # Read up to 30 more messages to ensure we get QUERY and TIMEOUT
+                        # 检查停止标志
+                        if stop_flag.is_set():
+                            break
                         try:
                             next_msg = user_session.output_queue.get(timeout=2.0)  # Increased timeout from 1.0 to 2.0
                             if next_msg.get('event') == 'output':
@@ -2217,6 +2251,11 @@ def queue_reader_thread(session_id):
         except Exception as e:
             # 静默处理异常，避免线程崩溃
             break
+    
+    # 清理停止标志
+    if user_session.queue_reader_stop_flag == stop_flag:
+        user_session.queue_reader_stop_flag = None
+        user_session.queue_reader_thread = None
     
     if user_session.current_process and hasattr(user_session.current_process, '_popen') and user_session.current_process._popen is not None:
         try:
@@ -2344,11 +2383,13 @@ def download_directory(dir_name):
         
         # Create temporary zip file in a more reliable location
         import tempfile
-        temp_dir = tempfile.gettempdir()
-        temp_file = os.path.join(temp_dir, f"{dir_name}_{os.getpid()}_{int(datetime.now().timestamp())}.zip")
+        import io
+        
+        # Create zip file in memory to avoid file system timing issues
+        memory_file = io.BytesIO()
         
         try:
-            with zipfile.ZipFile(temp_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+            with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
                 for root, dirs, files in os.walk(dir_path):
                     # Exclude code_index directory and other unwanted directories
                     dirs_to_exclude = {'code_index', '__pycache__', '.git', '.vscode', 'node_modules'}
@@ -2371,36 +2412,26 @@ def download_directory(dir_name):
                         except (OSError, IOError) as file_error:
                             continue
             
-            # Verify that the zip file was created and is not empty
-            if not os.path.exists(temp_file) or os.path.getsize(temp_file) == 0:
+            # Get the zip file size and seek to beginning
+            memory_file.seek(0, 2)  # Seek to end
+            file_size = memory_file.tell()
+            memory_file.seek(0)  # Seek to beginning
+            
+            # Verify that the zip file is not empty
+            if file_size == 0:
                 return jsonify({'success': False, 'error': 'Failed to create zip file or zip file is empty'})
             
-            
-            # Schedule cleanup after the request is complete
-            @after_this_request
-            def remove_temp_file(response):
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except Exception as cleanup_error:
-                    pass
-                return response
-            
             # Return the file with proper headers
+            # Using memory file means no cleanup needed
             return send_file(
-                temp_file, 
+                memory_file, 
                 as_attachment=True, 
                 download_name=f"{dir_name}.zip",
                 mimetype='application/zip'
             )
             
         except Exception as zip_error:
-            # Clean up temporary file on error
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
+            # No cleanup needed for memory file
             raise zip_error
     
     except Exception as e:
@@ -3448,25 +3479,50 @@ def handle_connect(auth):
     import datetime
     i18n = get_i18n_texts()
     session_id = request.sid
-    print(f"[{datetime.datetime.now().isoformat()}] ✅ 新连接: session_id={session_id}")
     
-    # Get user authentication info
+    # Get user authentication info and client session ID
     api_key = None
-    if auth and 'api_key' in auth:
-        api_key = auth['api_key']
+    client_session_id = None
+    if auth:
+        api_key = auth.get('api_key')
+        client_session_id = auth.get('client_session_id')
     
-    # 检查是否有待恢复的会话（同一用户重连）
+    # 日志中同时显示socket_session_id和client_session_id
+    if client_session_id:
+        print(f"[{datetime.datetime.now().isoformat()}] ✅ New connection: socket_sid={session_id}, client_sid={client_session_id}")
+    else:
+        print(f"[{datetime.datetime.now().isoformat()}] ✅ New connection: socket_sid={session_id}")
+    
+    # 检查是否有待恢复的会话（使用client_session_id匹配）
     recovered_session = None
-    for old_sid, pending_info in list(_pending_cleanup_sessions.items()):
-        if pending_info['api_key'] == api_key and api_key:
-            # 找到同一用户的待清理会话，恢复它
-            recovered_session = pending_info['user_session']
-            del _pending_cleanup_sessions[old_sid]
-            # 也从旧的 user_sessions 中移除
-            if old_sid in gui_instance.user_sessions:
-                del gui_instance.user_sessions[old_sid]
-            print(f"[{datetime.datetime.now().isoformat()}] 🔄 恢复会话: old_session={old_sid} -> new_session={session_id}")
-            break
+    old_socket_sid = None
+    if client_session_id:
+        # 优先使用client_session_id匹配
+        for old_sid, pending_info in list(_pending_cleanup_sessions.items()):
+            if pending_info.get('client_session_id') == client_session_id:
+                # 找到同一客户端的待清理会话，恢复它
+                recovered_session = pending_info['user_session']
+                old_socket_sid = old_sid
+                del _pending_cleanup_sessions[old_sid]
+                # 也从旧的 user_sessions 中移除
+                if old_sid in gui_instance.user_sessions:
+                    del gui_instance.user_sessions[old_sid]
+                print(f"[{datetime.datetime.now().isoformat()}] 🔄 Restoring session by client_sid: old_socket_sid={old_sid}, new_socket_sid={session_id}, client_sid={client_session_id}")
+                break
+    
+    # 如果没有通过client_session_id恢复，尝试通过api_key恢复（兼容旧版本）
+    if not recovered_session and api_key:
+        for old_sid, pending_info in list(_pending_cleanup_sessions.items()):
+            if pending_info['api_key'] == api_key:
+                # 找到同一用户的待清理会话，恢复它
+                recovered_session = pending_info['user_session']
+                old_socket_sid = old_sid
+                del _pending_cleanup_sessions[old_sid]
+                # 也从旧的 user_sessions 中移除
+                if old_sid in gui_instance.user_sessions:
+                    del gui_instance.user_sessions[old_sid]
+                print(f"[{datetime.datetime.now().isoformat()}] 🔄 Restoring session by api_key: old_socket_sid={old_sid}, new_socket_sid={session_id}")
+                break
     
     # Check if new connections can be accepted
     if not gui_instance.concurrency_manager.can_accept_connection():
@@ -3479,11 +3535,19 @@ def handle_connect(auth):
     if recovered_session:
         # 使用恢复的会话
         user_session = recovered_session
+        # 更新session_id到新的socket session_id
+        user_session.session_id = session_id
+        # 保存client_session_id
+        if client_session_id:
+            user_session.client_session_id = client_session_id
         gui_instance.user_sessions[session_id] = user_session
-        # 重新创建认证会话
-        gui_instance.auth_manager.create_session(session_id, user_session.user_info)
+        # 重新创建认证会话 - 使用保存的api_key
+        gui_instance.auth_manager.create_session(user_session.api_key, session_id)
     else:
         user_session = gui_instance.get_user_session(session_id, api_key)
+        # 保存client_session_id
+        if user_session and client_session_id:
+            user_session.client_session_id = client_session_id
     
     if not user_session:
         # Authentication failed
@@ -3527,15 +3591,24 @@ def handle_connect(auth):
             'queue_size': metrics['queue_size']
         },
         'task_running': task_running,  # 告知客户端是否有任务在运行
-        'recovered': recovered_session is not None  # 告知客户端这是恢复的会话
+        'recovered': recovered_session is not None,  # 告知客户端这是恢复的会话
+        # 🔧 恢复文件夹选择状态
+        'selected_output_dir': user_session.selected_output_dir,
+        'last_output_dir': user_session.last_output_dir,
+        'current_output_dir': user_session.current_output_dir
     }
     
     emit('status', connection_data, room=session_id)
     
     # 如果是恢复的会话且有任务在运行，重新启动 queue_reader_thread
     if recovered_session and task_running:
-        print(f"[{datetime.datetime.now().isoformat()}] 🔄 重新启动消息读取线程: session_id={session_id}")
-        threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
+        print(f"[{datetime.datetime.now().isoformat()}] 🔄 Restarting message reading thread: session_id={session_id}")
+        # 先停止旧的线程（如果存在）
+        stop_queue_reader_thread(user_session)
+        # 启动新线程
+        new_thread = threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True)
+        user_session.queue_reader_thread = new_thread
+        new_thread.start()
 
 # 存储待清理的会话（等待重连）
 _pending_cleanup_sessions = {}  # {session_id: {'user_session': ..., 'disconnect_time': ..., 'api_key': ...}}
@@ -3555,18 +3628,24 @@ def handle_disconnect():
     if session_id in gui_instance.user_sessions:
         user_session = gui_instance.user_sessions[session_id]
         api_key = user_session.user_info.get('api_key', '')
+        client_session_id = getattr(user_session, 'client_session_id', None)
         
         # 判断等待时间：有任务运行时等待更长时间，空闲时等待较短时间
         has_running_task = user_session.current_process and user_session.current_process.is_alive()
         grace_period = RECONNECT_GRACE_PERIOD if has_running_task else 30  # 空闲时等待30秒
         
-        print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: session_id={session_id}, has_task={has_running_task}")
+        # 日志中显示client_session_id
+        if client_session_id:
+            print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: socket_sid={session_id}, client_sid={client_session_id}, has_task={has_running_task}")
+        else:
+            print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: socket_sid={session_id}, has_task={has_running_task}")
         
         # 保存到待清理列表
         _pending_cleanup_sessions[session_id] = {
             'user_session': user_session,
             'disconnect_time': time.time(),
             'api_key': api_key,
+            'client_session_id': client_session_id,  # 保存client_session_id用于重连匹配
             'has_running_task': has_running_task
         }
         
@@ -3603,6 +3682,9 @@ def _cleanup_disconnected_session(session_id):
     else:
         return
 
+    # 获取client_session_id用于日志
+    client_session_id = getattr(user_session, 'client_session_id', None)
+
     # Leave room
     try:
         leave_room(session_id)
@@ -3612,7 +3694,10 @@ def _cleanup_disconnected_session(session_id):
     # Terminate any running processes
     if user_session.current_process and user_session.current_process.is_alive():
         try:
-            print(f"[{datetime.datetime.now().isoformat()}] 🛑 终止运行中的任务: session_id={session_id}")
+            if client_session_id:
+                print(f"[{datetime.datetime.now().isoformat()}] 🛑 终止运行中的任务: socket_sid={session_id}, client_sid={client_session_id}")
+            else:
+                print(f"[{datetime.datetime.now().isoformat()}] 🛑 终止运行中的任务: socket_sid={session_id}")
             user_session.current_process.terminate()
             user_session.current_process.join(timeout=5)
         except Exception:
@@ -3632,18 +3717,25 @@ def _cleanup_disconnected_session(session_id):
     except Exception:
         pass
 
-    print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: session_id={session_id}")
+    # 日志中显示client_session_id
+    if client_session_id:
+        print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: socket_sid={session_id}, client_sid={client_session_id}")
+    else:
+        print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: socket_sid={session_id}")
 
 @socketio.on('heartbeat')
 def handle_heartbeat(data):
     """Handle heartbeat from client to keep connection alive"""
     session_id = request.sid
+    client_timestamp = data.get('timestamp', 0)
+    
     # 更新会话的最后访问时间，防止会话超时
     if session_id in gui_instance.user_sessions:
         # 验证并更新会话，这会更新last_accessed时间
         gui_instance.auth_manager.validate_session(session_id)
+    
     # 发送心跳响应，确认连接正常
-    emit('heartbeat_ack', {'timestamp': data.get('timestamp', 0), 'server_time': time.time()}, room=session_id)
+    emit('heartbeat_ack', {'timestamp': client_timestamp, 'server_time': time.time()}, room=session_id)
 
 @socketio.on('execute_task')
 def handle_execute_task(data):
@@ -3653,6 +3745,9 @@ def handle_execute_task(data):
     user_lang = gui_config.get('language', get_language())
     i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
     session_id = request.sid
+    
+    # 🔧 添加调试日志以跟踪函数调用
+    # print(f"[{datetime.datetime.now().isoformat()}] 📥 handle_execute_task called: session_id={session_id}")
     
     # Get user session
     if session_id not in gui_instance.user_sessions:
@@ -3735,6 +3830,10 @@ def handle_execute_task(data):
         }, room=session_id)
         return
     
+    # 🔧 停止旧的queue_reader_thread（如果存在）
+    # 这很重要，因为我们即将创建新的队列
+    stop_queue_reader_thread(user_session)
+    
     user_session.output_queue = multiprocessing.Queue()
     user_session.input_queue = multiprocessing.Queue()  # Queue for user input in GUI mode
     
@@ -3743,12 +3842,6 @@ def handle_execute_task(data):
     if user_session.api_key:
         import hashlib
         user_id = hashlib.sha256(user_session.api_key.encode()).hexdigest()
-    
-    # 🎯 Send immediate feedback to user
-    emit('output', {
-        'message': i18n.get('task_emitted', '✅ Task Emitted'),
-        'type': 'system'
-    }, room=session_id)
     
     try:
         # 🚀 Create and start process with highest priority (minimize delay)
@@ -3764,7 +3857,9 @@ def handle_execute_task(data):
         
         # Start queue reader thread after process is confirmed started
         # Messages will be buffered in queue, so slight delay is fine
-        threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True).start()
+        new_thread = threading.Thread(target=queue_reader_thread, args=(session_id,), daemon=True)
+        user_session.queue_reader_thread = new_thread
+        new_thread.start()
         
     except Exception as e:
         # If process startup fails
@@ -3808,9 +3903,26 @@ def handle_select_directory(data):
     
     user_session = gui_instance.user_sessions[session_id]
     dir_name = data.get('dir_name', '')
+    
     if dir_name:
         user_session.selected_output_dir = dir_name
-        emit('directory_selected', {'dir_name': dir_name}, room=session_id)
+        
+        # 尝试读取manager.out文件内容
+        manager_out_content = None
+        try:
+            user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+            manager_out_path = os.path.join(user_base_dir, dir_name, 'logs', 'manager.out')
+            
+            if os.path.exists(manager_out_path):
+                with open(manager_out_path, 'r', encoding='utf-8') as f:
+                    manager_out_content = f.read()
+        except Exception as e:
+            logger.warning(f"Failed to read manager.out for directory {dir_name}: {str(e)}")
+        
+        emit('directory_selected', {
+            'dir_name': dir_name, 
+            'manager_out_content': manager_out_content
+        }, room=session_id)
     else:
         user_session.selected_output_dir = None
         emit('directory_selected', {'dir_name': None}, room=session_id)
@@ -3878,7 +3990,7 @@ def handle_append_task(data):
             },
             "priority": 2,
             "requires_response": False,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.datetime.now().isoformat(),
             "delivered": False,
             "read": False
         }
@@ -4023,7 +4135,7 @@ def handle_create_new_directory(data=None):
         # Get language from data if available, otherwise use default
         user_lang = data.get('language', get_language()) if data else get_language()
         i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         new_dir_name = f"output_{timestamp}"
         new_dir_path = os.path.join(user_base_dir, new_dir_name)
         
@@ -4310,7 +4422,7 @@ def agent_status_api():
                 'messages': [],
                 'agent_ids': [],
                 'output_directory': output_dir or '未设置',
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.datetime.now().isoformat()
             }), 404
         
         # Load all agent statuses
@@ -4359,7 +4471,7 @@ def agent_status_api():
             'mermaid_figures': mermaid_figures,
             'agent_ids': agent_ids,
             'output_directory': output_dir,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.datetime.now().isoformat(),
             'message_count': len(sorted_messages)
         })
     except Exception as e:
@@ -4372,7 +4484,7 @@ def agent_status_api():
             'messages': [],
             'agent_ids': [],
             'output_directory': 'Error',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.datetime.now().isoformat()
         }), 500
 
 @app.route('/api/agent-status-reload', methods=['POST'])
@@ -4553,7 +4665,7 @@ def upload_files(dir_name):
                 # If file already exists, add timestamp
                 if os.path.exists(os.path.join(workspace_dir, safe_filename)):
                     name, ext = os.path.splitext(safe_filename)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     safe_filename = f"{name}_{timestamp}{ext}"
                 
                 file_path = os.path.join(workspace_dir, safe_filename)
@@ -5534,7 +5646,7 @@ def generate_custom_mcp_config(selected_servers, out_dir):
                 pass
 
         # Generate filename with timestamp to avoid conflicts
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         config_filename = f"mcp_servers_custom_{timestamp}.json"
         custom_config_path = os.path.join(out_dir, config_filename)
 
