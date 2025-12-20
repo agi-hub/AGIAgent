@@ -4087,6 +4087,7 @@
         let isUserScrolling = false; // Whether user is manually scrolling
         let autoScrollEnabled = true; // Whether auto-scroll is enabled
         let detailInfoAutoScrollEnabled = false; // Whether auto-scroll is enabled for detail info messages
+        let savedAutoScrollStateBeforeLoading = true; // 保存加载manager.out前的自动滚动状态
         let refreshTimeout = null; // Debounce timer
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
@@ -4895,6 +4896,14 @@
                     // 重置JSON收集状态
                     resetJsonCollectingState();
                     
+                    // 重置manager.out加载标志（如果之前正在加载，先清除并恢复自动滚动状态）
+                    if (isLoadingFromManagerOut) {
+                        // 如果之前正在加载，恢复自动滚动状态
+                        autoScrollEnabled = savedAutoScrollStateBeforeLoading;
+                        updateAutoScrollIndicator();
+                    }
+                    isLoadingFromManagerOut = false;
+                    
                     // 清空工具调用信息显示框
                     const detailInfoMessages = document.getElementById('detailInfoMessages');
                     if (detailInfoMessages) {
@@ -4910,27 +4919,29 @@
                     
                     // 如果有manager.out内容，解析并显示到聊天记录对话框
                     if (data.manager_out_content) {
+                        // 设置标志，表示正在从manager.out加载历史内容
+                        isLoadingFromManagerOut = true;
+                        
+                        // 保存当前自动滚动状态，并在加载期间禁用自动滚动
+                        savedAutoScrollStateBeforeLoading = autoScrollEnabled;
+                        autoScrollEnabled = false;
+                        
                         // 稍等一下，确保欢迎信息先显示，然后再加载manager.out内容
                         setTimeout(function() {
-                            // 逐行解析并显示manager.out内容，模拟真实的agent输出流
+                            // 解析manager.out内容，收集所有消息
                             const lines = data.manager_out_content.split('\n');
-                            let currentIndex = 0;
+                            const messagesToDisplay = []; // 收集所有消息
                             
-                            function processNextLine() {
-                                if (currentIndex >= lines.length) {
-                                    return; // 处理完成
-                                }
-                                
-                                const line = lines[currentIndex];
-                                currentIndex++;
+                            // 预处理：收集所有消息到数组
+                            for (let i = 0; i < lines.length; i++) {
+                                const line = lines[i];
+                                const lineTrimmed = line.trim();
                                 
                                 // 跳过空行（但保留换行符以维持格式）
-                                const lineTrimmed = line.trim();
-                                if (!lineTrimmed && currentIndex < lines.length) {
-                                    // 空行也发送，但可以快速处理
-                                    addMessage(line, 'info');
-                                    setTimeout(processNextLine, 1);
-                                    return;
+                                if (!lineTrimmed && i < lines.length - 1) {
+                                    // 空行也保留
+                                    messagesToDisplay.push({ message: line, type: 'info' });
+                                    continue;
                                 }
                                 
                                 // 判断消息类型
@@ -4953,18 +4964,55 @@
                                     messageType = 'info';
                                 }
                                 
-                                // 添加消息到聊天记录（使用现有的解析逻辑，包括工具调用解析）
-                                addMessage(line, messageType);
-                                
-                                // 继续处理下一行，使用较小的延迟以模拟流式输出
-                                // 对于JSON块内的行，使用更小的延迟以保持连续性
-                                const isJsonBlock = lineTrimmed === '```json' || lineTrimmed === '```' || 
-                                                   (currentIndex > 0 && lines[currentIndex - 2] && lines[currentIndex - 2].trim() === '```json');
-                                setTimeout(processNextLine, isJsonBlock ? 1 : 5);
+                                messagesToDisplay.push({ message: line, type: messageType });
                             }
                             
-                            // 开始处理
-                            processNextLine();
+                            // 批量显示消息，使用更粗粒度的批量渲染
+                            // 如果消息数量较少，直接一次性显示；否则分批显示
+                            if (messagesToDisplay.length <= 500) {
+                                // 消息数量较少，一次性显示所有消息
+                                for (let i = 0; i < messagesToDisplay.length; i++) {
+                                    const msgData = messagesToDisplay[i];
+                                    addMessageImmediate(msgData.message, msgData.type);
+                                }
+                                // 加载完成
+                                isLoadingFromManagerOut = false;
+                                autoScrollEnabled = savedAutoScrollStateBeforeLoading;
+                                updateAutoScrollIndicator();
+                            } else {
+                                // 消息数量较多，使用粗粒度分批显示
+                                let messageIndex = 0;
+                                const BATCH_SIZE = 1000; // 每批显示1000条消息
+                                const TIME_DELAY = 500; // 每500ms处理一批，大幅降低刷新频率
+                                
+                                function renderBatch() {
+                                    if (messageIndex >= messagesToDisplay.length) {
+                                        // 所有消息已显示完成
+                                        isLoadingFromManagerOut = false;
+                                        autoScrollEnabled = savedAutoScrollStateBeforeLoading;
+                                        updateAutoScrollIndicator();
+                                        return;
+                                    }
+                                    
+                                    // 处理一批消息（一次性处理BATCH_SIZE条）
+                                    const endIndex = Math.min(messageIndex + BATCH_SIZE, messagesToDisplay.length);
+                                    
+                                    // 批量添加消息，减少DOM操作
+                                    for (let i = messageIndex; i < endIndex; i++) {
+                                        const msgData = messagesToDisplay[i];
+                                        // 直接调用addMessageImmediate，跳过批处理队列
+                                        addMessageImmediate(msgData.message, msgData.type);
+                                    }
+                                    
+                                    messageIndex = endIndex;
+                                    
+                                    // 延迟处理下一批，大幅降低刷新频率
+                                    setTimeout(renderBatch, TIME_DELAY);
+                                }
+                                
+                                // 开始批量渲染
+                                setTimeout(renderBatch, TIME_DELAY);
+                            }
                         }, 100); // 延迟100ms，确保欢迎信息先显示
                     }
                 } else {
@@ -5167,6 +5215,9 @@
             waitingForJsonStart: false,  // 标记是否在等待JSON开始（遇到```json后）
             waitingForJsonEnd: false     // 标记是否在等待JSON结束标记（```）
         };
+        
+        // 标记是否正在从manager.out加载历史内容
+        let isLoadingFromManagerOut = false;
         
         // 批量消息处理相关变量
         let messageBatchQueue = [];
@@ -5536,6 +5587,11 @@
          * @description 当日志打印窗口处于绿框打印状态（JSON收集）时，将JSON内容显示到细节窗口
          */
         function updateDetailInfoWithJson(jsonContent) {
+            // 如果正在从manager.out加载历史内容，跳过工具调用详细框的更新
+            if (isLoadingFromManagerOut) {
+                return;
+            }
+            
             const detailInfoMessages = document.getElementById('detailInfoMessages');
             if (!detailInfoMessages) {
                 return;
@@ -8588,31 +8644,71 @@
                 loadPDF(file_path || currentFilePath);
             } else if (type === 'office') {
                 const { file_ext } = data;
+                const filePath = file_path || currentFilePath;
+                const fileUrl = `/api/office-file/${encodeURIComponent(filePath)}${(currentUser && currentUser !== 'default') ? '?api_key=' + encodeURIComponent(currentUser) : ''}`;
+                
                 previewContent.innerHTML = `
-                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
-                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${file_ext.toUpperCase()} ${I18N.office_preview_note || 'Office Document Preview'}
+                    <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666; display: flex; justify-content: space-between; align-items: center;">
+                        <span>
+                            ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${file_ext.toUpperCase()} ${I18N.office_preview_note || 'Office Document Preview'}
+                        </span>
+                        <a href="/api/download-file/${filePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download 
+                           style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
+                        </a>
                     </div>
-                    <div id="officeContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5;">
-                        <div style="text-align: center; padding: 40px; color: #666;">
-                            <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
-                            <h3 style="margin-bottom: 20px;">${I18N.office_preview_title || 'Office Document Preview'}</h3>
-                            <p style="margin-bottom: 20px;">${I18N.office_download_instruction || 'Office documents need to be downloaded for local viewing:'}</p>
-                            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                                <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 21px; min-width: 200px; text-align: center; display: inline-block;">
-                                    <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
-                                </a>
-                            </div>
-                            <div style="margin-top: 30px; padding: 20px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px; text-align: left; max-width: 600px;">
-                                <h4 style="color: #0c5460; margin-bottom: 10px;"><i class="fas fa-info-circle"></i> ${I18N.usage_instructions || 'Usage Instructions'}</h4>
-                                <ul style="color: #0c5460; margin: 0; padding-left: 20px;">
-                                    <li>${I18N.office_instruction_1 || 'Click the "Download File" button to save the file locally'}</li>
-                                    <li>${I18N.office_instruction_2 || 'Open with Microsoft Office, WPS, or other compatible software'}</li>
-                                    <li>${I18N.office_instruction_3 || 'Supports .doc, .docx, .xls, .xlsx, .ppt, .pptx and other formats'}</li>
-                                </ul>
-                            </div>
+                    <div id="officeContainer" style="width: 100%; height: calc(90vh - 160px); border: 1px solid #ddd; border-radius: 4px; overflow: auto; background: #f5f5f5; position: relative;">
+                        <div id="officeLoadingIndicator" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 1000; background: rgba(255,255,255,0.9); padding: 20px; border-radius: 8px;">
+                            <div style="border: 4px solid #f3f3f3; border-top: 4px solid #007acc; border-radius: 50%; width: 40px; height: 40px; animation: officeSpin 1s linear infinite; margin: 0 auto 15px;"></div>
+                            <p style="color: #666; margin: 0;">${I18N.loading || 'Loading'}...</p>
+                        </div>
+                        <div id="officePreviewContent" style="display: none; padding: 20px; background: white; min-height: 100%;">
                         </div>
                     </div>
                 `;
+                
+                // 添加样式
+                setTimeout(function() {
+                    if (!document.getElementById('officePreviewStyles')) {
+                        const style = document.createElement('style');
+                        style.id = 'officePreviewStyles';
+                        style.textContent = `
+                            @keyframes officeSpin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }
+                            #officePreviewContent {
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                                line-height: 1.6;
+                                color: #333;
+                            }
+                            #officePreviewContent h1, #officePreviewContent h2, #officePreviewContent h3 {
+                                margin-top: 1.5em;
+                                margin-bottom: 0.5em;
+                            }
+                            #officePreviewContent p {
+                                margin: 1em 0;
+                            }
+                            #officePreviewContent table {
+                                border-collapse: collapse;
+                                width: 100%;
+                                margin: 1em 0;
+                            }
+                            #officePreviewContent table td, #officePreviewContent table th {
+                                border: 1px solid #ddd;
+                                padding: 8px;
+                            }
+                            #officePreviewContent table th {
+                                background-color: #f2f2f2;
+                                font-weight: bold;
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+                    
+                    // 加载并预览Office文档
+                    loadOfficePreview(fileUrl, file_ext);
+                }, 100);
             } else if (type === 'csv') {
                 // CSV文件表格预览
                 const { headers, data: csvRows, total_rows, displayed_rows, truncated, encoding } = data;
@@ -8862,11 +8958,106 @@
             }, 10);
         }
 
+        // 加载Office文档预览（使用mammoth.js for Word, 其他格式显示提示）
+        async function loadOfficePreview(fileUrl, fileExt) {
+            const container = document.getElementById('officeContainer');
+            const loadingIndicator = document.getElementById('officeLoadingIndicator');
+            const previewContent = document.getElementById('officePreviewContent');
+            
+            if (!container || !loadingIndicator || !previewContent) {
+                console.error('Office preview elements not found');
+                return;
+            }
+            
+            try {
+                // 只支持.docx格式的预览（使用mammoth.js）
+                if (fileExt === '.docx') {
+                    // 动态加载mammoth.js
+                    if (typeof mammoth === 'undefined') {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js';
+                        script.onload = function() {
+                            loadDocxPreview(fileUrl, loadingIndicator, previewContent);
+                        };
+                        script.onerror = function() {
+                            showOfficeError(loadingIndicator, previewContent, '无法加载文档预览库，请检查网络连接');
+                        };
+                        document.head.appendChild(script);
+                    } else {
+                        loadDocxPreview(fileUrl, loadingIndicator, previewContent);
+                    }
+                } else {
+                    // 其他格式显示提示信息
+                    loadingIndicator.style.display = 'none';
+                    previewContent.style.display = 'block';
+                    previewContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <i class="fas fa-file-alt" style="font-size: 48px; margin-bottom: 20px; color: #007acc;"></i>
+                            <h3 style="margin-bottom: 20px;">${I18N.office_preview_title || 'Office Document Preview'}</h3>
+                            <p style="margin-bottom: 20px;">${I18N.office_download_instruction || '此格式暂不支持在线预览，请下载文件到本地查看：'}</p>
+                            <p style="margin-bottom: 20px; color: #999; font-size: 14px;">支持预览的格式：.docx (Word 2007+)</p>
+                            <a href="${fileUrl.replace('/api/office-file/', '/api/download-file/')}" download 
+                               style="padding: 12px 24px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; font-size: 16px; display: inline-block;">
+                                <i class="fas fa-download"></i> ${I18N.download_file || 'Download File'}
+                            </a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading office preview:', error);
+                showOfficeError(loadingIndicator, previewContent, error.message);
+            }
+        }
+        
+        async function loadDocxPreview(fileUrl, loadingIndicator, previewContent) {
+            try {
+                // 获取文件内容
+                const response = await fetch(fileUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                
+                // 使用mammoth.js转换
+                const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+                
+                // 显示预览内容
+                loadingIndicator.style.display = 'none';
+                previewContent.style.display = 'block';
+                previewContent.innerHTML = result.value;
+                
+            } catch (error) {
+                console.error('Error converting docx:', error);
+                const errorMsg = (I18N.docx_load_failed || 'Document load failed: {error}').replace('{error}', error.message);
+                showOfficeError(loadingIndicator, previewContent, errorMsg);
+            }
+        }
+        
+        function showOfficeError(loadingIndicator, previewContent, errorMessage) {
+            loadingIndicator.style.display = 'none';
+            previewContent.style.display = 'block';
+            const previewFailedText = I18N.preview_failed || 'Preview Failed';
+            const reloadText = I18N.reload || 'Reload';
+            previewContent.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #d73a49;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <h3 style="margin-bottom: 20px;">${previewFailedText}</h3>
+                    <p style="margin-bottom: 20px;">${errorMessage}</p>
+                    <a href="javascript:location.reload()" 
+                       style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                        ${reloadText}
+                    </a>
+                </div>
+            `;
+        }
+
         function loadPDF(filePath) {
             if (typeof pdfjsLib === 'undefined') {
+                const pdfjsNotLoadedText = I18N.pdfjs_not_loaded || 'PDF.js not loaded, unable to preview PDF files';
                 document.getElementById('pdfContainer').innerHTML = `
                     <div style="text-align: center; padding: 20px; color: red;">
-                        <i class="fas fa-exclamation-triangle"></i> PDF.js 未加载，无法预览PDF文件
+                        <i class="fas fa-exclamation-triangle"></i> ${pdfjsNotLoadedText}
                     </div>
                 `;
                 return;
@@ -8878,13 +9069,7 @@
             
             // PDF下载使用原始路径（后端会自动添加用户目录前缀）
             const downloadFilePath = window.currentOriginalFilePath || filePath;
-            
-            console.log('🔍 PDF loadPDF调试信息:');
-            console.log('  传入的filePath:', filePath);
-            console.log('  用于下载的downloadFilePath:', downloadFilePath);
-            console.log('  全局currentOriginalFilePath:', window.currentOriginalFilePath);
-            console.log('  PDF URL:', pdfUrl);
-            console.log('  将用于下载的路径:', downloadFilePath);
+        
             
             // 配置PDF.js加载选项
             const loadingTask = pdfjsLib.getDocument({
@@ -13381,13 +13566,26 @@
             const availableWidth = wrapperWidth - resizerWidth;
             
             const currentDetailWidth = detailInfoContainer.offsetWidth;
+            const currentChatWidth = chatContainer.offsetWidth;
             
             const minChatWidth = 300;
             const minDetailWidth = 200;
             const maxDetailWidth = 800;
             
-            // 计算detail窗口的合理宽度
-            let newDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, currentDetailWidth));
+            // 检查当前总宽度是否超过可用宽度，或者是否有空白
+            const totalWidth = currentChatWidth + currentDetailWidth;
+            const needsAdjustment = totalWidth > availableWidth || totalWidth < availableWidth - 5; // 允许5px的误差
+            
+            let newDetailWidth;
+            if (needsAdjustment) {
+                // 如果需要调整，基于视口宽度重新计算（与CSS保持一致：min(400px, 30vw)）
+                const viewportWidth = window.innerWidth;
+                const cssBasedWidth = Math.min(400, viewportWidth * 0.3);
+                newDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, cssBasedWidth));
+            } else {
+                // 如果不需要调整，保持当前宽度，但确保在合理范围内
+                newDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, currentDetailWidth));
+            }
             
             // 确保有足够空间给chat窗口
             const maxAllowedDetailWidth = availableWidth - minChatWidth;
@@ -13401,10 +13599,10 @@
             // 确保chat窗口不小于最小宽度
             if (newChatWidth < minChatWidth) {
                 newChatWidth = minChatWidth;
-                newDetailWidth = availableWidth - newChatWidth;
+                newDetailWidth = Math.max(minDetailWidth, availableWidth - newChatWidth);
             }
             
-            // 设置固定宽度，确保两个容器充满整个可用空间
+            // 设置固定宽度，确保两个容器充满整个可用空间，不留空白
             chatContainer.style.flex = '0 0 ' + newChatWidth + 'px';
             chatContainer.style.minWidth = '';
             detailInfoContainer.style.width = newDetailWidth + 'px';
@@ -13715,8 +13913,6 @@
                         const chatWrapper = document.querySelector('.chat-wrapper');
                         const currentWrapperWidth = chatWrapper ? chatWrapper.offsetWidth : window.innerWidth;
                         const resizerWidth = verticalResizer ? (verticalResizer.offsetWidth || 5) : 5;
-                        const currentChatWidth = chatContainer ? chatContainer.offsetWidth : 0;
-                        const currentDetailWidth = detailInfoContainer.offsetWidth;
                         
                         const minDetailWidth = 200;
                         const maxDetailWidth = 800;
@@ -13725,35 +13921,38 @@
                         // 可用的总宽度
                         const availableWidth = currentWrapperWidth - resizerWidth;
                         
-                        // 检查是否需要调整
-                        const totalWidth = currentChatWidth + currentDetailWidth;
+                        // 基于视口宽度计算目标detail宽度（与CSS保持一致：min(400px, 30vw)）
+                        // 但需要考虑可用空间和最小宽度限制
+                        const viewportWidth = window.innerWidth;
+                        const cssBasedWidth = Math.min(400, viewportWidth * 0.3);
+                        let targetDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, cssBasedWidth));
                         
-                        if (totalWidth > availableWidth || currentDetailWidth < minDetailWidth || currentDetailWidth > maxDetailWidth || currentChatWidth < minChatWidth) {
-                            // 计算目标宽度
-                            let targetDetailWidth = Math.max(minDetailWidth, Math.min(maxDetailWidth, currentDetailWidth));
-                            let targetChatWidth = availableWidth - targetDetailWidth;
-                            
-                            // 确保聊天窗口不小于最小宽度
-                            if (targetChatWidth < minChatWidth) {
-                                targetChatWidth = minChatWidth;
-                                targetDetailWidth = availableWidth - targetChatWidth;
-                            }
-                            
-                            // 再次确保细节窗口不小于最小宽度
-                            if (targetDetailWidth < minDetailWidth) {
-                                targetDetailWidth = minDetailWidth;
-                                targetChatWidth = availableWidth - targetDetailWidth;
-                            }
-                            
-                            if (chatContainer) {
-                                chatContainer.style.flex = '0 0 ' + targetChatWidth + 'px';
-                            }
-                            detailInfoContainer.style.width = targetDetailWidth + 'px';
-                            
-                            // 更新保存的宽度值
-                            savedDetailWidth = targetDetailWidth.toString();
-                            savedChatWidth = targetChatWidth.toString();
+                        // 计算聊天窗口的目标宽度
+                        let targetChatWidth = availableWidth - targetDetailWidth;
+                        
+                        // 确保聊天窗口不小于最小宽度
+                        if (targetChatWidth < minChatWidth) {
+                            targetChatWidth = minChatWidth;
+                            targetDetailWidth = Math.max(minDetailWidth, availableWidth - targetChatWidth);
                         }
+                        
+                        // 确保细节窗口不超过最大宽度
+                        if (targetDetailWidth > maxDetailWidth) {
+                            targetDetailWidth = maxDetailWidth;
+                            targetChatWidth = availableWidth - targetDetailWidth;
+                        }
+                        
+                        // 应用计算出的宽度，确保两个容器充满整个可用空间，不留空白
+                        if (chatContainer) {
+                            chatContainer.style.flex = '0 0 ' + targetChatWidth + 'px';
+                            chatContainer.style.minWidth = '';
+                        }
+                        detailInfoContainer.style.width = targetDetailWidth + 'px';
+                        detailInfoContainer.style.flexShrink = '0';
+                        
+                        // 更新保存的宽度值
+                        savedDetailWidth = targetDetailWidth.toString();
+                        savedChatWidth = targetChatWidth.toString();
                     }
                 }, 150); // 150ms防抖延迟
             });

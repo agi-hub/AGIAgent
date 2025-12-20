@@ -12,7 +12,6 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
 import argparse
 
 # Import Mermaid processor
@@ -31,7 +30,6 @@ except ImportError:
         print("⚠️ Mermaid processor not available")
 
 app = Flask(__name__)
-CORS(app)
 
 # Global variable to store the output directory path
 OUTPUT_DIR = None
@@ -533,6 +531,7 @@ def serve_static(path):
 
 
 @app.route('/api/files/<path:path>')
+@app.route('/api/agent-status-files/<path:path>')
 def serve_output_file(path):
     """Serve files from output directory (for mermaid images)"""
     if not OUTPUT_DIR:

@@ -349,6 +349,67 @@
         // Immediate console log to verify script is loading
         console.log('Script started loading...');
         
+        // Get API base path - handle nginx proxy paths like /en/
+        function getApiBasePath() {
+            // Get current pathname (e.g., /en/agent-status-visualizer or /agent-status-visualizer)
+            const pathname = window.location.pathname;
+            // Extract base path (everything before the last segment)
+            // For /en/agent-status-visualizer -> /en
+            // For /agent-status-visualizer -> ''
+            const segments = pathname.split('/').filter(s => s);
+            if (segments.length > 1) {
+                // Remove the last segment (page name) and join the rest
+                segments.pop();
+                return '/' + segments.join('/');
+            }
+            return '';
+        }
+        
+        // Detect if we're accessing through app.py (which uses /agent-status-visualizer route)
+        // vs standalone agent_status_visualizer.py (which uses root path)
+        function isAppPyRoute() {
+            const pathname = window.location.pathname;
+            // If pathname contains 'agent-status-visualizer', we're likely through app.py
+            return pathname.includes('agent-status-visualizer');
+        }
+        
+        const API_BASE_PATH = getApiBasePath();
+        const USE_APP_PY_ROUTES = isAppPyRoute();
+        console.log('API base path detected:', API_BASE_PATH || '(root)');
+        console.log('Using app.py routes:', USE_APP_PY_ROUTES);
+        
+        // Helper function to build API URLs
+        // Routes mapping: standard routes -> app.py routes
+        const ROUTE_MAP = {
+            'api/status': USE_APP_PY_ROUTES ? 'api/agent-status' : 'api/status',
+            'api/reload': USE_APP_PY_ROUTES ? 'api/agent-status-reload' : 'api/reload',
+            'api/files/': USE_APP_PY_ROUTES ? 'api/agent-status-files/' : 'api/files/',
+            'api/agent-status-files/': 'api/agent-status-files/' // Keep as-is if already using app.py route
+        };
+        
+        function apiUrl(path) {
+            // Remove leading slash from path if present
+            let cleanPath = path.startsWith('/') ? path.slice(1) : path;
+            
+            // Map to correct route if needed (check longest matches first)
+            const sortedKeys = Object.keys(ROUTE_MAP).sort((a, b) => b.length - a.length);
+            for (const key of sortedKeys) {
+                if (cleanPath.startsWith(key)) {
+                    cleanPath = cleanPath.replace(key, ROUTE_MAP[key]);
+                    break;
+                }
+            }
+            
+            // Build URL, ensuring no double slashes
+            if (API_BASE_PATH) {
+                const result = API_BASE_PATH + '/' + cleanPath;
+                // Remove any double slashes (except after http://)
+                return result.replace(/([^:]\/)\/+/g, '$1');
+            } else {
+                return '/' + cleanPath;
+            }
+        }
+        
         // Add error handler for uncaught errors
         window.addEventListener('error', function(e) {
             console.error('Uncaught error:', e.error);
@@ -835,12 +896,13 @@
 
             let html = '';
             figures.forEach(figure => {
-                // Use the /api/agent-status-files route to serve images from output directory
+                // Use the /api/files or /api/agent-status-files route to serve images from output directory
                 // Build URL with path and query parameters
                 // Note: Flask's <path:path> can handle paths with slashes, but we need to encode them properly
                 const pathParts = figure.path.split('/');
                 const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
-                let imageUrl = `/api/agent-status-files/${encodedPath}`;
+                // Use 'api/files/' as base - apiUrl() will map it correctly based on access method
+                let imageUrl = apiUrl(`api/files/${encodedPath}`);
                 const params = new URLSearchParams();
                 if (dirParam) {
                     params.set('dir', dirParam);
@@ -881,7 +943,7 @@
                 
                 let response;
                 try {
-                    response = await fetch('/api/status', {
+                    response = await fetch(apiUrl('api/status'), {
                         signal: controller.signal,
                         cache: 'no-cache',  // Disable cache to ensure fresh data
                         headers: {
@@ -1011,7 +1073,7 @@
         async function reloadDirectory() {
             try {
                 console.log('Reloading directory...');
-                const response = await fetch('/api/reload', {
+                const response = await fetch(apiUrl('api/reload'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

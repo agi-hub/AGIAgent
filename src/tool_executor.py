@@ -4859,10 +4859,6 @@ Please review the error and adjust your response accordingly.
                                 "temperature": temperature
                             }
                             
-                            # Enable thinking for reasoning-capable models
-                            if self.enable_thinking:
-                                api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-                            
                             with self.client.messages.stream(**api_params) as stream:
                                 content = ""
                                 hallucination_detected = False
@@ -5646,10 +5642,6 @@ Please review the error and adjust your response accordingly.
                             "temperature": temperature
                         }
                         
-                        # Enable thinking for reasoning-capable models
-                        if self.enable_thinking:
-                            api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-
                         with self.client.messages.stream(**api_params) as stream:
                             try:
                                 for event in stream:
@@ -6336,10 +6328,6 @@ Please review the error and adjust your response accordingly.
                             "temperature": temperature
                         }
                         
-                        # Enable thinking for reasoning-capable models
-                        if self.enable_thinking:
-                            api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-
                         with self.client.messages.stream(**api_params) as stream:
                             try:
                                 for event in stream:

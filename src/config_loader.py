@@ -1164,25 +1164,13 @@ def get_all_model_configs(config_file: str = "config/config.txt") -> list:
                     i += 1
                     continue
                 
-                header_lower = stripped_line.lower()
-                # Remove # and check for common patterns
-                header_content = header_lower.replace('#', '').strip()
-                
-                # Check if it looks like a configuration section header
-                # Must NOT be a config line (no = sign), and must contain keywords
-                if '=' not in header_content and (
-                    'configuration' in header_content or 
-                    ('api' in header_content and 'configuration' in header_content) or
-                    ('api' in header_content and len(header_content.split()) <= 4) or  # Short API-related lines
-                    ('model' in header_content and len(header_content.split()) <= 4) or  # Short model-related lines
-                    any(provider in header_content for provider in 
-                        ['openai', 'anthropic', 'zhipu', 'bailian', 'gemini', 'deepseek', 
-                         'doubao', 'moonshot', 'siliconflow', 'ollama', 'openrouter', 'volcengine', 'google'])):
-                    # Check if next few lines contain config keys (api_key, api_base, model)
-                    if i + 1 < len(lines):
-                        next_lines = ''.join(lines[i+1:min(i+5, len(lines))])  # Check next 4 lines
-                        if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
-                            is_config_header = True
+                header_without_hash = stripped_line[1:].strip()
+                # Check if next few lines contain config keys (api_key, api_base, model)
+                # If a comment line is followed by config items, it's a configuration section header
+                if i + 1 < len(lines):
+                    next_lines = ''.join(lines[i+1:min(i+5, len(lines))])  # Check next 4 lines
+                    if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
+                        is_config_header = True
             
             if is_config_header:
                 # Extract section name
@@ -1223,22 +1211,17 @@ def get_all_model_configs(config_file: str = "config/config.txt") -> list:
                     # Check if this is a header (not a config line)
                     if stripped_line.startswith('#'):
                         header_without_hash = stripped_line[1:].strip()
-                        # If it's a header (no = sign) and contains keywords, it's a new section
+                        # If it's a header (no = sign) and followed by config keys, it's a new section
                         if '=' not in header_without_hash:
-                            header_lower = stripped_line.lower()
-                            header_content = header_lower.replace('#', '').strip()
-                            if ('configuration' in header_content or 
-                                ('api' in header_content and 'configuration' in header_content) or
-                                ('api' in header_content and len(header_content.split()) <= 4) or
-                                ('model' in header_content and len(header_content.split()) <= 4) or
-                                any(provider in header_content for provider in 
-                                    ['openai', 'anthropic', 'zhipu', 'bailian', 'gemini', 'deepseek', 
-                                     'doubao', 'moonshot', 'siliconflow', 'ollama', 'openrouter', 'volcengine', 'google'])):
-                                # Check if next lines contain config keys
-                                if i + 1 < len(lines):
-                                    next_lines = ''.join(lines[i+1:min(i+5, len(lines))])
-                                    if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
+                            # Check if next lines contain config keys - if so, this is a new config section
+                            if i + 1 < len(lines):
+                                next_lines = ''.join(lines[i+1:min(i+5, len(lines))])
+                                if any(key in next_lines for key in ['api_key', 'api_base', 'model=']):
+                                    # If we've already found model and api_base, this is definitely a new section
+                                    if found_model and found_api_base:
                                         break
+                                    # If it's followed by config items, it's a new section header
+                                    break
                     
                     # Stop if we hit a non-empty, non-comment line that's not a config line
                     # (but allow config lines even if commented)

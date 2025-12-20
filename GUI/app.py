@@ -445,6 +445,9 @@ I18N_TEXTS = {
         'download_pdf': '下载PDF',
         'pdf_loading': '正在加载所有页面...',
         'pdf_render_error': 'PDF页面渲染失败',
+        'pdfjs_not_loaded': 'PDF.js 未加载，无法预览PDF文件',
+        'docx_load_failed': '文档加载失败: {error}',
+        'preview_failed': '预览失败',
         
         # Delete warnings
         'delete_current_executing_warning': '⚠️ 警告：这是当前正在执行的目录！',
@@ -815,6 +818,9 @@ I18N_TEXTS = {
         'download_pdf': 'Download PDF',
         'pdf_loading': 'Loading all pages...',
         'pdf_render_error': 'PDF page rendering failed',
+        'pdfjs_not_loaded': 'PDF.js not loaded, unable to preview PDF files',
+        'docx_load_failed': 'Document load failed: {error}',
+        'preview_failed': 'Preview Failed',
         
         # Delete warnings
         'delete_current_executing_warning': '⚠️ Warning: This is the currently executing directory!',
@@ -2474,6 +2480,75 @@ def list_directory():
         return jsonify({'success': True, 'files': items})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/office-file/<path:file_path>', methods=['GET', 'OPTIONS'])
+def get_office_file(file_path):
+    """Get office file for browser-based preview (mammoth.js)"""
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        response = Response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        response.headers['Access-Control-Max-Age'] = '3600'
+        return response
+    
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # URL decode the file path to handle Chinese characters
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Use the passed path directly, don't use secure_filename as we need to maintain path structure
+        full_path = os.path.join(user_base_dir, file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            abort(403)
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            abort(404)
+        
+        # Get file extension and set appropriate mimetype
+        _, ext = os.path.splitext(full_path.lower())
+        
+        # Define mimetypes for office files
+        mimetype_map = {
+            '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xls': 'application/vnd.ms-excel',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.ppt': 'application/vnd.ms-powerpoint',
+            '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        }
+        
+        mimetype = mimetype_map.get(ext, 'application/octet-stream')
+        
+        # Create response with CORS headers for browser-based preview
+        response = send_file(full_path, mimetype=mimetype)
+        
+        # Add CORS headers to allow browser to load the file
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        response.headers['Access-Control-Max-Age'] = '3600'
+        
+        return response
+    
+    except Exception as e:
+        print(f"Error serving office file {file_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        abort(500)
 
 @app.route('/api/file/<path:file_path>')
 def get_file_content(file_path):
@@ -4336,6 +4411,10 @@ def agent_status_visualizer():
         html_content = re.sub(r'"/api/reload"', '"/api/agent-status-reload"', html_content)
         html_content = re.sub(r"'/api/files/", "'/api/agent-status-files/", html_content)
         html_content = re.sub(r'"/api/files/', '"/api/agent-status-files/', html_content)
+        # Also replace in apiUrl() function calls
+        html_content = re.sub(r"apiUrl\(['\"]api/status['\"]\)", "apiUrl('api/agent-status')", html_content)
+        html_content = re.sub(r'apiUrl\(["\']api/reload["\']\)', "apiUrl('api/agent-status-reload')", html_content)
+        html_content = re.sub(r"apiUrl\(['\"]api/files/", "apiUrl('api/agent-status-files/", html_content)
         
         # Inject JavaScript to get dir and api_key parameters from URL and pass them to API calls
         dir_param = dir_name if dir_name else ''
