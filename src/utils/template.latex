@@ -111,6 +111,13 @@
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 
+% 定义pandocbounded命令（Pandoc生成的代码块边界命令）
+% 如果 fvextra 包已安装，这个命令应该已经定义
+% 但为了兼容性，我们提供一个备用定义
+% \pandocbounded 用于包装代码块，确保代码不会超出页面边界
+% 这是一个简单的包装器，如果 fvextra 提供了更好的实现，会被覆盖
+\providecommand{\pandocbounded}[1]{#1}
+
 % 设置代码背景色
 \definecolor{shadecolor}{RGB}{248,248,248}
 
