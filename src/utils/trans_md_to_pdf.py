@@ -312,9 +312,35 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
         cmd.extend(['-H', header_file])
     
     # Add filter options
+    wrapper_filter_path = None
     if filter_path and os.path.isfile(filter_path):
-        # Filter file has shebang and execute permission, use directly
-        cmd.extend(['--filter', filter_path])
+        # Create a temporary wrapper script to ensure correct Python environment
+        python_exe = sys.executable
+        try:
+            wrapper_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+            wrapper_file.write(f'''#!/usr/bin/env python3
+# Temporary wrapper script for SVG Chinese filter
+import sys
+import subprocess
+
+# Use the same Python interpreter that's running this script
+python_exe = {repr(python_exe)}
+filter_script = {repr(str(filter_path))}
+
+# Execute the filter script with the correct Python interpreter
+result = subprocess.run([python_exe, filter_script] + sys.argv[1:])
+sys.exit(result.returncode)
+''')
+            wrapper_file.close()
+            wrapper_filter_path = wrapper_file.name
+            # Make it executable
+            os.chmod(wrapper_filter_path, 0o755)
+            temp_files.append(wrapper_filter_path)
+            cmd.extend(['--filter', wrapper_filter_path])
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to create filter wrapper: {e}")
+            # Fallback to original filter path
+            cmd.extend(['--filter', filter_path])
     
     # Add template options
     if template_path and os.path.isfile(template_path):
@@ -486,9 +512,35 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
             cmd.extend(['-H', header_file])
     
     # Add filter options (only for LaTeX engines)
+    wrapper_filter_path = None
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and filter_path and os.path.isfile(filter_path):
-        # Filter file has shebang and execute permission, use directly
-        cmd.extend(['--filter', filter_path])
+        # Create a temporary wrapper script to ensure correct Python environment
+        python_exe = sys.executable
+        try:
+            wrapper_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+            wrapper_file.write(f'''#!/usr/bin/env python3
+# Temporary wrapper script for SVG Chinese filter
+import sys
+import subprocess
+
+# Use the same Python interpreter that's running this script
+python_exe = {repr(python_exe)}
+filter_script = {repr(str(filter_path))}
+
+# Execute the filter script with the correct Python interpreter
+result = subprocess.run([python_exe, filter_script] + sys.argv[1:])
+sys.exit(result.returncode)
+''')
+            wrapper_file.close()
+            wrapper_filter_path = wrapper_file.name
+            # Make it executable
+            os.chmod(wrapper_filter_path, 0o755)
+            temp_files.append(wrapper_filter_path)
+            cmd.extend(['--filter', wrapper_filter_path])
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to create filter wrapper: {e}")
+            # Fallback to original filter path
+            cmd.extend(['--filter', filter_path])
     
     # Add template options (only for LaTeX engines)
     if engine_name in ['xelatex', 'lualatex', 'pdflatex'] and template_path and os.path.isfile(template_path):
