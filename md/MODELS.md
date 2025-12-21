@@ -259,7 +259,7 @@ summary_max_length=3000
 Tool_calling_format=True  # Recommended to keep default
 ```
 
-## 🚨 Common Issues
+## Common Issues
 
 ### 1. Difficulty Choosing Models
 **Recommended Process:**

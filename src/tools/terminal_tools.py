@@ -92,18 +92,95 @@ class TerminalTools:
         stdout_queue = queue.Queue()
         stderr_queue = queue.Queue()
         
+        # Shared state for buffer flushing (for interactive programs)
+        stdout_buffer_lock = threading.Lock()
+        stdout_buffer_state = {'content': '', 'last_update': time.time()}
+        stderr_buffer_lock = threading.Lock()
+        stderr_buffer_state = {'content': '', 'last_update': time.time()}
+        
+        def flush_buffers_periodically(flush_interval=0.3):
+            """Periodically flush buffer content even without newline for interactive programs"""
+            while process.poll() is None:
+                time.sleep(flush_interval)
+                current_time = time.time()
+                
+                # Flush stdout buffer if it has content and hasn't been updated recently
+                with stdout_buffer_lock:
+                    if stdout_buffer_state['content']:
+                        time_since_update = current_time - stdout_buffer_state['last_update']
+                        # If buffer hasn't been updated for a while, flush it (program might be waiting for input)
+                        if time_since_update >= flush_interval:
+                            content = stdout_buffer_state['content']
+                            if content.strip():
+                                is_progress = any(indicator in content for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta'])
+                                stdout_queue.put(('stdout', content + '\n', current_time, is_progress))
+                            stdout_buffer_state['content'] = ''
+                
+                # Flush stderr buffer if it has content and hasn't been updated recently
+                with stderr_buffer_lock:
+                    if stderr_buffer_state['content']:
+                        time_since_update = current_time - stderr_buffer_state['last_update']
+                        if time_since_update >= flush_interval:
+                            content = stderr_buffer_state['content']
+                            if content.strip():
+                                is_progress = any(indicator in content for indicator in ['%', '|', '#', '/', 'it/s', 's/it', 'ETA', '进度', 'MB', 'KB', 'GB', 'kB/s', 'MB/s', 'GB/s', '━', '█', 'eta'])
+                                stderr_queue.put(('stderr', content + '\n', current_time, is_progress))
+                            stderr_buffer_state['content'] = ''
+        
         def read_stdout():
             try:
-                # Use buffered reading to detect \r characters before readline processes them
+                # Use more aggressive reading for interactive programs
+                # Try to use read1() from underlying buffer for non-blocking reads
+                # Fallback to read(1) for immediate response
                 buffer = ''
-                chunk_size = 1024
+                # Check if we can access underlying buffer's read1() method
+                use_read1 = False
+                read1_func = None
+                try:
+                    if hasattr(process.stdout, 'buffer') and hasattr(process.stdout.buffer, 'read1'):
+                        read1_func = process.stdout.buffer.read1
+                        use_read1 = True
+                    elif hasattr(process.stdout, 'read1'):
+                        read1_func = process.stdout.read1
+                        use_read1 = True
+                except:
+                    pass
+                
                 while True:
-                    chunk = process.stdout.read(chunk_size)
+                    # Try to read available data (non-blocking approach)
+                    try:
+                        if use_read1 and read1_func:
+                            # read1() reads at least 1 byte if available, doesn't wait for full buffer
+                            raw_chunk = read1_func(8192)  # Max bytes to read, but reads whatever is available
+                            # Decode the raw bytes if needed
+                            if isinstance(raw_chunk, bytes):
+                                chunk = raw_chunk.decode('utf-8', errors='replace')
+                            else:
+                                chunk = raw_chunk
+                        else:
+                            # Fallback: use read() with smaller chunk size for better responsiveness
+                            chunk = process.stdout.read(1)  # Read 1 byte at a time for immediate response
+                    except (OSError, ValueError, AttributeError):
+                        # Stream might be closed or in invalid state
+                        chunk = ''
+                    
                     if not chunk:
-                        break
-                    # Debug: track that we're receiving data
-                    #if chunk.strip():
-                    #    stdout_queue.put(('debug', f"[DEBUG] Received stdout chunk: {len(chunk)} chars", time.time(), False))
+                        # No data available, check if process has ended
+                        if process.poll() is not None:
+                            break
+                        # Store current buffer for periodic flushing
+                        if buffer:
+                            with stdout_buffer_lock:
+                                stdout_buffer_state['content'] = buffer
+                                stdout_buffer_state['last_update'] = time.time()
+                        # Small sleep to avoid busy waiting
+                        time.sleep(0.01)
+                        continue
+                    
+                    # Clear buffer state when new data arrives
+                    with stdout_buffer_lock:
+                        stdout_buffer_state['content'] = ''
+                    
                     buffer += chunk
                     
                     # Process buffer for \r (carriage return) and \n (newline)
@@ -134,6 +211,11 @@ class TerminalTools:
                             continue
                         
                         # No more complete lines in buffer
+                        # Store remaining buffer for periodic flushing (for interactive programs)
+                        if buffer:
+                            with stdout_buffer_lock:
+                                stdout_buffer_state['content'] = buffer
+                                stdout_buffer_state['last_update'] = time.time()
                         break
                 
                 # Process remaining buffer
@@ -147,16 +229,58 @@ class TerminalTools:
         
         def read_stderr():
             try:
-                # Use buffered reading to detect \r characters
+                # Use more aggressive reading for interactive programs
+                # Try to use read1() from underlying buffer for non-blocking reads
+                # Fallback to read(1) for immediate response
                 buffer = ''
-                chunk_size = 1024
+                # Check if we can access underlying buffer's read1() method
+                use_read1 = False
+                read1_func = None
+                try:
+                    if hasattr(process.stderr, 'buffer') and hasattr(process.stderr.buffer, 'read1'):
+                        read1_func = process.stderr.buffer.read1
+                        use_read1 = True
+                    elif hasattr(process.stderr, 'read1'):
+                        read1_func = process.stderr.read1
+                        use_read1 = True
+                except:
+                    pass
+                
                 while True:
-                    chunk = process.stderr.read(chunk_size)
+                    # Try to read available data (non-blocking approach)
+                    try:
+                        if use_read1 and read1_func:
+                            # read1() reads at least 1 byte if available, doesn't wait for full buffer
+                            raw_chunk = read1_func(8192)  # Max bytes to read, but reads whatever is available
+                            # Decode the raw bytes if needed
+                            if isinstance(raw_chunk, bytes):
+                                chunk = raw_chunk.decode('utf-8', errors='replace')
+                            else:
+                                chunk = raw_chunk
+                        else:
+                            # Fallback: use read() with smaller chunk size for better responsiveness
+                            chunk = process.stderr.read(1)  # Read 1 byte at a time for immediate response
+                    except (OSError, ValueError, AttributeError):
+                        # Stream might be closed or in invalid state
+                        chunk = ''
+                    
                     if not chunk:
-                        break
-                    # Debug: track that we're receiving data
-                    #if chunk.strip():
-                    #    stderr_queue.put(('debug', f"[DEBUG] Received stderr chunk: {len(chunk)} chars", time.time(), False))
+                        # No data available, check if process has ended
+                        if process.poll() is not None:
+                            break
+                        # Store current buffer for periodic flushing
+                        if buffer:
+                            with stderr_buffer_lock:
+                                stderr_buffer_state['content'] = buffer
+                                stderr_buffer_state['last_update'] = time.time()
+                        # Small sleep to avoid busy waiting
+                        time.sleep(0.01)
+                        continue
+                    
+                    # Clear buffer state when new data arrives
+                    with stderr_buffer_lock:
+                        stderr_buffer_state['content'] = ''
+                    
                     buffer += chunk
                     
                     # Process buffer for \r and \n
@@ -180,6 +304,12 @@ class TerminalTools:
                             buffer = buffer[nl_pos + 1:]
                             continue
                         
+                        # No more complete lines in buffer
+                        # Store remaining buffer for periodic flushing (for interactive programs)
+                        if buffer:
+                            with stderr_buffer_lock:
+                                stderr_buffer_state['content'] = buffer
+                                stderr_buffer_state['last_update'] = time.time()
                         break
                 
                 # Process remaining buffer
@@ -190,12 +320,68 @@ class TerminalTools:
             except:
                 pass
         
+        # Thread to handle user input for interactive programs
+        stdin_closed = threading.Event()
+        
+        def read_stdin():
+            """Read user input from terminal and send to process stdin"""
+            try:
+                # Only handle stdin if it's a TTY (interactive terminal)
+                if sys.stdin.isatty() and process.stdin:
+                    while process.poll() is None and not stdin_closed.is_set():
+                        try:
+                            # Check if stdin is available (non-blocking check)
+                            # Use select for Unix, or just try readline for Windows
+                            if sys.platform != 'win32':
+                                import select
+                                # Check if stdin has data available (timeout 0.1 seconds)
+                                if select.select([sys.stdin], [], [], 0.1)[0]:
+                                    user_input = sys.stdin.readline()
+                                else:
+                                    # No input available, continue loop
+                                    continue
+                            else:
+                                # Windows: use readline with timeout simulation
+                                # For Windows, we'll just use readline which will block
+                                # but the daemon thread will be killed when process ends
+                                user_input = sys.stdin.readline()
+                            
+                            if user_input:
+                                # Send input to process stdin
+                                if process.stdin and not process.stdin.closed:
+                                    process.stdin.write(user_input)
+                                    process.stdin.flush()
+                        except (OSError, ValueError, BrokenPipeError):
+                            # Process stdin might be closed
+                            break
+                        except EOFError:
+                            # User pressed Ctrl+D or stdin closed
+                            break
+                        except Exception:
+                            # Other errors, continue
+                            pass
+            except Exception:
+                pass
+            finally:
+                # Close stdin when done
+                try:
+                    if process.stdin and not process.stdin.closed:
+                        process.stdin.close()
+                except:
+                    pass
+        
         stdout_thread = threading.Thread(target=read_stdout)
         stderr_thread = threading.Thread(target=read_stderr)
+        flush_thread = threading.Thread(target=flush_buffers_periodically)
+        stdin_thread = threading.Thread(target=read_stdin)
         stdout_thread.daemon = True
         stderr_thread.daemon = True
+        flush_thread.daemon = True
+        stdin_thread.daemon = True
         stdout_thread.start()
         stderr_thread.start()
+        flush_thread.start()  # Start periodic buffer flushing for interactive programs
+        stdin_thread.start()  # Start stdin reading thread for interactive programs
         
         timed_out = False
         
@@ -205,8 +391,6 @@ class TerminalTools:
                 current_time = time.time()
                 
                 got_output = False
-                
-                # No GUI input handling in terminal mode
                 
                 try:
                     while True:
@@ -303,6 +487,9 @@ class TerminalTools:
                 
                 time.sleep(0.1)
             
+            # Signal stdin thread to stop
+            stdin_closed.set()
+            
             if timed_out:
                 try:
                     process.terminate()
@@ -317,6 +504,13 @@ class TerminalTools:
                         print_current("✅ Process force terminated")
                 except:
                     pass
+            
+            # Ensure stdin is closed
+            try:
+                if process.stdin and not process.stdin.closed:
+                    process.stdin.close()
+            except:
+                pass
             
             try:
                 while True:
@@ -371,6 +565,7 @@ class TerminalTools:
         except KeyboardInterrupt:
             print_current("\n⏰ User interrupted, terminating process")
             timed_out = True
+            stdin_closed.set()  # Signal stdin thread to stop
             try:
                 process.terminate()
                 process.wait(timeout=5)
@@ -379,6 +574,13 @@ class TerminalTools:
                 process.wait()
             except:
                 pass
+            finally:
+                # Ensure stdin is closed
+                try:
+                    if process.stdin and not process.stdin.closed:
+                        process.stdin.close()
+                except:
+                    pass
         
         return_code = process.returncode if process.returncode is not None else -1
         
@@ -757,10 +959,20 @@ class TerminalTools:
                     env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'  # Reduce noise
                 
                 # Special handling for Python programs - ensure output is visible
-                is_python_program = command.lower().startswith('python ') or 'python' in command.lower()
+                is_python_program = command.lower().startswith('python ') or command.lower().startswith('python3 ') or 'python' in command.lower()
                 
                 if is_python_program:
                     print_current(f"🐍 Detected Python program, ensuring unbuffered output")
+                    # Add -u flag for unbuffered mode if not already present
+                    # This ensures immediate output even for interactive programs
+                    if '-u' not in command and '--unbuffered' not in command:
+                        # Insert -u flag after python/python3
+                        import re
+                        # Match python or python3 at the start or after whitespace
+                        pattern = r'(\bpython3?\b)'
+                        if re.search(pattern, command, re.IGNORECASE):
+                            command = re.sub(pattern, r'\1 -u', command, count=1, flags=re.IGNORECASE)
+                            print_current(f"🔧 Added -u flag for unbuffered output")
                     # Use shorter timeout for Python programs as they should produce output
                     if timeout_inactive > 60:
                         timeout_inactive = 60  # 1 minute timeout for Python programs

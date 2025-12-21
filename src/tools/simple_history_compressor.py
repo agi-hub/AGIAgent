@@ -265,6 +265,11 @@ class SimpleHistoryCompressor:
         if len(text) <= self.min_length:
             return text
         
+        # Special handling for strings containing "Tool execution results:"
+        marker = "Tool execution results:"
+        if marker in text:
+            return self._truncate_string_with_marker(text, marker)
+        
         # Calculate the number of omitted characters
         omitted_chars = len(text) - self.head_length - self.tail_length
         
@@ -280,6 +285,63 @@ class SimpleHistoryCompressor:
         ellipsis_text = self.ellipsis.format(omitted_chars)
         
         return head_part + ellipsis_text + tail_part
+    
+    def _truncate_string_with_marker(self, text: str, marker: str) -> str:
+        """
+        Truncate a string that contains a marker, compressing parts before and after the marker separately.
+        
+        Args:
+            text: The original string containing the marker.
+            marker: The marker string (e.g., "Tool execution results:").
+            
+        Returns:
+            The truncated string with marker preserved.
+        """
+        # Find the marker position
+        marker_pos = text.find(marker)
+        if marker_pos == -1:
+            # Should not happen, but fallback to normal truncation (avoid recursion)
+            omitted_chars = len(text) - self.head_length - self.tail_length
+            if omitted_chars <= 0:
+                return text
+            head_part = text[:self.head_length]
+            tail_part = text[-self.tail_length:]
+            ellipsis_text = self.ellipsis.format(omitted_chars)
+            return head_part + ellipsis_text + tail_part
+        
+        # Split into three parts: before marker, marker, after marker
+        before_marker = text[:marker_pos]
+        marker_text = marker
+        after_marker = text[marker_pos + len(marker):]
+        
+        # Compress the part before marker (if long enough)
+        if len(before_marker) > self.min_length:
+            omitted_before = len(before_marker) - self.head_length - self.tail_length
+            if omitted_before > 0:
+                before_head = before_marker[:self.head_length]
+                before_tail = before_marker[-self.tail_length:]
+                before_ellipsis = self.ellipsis.format(omitted_before)
+                compressed_before = before_head + before_ellipsis + before_tail
+            else:
+                compressed_before = before_marker
+        else:
+            compressed_before = before_marker
+        
+        # Compress the part after marker (if long enough)
+        if len(after_marker) > self.min_length:
+            omitted_after = len(after_marker) - self.head_length - self.tail_length
+            if omitted_after > 0:
+                after_head = after_marker[:self.head_length]
+                after_tail = after_marker[-self.tail_length:]
+                after_ellipsis = self.ellipsis.format(omitted_after)
+                compressed_after = after_head + after_ellipsis + after_tail
+            else:
+                compressed_after = after_marker
+        else:
+            compressed_after = after_marker
+        
+        # Combine: compressed before + marker + compressed after
+        return compressed_before + marker_text + compressed_after
     
     def _calculate_record_size(self, record: Dict[str, Any]) -> int:
         """

@@ -89,16 +89,16 @@ class HistoryCompressionTools:
                                    for record in recent_records)
         total_history_length = records_to_summarize_length + recent_records_length
         
-        # Note: Active compression (when called by the model) does not check trigger_length
-        # The model can request compression at any time, regardless of content length
-        
         # Use enhanced compression for history management
+        # Compression will only occur if total_history_length exceeds summary_trigger_length
+        # EnhancedHistoryCompressor checks trigger_length internally
         if hasattr(self.tool_executor, 'simple_compressor') and self.tool_executor.simple_compressor:
                 try:
                     # Check if using EnhancedHistoryCompressor (new method)
                     if hasattr(self.tool_executor.simple_compressor, 'compress_history') and \
                        hasattr(self.tool_executor.simple_compressor, '_truncation_compress'):
                         # New enhanced compression: simple + truncation
+                        # Will skip compression if total_history_length <= summary_trigger_length
                         print_current(f"🗜️ Using enhanced compression (simple + truncation) for {len(history_for_llm)} records...")
                         
                         # Print content before compression
@@ -109,9 +109,11 @@ class HistoryCompressionTools:
                         print_debug(f"LLM records: {len(history_for_llm)}")
                         print_debug(f"Records to compress: {len(records_to_summarize)}")
                         print_debug(f"Recent records to keep uncompressed: {len(recent_records)}")
+                        print_debug(f"Total history length: {total_history_length}")
                         print_debug("=" * 80)
                         
                         # Execute enhanced compression (simple + truncation)
+                        # EnhancedHistoryCompressor will check trigger_length and skip if below threshold
                         compressed_history, compression_stats = self.tool_executor.simple_compressor.compress_history(task_history)
                         
                         # Extract LLM records from compressed history
@@ -153,6 +155,22 @@ class HistoryCompressionTools:
                         }
                     else:
                         # Fallback to old compression method (backward compatibility)
+                        # Check trigger_length: only compress if total_history_length exceeds threshold
+                        try:
+                            from config_loader import get_summary_trigger_length
+                            trigger_length = get_summary_trigger_length()
+                        except (ImportError, Exception):
+                            trigger_length = 100000  # Default fallback
+                        
+                        if total_history_length <= trigger_length:
+                            return {
+                                "status": "skipped",
+                                "message": f"History length {total_history_length} <= trigger_length {trigger_length}, skipping compression",
+                                "current_records": len(history_for_llm),
+                                "total_history_length": total_history_length,
+                                "trigger_length": trigger_length
+                            }
+                        
                         print_current(f"🗜️ Using simple compression for {len(records_to_summarize)} older records ({records_to_summarize_length} chars)...")
                         
                         # Print content before compression
@@ -162,10 +180,11 @@ class HistoryCompressionTools:
                         print_debug(f"Total records in history: {len(history_for_llm)}")
                         print_debug(f"Records to compress: {len(records_to_summarize)}")
                         print_debug(f"Recent records to keep uncompressed: {len(recent_records)}")
+                        print_debug(f"Total history length: {total_history_length}, trigger_length: {trigger_length}")
                         print_debug("=" * 80)
                         
-                        # Active compression: no trigger_length check, compress immediately
-                        compressed_older_records = self.tool_executor.simple_compressor.compress_history(records_to_summarize)
+                        # Compress with trigger_length check
+                        compressed_older_records = self.tool_executor.simple_compressor.compress_history(records_to_summarize, trigger_length=trigger_length)
                         
                         # Combine compressed older records with uncompressed recent records
                         compressed_history = compressed_older_records + recent_records

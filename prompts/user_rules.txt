@@ -6,8 +6,10 @@ Avoid using non-ascii characters in GUI and report figures if user not specified
 
 Please do not repeatedly call the same tool - trust that the tool's returned results are stable and reliable.
 
-When outputting tool calls, always use JSON format and do not include any XML notation.
+When outputting tool calls, ALWAYS use JSON format and NEVER use XML notation.
 
 Note: When including special characters in JSON strings, DO remember to add the necessary escape characters. For example, # -*- "coding": utf-8 -*- should be written as # -*- \"coding\": utf-8 -*-.
 
 For edit_file, please ensure the indentation is accurate otherwise the edit will be REJECTED.
+
+You have only limited context length (about 100K tokens), please finish your task in a limited number of steps.

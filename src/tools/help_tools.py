@@ -67,19 +67,6 @@ class HelpTools:
                             "tool_type": "cli-mcp"
                         }
             
-            # Check if it's a direct MCP tool
-            if hasattr(self.tool_executor, 'direct_mcp_client') and self.tool_executor.direct_mcp_client:
-                direct_mcp_tools = self.tool_executor.direct_mcp_client.get_available_tools()
-                if tool_name in direct_mcp_tools:
-                    tool_def = self.tool_executor.direct_mcp_client.get_tool_definition(tool_name)
-                    if tool_def:
-                        return {
-                            "description": tool_def.get("description", f"SSE MCP tool: {tool_name}"),
-                            "parameters": tool_def.get("inputSchema", tool_def.get("input_schema", {})),
-                            "notes": f"MCP tool (SSE): {tool_name}. This is an MCP tool connected via SSE protocol.",
-                            "tool_type": "direct-mcp"
-                        }
-            
         except Exception as e:
             print_current(f"⚠️ Error getting MCP tool definition: {e}")
         
@@ -114,19 +101,6 @@ class HelpTools:
                         except Exception as e:
                             all_tools[tool_name] = f"[MCP/CLI] {tool_name} (error getting definition)"
                 
-                # Add direct MCP tools
-                if hasattr(self.tool_executor, 'direct_mcp_client') and self.tool_executor.direct_mcp_client:
-                    direct_mcp_tools = self.tool_executor.direct_mcp_client.get_available_tools()
-                    for tool_name in direct_mcp_tools:
-                        try:
-                            tool_def = self.tool_executor.direct_mcp_client.get_tool_definition(tool_name)
-                            description = tool_def.get("description", f"SSE MCP tool: {tool_name}") if tool_def else f"SSE MCP tool: {tool_name}"
-                            first_sentence = description.split(".")[0] + "." if "." in description else description
-                            if len(first_sentence) > 100:
-                                first_sentence = first_sentence[:97] + "..."
-                            all_tools[tool_name] = f"[MCP/SSE] {first_sentence}"
-                        except Exception as e:
-                            all_tools[tool_name] = f"[MCP/SSE] {tool_name} (error getting definition)"
             
             except Exception as e:
                 print_current(f"⚠️ Error getting MCP tool list: {e}")
@@ -259,22 +233,17 @@ class HelpTools:
         
         # Add MCP tools as separate categories
         mcp_cli_tools = {}
-        mcp_sse_tools = {}
         
         for tool_name, description in all_tools.items():
             if "[MCP/CLI]" in description:
                 mcp_cli_tools[tool_name] = description
-            elif "[MCP/SSE]" in description:
-                mcp_sse_tools[tool_name] = description
         
         if mcp_cli_tools:
             tools_by_category["MCP Tools (CLI)"] = mcp_cli_tools
-        if mcp_sse_tools:
-            tools_by_category["MCP Tools (SSE)"] = mcp_sse_tools
         
         # Calculate totals
         builtin_count = sum(len(tools) for category, tools in tools_by_category.items() if "MCP" not in category)
-        mcp_count = len(mcp_cli_tools) + len(mcp_sse_tools)
+        mcp_count = len(mcp_cli_tools)
         
         return {
             "tools_by_category": tools_by_category,

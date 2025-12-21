@@ -259,7 +259,7 @@ summary_max_length=3000
 Tool_calling_format=True  # 推荐保持默认
 ```
 
-## 🚨 常见问题
+## 常见问题
 
 ### 1. 模型选择困难
 **建议流程：**

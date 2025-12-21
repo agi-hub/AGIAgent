@@ -130,7 +130,7 @@ class AgentMetrics:
 
     def emergency_restart(self):
         """Emergency restart the scheduler to recover from a blocked state"""
-        print_current("🚨 EMERGENCY RESTART: Attempting to recover from deadlock...")
+        print_current("EMERGENCY RESTART: Attempting to recover from deadlock...")
         
         try:
             # Stop the scheduler
@@ -144,7 +144,7 @@ class AgentMetrics:
             with self.metrics_lock:
                 queue_size = self.task_queue.qsize()
                 if queue_size > 0:
-                    print_current(f"🚨 Clearing {queue_size} potentially stuck tasks from queue")
+                    print_current(f"Clearing {queue_size} potentially stuck tasks from queue")
                     old_queue = self.task_queue
                     self.task_queue = queue.PriorityQueue()
                     
@@ -158,7 +158,7 @@ class AgentMetrics:
                         except queue.Empty:
                             break
                     
-                    print_current(f"🚨 Transferred {transferred} tasks to new queue")
+                    print_current(f"Transferred {transferred} tasks to new queue")
                 
                 # Clear tracking info
                 self.active_task_start_times.clear()
@@ -167,12 +167,12 @@ class AgentMetrics:
             # Restart the scheduler
             if old_active:
                 self.start()
-                print_current("🚨 Emergency restart completed")
+                print_current("Emergency restart completed")
             
             return True
             
         except Exception as e:
-            print_current(f"🚨 Emergency restart failed: {e}")
+            print_current(f"Emergency restart failed: {e}")
             return False
 
 
@@ -610,7 +610,7 @@ class PriorityAgentScheduler:
                 deadlock_check_counter += 1
                 if deadlock_check_counter >= 3:
                     if self.detect_and_recover_deadlock():
-                        print_current("🚨 Deadlock recovery performed by health monitor")
+                        print_current("Deadlock recovery performed by health monitor")
                         stalled_check_counter = 0
                         deadlock_check_counter = 0
                         time.sleep(2)  # Let system stabilize
@@ -674,7 +674,7 @@ class PriorityAgentScheduler:
                     hung_tasks.append((task_id, execution_time))
         
         for task_id, execution_time in hung_tasks:
-            print_current(f"🚨 Detected hung task {task_id} running for {execution_time:.1f}s (limit: {self.max_task_execution_time}s)")
+            print_current(f"Detected hung task {task_id} running for {execution_time:.1f}s (limit: {self.max_task_execution_time}s)")
             # Note: We cannot forcibly kill tasks, but can log and alert
     
     def _check_worker_health(self):
@@ -695,9 +695,9 @@ class PriorityAgentScheduler:
         
         # Distinguish real problems from normal waiting
         if inactive_workers:
-            print_current(f"🚨 Found {len(inactive_workers)} potentially hung workers")
+            print_current(f"Found {len(inactive_workers)} potentially hung workers")
             for worker_name, inactive_time in inactive_workers:
-                print_current(f"🚨 Worker {worker_name} potentially hung: {inactive_time:.1f}s without activity")
+                print_current(f"Worker {worker_name} potentially hung: {inactive_time:.1f}s without activity")
         
         # Only show possibly stuck workers in debug mode
         if stale_workers and hasattr(self, 'debug_mode') and getattr(self, 'debug_mode', False):
@@ -921,7 +921,7 @@ class PriorityAgentScheduler:
                 
                 retry_count = request_retry_counts.get(request_id, 0)
                 if retry_count >= max_retries_per_request:
-                    print_current(f"🚨 Request {request_id} exceeded max retries ({max_retries_per_request}), forcing execution")
+                    print_current(f"Request {request_id} exceeded max retries ({max_retries_per_request}), forcing execution")
                     del request_retry_counts[request_id]
                     self._grant_round_permission(request)
                     continue
@@ -982,7 +982,7 @@ class PriorityAgentScheduler:
                             should_yield = True
                             print_current(f"⚖️ Yielding to active waiting agents: {active_waiting_agents}, requeueing {request.agent_id} (retry: {retry_count})")
                         elif retry_count >= 2:
-                            print_current(f"🚨 Stop yielding for {request.agent_id} after {retry_count} retries, forcing execution")
+                            print_current(f"Stop yielding for {request.agent_id} after {retry_count} retries, forcing execution")
                         elif not found_waiting_requests:
                             print_current(f"⚖️ No active requests from waiting agents {waiting_agents}, allowing {request.agent_id} to proceed")
                         elif round_gap <= 2:
@@ -1080,7 +1080,7 @@ class PriorityAgentScheduler:
         
         # Check for potential lock timeout
         if current_time - self.last_lock_release_time > self.lock_timeout_threshold:
-            print_current(f"🚨 DEADLOCK DETECTED: Lock held for {current_time - self.last_lock_release_time:.1f}s")
+            print_current(f"DEADLOCK DETECTED: Lock held for {current_time - self.last_lock_release_time:.1f}s")
             
             try:
                 # Try to acquire lock (short timeout)
@@ -1092,11 +1092,11 @@ class PriorityAgentScheduler:
                     finally:
                         self.metrics_lock.release()
                 else:
-                    print_current("🚨 CONFIRMED DEADLOCK: Cannot acquire lock within timeout")
+                    print_current("CONFIRMED DEADLOCK: Cannot acquire lock within timeout")
                     return self._emergency_deadlock_recovery()
                     
             except Exception as e:
-                print_current(f"🚨 DEADLOCK DETECTION ERROR: {e}")
+                print_current(f"DEADLOCK DETECTION ERROR: {e}")
                 return self._emergency_deadlock_recovery()
         
         return False
@@ -1108,7 +1108,7 @@ class PriorityAgentScheduler:
         Returns:
             True if recovery was attempted
         """
-        print_current("🚨 INITIATING EMERGENCY DEADLOCK RECOVERY...")
+        print_current("INITIATING EMERGENCY DEADLOCK RECOVERY...")
         
         try:
             # Stop all background threads
@@ -1116,10 +1116,10 @@ class PriorityAgentScheduler:
             self.scheduler_active = False
             self.round_scheduler_active = False
             
-            print_current("🚨 Waiting for threads to terminate...")
+            print_current("Waiting for threads to terminate...")
             time.sleep(2)
             
-            print_current("🚨 Force cleaning task queues...")
+            print_current("Force cleaning task queues...")
             
             old_task_queue = self.task_queue
             old_round_queue = self.round_request_queue
@@ -1148,21 +1148,21 @@ class PriorityAgentScheduler:
             except:
                 pass
             
-            print_current(f"🚨 Transferred {transferred_tasks} tasks and {transferred_rounds} round requests")
+            print_current(f"Transferred {transferred_tasks} tasks and {transferred_rounds} round requests")
             
             with self.metrics_lock:
                 self.worker_last_activity.clear()
                 self.active_task_start_times.clear()
             
             if old_active:
-                print_debug("🚨 Restarting scheduler after deadlock recovery...")
+                print_debug("Restarting scheduler after deadlock recovery...")
                 self.start()
             
-            print_current("🚨 DEADLOCK RECOVERY COMPLETED")
+            print_current("DEADLOCK RECOVERY COMPLETED")
             return True
             
         except Exception as e:
-            print_current(f"🚨 DEADLOCK RECOVERY FAILED: {e}")
+            print_current(f"DEADLOCK RECOVERY FAILED: {e}")
             return False
     
     def _safe_lock_operation(self, operation, timeout: float = 2.0):
@@ -1186,7 +1186,7 @@ class PriorityAgentScheduler:
                 elapsed = time.time() - start_time
                 print_current(f"⚠️ Lock acquisition timeout after {elapsed:.1f}s")
                 if elapsed > 5.0:
-                    print_current("🚨 Possible deadlock detected, attempting recovery...")
+                    print_current("Possible deadlock detected, attempting recovery...")
                     self.detect_and_recover_deadlock()
                 return None
         except Exception as e:
@@ -1248,11 +1248,11 @@ class PriorityAgentScheduler:
         Returns:
             True if restart was successful
         """
-        print_current("🚨 EMERGENCY STOP AND RESTART INITIATED...")
+        print_current("EMERGENCY STOP AND RESTART INITIATED...")
         
         try:
             # Step 1: Stop all activity
-            print_debug("🚨 Step 1: Stopping all scheduler activities...")
+            print_debug("Step 1: Stopping all scheduler activities...")
             old_scheduler_active = self.scheduler_active
             old_round_scheduler_active = self.round_scheduler_active
             
@@ -1260,11 +1260,11 @@ class PriorityAgentScheduler:
             self.round_scheduler_active = False
             
             # Step 2: Wait for threads to terminate
-            print_current("🚨 Step 2: Waiting for threads to terminate...")
+            print_current("Step 2: Waiting for threads to terminate...")
             time.sleep(3)
             
             # Step 3: Force clean all queues and state
-            print_current("🚨 Step 3: Force cleaning all queues and states...")
+            print_current("Step 3: Force cleaning all queues and states...")
             
             old_submitted = self.total_tasks_submitted
             old_completed = self.total_tasks_completed
@@ -1291,7 +1291,7 @@ class PriorityAgentScheduler:
                 self.active_task_start_times.clear()
             
             # Step 4: Recreate core components
-            print_current("🚨 Step 4: Recreating core components...")
+            print_current("Step 4: Recreating core components...")
             self.task_queue = queue.PriorityQueue()
             self.round_request_queue = queue.PriorityQueue()
             
@@ -1304,27 +1304,27 @@ class PriorityAgentScheduler:
             
             # Step 5: Restart scheduler
             if old_scheduler_active or old_round_scheduler_active:
-                print_debug("🚨 Step 5: Restarting scheduler...")
+                print_debug("Step 5: Restarting scheduler...")
                 self.start()
             
-            print_current("🚨 EMERGENCY RESTART COMPLETED SUCCESSFULLY")
+            print_current("EMERGENCY RESTART COMPLETED SUCCESSFULLY")
             return True
             
         except Exception as e:
-            print_current(f"🚨 EMERGENCY RESTART FAILED: {e}")
+            print_current(f"EMERGENCY RESTART FAILED: {e}")
             return False
     
     def force_deadlock_break(self):
         """
         Force break deadlock, for external calls
         """
-        print_current("🚨 FORCE DEADLOCK BREAK CALLED")
+        print_current("FORCE DEADLOCK BREAK CALLED")
         
         if self.detect_and_recover_deadlock():
-            print_current("🚨 Deadlock recovery successful")
+            print_current("Deadlock recovery successful")
             return True
         
-        print_current("🚨 Deadlock recovery failed, performing emergency restart...")
+        print_current("Deadlock recovery failed, performing emergency restart...")
         return self.emergency_stop_and_restart()
 
     def reset_stalled_agents(self):

@@ -72,7 +72,7 @@ class DebugSystem:
     
     def _signal_handler(self, signum, frame):
         """Signal handler - Display thread stacks then exit"""
-        print_current("\n🚨 Interrupt signal received, displaying thread stacks:")
+        print_current("\nInterrupt signal received, displaying thread stacks:")
         
         # Only show stack trace
         self._show_stack_trace(frame)

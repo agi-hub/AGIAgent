@@ -10,7 +10,7 @@ LANG=zh
 # GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.6
+model=glm-4.5
 max_tokens=16384
 
 # Anthropic models
@@ -53,6 +53,7 @@ max_tokens=32768
 # model=qwen3:8b
 # max_tokens=4096
 
+
 # Note: only the last configuration is valid.
 
 # Streaming output configuration: True for streaming, False for batch output
@@ -85,6 +86,14 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # This overrides the automatic model-based detection
 # Default: True (use standard tool calling when available)
 Tool_calling_format=False
+
+# Tool call parsing format configuration: json or xml
+# Controls which format to try first when parsing tool calls from model responses
+# When set to "json", tries JSON format first, then falls back to Python format
+# When set to "xml", tries XML format first, then falls back to Python format
+# Python format is always tried as fallback regardless of this setting
+# Default: json
+tool_call_parse_format=json
 
 # Thinking support configuration
 # Controls whether to enable and display thinking process from reasoning models (e.g., OpenAI o1, Claude Sonnet 4.5)
@@ -138,7 +147,7 @@ compression_min_length=500
 # Number of characters to keep at the beginning of compressed content
 # Lower values compress more aggressively, higher values preserve more context
 # Recommended values: 50-200 characters
-compression_head_length=100
+compression_head_length=300
 
 # Number of characters to keep at the end of compressed content
 # Lower values compress more aggressively, higher values preserve more context
@@ -149,6 +158,24 @@ compression_tail_length=100
 # When enabled, workspace_search and web_search only display simplified result summaries in terminal
 # When disabled, display full search result details
 simplified_search_output=True
+
+# History summarization configuration (default: True)
+# Controls whether to use AI summarization for history compression
+# When enabled (True): Uses AI to summarize old conversation history, preserving detailed recent context
+# When disabled (False): Uses field-level compression (head+tail truncation) instead of AI summarization
+# Affects:
+# - History compression method (AI summarization vs field compression)
+# - Whether ConversationSummarizer is initialized
+# - Whether SimpleHistoryCompressor is initialized
+summary_history=True
+
+# Trigger length for conversation history summarization (in characters)
+# Only when the total conversation history exceeds this length will summarization be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger summarization earlier, saving more context
+# Higher values delay summarization, preserving more detailed conversation history
+# This also controls compression: when history length is below this value, no compression (simple or enhanced) will be performed
+summary_trigger_length=100000
 
 # Summary report generation (default: False)
 # When enabled, generates single task summary and task summary reports

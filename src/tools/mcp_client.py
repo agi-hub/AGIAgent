@@ -632,10 +632,10 @@ class MCPClient:
             
             # Debug logging for response
             print_debug(f"📥 STDOUT length: {len(stdout)} chars")
-            print_debug(f"🚨 STDERR length: {len(stderr)} chars")
+            print_debug(f"STDERR length: {len(stderr)} chars")
             
             if stderr.strip():
-                print_debug(f"🚨 STDERR content: {stderr.strip()}")
+                print_debug(f"STDERR content: {stderr.strip()}")
             
             if process.returncode != 0:
                 error_msg = f"MCP tool execution failed (exit code: {process.returncode})"
@@ -679,7 +679,7 @@ class MCPClient:
                 if stderr.strip():
                     error_msg += f"\nSTDERR: {stderr.strip()}"
                 
-                print_debug(f"🚨 JSON parsing failed: {error_msg}")
+                print_debug(f"JSON parsing failed: {error_msg}")
                 return {"status": "failed", "error": error_msg}
             
         except subprocess.TimeoutExpired:

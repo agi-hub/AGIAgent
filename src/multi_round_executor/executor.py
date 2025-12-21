@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_model, get_truncation_length, get_enable_round_sync, get_sync_round, get_summary_trigger_length
+from config_loader import get_enable_round_sync, get_sync_round, get_summary_trigger_length
 from src.tools.print_system import print_current, print_current, print_current, print_debug
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
@@ -763,13 +763,12 @@ class MultiRoundTaskExecutor:
                     })
                     return task_history
             
-            # Use base prompt directly - round info will be handled by _build_new_user_message
+            # Use base prompt directly - round info will be handled by _build_tool_and_env_message
             current_prompt = base_prompt
             
             try:
                 
                 # Prepare history for LLM - include error records so model can learn from mistakes
-                # 🔧 优化：只包含有结果的记录，避免重复的提示词
                 history_for_llm = [record for record in task_history 
                                  if "result" in record or "error" in record]
                 
@@ -787,6 +786,8 @@ class MultiRoundTaskExecutor:
                 
                 # Use enhanced compression for history management
                 # Two-stage compression: simple compression (field-level) + truncation compression (record-level)
+                # Only compress if total history length exceeds summary_trigger_length
+                trigger_length = get_summary_trigger_length()
                 if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor:
                     try:
                         # Check if using EnhancedHistoryCompressor (new method)
@@ -794,6 +795,7 @@ class MultiRoundTaskExecutor:
                            hasattr(self.executor.simple_compressor, '_truncation_compress'):
                             # New enhanced compression: simple + truncation
                             # This handles both field compression and record deletion
+                            # EnhancedHistoryCompressor will check trigger_length internally
                             compressed_history, compression_stats = self.executor.simple_compressor.compress_history(task_history)
                             
                             # Extract LLM records from compressed history
@@ -812,18 +814,17 @@ class MultiRoundTaskExecutor:
                                       f"deleted={compression_stats.get('truncation_compression', {}).get('records_deleted', 0)} records")
                         else:
                             # Fallback to old compression method (backward compatibility)
-                            if len(history_for_llm) > 2:
+                            # Only compress if total history length exceeds summary_trigger_length
+                            if total_history_length > trigger_length and len(history_for_llm) > 2:
                                 records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
                                 recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
                                 
                                 if records_to_compress:
-                                    records_to_compress_length = sum(len(str(record.get("result", ""))) 
-                                                                     for record in records_to_compress)
-                                    trigger_length = get_summary_trigger_length()  # Use config value instead of hardcoded
-                                    
-                                    if records_to_compress_length > trigger_length:
-                                        compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
-                                        history_for_llm = compressed_older_records + recent_records_to_keep
+                                    compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
+                                    history_for_llm = compressed_older_records + recent_records_to_keep
+                            else:
+                                # History length is below trigger_length, skip compression
+                                print_debug(f"🗜️ History length {total_history_length} <= trigger_length {trigger_length}, skipping compression")
                     except Exception as e:
                         print_debug(f"⚠️ History compression failed: {e}")
                         import traceback

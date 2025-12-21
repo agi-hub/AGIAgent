@@ -551,7 +551,7 @@ def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
         config_file: Path to the configuration file
         
     Returns:
-        Summary trigger length integer (default: 30000)
+        Summary trigger length integer (default: 100000)
     """
     config = load_config(config_file)
     summary_trigger_length_str = config.get('summary_trigger_length')
@@ -560,14 +560,14 @@ def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
         try:
             summary_trigger_length = int(summary_trigger_length_str)
             if summary_trigger_length <= 0:
-                print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be positive integer, using default 30000")
-                return 30000
+                print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be positive integer, using default 100000")
+                return 100000
             return summary_trigger_length
         except ValueError:
-            print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be an integer, using default 30000")
-            return 30000
+            print(f"Warning: Invalid summary_trigger_length value '{summary_trigger_length_str}' in config file, must be an integer, using default 100000")
+            return 100000
     
-    return 30000  # Default summary trigger length
+    return 100000  # Default summary trigger length
 
 def get_simplified_search_output(config_file: str = "config/config.txt") -> bool:
     """
@@ -830,6 +830,27 @@ def get_enable_thinking(config_file: str = "config/config.txt") -> bool:
     else:
         # Default to True if invalid value
         return True
+
+def get_tool_call_parse_format(config_file: str = "config/config.txt") -> str:
+    """
+    Get tool call parsing format configuration from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        String indicating which format to try first: "json" or "xml"
+        Default: "json"
+    """
+    config = load_config(config_file)
+    parse_format_str = config.get('tool_call_parse_format', 'json').lower().strip()
+    
+    # Validate and return format
+    if parse_format_str in ('json', 'xml'):
+        return parse_format_str
+    else:
+        print(f"Warning: Invalid tool_call_parse_format value '{parse_format_str}' in config file, must be 'json' or 'xml', using default 'json'")
+        return 'json'
 
 def get_gui_config(config_file: str = "config/config.txt") -> Dict[str, Optional[str]]:
     """

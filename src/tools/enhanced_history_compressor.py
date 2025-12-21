@@ -26,7 +26,7 @@ class EnhancedHistoryCompressor:
                  min_length: int = 500,
                  head_length: int = 100,
                  tail_length: int = 100,
-                 truncation_length: int = 20000,
+                 trigger_length: Optional[int] = None,
                  keep_recent_rounds: int = 2,
                  ellipsis: str = "\n...[omitted {} chars]...\n"):
         """
@@ -36,14 +36,24 @@ class EnhancedHistoryCompressor:
             min_length: 触发字段压缩的最小长度（默认500字符）
             head_length: 字段压缩时保留的开头字符数（默认100）
             tail_length: 字段压缩时保留的结尾字符数（默认100）
-            truncation_length: 历史记录总长度限制（默认20000字符）
+            trigger_length: 触发压缩的历史记录总长度阈值（默认从配置文件读取summary_trigger_length，如果未配置则使用100000字符）
             keep_recent_rounds: 简单压缩时保留的最近轮次数（默认2）
             ellipsis: 省略标记格式
         """
+        # Lazy import to avoid circular imports
+        if trigger_length is None:
+            try:
+                from config_loader import get_summary_trigger_length
+                trigger_length = get_summary_trigger_length()
+            except (ImportError, Exception) as e:
+                # Fallback to default if config loading fails
+                print_debug(f"⚠️ Failed to load summary_trigger_length from config: {e}, using default 100000")
+                trigger_length = 100000
+        
         self.min_length = min_length
         self.head_length = head_length
         self.tail_length = tail_length
-        self.truncation_length = truncation_length
+        self.trigger_length = trigger_length
         self.keep_recent_rounds = keep_recent_rounds
         self.ellipsis = ellipsis
     
@@ -78,10 +88,24 @@ class EnhancedHistoryCompressor:
                 "final": {"total_records": len(task_history)}
             }
         
+        # 步骤1.5：检查总长度，如果小于trigger_length则不进行任何压缩
+        total_length = self._calculate_total_length(llm_records)
+        if total_length <= self.trigger_length:
+            print_debug(f"🗜️ History length {total_length} <= trigger_length {self.trigger_length}, skipping compression")
+            return task_history, {
+                "simple_compression": {"original_records": len(llm_records), "compressed_records": len(llm_records), "compressed": False},
+                "truncation_compression": {"truncated": False, "records_deleted": 0},
+                "final": {
+                    "total_records": len(task_history),
+                    "llm_records": len(llm_records),
+                    "non_llm_records": len(non_llm_records)
+                }
+            }
+        
         # 步骤2：简单压缩（排除最后2轮）
         compressed_llm_records, simple_stats = self._simple_compress(llm_records)
         
-        # 步骤3：限定压缩（全部记录都可删除）
+        # 步骤3：限定压缩（全部记录都可删除，使用trigger_length作为限制）
         final_llm_records, truncation_stats = self._truncation_compress(compressed_llm_records)
         
         # 步骤4：合并非LLM记录和压缩后的LLM记录
@@ -156,7 +180,7 @@ class EnhancedHistoryCompressor:
         current_length = self._calculate_total_length(history)
         
         # 如果未超过限制，直接返回
-        if current_length <= self.truncation_length:
+        if current_length <= self.trigger_length:
             return history, {
                 "truncated": False,
                 "original_length": current_length,
@@ -172,9 +196,9 @@ class EnhancedHistoryCompressor:
         original_length = current_length
         original_records = len(history)
         
-        print_debug(f"🗜️ Truncation compression: original length {original_length} exceeds limit {self.truncation_length}")
+        print_debug(f"🗜️ Truncation compression: original length {original_length} exceeds trigger_length {self.trigger_length}")
         
-        while current_length > self.truncation_length and len(final_history) > 0:
+        while current_length > self.trigger_length and len(final_history) > 0:
             # 删除最旧的记录（第一条）
             deleted_record = final_history.pop(0)
             records_deleted += 1
@@ -186,7 +210,7 @@ class EnhancedHistoryCompressor:
             
             # 安全检查：至少保留1条记录（如果可能）
             if len(final_history) == 0:
-                print_current(f"⚠️ All records deleted, but still exceeds truncation_length")
+                print_current(f"⚠️ All records deleted, but still exceeds trigger_length")
                 break
         
         stats = {
@@ -290,6 +314,11 @@ class EnhancedHistoryCompressor:
         if len(text) <= self.min_length:
             return text
         
+        # 特殊处理：如果包含 "Tool execution results:"，对标记前后分别压缩
+        marker = "Tool execution results:"
+        if marker in text:
+            return self._truncate_string_with_marker(text, marker)
+        
         # 计算省略的字符数
         omitted_chars = len(text) - self.head_length - self.tail_length
         
@@ -305,6 +334,63 @@ class EnhancedHistoryCompressor:
         ellipsis_text = self.ellipsis.format(omitted_chars)
         
         return head_part + ellipsis_text + tail_part
+    
+    def _truncate_string_with_marker(self, text: str, marker: str) -> str:
+        """
+        截断包含标记的字符串：对标记前后部分分别进行压缩
+        
+        Args:
+            text: 包含标记的原始字符串
+            marker: 标记字符串（如 "Tool execution results:"）
+        
+        Returns:
+            截断后的字符串（保留标记）
+        """
+        # 查找标记位置
+        marker_pos = text.find(marker)
+        if marker_pos == -1:
+            # 不应该发生，但回退到普通截断（避免递归）
+            omitted_chars = len(text) - self.head_length - self.tail_length
+            if omitted_chars <= 0:
+                return text
+            head_part = text[:self.head_length]
+            tail_part = text[-self.tail_length:]
+            ellipsis_text = self.ellipsis.format(omitted_chars)
+            return head_part + ellipsis_text + tail_part
+        
+        # 分为三部分：标记前、标记本身、标记后
+        before_marker = text[:marker_pos]
+        marker_text = marker
+        after_marker = text[marker_pos + len(marker):]
+        
+        # 压缩标记前的部分（如果足够长）
+        if len(before_marker) > self.min_length:
+            omitted_before = len(before_marker) - self.head_length - self.tail_length
+            if omitted_before > 0:
+                before_head = before_marker[:self.head_length]
+                before_tail = before_marker[-self.tail_length:]
+                before_ellipsis = self.ellipsis.format(omitted_before)
+                compressed_before = before_head + before_ellipsis + before_tail
+            else:
+                compressed_before = before_marker
+        else:
+            compressed_before = before_marker
+        
+        # 压缩标记后的部分（如果足够长）
+        if len(after_marker) > self.min_length:
+            omitted_after = len(after_marker) - self.head_length - self.tail_length
+            if omitted_after > 0:
+                after_head = after_marker[:self.head_length]
+                after_tail = after_marker[-self.tail_length:]
+                after_ellipsis = self.ellipsis.format(omitted_after)
+                compressed_after = after_head + after_ellipsis + after_tail
+            else:
+                compressed_after = after_marker
+        else:
+            compressed_after = after_marker
+        
+        # 组合：压缩的前部分 + 标记 + 压缩的后部分
+        return compressed_before + marker_text + compressed_after
     
     def _calculate_total_length(self, history: List[Dict[str, Any]]) -> int:
         """

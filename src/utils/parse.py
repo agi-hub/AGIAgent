@@ -12,7 +12,7 @@ Migrated from tool_executor.py for better code organization and reusability.
 
 import json
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 
 def _log_warning(message: str) -> None:
@@ -31,96 +31,98 @@ def _log_warning(message: str) -> None:
         print(message)
 
 
-def fix_json_escapes(json_str: str) -> str:
+def _log_debug(message: str) -> None:
     """
-    Simplified JSON escape function - just returns the original string.
-    Complex regex processing has been removed to avoid catastrophic backtracking.
+    Simple logging function to replace print_debug dependency.
     
     Args:
-        json_str: Raw JSON string
-        
-    Returns:
-        Original JSON string (no processing)
+        message: Debug message to log
     """
-    return json_str
+    try:
+        # Try to import print_debug if available
+        from tools.print_system import print_debug
+        print_debug(message)
+    except ImportError:
+        # Fallback to standard print if print_debug is not available
+        print(message)
 
 
-def smart_escape_quotes_in_json_values(json_str: str) -> str:
+def fix_json(json_str: str) -> str:
     """
     Smart method to escape unescaped quotes in JSON values while preserving JSON structure.
-    
-    优化版本：对于超长文本（>5000字符），直接使用更可靠的字符级状态机方法。
-    对于短文本，使用正则表达式快速修复。
-    
+
+    Optimized version: For very long text (>5000 chars), directly use the more reliable character-level state machine method.
+    For short text, use regular expressions for a faster fix.
+
     Args:
         json_str: Raw JSON string that may have unescaped quotes in values
-        
+
     Returns:
         JSON string with properly escaped quotes in values
     """
-    # 对于超长文本，直接使用更可靠的方法
+    # For very long strings, use the more reliable method directly
     if len(json_str) > 5000:
-        return fix_json_string_values_robust(json_str)
-    
+        return fix_json_advanced(json_str)
+
     try:
-        # 对于短文本，使用优化的正则表达式方法
+        # For short strings, use optimized regular expression approach
         def escape_value_content(content: str) -> str:
             """
-            转义字符串值中的未转义字符。
-            使用字符级处理，避免正则表达式在长文本时的性能问题。
+            Escape unescaped characters inside string values.
+            Uses character-level handling to avoid regular expression performance issues on long text.
             """
             result = []
             i = 0
             escape_count = 0
-            
+
             while i < len(content):
                 char = content[i]
-                
-                # 统计连续的反斜杠
+
+                # Count consecutive backslashes
                 if char == '\\':
                     j = i
                     while j < len(content) and content[j] == '\\':
                         j += 1
                     escape_count = j - i
-                    
-                    # 如果前面有奇数个反斜杠，当前反斜杠是转义序列的一部分
+
+                    # If odd number of backslashes, current backslash is part of an escape sequence
                     if escape_count % 2 == 1:
                         result.append(char)
                         i += 1
                         continue
                     else:
-                        # 偶数个反斜杠，这些反斜杠都是字面量
+                        # Even number of backslashes, treat as literal
                         result.append('\\\\' * (escape_count // 2))
                         i = j
                         continue
-                
-                # 重置转义计数
+
+                # Reset escape count
                 escape_count = 0
-                
-                # 转义未转义的引号
+
+                # Escape unescaped quotes
                 if char == '"':
-                    # 检查前面是否有转义
+                    # Check for preceding backslashes
                     prev_pos = i - 1
                     backslash_count = 0
                     while prev_pos >= 0 and content[prev_pos] == '\\':
                         backslash_count += 1
                         prev_pos -= 1
-                    
+
                     if backslash_count % 2 == 0:
-                        # 未转义的引号，需要转义
+                        # Unescaped quote, escape it
                         result.append('\\"')
                     else:
                         result.append(char)
-                elif ord(char) < 32:  # 控制字符
-                    # 检查前面是否有转义
+                elif ord(char) < 32:  # Control characters
+                    # Check for preceding backslashes
                     prev_pos = i - 1
                     backslash_count = 0
                     while prev_pos >= 0 and content[prev_pos] == '\\':
                         backslash_count += 1
                         prev_pos -= 1
-                    
+
                     if backslash_count % 2 == 0:
-                        # 未转义的控制字符，需要转义
+                        # Unescaped control character, escape it
                         if char == '\n':
                             result.append('\\n')
                         elif char == '\r':
@@ -137,139 +139,138 @@ def smart_escape_quotes_in_json_values(json_str: str) -> str:
                         result.append(char)
                 else:
                     result.append(char)
-                
+
                 i += 1
-            
+
             return ''.join(result)
-        
-        # 改进的模式：匹配 "field": "value" 格式
-        # 使用更精确的结束标记检测
+
+        # Improved pattern: Match "field": "value" format
+        # Uses more precise end-token detection
         pattern = r'("[^"]*"\s*:\s*")(.*?)(?="\s*[,}\n])'
-        
+
         def escape_value_quotes(match):
             prefix = match.group(1)  # "field": "
             content = match.group(2)  # content that may contain quotes, newlines, etc.
-            
-            # 使用字符级处理转义
+
+            # Escape using character-based handling
             escaped_content = escape_value_content(content)
-            
+
             return f'{prefix}{escaped_content}"'
-        
+
         fixed_json = re.sub(pattern, escape_value_quotes, json_str, flags=re.DOTALL)
-        
-        # 如果正则表达式方法没有修复，尝试使用字符级状态机方法
+
+        # If regex approach did not fix, use the more reliable fallback
         if fixed_json == json_str:
-            return fix_json_string_values_robust(json_str)
-        
-        # 验证修复后的JSON是否有效
+            return fix_json_advanced(json_str)
+
+        # Validate that the fixed JSON is indeed valid
         try:
             json.loads(fixed_json)
             return fixed_json
         except json.JSONDecodeError:
-            # 如果修复后仍然无效，使用更可靠的方法
-            return fix_json_string_values_robust(json_str)
-        
+            # If still invalid, fallback to more reliable method
+            return fix_json_advanced(json_str)
+
     except Exception as e:
         _log_warning(f"⚠️ Error in smart quote escaping: {e}")
-        # 如果出错，回退到更可靠的方法
-        return fix_json_string_values_robust(json_str)
-
-
-def fix_json_string_values_robust(json_str: str) -> str:
+        # On any error, fallback to the more reliable method
+        return fix_json_advanced(json_str)
+def fix_json_advanced(json_str: str) -> str:
     """
-    使用字符级状态机修复JSON字符串值，更可靠地处理超长和复杂嵌套的字符串。
-    
-    优化版本：改进了转义字符处理逻辑，特别是对\n等控制字符的转义。
-    使用更可靠的字符串边界检测算法，能够正确处理超长文本。
-    
-    这个函数使用逐字符解析的方式，比正则表达式更可靠，特别是对于：
-    - 包含大量未转义换行符的长字符串
-    - 包含XML/SVG代码的字符串
-    - 包含引号、大括号等特殊字符的字符串
-    
+    Fix JSON string values using a character-level state machine, for more reliable handling
+    of very long and complexly nested strings.
+
+    Improved version: Refined escape character handling, particularly for \n and other control characters.
+    Uses a more reliable string boundary detection algorithm to correctly process long text.
+
+    This function parses the string character by character, which is more reliable than regular expressions,
+    especially for:
+    - Very long strings with many unescaped newlines
+    - Strings containing XML/SVG code
+    - Strings with quotes, braces, and other special characters
+
     Args:
-        json_str: 可能包含未转义字符的JSON字符串
-        
+        json_str: JSON string that may contain unescaped characters
+
     Returns:
-        修复后的JSON字符串
+        The fixed JSON string
     """
     if not json_str:
         return json_str
-    
-    # 首先尝试直接解析，如果成功则无需修复
+
+    # First try to parse directly - if successful, no fix needed
     try:
         json.loads(json_str)
         return json_str
     except json.JSONDecodeError:
-        # 继续处理，尝试修复
+        # Continue to attempt fix
         pass
-    
-    # 使用字符级状态机进行修复
+
+    # Character-level state machine fix
     result = []
     i = 0
     in_string = False
-    next_char_escaped = False  # 标志：下一个字符是否被转义
-    brace_depth = 0  # 大括号嵌套深度，用于辅助判断字符串边界
-    bracket_depth = 0  # 方括号嵌套深度
-    
+    next_char_escaped = False  # Whether next character is escaped
+    brace_depth = 0            # Curly brace nesting, helps detect string boundaries
+    bracket_depth = 0          # Square bracket nesting
+
     while i < len(json_str):
         char = json_str[i]
-        
-        # 处理转义序列
+
+        # Handle escape sequences
         if next_char_escaped:
-            # 当前字符被转义，直接添加到结果中
+            # Current character is escaped, add as is
             result.append(char)
             next_char_escaped = False
             i += 1
             continue
-        
-        # 统计连续的反斜杠
+
+        # Count consecutive backslashes
         if char == '\\':
             j = i
             while j < len(json_str) and json_str[j] == '\\':
                 j += 1
             backslash_count = j - i
-            
-            # 如果不在字符串中，反斜杠应该被保留（可能是JSON结构的一部分）
+
+            # If not in a string value, backslash should be preserved (might be structural)
             if not in_string:
                 result.append(char)
                 i += 1
                 continue
-            
-            # 在字符串中，需要判断这是转义序列还是字面量反斜杠
+
+            # Inside a string: decide if this is an escape or a literal
             if backslash_count % 2 == 1:
-                # 奇数个反斜杠，下一个字符会被转义
+                # Odd number of backslashes: next char will be escaped
                 result.append(char)
-                next_char_escaped = True  # 标记下一个字符被转义
+                next_char_escaped = True
                 i += 1
                 continue
             else:
-                # 偶数个反斜杠，这些反斜杠都是字面量
+                # Even number of backslashes: all are literal
                 result.append('\\\\' * (backslash_count // 2))
                 i = j
                 continue
-        
-        # 处理字符串开始/结束
+
+        # Handle start/end of a string
         if char == '"':
             if not in_string:
-                # 字符串开始
+                # Begin string
                 in_string = True
                 result.append(char)
             else:
-                # 检查是否是字符串结束
-                # 关键改进：使用更可靠的算法判断字符串边界
+                # Check if this is the end of a string
                 is_string_end = _is_string_end(json_str, i, brace_depth, bracket_depth)
-                
+
                 if is_string_end:
                     in_string = False
                     result.append(char)
                 else:
-                    # 这是字符串内部的引号，需要转义
+                    # It's an inner quote, needs escaping
                     result.append('\\"')
             i += 1
             continue
-        
-        # 更新嵌套深度（不在字符串中时）
+
+        # Update nesting depths (when not in a string)
         if not in_string:
             if char == '{':
                 brace_depth += 1
@@ -279,15 +280,12 @@ def fix_json_string_values_robust(json_str: str) -> str:
                 bracket_depth += 1
             elif char == ']':
                 bracket_depth -= 1
-        
-        # 在字符串内部，转义控制字符和特殊字符
+
+        # Inside a string: escape control and special characters
         if in_string:
-            # 转义所有控制字符（JSON不允许未转义的控制字符）
-            # 关键改进：如果 next_char_escaped 为 True，说明字符已经被转义，不需要再次转义
-            if ord(char) < 32:  # 控制字符
-                # 如果字符已经被转义（通过转义序列），直接添加
-                # 注意：next_char_escaped 标志已经在上面处理了，所以这里不会遇到已转义的字符
-                # 未转义的控制字符，需要转义
+            # Escape all control chars (JSON does not allow unescaped)
+            # If next_char_escaped is True, it was already escaped above so not here
+            if ord(char) < 32:  # control character
                 if char == '\n':
                     result.append('\\n')
                 elif char == '\r':
@@ -303,261 +301,101 @@ def fix_json_string_values_robust(json_str: str) -> str:
             else:
                 result.append(char)
         else:
-            # 不在字符串中，保持原样
+            # Not in string, keep char as is
             result.append(char)
-        
+
         i += 1
-    
+
     fixed_json = ''.join(result)
-    
-    # 验证修复后的JSON是否有效
+
+    # Validate the fixed JSON
     try:
         json.loads(fixed_json)
         return fixed_json
     except json.JSONDecodeError:
-        # 如果修复后仍然无效，返回原字符串让其他方法处理
+        # If it's still not valid, just return the original string for other fixers
         return json_str
 
 
 def _is_string_end(json_str: str, quote_pos: int, brace_depth: int, bracket_depth: int) -> bool:
     """
-    判断引号是否是字符串结束引号。
-    
-    使用多种策略来判断：
-    1. 检查引号后面的内容是否符合JSON结构
-    2. 检查大括号和方括号的嵌套深度
-    3. 检查是否有明确的结束标记（逗号、右括号等）
-    
+    Determine if a quote is the end of a string.
+
+    Uses multiple strategies:
+    1. Check if the content after quote matches JSON structure
+    2. Check brace/bracket depth
+    3. Check for clear end markers (comma, right brace, etc)
+
     Args:
-        json_str: JSON字符串
-        quote_pos: 引号的位置
-        brace_depth: 当前大括号嵌套深度
-        bracket_depth: 当前方括号嵌套深度
-        
+        json_str: The JSON string
+        quote_pos: The position of the quote
+        brace_depth: Current curly brace nesting depth
+        bracket_depth: Current square bracket nesting depth
+
     Returns:
-        True如果这是字符串结束引号，False如果是字符串内部的引号
+        True if this is the string's end quote, False if it's an inner quote
     """
     if quote_pos + 1 >= len(json_str):
-        # 到达末尾，肯定是字符串结束
+        # At end of string: definitely end of string
         return True
-    
-    # 跳过引号后的空白字符
+
+    # Skip any whitespace after the quote
     next_pos = quote_pos + 1
     while next_pos < len(json_str) and json_str[next_pos] in ' \t\n\r':
         next_pos += 1
-    
+
     if next_pos >= len(json_str):
         return True
-    
+
     next_char = json_str[next_pos]
-    
-    # 如果后面是明确的结束标记，很可能是字符串结束
+
+    # If next char is a clear end marker, probably the end of the string
     if next_char in ',}':
-        # 检查前面是否有未闭合的结构
-        # 如果大括号深度为0或1，且后面是}，很可能是字符串结束
+        # If brace depth is 0 or 1 and next is }, it's likely the end of a string
         if next_char == '}' and brace_depth <= 1:
             return True
         if next_char == ',':
             return True
-    
-    # 关键修复：如果后面是冒号，说明这是键名的结束引号
+
+    # Special fix: If next char is a colon, this is probably a key end
     if next_char == ':':
         return True
-    
-    # 检查后面是否有 }\n} 或 }\n  } 模式（tool_name/parameters格式的特征）
+
+    # Look for patterns like }\n} or }\n  } afterwards (common for tool_name/parameters blocks)
     remaining = json_str[quote_pos + 1:]
     remaining_stripped = remaining.lstrip(' \t\n\r')
-    
+
     if remaining_stripped.startswith('}\n}') or remaining_stripped.startswith('}\n  }'):
         return True
-    
-    # 对于超长内容，扩大查找范围
+
+    # For very long content, expand lookahead
     if len(json_str) > 1000:
         lookahead_size = min(200, len(json_str) - quote_pos - 1)
         lookahead = json_str[quote_pos + 1:quote_pos + 1 + lookahead_size]
-        
-        # 查找 }\n} 或 }\n  } 模式
+
+        # Check for }\n} or }\n  } pattern
         if '}\n}' in lookahead or '}\n  }' in lookahead:
-            # 找到第一个}的位置
             first_brace_pos = lookahead.find('}')
             if first_brace_pos > 0:
-                # 检查在}之前是否有其他未转义的引号
                 before_brace = lookahead[:first_brace_pos]
-                # 简单检查：如果引号数量是偶数，说明没有未闭合的字符串
                 quote_count = before_brace.count('"')
-                # 粗略估计：如果引号数量很少，可能是字符串结束
+                # If there are very few quotes before }, likely string end
                 if quote_count <= 2:
                     return True
-    
-    # 如果后面跟着普通字符（字母、数字、中文等），可能是字符串内部的引号
+
+    # If next char is a plain ASCII/Chinese character, probably not string end
     if next_char.isalnum() or '\u4e00' <= next_char <= '\u9fff':
         return False
-    
-    # 如果后面是引号，可能是 "key": "value" 格式，但也可能是字符串内部的引号
-    # 保守策略：假设是字符串内部的引号
+
+    # If next is a quote: could be "key": "value", or could be a quoted string inner quote
+    # Conservative: Treat as an inner quote (not end)
     if next_char == '"':
         return False
-    
-    # 默认情况：如果后面是结束标记，认为是字符串结束
+
+    # Default: treat as string end if it's a common end marker
     return next_char in ',}]'
 
 
-def rebuild_json_structure(json_str: str) -> str:
-    """
-    Last resort method to rebuild JSON structure from malformed JSON.
-    
-    Args:
-        json_str: Malformed JSON string
-        
-    Returns:
-        Rebuilt JSON string
-    """
-    # Try to extract key-value pairs and rebuild the JSON
-    # This is a very basic approach for specific cases
-    
-    # Look for pattern: "key": "value" or "key": value
-    pairs = []
-    
-    # Extract string values
-    string_pattern = r'"([^"]+)":\s*"([^"]*(?:\\.[^"]*)*)"'
-    for match in re.finditer(string_pattern, json_str, re.DOTALL):
-        key = match.group(1)
-        value = match.group(2)
-        # Escape the value properly
-        value = value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t').replace('\r', '\\r')
-        pairs.append(f'"{key}": "{value}"')
-    
-    # Extract non-string values (numbers, booleans, null)
-    non_string_pattern = r'"([^"]+)":\s*([^",}\s]+)'
-    for match in re.finditer(non_string_pattern, json_str):
-        key = match.group(1)
-        value = match.group(2).strip()
-        # Skip if this was already captured as a string
-        if not any(f'"{key}":' in pair for pair in pairs):
-            pairs.append(f'"{key}": {value}')
-    
-    if pairs:
-        rebuilt_json = '{' + ', '.join(pairs) + '}'
-        try:
-            # Validate the rebuilt JSON
-            json.loads(rebuilt_json)
-            return rebuilt_json
-        except json.JSONDecodeError:
-            pass
-    
-    # If rebuild failed, return original
-    return json_str
-
-
-def parse_python_params_manually(params_str: str) -> Dict[str, Any]:
-    """
-    Manually parse Python function parameters when JSON parsing fails.
-    
-    Args:
-        params_str: Parameter string from Python function call
-        
-    Returns:
-        Dictionary of parameters
-    """
-    params = {}
-    
-    # Remove the outer braces if present
-    if params_str.startswith('{') and params_str.endswith('}'):
-        params_str = params_str[1:-1].strip()
-    
-    # Split by commas, but be careful about commas inside strings
-    param_parts = []
-    current_part = ""
-    in_quotes = False
-    quote_char = None
-    brace_depth = 0
-    
-    for char in params_str:
-        if char in ('"', "'") and not in_quotes:
-            in_quotes = True
-            quote_char = char
-            current_part += char
-        elif char == quote_char and in_quotes:
-            in_quotes = False
-            quote_char = None
-            current_part += char
-        elif char == '{' and not in_quotes:
-            brace_depth += 1
-            current_part += char
-        elif char == '}' and not in_quotes:
-            brace_depth -= 1
-            current_part += char
-        elif char == ',' and not in_quotes and brace_depth == 0:
-            param_parts.append(current_part.strip())
-            current_part = ""
-        else:
-            current_part += char
-    
-    if current_part.strip():
-        param_parts.append(current_part.strip())
-    
-    # Parse each parameter
-    for part in param_parts:
-        # Look for key: value pattern
-        if ':' in part:
-            key_value = part.split(':', 1)
-            if len(key_value) == 2:
-                key = key_value[0].strip().strip('"\'')
-                value = key_value[1].strip()
-                
-                # Remove quotes from value if present
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
-                    value = value[1:-1]
-                
-                # Convert boolean values
-                if value.lower() in ('true', 'false'):
-                    value = value.lower() == 'true'
-                # Convert numeric values
-                elif value.isdigit():
-                    value = int(value)
-                
-                params[key] = value
-    
-    return params
-
-
-def convert_parameter_value(value: str) -> Any:
-    """
-    Convert parameter value to appropriate type.
-    
-    Args:
-        value: String value to convert
-        
-    Returns:
-        Converted value (string, int, bool, list, etc.)
-    """
-    # For certain parameters that may contain meaningful whitespace/formatting,
-    # don't strip the value
-    value_stripped = value.strip()
-    
-    # Handle boolean values
-    if value_stripped.lower() in ('true', 'false'):
-        return value_stripped.lower() == 'true'
-    
-    # Handle integers
-    if value_stripped.isdigit():
-        return int(value_stripped)
-    
-    # Handle negative integers
-    if value_stripped.startswith('-') and value_stripped[1:].isdigit():
-        return int(value_stripped)
-    
-    # Handle JSON arrays/objects
-    if (value_stripped.startswith('[') and value_stripped.endswith(']')) or (value_stripped.startswith('{') and value_stripped.endswith('}')):
-        try:
-            return json.loads(value_stripped)
-        except json.JSONDecodeError:
-            pass
-    
-    # Return original value (not stripped) for string parameters to preserve formatting
-    return value
 
 
 def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: str = 'en') -> str:
@@ -585,37 +423,20 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         prompt_parts = []
         
         # Add header
-        if language == 'zh':
-            prompt_parts.append("## Available tools")
-            prompt_parts.append("")
-            prompt_parts.append("You can use the following tools to complete tasks. Please use JSON format to call tools:")
-            prompt_parts.append("")
-            prompt_parts.append("```json")
-            prompt_parts.append("{")
-            prompt_parts.append('  "tool_name": "Tool name",')
-            prompt_parts.append('  "parameters": {')
-            prompt_parts.append('    "Parameter name": "Parameter value"')
-            prompt_parts.append("  }")
-            prompt_parts.append("}")
-            prompt_parts.append("```")
-            prompt_parts.append("")
-            prompt_parts.append("### Tool list:")
-        else:
-            prompt_parts.append("## Available Tools")
-            prompt_parts.append("")
-            prompt_parts.append("You can use the following tools to complete tasks. Please call tools using JSON format:")
-            prompt_parts.append("")
-            prompt_parts.append("```json")
-            prompt_parts.append("{")
-            prompt_parts.append('  "tool_name": "tool_name",')
-            prompt_parts.append('  "parameters": {')
-            prompt_parts.append('    "param_name": "param_value"')
-            prompt_parts.append("  }")
-            prompt_parts.append("}")
-            prompt_parts.append("```")
-            prompt_parts.append("")
-            prompt_parts.append("### Tool List:")
-        
+        prompt_parts.append("## Available Tools")
+        prompt_parts.append("")
+        prompt_parts.append("Following is the tools you can use to complete tasks. Please call tools using JSON format:")
+        prompt_parts.append("")
+        prompt_parts.append("```json")
+        prompt_parts.append("{")
+        prompt_parts.append('  "tool_name": "tool_name",')
+        prompt_parts.append('  "parameters": {')
+        prompt_parts.append('    "param_name": "param_value"')
+        prompt_parts.append("  }")
+        prompt_parts.append("}")
+        prompt_parts.append("```")
+        prompt_parts.append("")
+        prompt_parts.append("### Tool List:")
         prompt_parts.append("")
         
         # Add each tool's description
@@ -652,10 +473,7 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
                 prompt_parts.append("")
             
             # Example usage
-            if language == 'zh':
-                prompt_parts.append("**Usage Example**:")
-            else:
-                prompt_parts.append("**Example Usage**:")
+            prompt_parts.append("**Example Usage**:")
             
             # Generate example based on tool
             example_params = {}
@@ -696,20 +514,13 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
             prompt_parts.append("")
         
         # Add footer instructions
-        if language == 'zh':
-            prompt_parts.append("### Important notes:")
-            prompt_parts.append("1. Please strictly follow the above JSON format to call tools")
-            prompt_parts.append("2. Tool name must match exactly")
-            prompt_parts.append("3. Required parameters cannot be omitted")
-            prompt_parts.append("4. Parameter types must be correct")
-            prompt_parts.append("5. Multiple tools can be called simultaneously")
-        else:
-            prompt_parts.append("### Important Notes:")
-            prompt_parts.append("1. Please strictly follow the JSON format above for tool calls")
-            prompt_parts.append("2. Tool names must match exactly")
-            prompt_parts.append("3. Required parameters cannot be omitted")
-            prompt_parts.append("4. Parameter types must be correct")
-            prompt_parts.append("5. Multiple tools can be called simultaneously")
+        prompt_parts.append("### Important Notes:")
+        prompt_parts.append("1. Please strictly follow the JSON format above for tool calls")
+        prompt_parts.append("2. NEVER use XML format - Do NOT use XML tags like <invoke>, <function_call>, or <function_calls>. ONLY use JSON format.")
+        prompt_parts.append("3. Tool names must match exactly")
+        prompt_parts.append("4. Required parameters cannot be omitted")
+        prompt_parts.append("5. Parameter types must be correct")
+        prompt_parts.append("6. Multiple tools can be called simultaneously")
         
         return "\n".join(prompt_parts)
         
@@ -725,9 +536,503 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         return ""
 
 
-# Convenience function aliases for backward compatibility
-_fix_json_escapes = fix_json_escapes
-_smart_escape_quotes_in_json_values = smart_escape_quotes_in_json_values  
-_rebuild_json_structure = rebuild_json_structure
-_parse_python_params_manually = parse_python_params_manually
-_convert_parameter_value = convert_parameter_value 
+def convert_xml_parameter_value(value: str) -> Any:
+    """
+    Convert XML parameter value to appropriate type.
+    
+    This function is used in XML parsing to convert string parameter values
+    extracted from XML tags to their appropriate Python types (bool, int, list, etc.).
+    
+    Args:
+        value: String value extracted from XML to convert
+        
+    Returns:
+        Converted value (string, int, bool, list, etc.)
+    """
+    # For certain parameters that may contain meaningful whitespace/formatting,
+    # don't strip the value
+    value_stripped = value.strip()
+    
+    # Handle boolean values
+    if value_stripped.lower() in ('true', 'false'):
+        return value_stripped.lower() == 'true'
+    
+    # Handle integers
+    if value_stripped.isdigit():
+        return int(value_stripped)
+    
+    # Handle negative integers
+    if value_stripped.startswith('-') and value_stripped[1:].isdigit():
+        return int(value_stripped)
+    
+    # Handle JSON arrays/objects
+    if (value_stripped.startswith('[') and value_stripped.endswith(']')) or (value_stripped.startswith('{') and value_stripped.endswith('}')):
+        try:
+            return json.loads(value_stripped)
+        except json.JSONDecodeError:
+            pass
+    
+    # Return original value (not stripped) for string parameters to preserve formatting
+    return value
+
+
+def _find_second_json_block_start(content: str) -> int:
+    """
+    找到第二个```json块的起始位置
+    确保第一个JSON块已经完整闭合后再查找第二个
+    重要：检查第二个```json块是否在JSON字符串值内部（如code_edit字段的值中）
+    
+    Args:
+        content: 响应内容
+        
+    Returns:
+        int: 第二个```json块的起始位置，如果没找到返回-1
+    """
+    json_block_marker = '```json'
+    first_pos = content.find(json_block_marker)
+    if first_pos == -1:
+        return -1
+    
+    # 检查第一个JSON块是否已经完整闭合
+    json_start = first_pos + len(json_block_marker)
+    first_block_end = content.find('```', json_start)
+    
+    # 如果第一个块没有闭合，不要查找第二个块（可能还在接收中）
+    if first_block_end == -1:
+        return -1
+    
+    # 在第一个块闭合之后查找第二个```json块
+    search_start = first_block_end + 3
+    second_pos = content.find(json_block_marker, search_start)
+    
+    # 如果找到了第二个```json块，需要检查它是否在JSON字符串值内部
+    if second_pos != -1:
+        # 提取第一个JSON块的内容（从```json到```之间）
+        json_content = content[json_start:first_block_end].strip()
+        
+        # 检查第二个```json是否在第一个JSON块的字符串值内部
+        # 方法：从第一个JSON块开始到第二个```json位置，检查引号匹配
+        # 如果引号数量是奇数，说明第二个```json在字符串值内部
+        
+        # 计算第二个```json相对于第一个JSON块开始的位置
+        second_pos_relative = second_pos - json_start
+        
+        # 检查从json_start到second_pos之间的引号匹配情况
+        check_range = content[json_start:second_pos]
+        in_string = False
+        escape_next = False
+        brace_count = 0
+        
+        for i, char in enumerate(check_range):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+        
+        # 如果in_string为True，说明第二个```json在字符串值内部，应该忽略
+        if in_string:
+            # 继续查找下一个```json块（跳过这个在字符串值内部的）
+            next_pos = content.find(json_block_marker, second_pos + len(json_block_marker))
+            return next_pos if next_pos != -1 else -1
+    
+    return second_pos
+
+
+def _has_complete_json_tool_call(content: str) -> bool:
+    """
+    检测content中是否包含完整的工具调用（支持带```json标记和不带标记的纯JSON格式）
+    重要：检查第二个```json块是否在JSON字符串值内部（如code_edit字段的值中）
+    
+    Args:
+        content: 累积的响应内容
+        
+    Returns:
+        bool: 如果检测到完整的工具调用JSON返回True
+    """
+    # 首先检查是否有```json标记的格式
+    json_block_marker = '```json'
+    if json_block_marker in content:
+        first_pos = content.find(json_block_marker)
+        json_start = first_pos + len(json_block_marker)
+        first_block_end = content.find('```', json_start)
+        
+        # 如果第一个块没有闭合，不要停止（可能还在接收中）
+        if first_block_end == -1:
+            return False
+        
+        # 查找第二个```json块（必须在第一个块之后）
+        # 使用改进的方法，检查第二个```json是否在字符串值内部
+        second_pos = _find_second_json_block_start(content)
+        # 如果找到第二个```json块，且第一个块已完整，说明有多个工具调用，需要截断
+        return second_pos != -1
+    
+    # 如果没有```json标记，检查是否是纯JSON格式的工具调用
+    # 查找 "tool_name" 和 "parameters" 字段
+    if '"tool_name"' in content and '"parameters"' in content:
+        # 尝试找到第一个完整的JSON对象（以{开始，以}结束）
+        try:
+            brace_start = content.find('{')
+            if brace_start != -1:
+                # 尝试找到匹配的闭合括号
+                brace_count = 0
+                in_string = False
+                escape_next = False
+                brace_end = -1
+                
+                for i in range(brace_start, len(content)):
+                    char = content[i]
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                brace_end = i + 1
+                                break
+                
+                if brace_end > brace_start:
+                    # 检查是否包含tool_name和parameters
+                    json_str = content[brace_start:brace_end]
+                    if '"tool_name"' in json_str and '"parameters"' in json_str:
+                        # 尝试解析JSON验证其有效性
+                        try:
+                            tool_data = json.loads(json_str)
+                            if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+                                # 检查是否有第二个工具调用
+                                remaining_content = content[brace_end:]
+                                if '"tool_name"' in remaining_content and '"parameters"' in remaining_content:
+                                    return True  # 有多个工具调用
+                                return True  # 至少有一个完整的工具调用
+                        except:
+                            pass
+        except:
+            pass
+    
+    return False
+
+
+def _is_complete_json_tool_call(content: str) -> bool:
+    """
+    检测content中是否包含完整的工具调用（兼容性方法，调用新的检测方法）
+    """
+    return _has_complete_json_tool_call(content)
+
+
+def _ensure_first_json_block_complete(content: str) -> str:
+    """
+    简化版本：确保第一个```json块有闭合的```标记
+    不做复杂的修复，只做基本检查，将修复交给parse_tool_calls处理
+    
+    Args:
+        content: 响应内容
+        
+    Returns:
+        str: 确保第一个JSON块有闭合标记的内容（如果缺失则补全），否则返回原内容
+    """
+    json_block_marker = '```json'
+    first_pos = content.find(json_block_marker)
+    
+    # 如果没有找到```json标记，直接返回原内容，让parse_tool_calls处理
+    if first_pos == -1:
+        return content
+    
+    # 找到第一个```json块的开始位置
+    json_start = first_pos + len(json_block_marker)
+    
+    # 查找第一个```json块的结束位置（闭合的```）
+    first_block_end = content.find('```', json_start)
+    
+    # 如果第一个块已经完整闭合，直接返回
+    if first_block_end != -1:
+        return content
+    
+    # 如果第一个块没有闭合，简单补全闭合标记（不做复杂的JSON验证）
+    # 只查找第一个匹配的```来闭合，如果找不到就原样返回让parse_tool_calls处理
+    return content + '\n```'
+
+
+def parse_tool_calls_from_json(content: str) -> List[Dict[str, Any]]:
+    """
+    Parse tool calls from JSON format.
+    
+    Args:
+        content: The model's response text
+        
+    Returns:
+        List of dictionaries with tool name and parameters
+    """
+    all_tool_calls = []
+    
+    json_start = content.find('{')
+    json_end = content.rfind('}') + 1
+    if json_start == -1 or json_end <= json_start:
+        return all_tool_calls
+    
+    json_str = content[json_start:json_end]
+    
+    try:
+        tool_data = json.loads(json_str)
+        
+        if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+            all_tool_calls.append({
+                "name": tool_data["tool_name"],
+                "arguments": tool_data["parameters"]
+            })
+    except json.JSONDecodeError:
+        # Try to fix JSON with quote escaping
+        try:
+            fixed_json = fix_json(json_str)
+            tool_data = json.loads(fixed_json)
+            
+            if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+                _log_warning(f"✅ Successfully parsed tool calls from JSON using smart fix: {tool_data}")
+                all_tool_calls.append({
+                    "name": tool_data["tool_name"],
+                    "arguments": tool_data["parameters"]
+                })
+        except (json.JSONDecodeError, Exception):
+            # Try robust fix method
+            try:
+                fixed_json_robust = fix_json_advanced(json_str)
+                if fixed_json_robust != json_str:
+                    tool_data = json.loads(fixed_json_robust)
+                    if isinstance(tool_data, dict) and 'tool_name' in tool_data and 'parameters' in tool_data:
+                        _log_warning(f"✅ Successfully parsed tool calls from JSON using advanced fix: {tool_data}")
+                        all_tool_calls.append({
+                            "name": tool_data["tool_name"],
+                            "arguments": tool_data["parameters"]
+                        })
+            except (json.JSONDecodeError, Exception):
+                _log_warning(f"JSON parsing failed with all attempts")
+                _log_debug(f"JSON parsing failed with original string: {content}")
+    
+    return all_tool_calls
+
+
+def parse_arguments_xml(args_text: str) -> Dict[str, Any]:
+    """
+    Parse arguments from the given text.
+    
+    Args:
+        args_text: Text containing arguments
+        
+    Returns:
+        Dictionary of argument names and values
+    """
+    args = {}
+    
+    # Method 1: Try the traditional <parameter name="...">value</parameter> format
+    arg_pattern = r'<parameter name="([^"]+)">(.*?)</parameter>'
+    arg_matches = re.findall(arg_pattern, args_text, re.DOTALL)
+    for name, value in arg_matches:
+        value = value.strip()
+        args[name] = convert_xml_parameter_value(value)
+    
+    # Method 2: Try the direct tag format <tag_name>value</tag_name>
+    # This supports the more intuitive XML format that models often generate
+    if not args:  # Only try this if the traditional format didn't work
+        # Find all XML tags and their content
+        direct_tag_pattern = r'<([^/][^>]*?)>(.*?)</\1>'
+        direct_matches = re.findall(direct_tag_pattern, args_text, re.DOTALL)
+        
+        for tag_name, value in direct_matches:
+            # Clean up the tag name (remove any attributes)
+            tag_name = tag_name.split()[0]
+            value = value.strip()
+            
+            # Handle special cases for array-like structures
+            if tag_name == 'target_directories':
+                # Handle <target_directories><item>value1</item><item>value2</item></target_directories>
+                item_pattern = r'<item[^>]*>(.*?)</item>'
+                items = re.findall(item_pattern, value, re.DOTALL)
+                if items:
+                    args[tag_name] = [item.strip() for item in items]
+                else:
+                    args[tag_name] = convert_xml_parameter_value(value)
+            else:
+                args[tag_name] = convert_xml_parameter_value(value)
+    
+    return args
+
+
+def parse_function_calls_xml(function_calls_text: str) -> List[Dict[str, Any]]:
+    """
+    Parse function calls from the given text.
+    
+    Args:
+        function_calls_text: Text containing function calls
+        
+    Returns:
+        List of dictionaries, each representing a function call
+    """
+    function_calls = []
+    # Look for individual function calls
+    invoke_pattern = r'<invoke name="([^"]+)">(.*?)</invoke>'
+    invokes = re.findall(invoke_pattern, function_calls_text, re.DOTALL)
+    for name, args_text in invokes:
+        # Parse the arguments
+        args = parse_arguments_xml(args_text)
+        function_calls.append({"name": name, "arguments": args})
+    return function_calls
+
+
+def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
+    """
+    Parse tool calls from XML format.
+    
+    Args:
+        content: The model's response text
+        
+    Returns:
+        List of dictionaries with tool name and parameters
+    """
+    all_tool_calls = []
+    
+    # Try to parse individual <function_call> tags (single format)
+    function_call_pattern = r'<function_call>\s*\{(.*?)\}\s*</function_call>'
+    function_call_matches = re.findall(function_call_pattern, content, re.DOTALL)
+    if function_call_matches:
+        for match in function_call_matches:
+            try:
+                # Parse the JSON content inside function_call tags
+                json_str = '{' + match + '}'
+                tool_data = json.loads(json_str)
+                
+                if isinstance(tool_data, dict):
+                    # Handle different JSON structures
+                    if 'name' in tool_data and 'parameters' in tool_data:
+                        all_tool_calls.append({
+                            "name": tool_data["name"],
+                            "arguments": tool_data["parameters"]
+                        })
+                    elif 'name' in tool_data and 'content' in tool_data:
+                        all_tool_calls.append({
+                            "name": tool_data["name"],
+                            "arguments": tool_data["content"]
+                        })
+            except json.JSONDecodeError:
+                continue
+        
+        # If we found function_call format tool calls, return them
+        if all_tool_calls:
+            return all_tool_calls
+    
+    # Try to parse XML format with function_calls wrapper
+    function_calls_matches = re.findall(r'<function_calls>(.*?)</function_calls>', content, re.DOTALL)
+    if function_calls_matches:
+        for function_calls_text in function_calls_matches:
+            # Parse the function calls in this block
+            function_calls = parse_function_calls_xml(function_calls_text)
+            if function_calls:
+                all_tool_calls.extend(function_calls)
+        
+        # If we found function_calls wrapper tool calls, return directly
+        if all_tool_calls:
+            return all_tool_calls
+    
+    # Only try to parse individual invoke tags if no function_calls wrapper was found
+    invoke_pattern = r'<invoke name="([^"]+)">(.*?)</invoke>'
+    invoke_matches = re.findall(invoke_pattern, content, re.DOTALL)
+    if invoke_matches:
+        for tool_name, args_text in invoke_matches:
+            args = parse_arguments_xml(args_text)
+            all_tool_calls.append({"name": tool_name, "arguments": args})
+    
+    return all_tool_calls
+
+
+def parse_python_function_calls(content: str, tool_map: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Parse Python-style function calls from the model's response.
+    This serves as a fallback for when the model doesn't use the correct XML format.
+    
+    Args:
+        content: The model's response text
+        tool_map: Dictionary mapping tool names to tool functions
+        
+    Returns:
+        List of dictionaries, each representing a function call
+    """
+    function_calls = []
+    
+    # Pattern to match function calls like: tool_name({"param": "value", ...})
+    # Updated pattern to better handle multiline strings and nested braces
+    python_pattern = r'(\w+)\s*\(\s*(\{(?:[^{}]|(?:\{[^{}]*\}))*\})\s*\)'
+    
+    matches = re.findall(python_pattern, content, re.DOTALL)
+    
+    for tool_name, params_str in matches:
+        # Check if this is a valid tool name
+        if tool_name in tool_map:
+            try:
+                # Try to parse the parameters as JSON directly
+                # Fix common JSON issues
+                params_json = params_str.replace("'", '"')  # Replace single quotes with double quotes
+                
+                params = json.loads(params_json)
+                
+                function_calls.append({
+                    "name": tool_name,
+                    "arguments": params
+                })
+                
+            except json.JSONDecodeError as e:
+                continue
+    
+    return function_calls
+
+
+def validate_tool_call_json(json_str: str, tool_name: str = "") -> Tuple[bool, Optional[Dict], str]:
+    """
+    Validate and parse the JSON parameters for a tool call, with auto-fix support for multiple formats.
+
+    Args:
+        json_str: The JSON string.
+        tool_name: Name of the tool (for logging).
+
+    Returns:
+        Tuple of (is_valid, parsed_data, error_message)
+    """
+    if not json_str or not json_str.strip():
+        return False, None, "Empty JSON string"
+
+    # Try parsing directly first
+    try:
+        data = json.loads(json_str)
+        return True, data, ""
+    except json.JSONDecodeError as e:
+        error_msg = f"JSON parsing failed"
+        if tool_name:
+            error_msg += f" (tool: {tool_name})"
+        error_msg += f": {e.msg} at line {e.lineno} column {e.colno}"
+
+        # Add detailed error context
+        lines = json_str.split('\n')
+        if 0 <= e.lineno - 1 < len(lines):
+            error_line = lines[e.lineno - 1]
+            error_msg += f"\nError line: {error_line}"
+            if e.colno > 0:
+                error_msg += f"\nPosition: {' ' * (e.colno - 1)}^"
+
+        return False, None, error_msg
+    except Exception as e:
+        return False, None, f"Unexpected error: {str(e)}"

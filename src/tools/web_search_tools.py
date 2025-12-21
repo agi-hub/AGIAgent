@@ -197,6 +197,7 @@ class WebSearchTools:
                       "百度学术" in html_content or "- 百度学术" in title or
                       "相关论文" in html_content or "获取方式" in html_content):
                     print_current("⚠️ Skipping HTML save for Baidu Scholar search page")
+
                 return ""  # Return empty string to indicate no file was saved
             
             # Generate filename
@@ -299,6 +300,7 @@ class WebSearchTools:
                           "百度学术" in html_content or "- 百度学术" in title or
                           "相关论文" in html_content or "获取方式" in html_content):
                         print_current("⚠️ Skipping HTML save for Baidu Scholar search page")
+                        
                 
                 if not should_skip_html:
                     # Ensure the HTML file has .html extension
@@ -306,8 +308,7 @@ class WebSearchTools:
                     html_filepath = os.path.join(self.web_result_dir, html_filename)
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
-                else:
-                    print_current(f"⏭️ Skipped HTML save for special page: {title[:50]}...")
+
                     
             except Exception as e:
                 print_current(f"⚠️ Failed to save webpage HTML: {e}")
@@ -735,7 +736,7 @@ Please create a detailed, structured analysis that preserves important informati
                 'results': [{
                     'title': 'Playwright not available',
                     'url': '',
-                    'snippet': 'Playwright library is not installed. Run: pip install playwright && playwright install chromium',
+                    'snippet': self._clean_snippet('Playwright library is not installed. Run: pip install playwright && playwright install chromium'),
                     'content': ''
                 }],
                 'timestamp': datetime.datetime.now().isoformat(),
@@ -937,7 +938,7 @@ Please create a detailed, structured analysis that preserves important informati
                         
                         result_dict = {
                             'title': title,
-                            'snippet': f'Direct URL access successful: {title}',
+                            'snippet': self._clean_snippet(f'Direct URL access successful: {title}'),
                             'source': 'direct_access',
                             'content': cleaned_content if cleaned_content else (content if content else "Unable to get webpage content"),
                             'content_length': len(cleaned_content if cleaned_content else content),
@@ -959,7 +960,7 @@ Please create a detailed, structured analysis that preserves important informati
                         results.append({
                             'title': f'Access failed: {search_term}',
                             'url': search_term,
-                            'snippet': f'Direct URL access failed: {str(e)}',
+                            'snippet': self._clean_snippet(f'Direct URL access failed: {str(e)}'),
                             'source': 'direct_access_failed',
                             'content': f'Access failed: {str(e)}',
                             'error': str(e),
@@ -1012,7 +1013,7 @@ Please create a detailed, structured analysis that preserves important informati
                             'results': [{
                                 'title': 'No search engines available',
                                 'url': '',
-                                'snippet': 'All search engines are unavailable due to connectivity issues.',
+                                'snippet': self._clean_snippet('All search engines are unavailable due to connectivity issues.'),
                                 'content': 'No search engines available'
                             }],
                             'timestamp': datetime.datetime.now().isoformat(),
@@ -1151,9 +1152,11 @@ Please create a detailed, structured analysis that preserves important informati
                                             pass
                                         
                                         if title and len(title) > 5:
+                                            # Clean snippet before truncating
+                                            cleaned_snippet = self._clean_snippet(snippet) if snippet else f'Search result from {engine["name"]}'
                                             results.append({
                                                 'title': title,
-                                                'snippet': snippet[:get_truncation_length()] if snippet else f'Search result from {engine["name"]}',
+                                                'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {engine["name"]}',
                                                 'source': engine['name'],
                                                 'content': '',
                                                 '_internal_url': url  # Keep URL internally for content fetching
@@ -1238,7 +1241,7 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current("🔄 All search engines failed, providing fallback result...")
                 results = [{
                     'title': f'Search: {search_term}',
-                    'snippet': f'Failed to get results from search engines. Possible reasons: network connection issues, search engine structure changes, or access restrictions. Recommend manual search: {search_term}',
+                    'snippet': self._clean_snippet(f'Failed to get results from search engines. Possible reasons: network connection issues, search engine structure changes, or access restrictions. Recommend manual search: {search_term}'),
                     'source': 'fallback',
                     'content': ''
                 }]
@@ -1264,7 +1267,7 @@ Please create a detailed, structured analysis that preserves important informati
                         # URL removed from results as requested
                         
                         if 'snippet' in result:
-                            optimized_result['snippet'] = result['snippet']
+                            optimized_result['snippet'] = self._clean_snippet(result['snippet'])
                         
                         optimized_results.append(optimized_result)
                     else:
@@ -1290,6 +1293,11 @@ Please create a detailed, structured analysis that preserves important informati
             
             # Check total txt files in web_search_result directory
             total_txt_files = self._count_txt_files_in_result_dir()
+            
+            # Clean all snippets in results to remove excessive whitespace
+            for result in results:
+                if 'snippet' in result and result['snippet']:
+                    result['snippet'] = self._clean_snippet(result['snippet'])
             
             result_data = {
                 'status': 'success',
@@ -1378,7 +1386,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'results': [{
                         'title': 'System compatibility issue',
                         'url': '',
-                        'snippet': f'Playwright requires GLIBC 2.28+ but your system has an older version. Error: {error_str}',
+                        'snippet': self._clean_snippet(f'Playwright requires GLIBC 2.28+ but your system has an older version. Error: {error_str}'),
                         'content': 'Please upgrade your system or use alternative search method'
                     }],
                     'timestamp': datetime.datetime.now().isoformat(),
@@ -1393,7 +1401,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'results': [{
                         'title': 'Playwright initialization failed',
                         'url': '',
-                        'snippet': f'Playwright failed to initialize properly. Error: {error_str}',
+                        'snippet': self._clean_snippet(f'Playwright failed to initialize properly. Error: {error_str}'),
                         'content': 'Browser initialization failed, please check Playwright installation'
                     }],
                     'timestamp': datetime.datetime.now().isoformat(),
@@ -1407,7 +1415,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'results': [{
                         'title': f'Playwright error: {search_term}',
                         'url': '',
-                        'snippet': f'Playwright failed with error: {str(playwright_error)}',
+                        'snippet': self._clean_snippet(f'Playwright failed with error: {str(playwright_error)}'),
                         'content': f'Playwright error: {str(playwright_error)}'
                     }],
                     'timestamp': datetime.datetime.now().isoformat(),
@@ -1421,7 +1429,7 @@ Please create a detailed, structured analysis that preserves important informati
                 'results': [{
                     'title': f'Search timeout: {search_term}',
                     'url': '',
-                    'snippet': 'Web search operation timed out after 60 seconds.',
+                    'snippet': self._clean_snippet('Web search operation timed out after 60 seconds.'),
                     'content': 'Search operation timed out'
                 }],
                 'timestamp': datetime.datetime.now().isoformat(),
@@ -1436,7 +1444,7 @@ Please create a detailed, structured analysis that preserves important informati
                 'results': [{
                     'title': f'Search error: {search_term}',
                     'url': '',
-                    'snippet': f'Web search failed with error: {str(e)}',
+                    'snippet': self._clean_snippet(f'Web search failed with error: {str(e)}'),
                     'content': f'Search error: {str(e)}'
                 }],
                 'timestamp': datetime.datetime.now().isoformat(),
@@ -1460,6 +1468,25 @@ Please create a detailed, structured analysis that preserves important informati
                 except:
                     pass
 
+    def _clean_snippet(self, snippet: str) -> str:
+        """
+        Clean snippet text by removing excessive whitespace characters
+        Removes all types of whitespace (spaces, newlines, tabs, etc.) and normalizes to single spaces
+        """
+        import re
+        
+        if not snippet:
+            return ""
+        
+        # Remove all types of whitespace characters (spaces, newlines, tabs, etc.)
+        # Replace multiple consecutive whitespace characters with a single space
+        cleaned = re.sub(r'\s+', ' ', snippet)
+        
+        # Strip leading and trailing whitespace
+        cleaned = cleaned.strip()
+        
+        return cleaned
+    
     def _extract_snippet_from_search_result(self, elem, engine) -> str:
         """
         Extract snippet/description from search result element
@@ -1511,7 +1538,8 @@ Please create a detailed, structured analysis that preserves important informati
         except Exception as e:
             print_current(f"Error extracting snippet: {e}")
         
-        return snippet
+        # Clean the snippet to remove excessive whitespace
+        return self._clean_snippet(snippet)
 
     def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 25) -> None:
         """
@@ -2412,6 +2440,31 @@ Please create a detailed, structured analysis that preserves important informati
         content = re.sub(r'(var|let|const)\s+\w+\s*=.*?;', '', content)
         content = re.sub(r'\$\([^)]+\)\.[^;]+;?', '', content)
         
+        # Remove JSON-format image embedding information (e.g., Baidu Baijiahao format)
+        # Remove image objects: {"type":"img","link":"...","imgHeight":...,"imgWidth":...}
+        # Handle both single-line and multi-line JSON objects
+        content = re.sub(r'\{"type"\s*:\s*"img"[^}]*\}', '', content, flags=re.DOTALL)
+        # Remove image objects in JSON arrays: ,{"type":"img",...}
+        content = re.sub(r',\s*\{\s*"type"\s*:\s*"img"[^}]*\}', '', content, flags=re.DOTALL)
+        # Remove image-related JSON fields (standalone or in objects)
+        content = re.sub(r'"imgHeight"\s*:\s*\d+[,\s]*', '', content)
+        content = re.sub(r'"imgWidth"\s*:\s*\d+[,\s]*', '', content)
+        content = re.sub(r'"gifsrc"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"gifsize"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"gifbytes"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"caption"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"text-align"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"image-align"\s*:\s*"[^"]*"[,\s]*', '', content)
+        content = re.sub(r'"img_combine"\s*:\s*"[^"]*"[,\s]*', '', content)
+        # Remove image links in JSON format: "link":"https://..." (but preserve text content links if needed)
+        # Only remove if it's clearly an image link (contains image-related patterns)
+        content = re.sub(r'"link"\s*:\s*"https?://[^"]*\.(jpg|jpeg|png|gif|webp|bmp|svg)[^"]*"[,\s]*', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'"link"\s*:\s*"https?://[^"]*(pics|image|img|photo|pic)[^"]*"[,\s]*', '', content, flags=re.IGNORECASE)
+        # Remove data_html fields that contain HTML (often includes image references)
+        content = re.sub(r'"data_html"\s*:\s*"[^"]*"[,\s]*', '', content)
+        # Remove JSON objects that are primarily image metadata (contain imgHeight/imgWidth but no meaningful text)
+        content = re.sub(r'\{[^{}]*"imgHeight"[^{}]*"imgWidth"[^{}]*\}', '', content, flags=re.DOTALL)
+        
         # Remove URLs and data strings
         content = re.sub(r'https?://[^\s]+', '', content)
         content = re.sub(r'data:[^;]+;[^,]+,[^\s]+', '', content)
@@ -2431,6 +2484,19 @@ Please create a detailed, structured analysis that preserves important informati
             
             # Skip empty lines and very short lines
             if not line or len(line) < 2:
+                continue
+            
+            # Skip lines containing JSON-format image embedding information
+            if (re.search(r'"type"\s*:\s*"img"', line) or
+                re.search(r'"imgHeight"', line) or
+                re.search(r'"imgWidth"', line) or
+                re.search(r'"gifsrc"', line) or
+                re.search(r'"gifsize"', line) or
+                re.search(r'"gifbytes"', line) or
+                (re.search(r'"link"\s*:\s*"https?://', line) and 
+                 re.search(r'\.(jpg|jpeg|png|gif|webp|bmp|svg)', line, re.IGNORECASE)) or
+                (re.search(r'"link"\s*:\s*"https?://', line) and 
+                 re.search(r'(pics|image|img|photo|pic)', line, re.IGNORECASE))):
                 continue
             
             # Skip obvious code lines but be more conservative
@@ -3036,12 +3102,6 @@ Please create a detailed, structured analysis that preserves important informati
                                 image_url = selected_image.get('original_src', selected_image['src'])
                                 thumbnail_url = selected_image['src']
                                 
-                                # 如果原图URL和缩略图URL不同，优先下载原图
-                                if image_url != thumbnail_url:
-                                    print_debug(f"📥 Downloading original image {i+1}/{max_images}: {image_url[:80]}...")
-                                    print_debug(f"   Thumbnail URL: {thumbnail_url[:80]}...")
-                                else:
-                                    print_debug(f"📥 Downloading image {i+1}/{max_images}: {image_url[:80]}...")
                                 
                                 import time
                                 image_start_time = time.time()

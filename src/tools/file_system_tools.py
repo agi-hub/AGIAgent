@@ -530,7 +530,7 @@ class FileSystemTools:
         """
         # Check for dummy placeholder file created by hallucination detection
         if target_file == "dummy_file_placeholder.txt" or target_file.endswith("/dummy_file_placeholder.txt"):
-            print_debug(f"🚨 HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
+            print_debug(f"HALLUCINATION PREVENTION: Detected dummy placeholder file '{target_file}' - skipping actual file operation")
             return {
                 'status': 'failed',
                 'file': target_file,

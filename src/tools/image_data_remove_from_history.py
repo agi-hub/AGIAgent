@@ -20,7 +20,7 @@ class ImageDataRemoveFromHistory:
     
     def __init__(self, workspace_root: Optional[str] = None):
         """
-        Initialize history optimizer
+        Initialize image data remove from history
         
         Args:
             workspace_root: Workspace root directory path

@@ -56,11 +56,6 @@ For Report Generation Tasks:
 11. Citation and References: Mark information sources in the form of literature citations, using academic citation format. NEVER write any specific or precise numerical values based solely on your own memory or assumptions; for each number you present, you must provide a reliable reference link as the source.
 </reports>
 
-<image_processing>
-Image Input Processing: When user requirements contain image tags (format: [img=path_to_image]), you MUST:
-Immediately provide a detailed, comprehensive description of the image content in your first response
-</image_processing>
-
 <task_execution_efficiency>
 Tool Call Limitation:
 **CRITICAL RULE - Single Tool Per Round**:

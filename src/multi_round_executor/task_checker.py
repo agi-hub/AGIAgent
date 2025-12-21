@@ -20,7 +20,7 @@ limitations under the License.
 Task completion checker for detecting task completion flags
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from tools.print_system import print_debug
 
@@ -41,6 +41,20 @@ class TaskChecker:
             
         Returns:
             Whether task completion flag is detected in LLM's original response
+        """
+        completion_info = TaskChecker.extract_completion_info(result)
+        return completion_info is not None
+    
+    @staticmethod
+    def extract_completion_info(result: str) -> Optional[str]:
+        """
+        Extract task completion message from LLM response
+        
+        Args:
+            result: Large model response text (may include tool execution results)
+            
+        Returns:
+            Completion message if found, None otherwise
         """
         # Extract only LLM's original response content, ignoring tool execution results
         # Tool execution results are separated by "--- Tool Execution Results ---"
@@ -65,9 +79,12 @@ class TaskChecker:
                 try:
                     if stripped_line.startswith("TASK_COMPLETED:"):
                         completion_desc = stripped_line[len("TASK_COMPLETED:"):].strip()
-                    return True
-                except Exception as e:
-                    return True  # Even if parsing fails, consider task completed
+                        return completion_desc if completion_desc else ""
+                    else:
+                        # TASK_COMPLETED without colon
+                        return ""
+                except Exception:
+                    return ""  # Even if parsing fails, consider task completed
             
             # Check if line starts with **TASK_COMPLETED
             elif stripped_line.startswith("**TASK_COMPLETED"):
@@ -77,14 +94,16 @@ class TaskChecker:
                         completion_part = stripped_line[len("**TASK_COMPLETED**"):].strip()
                         if completion_part.startswith(":"):
                             completion_part = completion_part[1:].strip()
-                        completion_desc = completion_part
+                        return completion_part if completion_part else ""
+                    elif stripped_line.startswith("**TASK_COMPLETED:"):
+                        completion_part = stripped_line[len("**TASK_COMPLETED:"):].strip()
+                        return completion_part if completion_part else ""
                     else:
-                        pass
-                    return True
-                except Exception as e:
-                    return True  # Even if parsing fails, consider task completed
+                        return ""
+                except Exception:
+                    return ""  # Even if parsing fails, consider task completed
         
-        return False
+        return None
   
     
     
