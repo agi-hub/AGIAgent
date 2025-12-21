@@ -995,16 +995,6 @@ Please create a detailed, structured analysis that preserves important informati
                     })
                     print_debug("🔍 Baidu search engine added to available options")
                     
-                    # Add DuckDuckGo as additional fallback
-                    search_engines.append({
-                        'name': 'DuckDuckGo',
-                        'url': 'https://duckduckgo.com/?q={}',
-                        'result_selector': '[data-testid="result-title-a"], .result__title a, h2.result__title a',
-                        'container_selector': '[data-testid="result"], .result, .web-result',
-                        'snippet_selectors': ['.result__snippet', '[data-testid="result-snippet"]', '.result-snippet']
-                    })
-                    print_debug("🔍 DuckDuckGo search engine added as additional fallback")
-                    
                     if not search_engines:
                         print_current("No search engines available")
                         return {

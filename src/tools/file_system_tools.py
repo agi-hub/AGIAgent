@@ -362,41 +362,84 @@ class FileSystemTools:
             }
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                all_lines = f.readlines()
-            
-            total_lines = len(all_lines)
+            # Get file size to determine reading strategy
+            file_size = os.path.getsize(file_path)
+            max_file_size = 10 * 1024 * 1024  # 10MB limit
             
             if should_read_entire_file:
                 max_entire_lines = 500
-                if total_lines <= max_entire_lines:
-                    content = ''.join(all_lines)
-                    return {
-                        'status': 'success',
-                        'file': target_file,
-                        'content': content,
-                        'total_lines': total_lines,
-                        'resolved_path': file_path
-                    }
-                else:
-                    # File too large, truncate to max_entire_lines
-                    content_lines = all_lines[:max_entire_lines]
-                    content = ''.join(content_lines)
+                # For large files, only read first max_entire_lines to avoid memory issues
+                if file_size > max_file_size:
+                    print_debug(f"⚠️ File too large ({file_size} bytes), reading only first {max_entire_lines} lines")
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content_lines = []
+                        for i, line in enumerate(f):
+                            if i >= max_entire_lines:
+                                break
+                            content_lines.append(line)
+                        content = ''.join(content_lines)
+                        # Count total lines by reading file once more (but don't store all lines)
+                        with open(file_path, 'r', encoding='utf-8') as count_f:
+                            total_lines = sum(1 for _ in count_f)
+                    
                     after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
+                    # Add truncation notice directly to content so LLM sees it clearly
+                    truncation_notice = f"\n\n[⚠️ Note: The file is too large. Only the first {max_entire_lines} lines are shown out of {total_lines} in total. To view more, use should_read_entire_file=false and specify a line range.]\n"
+                    content_with_notice = content + truncation_notice
                     print_debug(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
                     return {
                         'status': 'success',
                         'file': target_file,
-                        'content': content,
+                        'content': content_with_notice,
                         'after_summary': after_summary,
                         'total_lines': total_lines,
                         'lines_shown': max_entire_lines,
                         'truncated': True,
                         'resolved_path': file_path
                     }
+                else:
+                    # For smaller files, read all lines
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        all_lines = f.readlines()
+                    
+                    total_lines = len(all_lines)
+                    if total_lines <= max_entire_lines:
+                        content = ''.join(all_lines)
+                        return {
+                            'status': 'success',
+                            'file': target_file,
+                            'content': content,
+                            'total_lines': total_lines,
+                            'resolved_path': file_path
+                        }
+                    else:
+                        # File too large, truncate to max_entire_lines
+                        content_lines = all_lines[:max_entire_lines]
+                        content = ''.join(content_lines)
+                        after_summary = f"... {total_lines - max_entire_lines} lines truncated ..."
+                        # Add truncation notice directly to content so LLM sees it clearly
+                        truncation_notice = f"\n\n[⚠️ Note: The file is too large. Only the first {max_entire_lines} lines are shown out of {total_lines} in total. To see additional content, use should_read_entire_file=false and specify a line number range.]\n"
+                        content_with_notice = content + truncation_notice
+                        print_debug(f"📄 Read entire file (truncated), showing first {max_entire_lines} lines of {total_lines}")
+                        return {
+                            'status': 'success',
+                            'file': target_file,
+                            'content': content_with_notice,
+                            'after_summary': after_summary,
+                            'total_lines': total_lines,
+                            'lines_shown': max_entire_lines,
+                            'truncated': True,
+                            'resolved_path': file_path
+                        }
             else:
+                # Partial file reading - only read the needed lines
                 if start_line_one_indexed is None:
                     start_line_one_indexed = 1
+                
+                # First, count total lines efficiently without loading all into memory
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    total_lines = sum(1 for _ in f)
+                
                 if end_line_one_indexed_inclusive is None:
                     end_line_one_indexed_inclusive = min(start_line_one_indexed + 249, total_lines)
                 
@@ -406,10 +449,19 @@ class FileSystemTools:
                 if end_idx - start_idx > 250:
                     end_idx = start_idx + 250
                 
-                print_debug(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
+                # Only read the needed lines
+                content_lines = []
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for i, line in enumerate(f):
+                        if i < start_idx:
+                            continue
+                        if i >= end_idx:
+                            break
+                        content_lines.append(line)
                 
-                content_lines = all_lines[start_idx:end_idx]
                 content = ''.join(content_lines)
+                
+                print_debug(f"📄 Read partial file: lines {start_line_one_indexed}-{end_line_one_indexed_inclusive} (actual: {start_idx+1}-{end_idx})")
                 
                 before_summary = f"... {start_idx} lines before ..." if start_idx > 0 else ""
                 after_summary = f"... {total_lines - end_idx} lines after ..." if end_idx < total_lines else ""

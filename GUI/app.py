@@ -3248,7 +3248,7 @@ def convert_markdown_to_latex_only(full_path, file_path, user_base_dir):
                     '-V', 'geometry:margin=2.5cm',
                     '-V', 'geometry:a4paper',
                     '-V', 'linestretch=2.0',
-                    '--highlight-style=tango',
+                    '--syntax-highlighting=tango',
                     '-V', 'colorlinks=true',
                     '-V', 'linkcolor=blue',
                     '-V', 'urlcolor=blue',

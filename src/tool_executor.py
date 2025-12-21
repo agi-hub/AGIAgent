@@ -314,21 +314,24 @@ class ToolExecutor:
         else:
             self.conversation_summarizer = None
         
-        # Initialize simple history compressor when summary_history=False
+        # Initialize enhanced history compressor when summary_history=False
         if not self.summary_history:
             try:
-                from tools.simple_history_compressor import SimpleHistoryCompressor
+                from tools.enhanced_history_compressor import EnhancedHistoryCompressor
                 # Load compression settings from config
                 min_length = get_compression_min_length()
                 head_length = get_compression_head_length()
                 tail_length = get_compression_tail_length()
-                self.simple_compressor = SimpleHistoryCompressor(
+                # EnhancedHistoryCompressor will automatically load trigger_length from config if None
+                self.simple_compressor = EnhancedHistoryCompressor(
                     min_length=min_length,
                     head_length=head_length,
-                    tail_length=tail_length
+                    tail_length=tail_length,
+                    trigger_length=None,  # Will be loaded from config automatically
+                    keep_recent_rounds=2  # Keep last 2 rounds uncompressed
                 )
             except ImportError as e:
-                print_system(f"⚠️ Failed to import SimpleHistoryCompressor: {e}, simple compression disabled")
+                print_system(f"⚠️ Failed to import EnhancedHistoryCompressor: {e}, enhanced compression disabled")
                 self.simple_compressor = None
         else:
             self.simple_compressor = None
@@ -1829,7 +1832,7 @@ END OF ERROR FEEDBACK
             return error_msg
         except Exception as e:
             error_msg = f"Error executing subtask: {str(e)}"
-            print_debug(error_msg)
+            print_current(error_msg)
             self._add_error_feedback_to_history(
                 task_history=task_history,
                 error_type='general_error',

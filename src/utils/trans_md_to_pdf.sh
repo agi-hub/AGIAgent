@@ -33,8 +33,10 @@ if [ ! -f "$FILTER_PATH" ]; then
     echo "警告: SVG中文过滤器 '$FILTER_PATH' 不存在，使用默认转换"
     FILTER_OPTION=""
 else
-    FILTER_OPTION="--filter=$FILTER_PATH"
-    echo "使用SVG中文过滤器: $FILTER_PATH"
+    # Use 'python' instead of relying on shebang's python3
+    # This ensures filter uses the same Python environment as the main program
+    FILTER_OPTION="--filter=python $FILTER_PATH"
+    echo "使用SVG中文过滤器: $FILTER_PATH (使用当前Python环境)"
 fi
 
 # 检查模板是否存在
@@ -151,7 +153,7 @@ if [[ "$SELECTED_ENGINE" =~ ^(xelatex|lualatex|pdflatex)$ ]] && [ -n "$TEMPLATE_
 fi
 
 # 添加通用选项
-PANDOC_CMD="$PANDOC_CMD -V fontsize=12pt -V geometry:margin=2.5cm -V geometry:a4paper -V linestretch=1.5 --highlight-style=tango -V colorlinks=true -V linkcolor=blue -V urlcolor=blue --toc --wrap=preserve"
+PANDOC_CMD="$PANDOC_CMD -V fontsize=12pt -V geometry:margin=2.5cm -V geometry:a4paper -V linestretch=1.5 --syntax-highlighting=tango -V colorlinks=true -V linkcolor=blue -V urlcolor=blue --toc --wrap=preserve"
 
 # 添加LaTeX特定选项（仅对LaTeX引擎）
 if [[ "$SELECTED_ENGINE" =~ ^(xelatex|lualatex|pdflatex)$ ]]; then

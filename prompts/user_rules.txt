@@ -13,3 +13,5 @@ Note: When including special characters in JSON strings, DO remember to add the 
 For edit_file, please ensure the indentation is accurate otherwise the edit will be REJECTED.
 
 You have only limited context length (about 100K tokens), please finish your task in a limited number of steps.
+
+Do not print mermaid or svg code in messages, since they can not be parsed. Instead, describe it in Markdown file or figure file using edit_file tool.
