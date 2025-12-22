@@ -20,10 +20,10 @@ max_tokens=16384
 # max_tokens=32768
 
 # Openrouter
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=xiaomi/mimo-v2-flash:free
-max_tokens=32768
+# api_key=your key
+# api_base=https://openrouter.ai/api/v1
+# model=xiaomi/mimo-v2-flash:free
+# max_tokens=32768
 
 # DeepSeek API configuration
 # api_key=your key
@@ -138,44 +138,31 @@ web_content_truncation_length=20000
 # 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
 # 4. Changes to configuration require program restart to take effect
 
-# Minimum content length to trigger compression (in characters)
-# Content shorter than this will not be compressed
-# Lower values compress more aggressively, higher values preserve more content
-# Recommended values: 200-1000 characters
-compression_min_length=500
-
-# Number of characters to keep at the beginning of compressed content
-# Lower values compress more aggressively, higher values preserve more context
-# Recommended values: 50-200 characters
-compression_head_length=300
-
-# Number of characters to keep at the end of compressed content
-# Lower values compress more aggressively, higher values preserve more context
-# Recommended values: 50-200 characters
-compression_tail_length=100
+# Note: compression_min_length, compression_head_length, and compression_tail_length
+# have been removed as they are no longer used by EnhancedHistoryCompressor.
+# The new compression strategy directly deletes old records instead of field-level compression.
 
 # Simplified search result terminal output (default: True)
 # When enabled, workspace_search and web_search only display simplified result summaries in terminal
 # When disabled, display full search result details
 simplified_search_output=True
 
-# History summarization configuration (default: True)
-# Controls whether to use AI summarization for history compression
-# When enabled (True): Uses AI to summarize old conversation history, preserving detailed recent context
-# When disabled (False): Uses field-level compression (head+tail truncation) instead of AI summarization
-# Affects:
-# - History compression method (AI summarization vs field compression)
-# - Whether ConversationSummarizer is initialized
-# - Whether SimpleHistoryCompressor is initialized
-summary_history=True
-
-# Trigger length for conversation history summarization (in characters)
-# Only when the total conversation history exceeds this length will summarization be triggered
+# Trigger length for conversation history compression (in characters)
+# Only when the total conversation history exceeds this length will compression be triggered
 # Recommended values: 50000-120000 characters
-# Lower values trigger summarization earlier, saving more context
-# Higher values delay summarization, preserving more detailed conversation history
-# This also controls compression: when history length is below this value, no compression (simple or enhanced) will be performed
+# Lower values trigger compression earlier, saving more context
+# Higher values delay compression, preserving more detailed conversation history
+# When history length is below this value, no compression will be performed
 summary_trigger_length=100000
+
+# Compression target length for conversation history compression (in characters)
+# When compression is triggered, history will be compressed to this target length (usually smaller than summary_trigger_length)
+# This prevents repeated compression cycles that could cause cache misses
+# Recommended values: 10000-80000 characters (typically 50-70% of summary_trigger_length)
+# Lower values compress more aggressively, saving more context but potentially losing more history
+# Higher values preserve more history but may trigger compression more frequently
+# Default: 70% of summary_trigger_length if not set
+compression_target_length=50000
 
 # Summary report generation (default: False)
 # When enabled, generates single task summary and task summary reports
@@ -221,7 +208,7 @@ auto_fix_interactive_commands=True
 # When disabled, these tools are hidden from the model to reduce complexity
 # Default: True (enabled)
 # Set to False to disable multi-agent capabilities
-multi_agent=True
+multi_agent=False
 
 # Round Synchronization Barrier (experimental)
 # When enabled, all agents will execute in lockstep windows.
