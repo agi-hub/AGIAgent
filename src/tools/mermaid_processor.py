@@ -16,7 +16,6 @@ import requests
 import base64
 import hashlib
 import urllib.request
-import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -246,46 +245,6 @@ def _generate_smart_filename(mermaid_code: str, following_content: str = "", fal
 PREFERRED_METHOD = "playwright" if PLAYWRIGHT_AVAILABLE else "none"
 
 
-def _run_async_in_sync_context(coro):
-    """
-    在同步上下文中运行异步代码的辅助函数。
-    如果已经在事件循环中，使用 run_coroutine_threadsafe 或创建新的事件循环。
-    """
-    try:
-        # 尝试获取当前事件循环
-        loop = asyncio.get_running_loop()
-        # 如果已经在事件循环中，需要在新线程中运行
-        import concurrent.futures
-        import threading
-        
-        # 创建新的事件循环在新线程中运行
-        def run_in_thread():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                return new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-        
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_thread)
-            return future.result()
-    except RuntimeError:
-        # 没有运行的事件循环，可以直接运行
-        try:
-            return asyncio.run(coro)
-        except RuntimeError:
-            # 如果 asyncio.run 也失败，尝试使用当前事件循环
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果循环正在运行，使用 run_coroutine_threadsafe
-                import concurrent.futures
-                future = asyncio.run_coroutine_threadsafe(coro, loop)
-                return future.result()
-            else:
-                return loop.run_until_complete(coro)
-
-
 class MermaidProcessor:
     """
     Processor for converting Mermaid charts in markdown files to images using multiple methods.
@@ -319,13 +278,13 @@ class MermaidProcessor:
         self._page = None
         self._browser_initialized = False
     
-    async def _init_browser_async(self):
-        """初始化浏览器实例（如果还没有初始化）- 异步版本"""
+    def _init_browser(self):
+        """初始化浏览器实例（如果还没有初始化）"""
         if not self._browser_initialized and PLAYWRIGHT_AVAILABLE:
             try:
-                from playwright.async_api import async_playwright
-                playwright = await async_playwright().start()
-                self._browser = await playwright.chromium.launch(
+                from playwright.sync_api import sync_playwright
+                playwright = sync_playwright().start()
+                self._browser = playwright.chromium.launch(
                     headless=True,
                     args=[
                         '--no-sandbox',
@@ -347,14 +306,14 @@ class MermaidProcessor:
                     ]
                 )
                 # 创建高分辨率页面上下文
-                self._context = await self._browser.new_context(
+                self._context = self._browser.new_context(
                     device_scale_factor=2.0,  # 2倍像素密度
                     viewport={"width": 1200, "height": 800}
                 )
-                self._page = await self._context.new_page()
+                self._page = self._context.new_page()
                 
                 # 设置页面优化选项
-                await self._page.set_extra_http_headers({
+                self._page.set_extra_http_headers({
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.5',
                     'Accept-Encoding': 'gzip, deflate',
@@ -362,9 +321,9 @@ class MermaidProcessor:
                 })
                 
                 # 禁用不必要的功能（但保留 SVG 和字体）
-                await self._page.route("**/*.{png,jpg,jpeg,gif,woff,woff2,ttf,eot}", lambda route: route.abort())
-                await self._page.route("**/analytics/**", lambda route: route.abort())
-                await self._page.route("**/tracking/**", lambda route: route.abort())
+                self._page.route("**/*.{png,jpg,jpeg,gif,woff,woff2,ttf,eot}", lambda route: route.abort())
+                self._page.route("**/analytics/**", lambda route: route.abort())
+                self._page.route("**/tracking/**", lambda route: route.abort())
                 
                 self._browser_initialized = True
                 print(f"🔧 Browser initialized for reuse")
@@ -372,14 +331,14 @@ class MermaidProcessor:
                 print(f"⚠️ Failed to initialize browser: {e}")
                 self._browser_initialized = False
     
-    async def _cleanup_browser_async(self):
-        """清理浏览器实例 - 异步版本"""
+    def _cleanup_browser(self):
+        """清理浏览器实例"""
         if self._browser_initialized:
             try:
                 if self._page:
-                    await self._page.close()
+                    self._page.close()
                 if self._browser:
-                    await self._browser.close()
+                    self._browser.close()
                 self._browser = None
                 self._page = None
                 self._browser_initialized = False
@@ -389,25 +348,7 @@ class MermaidProcessor:
     
     def __del__(self):
         """析构函数，确保浏览器被清理"""
-        # 在析构函数中，我们只能进行同步清理
-        # 如果浏览器已初始化，尝试同步清理（可能会失败，但这是最好的尝试）
-        if self._browser_initialized:
-            try:
-                # 尝试同步清理，如果失败则忽略
-                if self._page:
-                    try:
-                        # 无法在 __del__ 中使用 await，所以只能尝试同步关闭
-                        pass  # 异步清理在析构函数中不可行
-                    except:
-                        pass
-                if self._browser:
-                    try:
-                        # 无法在 __del__ 中使用 await，所以只能尝试同步关闭
-                        pass  # 异步清理在析构函数中不可行
-                    except:
-                        pass
-            except Exception:
-                pass  # 忽略清理错误
+        self._cleanup_browser()
     
     
     def process_markdown_file(self, md_file_path: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
@@ -657,9 +598,7 @@ class MermaidProcessor:
             
             # Batch generate all images using a single browser instance
             if mermaid_tasks:
-                batch_results = _run_async_in_sync_context(
-                    self._generate_mermaid_images_batch_async(mermaid_tasks)
-                )
+                batch_results = self._generate_mermaid_images_batch(mermaid_tasks)
             else:
                 batch_results = []
             
@@ -802,12 +741,10 @@ class MermaidProcessor:
             print(f"❌ Playwright not available")
             return False, False
         
-        # 直接使用 Playwright 方法（异步版本）
-        return _run_async_in_sync_context(
-            self._generate_mermaid_image_playwright_async(mermaid_code, svg_path, png_path)
-        )
+        # 直接使用 Playwright 方法
+        return self._generate_mermaid_image_playwright(mermaid_code, svg_path, png_path)
     
-    async def _generate_mermaid_images_batch_async(self, mermaid_tasks: List[tuple]) -> List[tuple]:
+    def _generate_mermaid_images_batch(self, mermaid_tasks: List[tuple]) -> List[tuple]:
         """
         Generate multiple Mermaid images using a single browser instance and single page for better performance.
         
@@ -828,7 +765,7 @@ class MermaidProcessor:
         
         try:
             import tempfile
-            from playwright.async_api import async_playwright
+            from playwright.sync_api import sync_playwright
             
             # Get local Mermaid library path
             local_mermaid_path = _ensure_local_mermaid_library()
@@ -916,8 +853,8 @@ class MermaidProcessor:
 </body>
 </html>"""
             
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
                     headless=True,
                     args=[
                         '--no-sandbox',
@@ -935,11 +872,11 @@ class MermaidProcessor:
                     ]
                 )
                 # 创建高分辨率页面上下文
-                context = await browser.new_context(
+                context = browser.new_context(
                     device_scale_factor=2.0,  # 2倍像素密度
                     viewport={"width": 1200, "height": 800}
                 )
-                page = await context.new_page()
+                page = context.new_page()
                 
                 # Create temporary HTML file with all charts
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as temp_file:
@@ -949,21 +886,21 @@ class MermaidProcessor:
                 try:
                     # Load HTML file with all charts
                     file_url = f"file://{temp_html_path}"
-                    await page.goto(file_url, wait_until="domcontentloaded", timeout=5000)
+                    page.goto(file_url, wait_until="domcontentloaded", timeout=5000)
                     
                     # Wait for all SVG elements to appear and have content
                     try:
                         # Wait for all SVG elements to appear
-                        await page.wait_for_selector(".mermaid svg", timeout=5000)
+                        page.wait_for_selector(".mermaid svg", timeout=5000)
                         # Wait for all SVGs to have actual content
-                        await page.wait_for_function(
+                        page.wait_for_function(
                             "Array.from(document.querySelectorAll('.mermaid svg')).every(svg => svg.innerHTML.length > 0)",
                             timeout=5000
                         )
                     except Exception as e:
                         print(f"⚠️ Waiting for SVG content failed: {e}")
                         # Fallback: just wait a bit
-                        await page.wait_for_timeout(500)
+                        page.wait_for_timeout(500)
                     
                     # Process each chart
                     for i, (mermaid_code, svg_path, png_path) in enumerate(mermaid_tasks):
@@ -974,8 +911,8 @@ class MermaidProcessor:
                             
                             # Extract SVG content for this specific chart
                             svg_element = page.locator(f"#chart_{i} svg").first
-                            if await svg_element.count() > 0:
-                                svg_content = await svg_element.evaluate("el => el.outerHTML")
+                            if svg_element:
+                                svg_content = svg_element.evaluate("el => el.outerHTML")
                                 if svg_content:
                                     # Fix XML issues: convert <br> to <br/> for proper XML formatting
                                     svg_content = svg_content.replace('<br>', '<br/>')
@@ -1012,8 +949,8 @@ class MermaidProcessor:
                             if png_path and svg_success:
                                 try:
                                     mermaid_element = page.locator(f"#chart_{i}").first
-                                    if await mermaid_element.count() > 0:
-                                        await mermaid_element.screenshot(
+                                    if mermaid_element:
+                                        mermaid_element.screenshot(
                                             type="png",
                                             path=str(png_path),
                                             omit_background=True
@@ -1044,7 +981,7 @@ class MermaidProcessor:
                     except OSError:
                         pass
                 
-                await browser.close()
+                browser.close()
                 
             return results
             
@@ -1056,7 +993,7 @@ class MermaidProcessor:
     
 
     
-    async def _generate_mermaid_image_playwright_async(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> Tuple[bool, bool]:
+    def _generate_mermaid_image_playwright(self, mermaid_code: str, svg_path: Path, png_path: Path = None) -> Tuple[bool, bool]:
         """
         Generate Mermaid SVG and PNG images using Playwright browser automation.
         
@@ -1074,7 +1011,7 @@ class MermaidProcessor:
             
         try:
             import tempfile
-            from playwright.async_api import async_playwright
+            from playwright.sync_api import sync_playwright
             
             print(f"🌐 Using Playwright to generate image...")
             
@@ -1168,8 +1105,8 @@ class MermaidProcessor:
             
             try:
                 print(f"🔧 Launching browser...")
-                async with async_playwright() as p:
-                    browser = await p.chromium.launch(
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
                         headless=True,
                         args=[
                             '--no-sandbox',
@@ -1187,32 +1124,32 @@ class MermaidProcessor:
                         ]
                     )
                     # 创建高分辨率页面上下文
-                    context = await browser.new_context(
+                    context = browser.new_context(
                         device_scale_factor=2.0,  # 2倍像素密度
                         viewport={"width": 800, "height": 600}
                     )
-                    page = await context.new_page()
+                    page = context.new_page()
                     
                     print(f"🔧 Loading HTML file...")
                     # Load HTML file with optimized settings
                     file_url = f"file://{temp_html_path}"
                     print(f"🔧 File URL: {file_url}")
-                    await page.goto(file_url, wait_until="domcontentloaded", timeout=10000)
+                    page.goto(file_url, wait_until="domcontentloaded", timeout=10000)
                     
                     print(f"🔧 Waiting for Mermaid to render...")
                     # Wait for Mermaid to render with more precise conditions
                     try:
                         # Wait for SVG element to appear
-                        await page.wait_for_selector(".mermaid svg", timeout=5000)
+                        page.wait_for_selector(".mermaid svg", timeout=5000)
                         # Wait for SVG to have actual content (not empty)
-                        await page.wait_for_function(
+                        page.wait_for_function(
                             "document.querySelector('.mermaid svg').innerHTML.length > 0",
                             timeout=5000
                         )
                     except Exception as e:
                         print(f"⚠️ Waiting for SVG content failed: {e}")
                         # Fallback: just wait a bit
-                        await page.wait_for_timeout(200)
+                        page.wait_for_timeout(200)
                     
                     print(f"🔧 Extracting SVG content and generating PNG...")
                     
@@ -1221,9 +1158,9 @@ class MermaidProcessor:
                     
                     # Get the complete SVG element (not just innerHTML)
                     svg_element = page.locator(".mermaid svg").first
-                    if await svg_element.count() > 0:
+                    if svg_element:
                         # Get the outer HTML (complete SVG tag)
-                        svg_content = await svg_element.evaluate("el => el.outerHTML")
+                        svg_content = svg_element.evaluate("el => el.outerHTML")
                         if svg_content:
                             # Fix XML issues: convert <br> to <br/> for proper XML formatting
                             svg_content = svg_content.replace('<br>', '<br/>')
@@ -1268,9 +1205,9 @@ class MermaidProcessor:
                             print(f"🔧 Taking PNG screenshot...")
                             # Get the mermaid container element
                             mermaid_element = page.locator(".mermaid").first
-                            if await mermaid_element.count() > 0:
+                            if mermaid_element:
                                 # Take screenshot with padding
-                                await mermaid_element.screenshot(
+                                png_bytes = mermaid_element.screenshot(
                                     type="png",
                                     path=str(png_path),
                                     omit_background=True
@@ -1290,7 +1227,7 @@ class MermaidProcessor:
                         except Exception as e:
                             print(f"⚠️ PNG screenshot failed: {e}")
                     
-                    await browser.close()
+                    browser.close()
                 
                 # Check if files were created successfully
                 if svg_success and (not png_path or png_success):
