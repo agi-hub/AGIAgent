@@ -176,8 +176,12 @@ def print_current(*args: object, **kwargs) -> None:  # noqa: D401
 
         # Also write to manager.out file
         _write_to_file("manager.out", message, newline=(end_char != ''))
+        # Also write to manager.log file (similar to print_debug)
+        print_debug(message, end=end_char)
     else:
         _write_to_file(f"{current_id}.out", message, newline=(end_char != ''))
+        # Also write to <agent_id>.log file (similar to print_debug)
+        print_debug(message, end=end_char)
 
 
 def print_debug(*args: object, **kwargs) -> None:  # noqa: D401
@@ -246,8 +250,12 @@ class _StreamWriter:
                     builtins.print(output_text, end='', flush=True)
             # Also write to manager.out file (keep original)
             _write_to_file("manager.out", processed, newline=False)
+            # Also write to manager.log file (similar to print_debug)
+            print_debug(processed, end='')
         else:
             _write_to_file(f"{self.agent_id}.out", processed, newline=False)
+            # Also write to <agent_id>.log file (similar to print_debug)
+            print_debug(processed, end='')
         self.buffer.append(processed)
 
     def _process_streaming_escapes(self, text: str) -> str:

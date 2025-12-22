@@ -1227,12 +1227,17 @@ def _format_tool_results_with_vision(self, tool_results: List[Dict[str, Any]], v
             # Add parameters if meaningful
             if tool_params:
                 key_params = []
-                for key, value in tool_params.items():
-                    if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
-                        # Show full parameter values without truncation
-                        key_params.append(f"{key}={value}")
-                if key_params:
-                    message_parts.append(f"**Parameters:** {', '.join(key_params)}")
+                # Check if tool_params is a dictionary before calling .items()
+                if isinstance(tool_params, dict):
+                    for key, value in tool_params.items():
+                        if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
+                            # Show full parameter values without truncation
+                            key_params.append(f"{key}={value}")
+                    if key_params:
+                        message_parts.append(f"**Parameters:** {', '.join(key_params)}")
+                else:
+                    # If tool_params is not a dict (e.g., string), just show it as is
+                    message_parts.append(f"**Parameters:** {tool_params}")
             
             # Format the result
             message_parts.append("**Result:**")

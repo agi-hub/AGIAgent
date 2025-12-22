@@ -939,6 +939,7 @@
             gap: 8px;
         }
 
+        .load-history-btn,
         .agent-view-btn {
             width: 28px;
             height: 28px;
@@ -954,15 +955,49 @@
             align-items: center;
             justify-content: center;
             transition: background 0.3s, opacity 0.3s;
+            margin-right: 8px;
+        }
+        
+        .agent-select-wrapper {
+            display: flex;
+            align-items: center;
+            margin-right: 8px;
+        }
+        
+        .agent-select-dropdown {
+            min-width: 84px; /* 缩小30%: 120px * 0.7 = 84px */
+            padding: 4px 8px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 2px solid #007bff; /* 蓝色外框 */
+            border-radius: 4px;
+            font-size: 0.85em;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .agent-select-dropdown:hover {
+            border-color: #0056b3; /* 深蓝色悬停效果 */
+        }
+        
+        .agent-select-dropdown:focus {
+            border-color: #0056b3; /* 深蓝色焦点效果 */
         }
 
+        .load-history-btn:hover,
         .agent-view-btn:hover {
             opacity: 0.9;
             background: var(--color-accent);
         }
 
+        .load-history-btn i,
         .agent-view-btn i {
             color: white;
+        }
+        
+        .agent-view-btn {
+            margin-right: 0;
         }
 
         .vertical-resizer {
@@ -2699,6 +2734,16 @@
             z-index: 2101;
         }
 
+        /* SVG编辑器窗口最大化样式 */
+        #svgEditorModal.maximized .modal-content {
+            width: 100% !important;
+            height: 100vh !important;
+            margin: 0 !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+        }
+
         /* 配置窗口样式 - 类似预览窗口 */
         #configModal {
             display: none;
@@ -2851,13 +2896,13 @@
         }
 
         #previewModal .modal-body::-webkit-scrollbar-thumb {
-            background: var(--border-resizer);
+            background: #569cd6;
             border-radius: 6px;
             border: 2px solid var(--bg-secondary);
         }
 
         #previewModal .modal-body::-webkit-scrollbar-thumb:hover {
-            background: var(--border-resizer-hover);
+            background: #007acc;
         }
 
         /* Special handling for preview modal */
@@ -3468,7 +3513,7 @@
                     <i class="fas fa-brain"></i>
                     {{ i18n.model_label }}
                 </label>
-                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 140px;">
+                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 210px;">
                     <option value="" disabled selected>{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
                 </select>
             </div>
@@ -3530,6 +3575,14 @@
                             <span>{{ i18n.get('chat_window', '聊天窗口' if lang == 'zh' else 'Chat Window') }}</span>
                         </div>
                         <div class="chat-header-right">
+                            <div class="agent-select-wrapper" id="agentSelectWrapper" style="display: none;">
+                                <select class="agent-select-dropdown" id="agentSelectDropdown">
+                                    <option value="manager">manager</option>
+                                </select>
+                            </div>
+                            <button class="load-history-btn" id="loadHistoryBtn" title="{{ i18n.get('load_history', '加载历史' if lang == 'zh' else 'Load History') }}">
+                                <i class="fas fa-history"></i>
+                            </button>
                             <button class="agent-view-btn" id="agentViewBtn" title="{{ i18n.get('agent_view', '智能体视图' if lang == 'zh' else 'Agent View') }}">
                                 <i class="fas fa-cube"></i>
                             </button>
@@ -3596,7 +3649,7 @@
                                 <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
                             </select>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
-                                <span>{{ i18n.get('task_type', '任务类型' if lang == 'zh' else 'Task Type') }}:</span>
+                                <span>{{ i18n.get('task_type', '技能' if lang == 'zh' else 'Skills') }}:</span>
                             </label>
                             <select id="executionModeSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; width: 110px;">
                                 <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
@@ -3778,7 +3831,12 @@
         <div class="modal-content" style="width: 95%; height: 95vh; margin: 2.5vh auto;">
             <div class="modal-header">
                 <h3 id="svgEditorTitle">{{ 'SVG编辑器' if lang == 'zh' else 'SVG Editor' }}</h3>
-                <span class="close" id="svgEditorClose">&times;</span>
+                <div class="modal-header-buttons">
+                    <span class="modal-button maximize-button" id="svgEditorMaximize" title="{{ '最大化' if lang == 'zh' else 'Maximize' }}">
+                        <i class="fas fa-expand"></i>
+                    </span>
+                    <span class="close" id="svgEditorClose">&times;</span>
+                </div>
             </div>
             <div class="modal-body" style="padding: 10px; height: calc(100% - 60px); overflow: hidden;">
                 <div id="svgEditorContent" style="width: 100%; height: 100%; display: flex; flex-direction: column;">
@@ -3792,6 +3850,15 @@
                         <button id="svgResetBtn" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 20px;">
                             <i class="fas fa-undo"></i> {{ '重置' if lang == 'zh' else 'Reset' }}
                         </button>
+                        <div style="display: inline-block; margin-right: 20px; vertical-align: middle;">
+                            <button id="svgZoomOutBtn" style="background: #17a2b8; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-right: 5px;" title="{{ '缩小' if lang == 'zh' else 'Zoom Out' }}">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                            <span id="svgZoomLevel" style="color: #9cdcfe; font-size: 14px; margin: 0 10px; min-width: 60px; display: inline-block; text-align: center;">100%</span>
+                            <button id="svgZoomInBtn" style="background: #17a2b8; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;" title="{{ '放大' if lang == 'zh' else 'Zoom In' }}">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                        </div>
                         <div style="color: #9cdcfe; font-size: 14px; display: inline-block;">
                             <strong>{{ '使用说明:' if lang == 'zh' else 'Instructions:' }}</strong>
                             <span style="margin-left: 10px;">🖱️ {{ '按下拖拽元素→移动位置，放开后选中高亮' if lang == 'zh' else 'Press and drag elements→move position, release to select/highlight' }}</span>
@@ -3801,7 +3868,7 @@
                             <span style="margin-left: 15px;">🔄 {{ '拖动蓝色圆点' if lang == 'zh' else 'Drag blue dot' }}→{{ '缩放矩形框' if lang == 'zh' else 'resize rectangle' }}</span>
                         </div>
                     </div>
-                    <div id="svgCanvas" style="flex: 1; background: white; position: relative; overflow: auto;">
+                    <div id="svgCanvas" style="flex: 1; background: white; position: relative; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px;">
                         <!-- SVG内容将在这里加载 -->
                     </div>
                 </div>
@@ -4030,7 +4097,6 @@
         // Socket.IO connection configuration (will be initialized when user connects)
         function createSocket(apiKey) {
             const clientSessionId = getOrCreateClientSessionId();
-            console.log(`[${new Date().toISOString()}] 📱 使用客户端会话ID: ${clientSessionId}`);
             
             return io({
                 reconnection: true,
@@ -4377,8 +4443,6 @@
             socket.off('chat_cleared');
             
             socket.on('connect', function() {
-                console.log(`[${new Date().toISOString()}] ✅ WebSocket连接成功, transport=${socket.io.engine.transport.name}`);
-                
                 // 🔧 修改：无论是首次连接还是重连，只要没有选择目录，就自动选择第一个目录
                 const shouldAutoSelectFirst = !selectedDirectory;
                 wasReconnected = false; // 重置标志
@@ -4431,8 +4495,6 @@
                 
                 // 检查是否是恢复的会话
                 if (data.recovered) {
-                    console.log(`[${new Date().toISOString()}] 🔄 会话已恢复`);
-                    
                     // 🔧 恢复任务状态
                     if (data.task_running) {
                         console.log(`[${new Date().toISOString()}] 🔄 任务仍在运行`);
@@ -4442,7 +4504,6 @@
                     
                     // 🔧 恢复文件夹选择状态
                     if (data.selected_output_dir) {
-                        console.log(`[${new Date().toISOString()}] 🔄 恢复选中的文件夹: ${data.selected_output_dir}`);
                         selectedDirectory = data.selected_output_dir;
                         taskMode = 'selected';
                         // 更新UI显示选中状态
@@ -4567,8 +4628,17 @@
             });
 
             socket.on('output', function(data) {
-                // 🔧 添加调试日志以跟踪output事件
-                console.log('[DEBUG] socket.on(output) triggered:', data.message, 'type:', data.type);
+                // 检查当前选择的agent，如果不是manager，则丢弃消息
+                const wrapper = document.getElementById('agentSelectWrapper');
+                const dropdown = document.getElementById('agentSelectDropdown');
+                if (wrapper && wrapper.style.display !== 'none' && dropdown) {
+                    const selectedAgent = dropdown.value || 'manager';
+                    // 如果选择的不是manager，直接丢弃消息，不显示
+                    if (selectedAgent !== 'manager') {
+                        return; // 直接返回，不处理消息
+                    }
+                }
+                
                 // Pass is_update flag to addMessage
                 addMessage(data.message, data.type || 'info', data.is_update || false);
                 
@@ -4875,6 +4945,9 @@
                     // 启动文件监测
                     startFileMonitoring();
                     
+                    // 更新agent选择下拉框
+                    updateAgentSelectDropdown(data.out_files || []);
+                    
                     // 无论是否有manager.out内容，都先清空聊天记录框
                     // 这样可以确保切换目录时总是清空旧内容
                     const chatMessages = document.getElementById('chatMessages');
@@ -4917,110 +4990,27 @@
                     isBatchProcessing = false;
                     batchScrollPending = false;
                     
-                    // 如果有manager.out内容，解析并显示到聊天记录对话框
-                    if (data.manager_out_content) {
-                        // 设置标志，表示正在从manager.out加载历史内容
-                        isLoadingFromManagerOut = true;
-                        
-                        // 保存当前自动滚动状态，并在加载期间禁用自动滚动
-                        savedAutoScrollStateBeforeLoading = autoScrollEnabled;
-                        autoScrollEnabled = false;
-                        
-                        // 稍等一下，确保欢迎信息先显示，然后再加载manager.out内容
-                        setTimeout(function() {
-                            // 解析manager.out内容，收集所有消息
-                            const lines = data.manager_out_content.split('\n');
-                            const messagesToDisplay = []; // 收集所有消息
-                            
-                            // 预处理：收集所有消息到数组
-                            for (let i = 0; i < lines.length; i++) {
-                                const line = lines[i];
-                                const lineTrimmed = line.trim();
-                                
-                                // 跳过空行（但保留换行符以维持格式）
-                                if (!lineTrimmed && i < lines.length - 1) {
-                                    // 空行也保留
-                                    messagesToDisplay.push({ message: line, type: 'info' });
-                                    continue;
-                                }
-                                
-                                // 判断消息类型
-                                let messageType = 'info';
-                                
-                                // 检测用户输入消息
-                                if (lineTrimmed.startsWith('Received user requirement:')) {
-                                    messageType = 'user';
-                                }
-                                // 检测错误消息
-                                else if (lineTrimmed.startsWith('⚠️') || lineTrimmed.startsWith('Status: failed') || lineTrimmed.includes('Permission denied')) {
-                                    messageType = 'error';
-                                }
-                                // 检测成功消息
-                                else if (lineTrimmed.startsWith('✅') || lineTrimmed.startsWith('Status: success')) {
-                                    messageType = 'success';
-                                }
-                                // 检测工具调用标记（💬开头的消息）
-                                else if (lineTrimmed.startsWith('💬')) {
-                                    messageType = 'info';
-                                }
-                                
-                                messagesToDisplay.push({ message: line, type: messageType });
-                            }
-                            
-                            // 批量显示消息，使用更粗粒度的批量渲染
-                            // 如果消息数量较少，直接一次性显示；否则分批显示
-                            if (messagesToDisplay.length <= 500) {
-                                // 消息数量较少，一次性显示所有消息
-                                for (let i = 0; i < messagesToDisplay.length; i++) {
-                                    const msgData = messagesToDisplay[i];
-                                    addMessageImmediate(msgData.message, msgData.type);
-                                }
-                                // 加载完成
-                                isLoadingFromManagerOut = false;
-                                autoScrollEnabled = savedAutoScrollStateBeforeLoading;
-                                updateAutoScrollIndicator();
-                            } else {
-                                // 消息数量较多，使用粗粒度分批显示
-                                let messageIndex = 0;
-                                const BATCH_SIZE = 1000; // 每批显示1000条消息
-                                const TIME_DELAY = 500; // 每500ms处理一批，大幅降低刷新频率
-                                
-                                function renderBatch() {
-                                    if (messageIndex >= messagesToDisplay.length) {
-                                        // 所有消息已显示完成
-                                        isLoadingFromManagerOut = false;
-                                        autoScrollEnabled = savedAutoScrollStateBeforeLoading;
-                                        updateAutoScrollIndicator();
-                                        return;
-                                    }
-                                    
-                                    // 处理一批消息（一次性处理BATCH_SIZE条）
-                                    const endIndex = Math.min(messageIndex + BATCH_SIZE, messagesToDisplay.length);
-                                    
-                                    // 批量添加消息，减少DOM操作
-                                    for (let i = messageIndex; i < endIndex; i++) {
-                                        const msgData = messagesToDisplay[i];
-                                        // 直接调用addMessageImmediate，跳过批处理队列
-                                        addMessageImmediate(msgData.message, msgData.type);
-                                    }
-                                    
-                                    messageIndex = endIndex;
-                                    
-                                    // 延迟处理下一批，大幅降低刷新频率
-                                    setTimeout(renderBatch, TIME_DELAY);
-                                }
-                                
-                                // 开始批量渲染
-                                setTimeout(renderBatch, TIME_DELAY);
-                            }
-                        }, 100); // 延迟100ms，确保欢迎信息先显示
-                    }
+                    // 不再自动加载manager.out内容，改为由用户手动点击加载历史按钮触发
                 } else {
                     // 停止文件监测
                     stopFileMonitoring();
+                    // 隐藏下拉框
+                    updateAgentSelectDropdown([]);
                 }
-                // Update agent view button state
+                // Update agent view button state and load history button state
                 updateAgentViewButtonState();
+                updateLoadHistoryButtonState();
+            });
+            
+            socket.on('history_loaded', function(data) {
+                if (data.success && data.manager_out_content) {
+                    // 加载历史内容
+                    loadHistoryFromManagerOut(data.manager_out_content);
+                } else {
+                    // 显示错误消息
+                    const errorMsg = data.error || ((typeof I18N !== 'undefined' && I18N.lang === 'zh') ? '加载历史失败' : 'Failed to load history');
+                    addMessage(errorMsg, 'error');
+                }
             });
 
             socket.on('directory_created', function(data) {
@@ -5213,7 +5203,8 @@
             braceCount: 0,
             toolName: null,
             waitingForJsonStart: false,  // 标记是否在等待JSON开始（遇到```json后）
-            waitingForJsonEnd: false     // 标记是否在等待JSON结束标记（```）
+            waitingForJsonEnd: false,    // 标记是否在等待JSON结束标记（```）
+            contentType: 'json'          // 内容类型：'json' 或 'xml'
         };
         
         // 标记是否正在从manager.out加载历史内容
@@ -5238,7 +5229,6 @@
         function shouldAutoScroll() {
             // 如果自动滚动被禁用，直接返回false
             if (!autoScrollEnabled) {
-                console.log('🚫 Auto-scroll disabled');
                 return false;
             }
             
@@ -5280,6 +5270,46 @@
                 return withoutEmoji.startsWith('{');
             }
             return false;
+        }
+        
+        /**
+         * 检测XML工具调用开始（检测到<invoke）
+         * @param {string} message 消息内容
+         * @returns {boolean} 是否是XML工具调用开始
+         */
+        function detectXmlInvokeStart(message) {
+            const trimmed = message.trim();
+            // 检测是否包含<invoke（忽略大小写，忽略前导空格）
+            if (/<invoke\s/i.test(trimmed)) {
+                return true;
+            }
+            // 检测是否以💬开头，且后面包含<invoke
+            if (trimmed.startsWith('💬')) {
+                const withoutEmoji = trimmed.replace(/^💬\s*/, '').trim();
+                return /<invoke\s/i.test(withoutEmoji);
+            }
+            return false;
+        }
+        
+        /**
+         * 检测XML工具调用结束（检测到</invoke>）
+         * @param {string} message 消息内容
+         * @returns {boolean} 是否包含XML工具调用结束标记
+         */
+        function detectXmlInvokeEnd(message) {
+            return /<\/invoke>/i.test(message);
+        }
+        
+        /**
+         * 计算XML标签匹配情况（用于检测<invoke>是否闭合）
+         * @param {string} text 文本内容
+         * @returns {boolean} 是否已闭合（true表示已找到</invoke>）
+         */
+        function checkXmlInvokeClosed(text) {
+            // 简单检测：查找<invoke和</invoke>标签
+            const openMatches = text.match(/<invoke\s[^>]*>/gi) || [];
+            const closeMatches = text.match(/<\/invoke>/gi) || [];
+            return closeMatches.length >= openMatches.length;
         }
         
         /**
@@ -5353,6 +5383,24 @@
         }
         
         /**
+         * 从XML内容中提取工具名称
+         * @param {string} xmlText XML文本
+         * @returns {string|null} 工具名称
+         */
+        function extractToolNameFromXml(xmlText) {
+            try {
+                // 匹配 <invoke name="tool_name"> 或 <invoke name='tool_name'>
+                const nameMatch = xmlText.match(/<invoke\s+[^>]*name\s*=\s*["']([^"']+)["']/i);
+                if (nameMatch) {
+                    return nameMatch[1];
+                }
+            } catch (e) {
+                // 忽略解析错误
+            }
+            return null;
+        }
+        
+        /**
          * 创建JSON折叠框
          * @param {string} toolName 工具名称
          * @returns {HTMLElement} 折叠框元素
@@ -5395,6 +5443,7 @@
             jsonCollectingState.toolName = null;
             jsonCollectingState.waitingForJsonStart = false;
             jsonCollectingState.waitingForJsonEnd = false;
+            jsonCollectingState.contentType = 'json';
         }
         
         /**
@@ -5637,7 +5686,7 @@
             // 🔧 Fix: 全局检测💬标志，无论当前处于什么状态，都强制结束工具调用框
             // 检测消息中是否包含💬（无论位置）
             if (message.includes('💬')) {
-                // 如果当前正在收集JSON或等待JSON结束/开始，强制结束
+                // 如果当前正在收集JSON/XML或等待JSON结束/开始，强制结束
                 if (jsonCollectingState.isCollecting || 
                     jsonCollectingState.waitingForJsonEnd || 
                     jsonCollectingState.waitingForJsonStart) {
@@ -5657,7 +5706,8 @@
                     lastMessageType === 'info' &&
                     !lastMessageDiv.classList.contains('json-collapsible') &&
                     !jsonCollectingState.isCollecting &&
-                    !jsonCollectingState.waitingForJsonEnd) {
+                    !jsonCollectingState.waitingForJsonEnd &&
+                    !jsonCollectingState.waitingForJsonStart) {
                     // 更新最后一条消息的内容
                     const textSpan = lastMessageDiv.querySelector('.message-text');
                     if (textSpan) {
@@ -5687,13 +5737,13 @@
             
             // 如果过滤后为空行（trim后为空），不显示（但需要先让JSON检测逻辑处理）
             // 注意：空行检查在JSON检测之后进行，因为JSON检测可能需要这些标记
-            // 如果正在收集JSON，继续追加内容
+            // 如果正在收集JSON或XML，继续追加内容
             if (jsonCollectingState.isCollecting) {
-                // 🔧 Fix: 如果消息包含💬（无论位置），强制结束JSON收集
+                // 🔧 Fix: 如果消息包含💬（无论位置），强制结束收集
                 // 由于全局检测已经在函数开始处处理了💬，这里作为双重检查
                 // 如果全局检测没有捕获到（理论上不应该发生），这里也能确保结束
                 if (message.includes('💬')) {
-                    // 完成JSON收集（不包含💬消息）
+                    // 完成收集（不包含💬消息）
                     resetJsonCollectingState();
                     lastMessageType = null;
                     lastMessageDiv = null;
@@ -5709,18 +5759,38 @@
                     } else {
                         jsonCollectingState.jsonContent += message + '\n';
                     }
-                    jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                    
+                    // 根据内容类型处理
+                    if (jsonCollectingState.contentType === 'json') {
+                        jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                    } else if (jsonCollectingState.contentType === 'xml') {
+                        // XML处理：检查是否已闭合
+                        const isClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
+                        if (isClosed) {
+                            // XML结构完成
+                            jsonCollectingState.isCollecting = false;
+                        }
+                    }
                     
                     // 更新折叠框内容
                     if (jsonCollectingState.jsonContainer) {
                         const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
                         if (contentDiv) {
-                            contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
+                            if (jsonCollectingState.contentType === 'json') {
+                                contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
+                            } else {
+                                contentDiv.textContent = jsonCollectingState.jsonContent;
+                            }
                         }
                         
                         // 如果还没有提取工具名称，尝试提取
                         if (!jsonCollectingState.toolName) {
-                            const toolName = extractToolName(jsonCollectingState.jsonContent);
+                            let toolName = null;
+                            if (jsonCollectingState.contentType === 'json') {
+                                toolName = extractToolName(jsonCollectingState.jsonContent);
+                            } else if (jsonCollectingState.contentType === 'xml') {
+                                toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                            }
                             if (toolName) {
                                 jsonCollectingState.toolName = toolName;
                                 const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
@@ -5731,15 +5801,26 @@
                         }
                     }
                     
-                    // 更新细节窗口显示JSON内容
+                    // 更新细节窗口显示内容
                     updateDetailInfoWithJson(jsonCollectingState.jsonContent);
                     
-                    // 检查JSON是否结束（括号匹配）
-                    if (jsonCollectingState.braceCount === 0) {
-                        // JSON结构完成，但可能还有结束标记```，等待下一个消息
-                        jsonCollectingState.isCollecting = false;
-                        jsonCollectingState.waitingForJsonEnd = true;
-                        // 不重置状态，等待下一个消息
+                    // 检查是否结束
+                    if (jsonCollectingState.contentType === 'json') {
+                        if (jsonCollectingState.braceCount === 0) {
+                            // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                            jsonCollectingState.isCollecting = false;
+                            jsonCollectingState.waitingForJsonEnd = true;
+                            // 不重置状态，等待下一个消息
+                        }
+                    } else if (jsonCollectingState.contentType === 'xml') {
+                        // XML已在上面检查闭合状态
+                        if (!jsonCollectingState.isCollecting) {
+                            // XML已闭合，完成收集
+                            resetJsonCollectingState();
+                            lastMessageType = null;
+                            lastMessageDiv = null;
+                            lastMessageContent = null;
+                        }
                     }
                     
                     if (shouldScroll) {
@@ -5809,11 +5890,67 @@
                 }
             }
             
-            // 如果正在等待JSON开始（之前遇到了```json），检查当前消息是否是JSON
+            // 如果正在等待JSON开始（之前遇到了```json），检查当前消息是否是JSON或XML
             if (jsonCollectingState.waitingForJsonStart && type === 'info') {
-                if (detectJsonStart(message)) {
+                // 优先检测XML（因为XML检测更具体）
+                if (detectXmlInvokeStart(message)) {
+                    // 开始收集XML
+                    jsonCollectingState.isCollecting = true;
+                    jsonCollectingState.contentType = 'xml';
+                    jsonCollectingState.waitingForJsonStart = false;
+                    // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                    if (message.endsWith('\n')) {
+                        jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message;
+                    } else {
+                        jsonCollectingState.jsonContent = jsonCollectingState.jsonContent + message + '\n';
+                    }
+                    
+                    // 尝试提取工具名称
+                    const toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                    jsonCollectingState.toolName = toolName;
+                    
+                    // 更新折叠框内容
+                    if (jsonCollectingState.jsonContainer) {
+                        const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                        if (contentDiv) {
+                            contentDiv.textContent = jsonCollectingState.jsonContent;
+                        }
+                        // 更新标题
+                        if (toolName) {
+                            const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                            if (titleSpan) {
+                                titleSpan.textContent = toolName;
+                            }
+                        }
+                    }
+                    
+                    // 更新细节窗口显示XML内容
+                    updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                    
+                    // 检查XML是否已闭合
+                    const isClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
+                    if (isClosed) {
+                        // XML结构完成
+                        jsonCollectingState.isCollecting = false;
+                        lastMessageType = null;
+                        lastMessageDiv = null;
+                        lastMessageContent = null;
+                    } else {
+                        lastMessageType = null;
+                        lastMessageDiv = jsonCollectingState.jsonContainer;
+                        lastMessageContent = null;
+                    }
+                    
+                    if (shouldScroll) {
+                        throttledAutoScroll(true);
+                    } else {
+                        // showNewMessageIndicator(); // 已禁用
+                    }
+                    return;
+                } else if (detectJsonStart(message)) {
                     // 开始收集JSON
                     jsonCollectingState.isCollecting = true;
+                    jsonCollectingState.contentType = 'json';
                     jsonCollectingState.waitingForJsonStart = false;
                     // 智能添加换行：如果消息本身已经以换行结尾，不再添加
                     if (message.endsWith('\n')) {
@@ -5866,7 +6003,7 @@
                     }
                     return;
                 } else {
-                    // 如果不是JSON开始，取消等待状态，移除临时折叠框，将```json作为普通消息显示
+                    // 如果不是JSON或XML开始，取消等待状态，移除临时折叠框，将```json作为普通消息显示
                     const jsonMarker = jsonCollectingState.jsonContent.trim();
                     if (jsonCollectingState.jsonContainer && jsonCollectingState.jsonContainer.parentNode === chatMessages) {
                         jsonCollectingState.jsonContainer.remove();
@@ -5927,10 +6064,62 @@
                 }
             }
             
+            // 检测XML工具调用开始（检测到<invoke）
+            if (type === 'info' && detectXmlInvokeStart(message)) {
+                // 开始收集XML
+                jsonCollectingState.isCollecting = true;
+                jsonCollectingState.contentType = 'xml';
+                // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                if (message.endsWith('\n')) {
+                    jsonCollectingState.jsonContent = message;
+                } else {
+                    jsonCollectingState.jsonContent = message + '\n';
+                }
+                
+                // 尝试提取工具名称
+                const toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                jsonCollectingState.toolName = toolName;
+                
+                // 创建折叠框
+                jsonCollectingState.jsonContainer = createJsonCollapsible(toolName || (I18N.tool_call || '工具调用'));
+                const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                contentDiv.textContent = jsonCollectingState.jsonContent;
+                
+                // 添加到聊天窗口
+                chatMessages.appendChild(jsonCollectingState.jsonContainer);
+                
+                // 更新细节窗口显示XML内容
+                updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                
+                // 检查XML是否已闭合
+                const isClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
+                if (isClosed) {
+                    // XML结构完成
+                    jsonCollectingState.isCollecting = false;
+                    // 不要将lastMessageDiv设置为容器，防止后续消息被追加
+                    lastMessageType = null;
+                    lastMessageDiv = null;
+                    lastMessageContent = null;
+                } else {
+                    // 更新lastMessage引用为容器
+                    lastMessageType = null;
+                    lastMessageDiv = jsonCollectingState.jsonContainer;
+                    lastMessageContent = null;
+                }
+                
+                if (shouldScroll) {
+                    throttledAutoScroll(true);
+                } else {
+                    // showNewMessageIndicator(); // 已禁用
+                }
+                return;
+            }
+            
             // 检测JSON开始（直接以{开头，没有```json标记）
             if (type === 'info' && detectJsonStart(message)) {
                 // 开始收集JSON
                 jsonCollectingState.isCollecting = true;
+                jsonCollectingState.contentType = 'json';
                 // 智能添加换行：如果消息本身已经以换行结尾，不再添加
                 if (message.endsWith('\n')) {
                     jsonCollectingState.jsonContent = message;
@@ -5980,7 +6169,7 @@
             
             // 对于info类型的消息，总是尝试追加到上一个info消息框中
             // 也包括normal类型的消息，如果它们是警告信息的话
-            // 但确保不会追加到JSON折叠框中
+            // 但确保不会追加到JSON/XML折叠框中
             if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
                 lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages &&
                 !lastMessageDiv.classList.contains('json-collapsible') &&
@@ -6620,14 +6809,11 @@
                 const savedApiKey = localStorage.getItem('agia_api_key');
                 
                 if (savedApiKey !== null) { // null means no item, empty string is valid for default user
-                    console.log('🔄 Found saved session in localStorage');
-                    
                     // 填入API Key输入框
                     apiKeyInput.value = savedApiKey;
                     
                     // 延迟一点时间确保DOM完全加载
                     setTimeout(() => {
-                        console.log('🚀 Auto-connecting with saved session...');
                         connectUser();
                     }, 500);
                     
@@ -6951,6 +7137,22 @@
         clearChatButton.addEventListener('click', clearChat);
         
         // Agent view button
+        // Load history button
+        const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+        function updateLoadHistoryButtonState() {
+            if (loadHistoryBtn) {
+                if (selectedDirectory) {
+                    loadHistoryBtn.disabled = false;
+                    loadHistoryBtn.style.opacity = '1';
+                    loadHistoryBtn.style.cursor = 'pointer';
+                } else {
+                    loadHistoryBtn.disabled = true;
+                    loadHistoryBtn.style.opacity = '0.5';
+                    loadHistoryBtn.style.cursor = 'not-allowed';
+                }
+            }
+        }
+        
         const agentViewBtn = document.getElementById('agentViewBtn');
         function updateAgentViewButtonState() {
             if (agentViewBtn) {
@@ -6964,6 +7166,241 @@
                     agentViewBtn.style.cursor = 'not-allowed';
                 }
             }
+            // Also update load history button state
+            updateLoadHistoryButtonState();
+        }
+        
+        // Function to load and display history from manager.out
+        function loadHistoryFromManagerOut(managerOutContent) {
+            // 先清空聊天记录框
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.innerHTML = '';
+            }
+            
+            // 重置消息跟踪变量
+            lastMessageType = null;
+            lastMessageDiv = null;
+            lastMessageContent = null;
+            
+            // 重置JSON收集状态
+            resetJsonCollectingState();
+            
+            // 清空工具调用信息显示框
+            const detailInfoMessages = document.getElementById('detailInfoMessages');
+            if (detailInfoMessages) {
+                detailInfoMessages.innerHTML = '';
+            }
+            
+            // 清理批处理队列和定时器
+            clearTimeout(batchProcessingTimer);
+            batchProcessingTimer = null;
+            messageBatchQueue = [];
+            isBatchProcessing = false;
+            batchScrollPending = false;
+            
+            // 设置标志，表示正在从manager.out加载历史内容
+            isLoadingFromManagerOut = true;
+            
+            // 保存当前自动滚动状态，并在加载期间禁用自动滚动
+            savedAutoScrollStateBeforeLoading = autoScrollEnabled;
+            autoScrollEnabled = false;
+            
+            // 稍等一下，确保清空操作完成，然后再加载manager.out内容
+            setTimeout(function() {
+                // 解析manager.out内容，收集所有消息
+                const lines = managerOutContent.split('\n');
+                const messagesToDisplay = []; // 收集所有消息
+                
+                // 预处理：收集所有消息到数组
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    const lineTrimmed = line.trim();
+                    
+                    // 跳过空行（但保留换行符以维持格式）
+                    if (!lineTrimmed && i < lines.length - 1) {
+                        // 空行也保留
+                        messagesToDisplay.push({ message: line, type: 'info' });
+                        continue;
+                    }
+                    
+                    // 判断消息类型
+                    let messageType = 'info';
+                    
+                    // 检测用户输入消息
+                    if (lineTrimmed.startsWith('Received user requirement:')) {
+                        messageType = 'user';
+                    }
+                    // 检测错误消息
+                    else if (lineTrimmed.startsWith('⚠️') || lineTrimmed.startsWith('Status: failed') || lineTrimmed.includes('Permission denied')) {
+                        messageType = 'error';
+                    }
+                    // 检测成功消息
+                    else if (lineTrimmed.startsWith('✅') || lineTrimmed.startsWith('Status: success')) {
+                        messageType = 'success';
+                    }
+                    // 检测工具调用标记（💬开头的消息）
+                    else if (lineTrimmed.startsWith('💬')) {
+                        messageType = 'info';
+                    }
+                    
+                    messagesToDisplay.push({ message: line, type: messageType });
+                }
+                
+                // 批量显示消息，使用更粗粒度的批量渲染
+                // 如果消息数量较少，直接一次性显示；否则分批显示
+                if (messagesToDisplay.length <= 500) {
+                    // 消息数量较少，一次性显示所有消息
+                    for (let i = 0; i < messagesToDisplay.length; i++) {
+                        const msgData = messagesToDisplay[i];
+                        addMessageImmediate(msgData.message, msgData.type);
+                    }
+                    // 加载完成
+                    isLoadingFromManagerOut = false;
+                    autoScrollEnabled = savedAutoScrollStateBeforeLoading;
+                    updateAutoScrollIndicator();
+                } else {
+                    // 消息数量较多，使用粗粒度分批显示
+                    let messageIndex = 0;
+                    const BATCH_SIZE = 1000; // 每批显示1000条消息
+                    const TIME_DELAY = 500; // 每500ms处理一批，大幅降低刷新频率
+                    
+                    function renderBatch() {
+                        if (messageIndex >= messagesToDisplay.length) {
+                            // 所有消息已显示完成
+                            isLoadingFromManagerOut = false;
+                            autoScrollEnabled = savedAutoScrollStateBeforeLoading;
+                            updateAutoScrollIndicator();
+                            return;
+                        }
+                        
+                        // 处理一批消息（一次性处理BATCH_SIZE条）
+                        const endIndex = Math.min(messageIndex + BATCH_SIZE, messagesToDisplay.length);
+                        
+                        // 批量添加消息，减少DOM操作
+                        for (let i = messageIndex; i < endIndex; i++) {
+                            const msgData = messagesToDisplay[i];
+                            // 直接调用addMessageImmediate，跳过批处理队列
+                            addMessageImmediate(msgData.message, msgData.type);
+                        }
+                        
+                        messageIndex = endIndex;
+                        
+                        // 延迟处理下一批，大幅降低刷新频率
+                        setTimeout(renderBatch, TIME_DELAY);
+                    }
+                    
+                    // 开始批量渲染
+                    setTimeout(renderBatch, TIME_DELAY);
+                }
+            }, 100); // 延迟100ms，确保欢迎信息先显示
+        }
+        
+        /**
+         * 加载指定agent的历史记录
+         * @param {string} agentName - agent名称，默认为'manager'
+         */
+        function loadAgentHistory(agentName = 'manager') {
+            // Check if a directory is selected
+            if (!selectedDirectory) {
+                const message = (typeof I18N !== 'undefined' && I18N.lang === 'zh') ? '请先选择一个工作目录' : 'Please select a workspace directory first';
+                alert(message);
+                return;
+            }
+            
+            // 发送加载历史请求
+            if (socket && isConnected) {
+                socket.emit('load_history', {
+                    dir_name: selectedDirectory,
+                    agent_name: agentName
+                });
+            } else {
+                const message = (typeof I18N !== 'undefined' && I18N.lang === 'zh') ? '连接未建立，无法加载历史' : 'Connection not established, cannot load history';
+                alert(message);
+            }
+        }
+        
+        // Agent选择下拉框相关函数
+        function updateAgentSelectDropdown(outFiles) {
+            const wrapper = document.getElementById('agentSelectWrapper');
+            const dropdown = document.getElementById('agentSelectDropdown');
+            
+            if (!wrapper || !dropdown) {
+                return;
+            }
+            
+            // 如果只有manager或者没有任何.out文件，则不显示下拉框
+            if (outFiles.length <= 1) {
+                wrapper.style.display = 'none';
+                return;
+            }
+            
+            // 如果有多个.out文件，显示下拉框并列出所有.out文件（不包括.out后缀）
+            wrapper.style.display = 'flex';
+            
+            // 清空现有选项
+            dropdown.innerHTML = '';
+            
+            // 添加所有.out文件选项
+            outFiles.forEach(agentName => {
+                const option = document.createElement('option');
+                option.value = agentName;
+                option.textContent = agentName;
+                dropdown.appendChild(option);
+            });
+            
+            // 初始化change事件监听器（如果还没有绑定）
+            initAgentSelectDropdownListener();
+            
+            // 默认选择第一个（通常是manager，如果存在的话）
+            // 注意：不再自动加载历史记录，用户需要手动点击"加载历史"按钮
+            if (outFiles.length > 0) {
+                dropdown.value = outFiles[0];
+            }
+        }
+        
+        // 初始化agent选择框的change事件监听器（只绑定一次）
+        function initAgentSelectDropdownListener() {
+            const dropdown = document.getElementById('agentSelectDropdown');
+            if (!dropdown) {
+                return;
+            }
+            
+            // 检查是否已经绑定过（通过检查是否有data-listener属性）
+            if (dropdown.dataset.listenerBound === 'true') {
+                return;
+            }
+            
+            // 添加change事件监听器（仅用于更新UI状态，不自动加载历史）
+            // 用户需要手动点击"加载历史"按钮来加载历史记录
+            dropdown.addEventListener('change', function() {
+                // 只更新按钮状态，不自动加载
+                updateLoadHistoryButtonState();
+            });
+            
+            // 标记已绑定
+            dropdown.dataset.listenerBound = 'true';
+        }
+        
+        // 初始化agent选择框的change事件监听器
+        initAgentSelectDropdownListener();
+        
+        if (loadHistoryBtn) {
+            // Initial state
+            updateLoadHistoryButtonState();
+            
+            loadHistoryBtn.addEventListener('click', function() {
+                // 获取选择的agent名字（如果下拉框存在且可见，使用下拉框的值，否则使用manager）
+                let agentName = 'manager';
+                const wrapper = document.getElementById('agentSelectWrapper');
+                const dropdown = document.getElementById('agentSelectDropdown');
+                if (wrapper && wrapper.style.display !== 'none' && dropdown) {
+                    agentName = dropdown.value || 'manager';
+                }
+                
+                // 使用统一的加载历史函数
+                loadAgentHistory(agentName);
+            });
         }
         
         if (agentViewBtn) {
@@ -7215,7 +7652,6 @@
                 if (autoScrollEnabled && scrollDirection === 'up' && farFromBottom) {
                     autoScrollEnabled = false;
                     updateAutoScrollIndicator();
-                    console.log('⬆️ User scrolled up away from bottom, disabling auto-scroll');
                 }
                 
                 // 仅在非自动滚动状态下显示滚动提示
@@ -7669,17 +8105,6 @@
                 const hasChildren = file.children && file.children.length > 0;
                 // 子文件夹默认收起，只有在expandedSubDirectories中的才展开（使用uniqueSubDirId）
                 const isSubDirExpanded = expandedSubDirectories && expandedSubDirectories.has(uniqueSubDirId);
-                
-                // 调试输出：显示ID生成过程
-                if (file.type === 'directory' && file.name.toLowerCase() === 'images') {
-                    console.log(`📝 Generating IDs for images folder:`, {
-                        dirName,
-                        fileName: file.name,
-                        originalSubDirKey,
-                        uniqueSubDirId,
-                        fullDomId: `subtree-${uniqueSubDirId}`
-                    });
-                }
                 
                 let html = '';
                 
@@ -8259,8 +8684,25 @@
             window.currentActualFilePath = filePath;
             window.currentOriginalFilePath = filePath;
             
+            // 保存当前预览的文件路径，用于保存后刷新
+            window.currentPreviewFilePath = filePath;
+            window.currentPreviewFileName = fileName;
+            
+            // 检查是否是SVG文件
+            const fileExt = fileName.toLowerCase().split('.').pop();
+            const isSvgFile = fileExt === 'svg';
+            
             // 获取文件大小信息（如果需要的话）
             const fileSize = '未知大小';
+            
+            // 构建编辑按钮HTML（仅SVG文件显示）
+            // 转义filePath中的单引号，避免JavaScript错误
+            const escapedFilePath = filePath.replace(/'/g, "\\'");
+            const editButtonHtml = isSvgFile ? `
+                <button onclick="openSvgEditor('${escapedFilePath}')" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;">
+                    <i class="fas fa-edit"></i> ${I18N?.lang === 'zh' ? '编辑SVG' : 'Edit SVG'}
+                </button>
+            ` : '';
             
             previewContent.innerHTML = `
                 <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
@@ -8272,6 +8714,7 @@
                          style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
                          onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
                     <div class="preview-button-group" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        ${editButtonHtml}
                         <a href="/api/download-file/${filePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 18px;">
                             <i class="fas fa-download"></i> 下载图片
                         </a>
@@ -9586,6 +10029,10 @@
             const deleteBtn = document.getElementById('svgDeleteBtn');
             const resetBtn = document.getElementById('svgResetBtn');
             const closeBtn = document.getElementById('svgEditorClose');
+            const maximizeBtn = document.getElementById('svgEditorMaximize');
+            const zoomInBtn = document.getElementById('svgZoomInBtn');
+            const zoomOutBtn = document.getElementById('svgZoomOutBtn');
+            const zoomLevel = document.getElementById('svgZoomLevel');
 
             // 更新标题显示文件名
             const fileName = filePath.split('/').pop();
@@ -9598,6 +10045,12 @@
             // 初始化修改跟踪
             window.svgModified = false;
             window.originalSvgContent = null;
+            
+            // 初始化缩放比例
+            window.svgZoomLevel = 1.0; // 100%
+            if (zoomLevel) {
+                zoomLevel.textContent = '100%';
+            }
             
             // 构建加载URL，包含API key
             const apiKeyInput = document.getElementById('apiKeyInput');
@@ -9658,6 +10111,70 @@
             resetBtn.onclick = resetSvg;
             closeBtn.onclick = () => closeSvgEditor(modal);
             
+            // 初始化最大化状态
+            let isSvgEditorMaximized = false;
+            let svgEditorOriginalState = null;
+            
+            // 绑定最大化按钮事件
+            if (maximizeBtn) {
+                maximizeBtn.onclick = function() {
+                    const modalContent = modal.querySelector('.modal-content');
+                    
+                    if (!isSvgEditorMaximized) {
+                        // 最大化
+                        console.log('最大化SVG编辑器窗口');
+                        
+                        // 保存当前状态
+                        svgEditorOriginalState = {
+                            width: modalContent.style.width,
+                            height: modalContent.style.height,
+                            margin: modalContent.style.margin
+                        };
+                        
+                        // 添加最大化类
+                        modal.classList.add('maximized');
+                        
+                        // 更改图标
+                        maximizeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+                        maximizeBtn.title = I18N?.lang === 'zh' ? '还原' : 'Restore';
+                        
+                        isSvgEditorMaximized = true;
+                    } else {
+                        // 还原
+                        console.log('还原SVG编辑器窗口');
+                        
+                        // 移除最大化类
+                        modal.classList.remove('maximized');
+                        
+                        // 恢复原来的尺寸
+                        if (svgEditorOriginalState) {
+                            modalContent.style.width = svgEditorOriginalState.width;
+                            modalContent.style.height = svgEditorOriginalState.height;
+                            modalContent.style.margin = svgEditorOriginalState.margin;
+                        } else {
+                            // 如果没有保存的状态，使用默认值
+                            modalContent.style.width = '95%';
+                            modalContent.style.height = '95vh';
+                            modalContent.style.margin = '2.5vh auto';
+                        }
+                        
+                        // 更改图标
+                        maximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                        maximizeBtn.title = I18N?.lang === 'zh' ? '最大化' : 'Maximize';
+                        
+                        isSvgEditorMaximized = false;
+                    }
+                };
+            }
+            
+            // 绑定缩放按钮事件
+            if (zoomInBtn) {
+                zoomInBtn.onclick = () => zoomSvg(1.2, canvas, zoomLevel);
+            }
+            if (zoomOutBtn) {
+                zoomOutBtn.onclick = () => zoomSvg(0.8, canvas, zoomLevel);
+            }
+            
             // 点击模态框外部关闭
             window.onclick = function(event) {
                 if (event.target === modal) {
@@ -9669,6 +10186,21 @@
         // 关闭SVG编辑器，检查修改状态
         function closeSvgEditor(modal) {
             const actualClose = () => {
+                // 重置最大化状态
+                const maximizeBtn = document.getElementById('svgEditorMaximize');
+                if (modal.classList.contains('maximized') && maximizeBtn) {
+                    modal.classList.remove('maximized');
+                    maximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                    const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+                    maximizeBtn.title = I18N?.lang === 'zh' ? '最大化' : 'Maximize';
+                    // 恢复默认尺寸
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.width = '95%';
+                        modalContent.style.height = '95vh';
+                        modalContent.style.margin = '2.5vh auto';
+                    }
+                }
                 modal.style.display = 'none';
                 modal.style.pointerEvents = '';
             };
@@ -9718,13 +10250,27 @@
             }
             
             // 设置SVG样式使其可编辑，防止文字选择
-            svgElement.style.width = '100%';
-            svgElement.style.height = '100%';
+            // 保持SVG的原始宽高比，设置最大宽度并居中显示
+            const viewBox = svgElement.getAttribute('viewBox');
+            const originalWidth = svgElement.getAttribute('width');
+            const originalHeight = svgElement.getAttribute('height');
+            
+            // 如果SVG没有viewBox但有宽高，添加viewBox以保持比例
+            if (!viewBox && originalWidth && originalHeight) {
+                svgElement.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`);
+            }
+            
+            // 设置SVG样式：保留原始尺寸，但通过max-width限制最大显示尺寸
+            // 这样SVG会根据原始尺寸显示，但不会超过画布的90%
+            svgElement.style.maxWidth = '90%';
+            svgElement.style.maxHeight = '90%';
+            // 不强制设置width和height，让SVG使用其原始属性或viewBox
             svgElement.style.cursor = 'default';
             svgElement.style.userSelect = 'none';
             svgElement.style.webkitUserSelect = 'none';
             svgElement.style.mozUserSelect = 'none';
             svgElement.style.msUserSelect = 'none';
+            svgElement.style.display = 'block'; // 确保可以居中
             
             // 为所有矩形框添加交互功能
             const rectangles = svgElement.querySelectorAll('rect');
@@ -9740,6 +10286,50 @@
             
             // 添加全局拖拽功能
             setupSvgDragAndDrop(svgElement);
+            
+            // 重置缩放比例到100%
+            window.svgZoomLevel = 1.0;
+            svgElement.style.transform = '';
+            svgElement.style.transformOrigin = '';
+            
+            // 更新缩放比例显示
+            const zoomLevelElement = document.getElementById('svgZoomLevel');
+            if (zoomLevelElement) {
+                zoomLevelElement.textContent = '100%';
+            }
+        }
+
+        // SVG缩放功能
+        function zoomSvg(factor, canvas, zoomLevelElement) {
+            const svgElement = canvas.querySelector('svg');
+            if (!svgElement) return;
+            
+            // 更新缩放比例
+            window.svgZoomLevel = window.svgZoomLevel * factor;
+            
+            // 限制缩放范围在10%到500%之间
+            const minZoom = 0.1;
+            const maxZoom = 5.0;
+            if (window.svgZoomLevel < minZoom) {
+                window.svgZoomLevel = minZoom;
+            } else if (window.svgZoomLevel > maxZoom) {
+                window.svgZoomLevel = maxZoom;
+            }
+            
+            // 应用缩放变换
+            // 使用transform scale来缩放SVG，保持原始尺寸以便编辑
+            const currentTransform = svgElement.style.transform || '';
+            const transformMatch = currentTransform.match(/scale\(([\d.]+)\)/);
+            const baseScale = transformMatch ? parseFloat(transformMatch[1]) : 1.0;
+            const newScale = window.svgZoomLevel;
+            
+            svgElement.style.transform = `scale(${newScale})`;
+            svgElement.style.transformOrigin = 'center top'; // 从中心顶部开始缩放
+            
+            // 更新缩放比例显示
+            if (zoomLevelElement) {
+                zoomLevelElement.textContent = Math.round(window.svgZoomLevel * 100) + '%';
+            }
         }
 
         // 使矩形框可编辑（可选中、拖拽）
@@ -9806,9 +10396,28 @@
                     return;
                 }
 
-                // 如果点击的是空白区域，先清除选中状态，然后开始圈选
+                // 如果点击的是空白区域，先检查附近是否有line元素（导线）
                 if (target === svgElement || target.tagName === 'svg') {
-                    // 先清除所有选中状态
+                    // 检查附近是否有line元素（在2像素范围内）
+                    const nearbyLine = findNearbyLineElement(svgElement, e.clientX, e.clientY, 2);
+                    
+                    if (nearbyLine) {
+                        // 如果找到附近的line元素，选中它
+                        clearAllSelections(svgElement);
+                        clickedElement = nearbyLine;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                        hasStartedDrag = false;
+                        
+                        // 记录line元素的初始位置
+                        elementStartX = parseFloat(nearbyLine.getAttribute('x1') || 0);
+                        elementStartY = parseFloat(nearbyLine.getAttribute('y1') || 0);
+                        
+                        e.preventDefault();
+                        return;
+                    }
+                    
+                    // 如果没有找到附近的line元素，先清除所有选中状态，然后开始圈选
                     clearAllSelections(svgElement);
 
                     // 然后开始圈选
@@ -9826,7 +10435,26 @@
                 if (target.tagName === 'rect' || target.tagName === 'text' || target.tagName === 'path' || target.tagName === 'line' || target.tagName === 'polygon' || target.tagName === 'circle' || target.tagName === 'ellipse') {
                     // 检查是否是背景矩形（覆盖整个图的矩形），如果是就当作点击空白区域
                     if (target.tagName === 'rect' && isBackgroundRect(target, svgElement)) {
-                        // 先清除所有选中状态
+                        // 检查附近是否有line元素（在2像素范围内）
+                        const nearbyLine = findNearbyLineElement(svgElement, e.clientX, e.clientY, 2);
+                        
+                        if (nearbyLine) {
+                            // 如果找到附近的line元素，选中它
+                            clearAllSelections(svgElement);
+                            clickedElement = nearbyLine;
+                            startX = e.clientX;
+                            startY = e.clientY;
+                            hasStartedDrag = false;
+                            
+                            // 记录line元素的初始位置
+                            elementStartX = parseFloat(nearbyLine.getAttribute('x1') || 0);
+                            elementStartY = parseFloat(nearbyLine.getAttribute('y1') || 0);
+                            
+                            e.preventDefault();
+                            return;
+                        }
+                        
+                        // 如果没有找到附近的line元素，先清除所有选中状态，然后开始圈选
                         clearAllSelections(svgElement);
 
                         // 然后开始圈选
@@ -9840,22 +10468,26 @@
                         return;
                     }
 
+                    // 获取点击位置下最小的元素（处理嵌套元素的情况）
+                    const smallestElement = getSmallestElementAtPoint(svgElement, e.clientX, e.clientY);
+                    const elementToSelect = smallestElement || target;
+
                     // 记录点击的元素和位置，用于后续判断是点击还是拖拽
-                    clickedElement = target;
+                    clickedElement = elementToSelect;
                     startX = e.clientX;
                     startY = e.clientY;
                     hasStartedDrag = false;
 
-                    // 记录元素初始位置
-                    if (target.tagName === 'rect') {
-                        elementStartX = parseFloat(target.getAttribute('x') || 0);
-                        elementStartY = parseFloat(target.getAttribute('y') || 0);
-                    } else if (target.tagName === 'text') {
-                        elementStartX = parseFloat(target.getAttribute('x') || 0);
-                        elementStartY = parseFloat(target.getAttribute('y') || 0);
-                    } else if (target.tagName === 'path') {
+                    // 记录元素初始位置（使用实际选中的元素）
+                    if (elementToSelect.tagName === 'rect') {
+                        elementStartX = parseFloat(elementToSelect.getAttribute('x') || 0);
+                        elementStartY = parseFloat(elementToSelect.getAttribute('y') || 0);
+                    } else if (elementToSelect.tagName === 'text') {
+                        elementStartX = parseFloat(elementToSelect.getAttribute('x') || 0);
+                        elementStartY = parseFloat(elementToSelect.getAttribute('y') || 0);
+                    } else if (elementToSelect.tagName === 'path') {
                         // 对于路径元素，获取变换矩阵
-                        const transform = target.getAttribute('transform');
+                        const transform = elementToSelect.getAttribute('transform');
                         if (transform) {
                             const matrix = parseTransform(transform);
                             elementStartX = matrix.translateX || 0;
@@ -9864,11 +10496,11 @@
                             elementStartX = 0;
                             elementStartY = 0;
                         }
-                    } else if (target.tagName === 'line') {
-                        elementStartX = parseFloat(target.getAttribute('x1') || 0);
-                        elementStartY = parseFloat(target.getAttribute('y1') || 0);
-                    } else if (target.tagName === 'polygon' || target.tagName === 'polyline') {
-                        const points = target.getAttribute('points');
+                    } else if (elementToSelect.tagName === 'line') {
+                        elementStartX = parseFloat(elementToSelect.getAttribute('x1') || 0);
+                        elementStartY = parseFloat(elementToSelect.getAttribute('y1') || 0);
+                    } else if (elementToSelect.tagName === 'polygon' || elementToSelect.tagName === 'polyline') {
+                        const points = elementToSelect.getAttribute('points');
                         if (points) {
                             const coords = points.split(/[\s,]+/).map(Number);
                             elementStartX = Math.min(...coords.filter((_, i) => i % 2 === 0));
@@ -9877,9 +10509,9 @@
                             elementStartX = 0;
                             elementStartY = 0;
                         }
-                    } else if (target.tagName === 'circle' || target.tagName === 'ellipse') {
-                        elementStartX = parseFloat(target.getAttribute('cx') || 0);
-                        elementStartY = parseFloat(target.getAttribute('cy') || 0);
+                    } else if (elementToSelect.tagName === 'circle' || elementToSelect.tagName === 'ellipse') {
+                        elementStartX = parseFloat(elementToSelect.getAttribute('cx') || 0);
+                        elementStartY = parseFloat(elementToSelect.getAttribute('cy') || 0);
                     }
 
                     e.preventDefault();
@@ -10019,6 +10651,81 @@
                     e.preventDefault();
                 }
             });
+
+            // 添加键盘事件监听器，处理Delete键删除选中的元素
+            const handleKeyDown = function(e) {
+                // 检查是否按下了Delete键或Backspace键
+                if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    // 检查焦点是否在输入框中，如果是则不处理
+                    const activeElement = document.activeElement;
+                    if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                        return;
+                    }
+                    
+                    // 检查是否有选中的元素
+                    const selectedElements = getSelectedElements(svgElement);
+                    if (selectedElements.length > 0) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // 通过键盘删除时跳过确认对话框
+                        deleteSelectedElements(true);
+                    }
+                }
+            };
+
+            // 在SVG元素上添加键盘事件监听器
+            svgElement.setAttribute('tabindex', '0'); // 使SVG元素可以获得焦点
+            svgElement.addEventListener('keydown', handleKeyDown);
+            
+            // 当SVG元素获得焦点时，确保可以接收键盘事件
+            svgElement.addEventListener('mousedown', function() {
+                svgElement.focus();
+            });
+        }
+
+        // 获取点击位置下最小的可编辑元素（用于处理嵌套元素）
+        function getSmallestElementAtPoint(svgElement, clientX, clientY) {
+            // 获取点击位置下的所有元素
+            const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
+            
+            // 过滤出可编辑的SVG元素
+            const editableTags = ['rect', 'text', 'path', 'line', 'polygon', 'polyline', 'circle', 'ellipse'];
+            const editableElements = elementsAtPoint.filter(el => {
+                // 确保元素在SVG内部
+                if (!svgElement.contains(el)) return false;
+                // 确保是可编辑的元素类型
+                return editableTags.includes(el.tagName.toLowerCase());
+            });
+            
+            if (editableElements.length === 0) {
+                return null;
+            }
+            
+            // 如果只有一个元素，直接返回
+            if (editableElements.length === 1) {
+                return editableElements[0];
+            }
+            
+            // 计算每个元素的面积，选择最小的
+            let smallestElement = null;
+            let smallestArea = Infinity;
+            
+            editableElements.forEach(element => {
+                try {
+                    const bbox = element.getBBox();
+                    const area = bbox.width * bbox.height;
+                    
+                    if (area < smallestArea) {
+                        smallestArea = area;
+                        smallestElement = element;
+                    }
+                } catch (e) {
+                    // 如果getBBox失败（例如元素不可见），跳过该元素
+                    console.warn('无法获取元素边界框:', e);
+                }
+            });
+            
+            return smallestElement;
         }
 
         // 检测是否是背景矩形（覆盖整个图的矩形）
@@ -10047,6 +10754,110 @@
             }
 
             return false;
+        }
+
+        // 计算点到线段的距离
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+
+            if (lenSq !== 0) {
+                param = dot / lenSq;
+            }
+
+            let xx, yy;
+
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+
+            const dx = px - xx;
+            const dy = py - yy;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // 将屏幕坐标转换为SVG坐标
+        function screenToSvgCoordinates(svgElement, clientX, clientY) {
+            const svgRect = svgElement.getBoundingClientRect();
+            const svgViewBox = svgElement.viewBox.baseVal;
+            
+            // 计算缩放比例
+            const scaleX = svgViewBox.width > 0 ? svgViewBox.width / svgRect.width : 1;
+            const scaleY = svgViewBox.height > 0 ? svgViewBox.height / svgRect.height : 1;
+            
+            // 转换为SVG坐标系
+            const svgX = (clientX - svgRect.left) * scaleX;
+            const svgY = (clientY - svgRect.top) * scaleY;
+            
+            return { x: svgX, y: svgY, scaleX: scaleX, scaleY: scaleY };
+        }
+
+        // 获取line元素的实际坐标（考虑transform）
+        function getLineTransformedCoordinates(line) {
+            let x1 = parseFloat(line.getAttribute('x1') || 0);
+            let y1 = parseFloat(line.getAttribute('y1') || 0);
+            let x2 = parseFloat(line.getAttribute('x2') || 0);
+            let y2 = parseFloat(line.getAttribute('y2') || 0);
+            
+            // 检查是否有transform属性
+            const transform = line.getAttribute('transform');
+            if (transform) {
+                // 处理translate变换
+                const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                if (translateMatch) {
+                    const tx = parseFloat(translateMatch[1]);
+                    const ty = parseFloat(translateMatch[2]);
+                    x1 += tx;
+                    y1 += ty;
+                    x2 += tx;
+                    y2 += ty;
+                }
+            }
+            
+            return { x1, y1, x2, y2 };
+        }
+
+        // 查找鼠标位置附近的line元素（导线）
+        function findNearbyLineElement(svgElement, clientX, clientY, tolerancePixels = 2) {
+            const svgPoint = screenToSvgCoordinates(svgElement, clientX, clientY);
+            const allLines = svgElement.querySelectorAll('line');
+            
+            // 将像素容差转换为SVG坐标系的容差
+            const tolerance = tolerancePixels * Math.max(svgPoint.scaleX, svgPoint.scaleY);
+            
+            let closestLine = null;
+            let minDistance = tolerance;
+            
+            allLines.forEach(line => {
+                const coords = getLineTransformedCoordinates(line);
+                
+                // 计算点到线段的距离
+                const distance = pointToLineDistance(
+                    svgPoint.x, svgPoint.y, 
+                    coords.x1, coords.y1, 
+                    coords.x2, coords.y2
+                );
+                
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestLine = line;
+                }
+            });
+            
+            return closestLine;
         }
 
         // 清除所有选中状态
@@ -10786,10 +11597,37 @@
             // 移除所有圈选框
             const selectionBoxes = svgElement.querySelectorAll('.selection-box');
             selectionBoxes.forEach(box => box.remove());
+            
+            // 移除SVG根元素的所有编辑器相关样式
+            // 这些只是用于编辑器显示的视觉样式，不应该保存到文件中
+            const editorStyles = [
+                'transform',           // 缩放变换
+                'transformOrigin',     // 变换原点
+                'maxWidth',            // 最大宽度限制
+                'maxHeight',           // 最大高度限制
+                'cursor',              // 鼠标样式
+                'userSelect',          // 用户选择
+                'webkitUserSelect',    // WebKit用户选择
+                'mozUserSelect',       // Mozilla用户选择
+                'msUserSelect',        // MS用户选择
+                'display'              // 显示方式（block等）
+            ];
+            
+            editorStyles.forEach(styleProp => {
+                // 使用 removeProperty 方法确保完全移除样式
+                if (svgElement.style[styleProp] || svgElement.style.getPropertyValue(styleProp)) {
+                    svgElement.style.removeProperty(styleProp);
+                }
+            });
+            
+            // 如果 style 属性为空，完全移除它
+            if (svgElement.style && svgElement.style.cssText.trim() === '') {
+                svgElement.removeAttribute('style');
+            }
         }
 
         // 删除选中的元素
-        function deleteSelectedElements() {
+        function deleteSelectedElements(skipConfirm = false) {
             // 标记SVG已被修改
             window.svgModified = true;
 
@@ -10809,6 +11647,10 @@
             const selectedElements = getSelectedElements(svgElement);
 
             if (selectedElements.length === 0) {
+                // 如果通过键盘调用且没有选中元素，静默返回（不显示警告）
+                if (skipConfirm) {
+                    return;
+                }
                 const selectFirstMsg = I18N?.lang === 'zh'
                     ? '请先选择要删除的元素（点击或圈选元素使其高亮显示）'
                     : 'Please select elements to delete first (click or drag-select to highlight elements)';
@@ -10816,12 +11658,14 @@
                 return;
             }
 
-            // 确认删除
-            const confirmMsg = CURRENT_LANG === 'zh'
-                ? I18N.confirm_delete_elements.replace('{count}', selectedElements.length)
-                : I18N.confirm_delete_elements.replace('{count}', selectedElements.length);
-            if (!confirm(confirmMsg)) {
-                return;
+            // 确认删除（如果skipConfirm为true则跳过）
+            if (!skipConfirm) {
+                const confirmMsg = CURRENT_LANG === 'zh'
+                    ? I18N.confirm_delete_elements.replace('{count}', selectedElements.length)
+                    : I18N.confirm_delete_elements.replace('{count}', selectedElements.length);
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
             }
 
             // 先清理SVG中所有残留的缩放控制点，避免删除元素后残留
@@ -10905,6 +11749,16 @@
                             updateMarkdownPreview(window.currentMarkdownContent.processed).catch(error => {
                                 console.error('刷新markdown预览失败:', error);
                             });
+                        }
+                    }
+                    
+                    // 刷新SVG预览窗口（如果当前正在预览SVG文件）
+                    if (window.currentPreviewFilePath && window.currentPreviewFilePath === window.currentSvgPath) {
+                        const previewModal = document.getElementById('previewModal');
+                        if (previewModal && previewModal.style.display !== 'none') {
+                            // 重新预览文件以刷新显示
+                            const previewFileName = window.currentPreviewFileName || window.currentSvgPath.split('/').pop();
+                            previewFile(window.currentPreviewFilePath, previewFileName);
                         }
                     }
                 } else {
@@ -12485,8 +13339,6 @@
                 return;
             }
             
-            console.log('预览窗口拖拽功能已初始化');
-            
             modalHeader.addEventListener('mousedown', function(e) {
                 // 如果点击的是关闭按钮或其他按钮，不触发拖拽
                 if (e.target.classList.contains('close') || e.target.closest('.close') ||
@@ -12551,8 +13403,6 @@
             let startTop = 0;
             let startOffsetX = 0; // 记录开始调整大小时的位置偏移
             let startOffsetY = 0; // 记录开始调整大小时的位置偏移
-            
-            console.log('预览窗口调整大小功能已初始化');
             
             function startResize(e, side) {
                 // 如果是最大化状态，不允许调整大小
@@ -13063,7 +13913,6 @@
             document.getElementById('enableJieba').checked = true;           // 启用中文分词默认选择
             
             // 自动以Guest身份连接 (临时禁用用于调试)
-            console.log('🔍 Page loaded, auto-connect disabled for debugging');
             // connectUser();
             
             // 初始化配置选项切换功能
@@ -13419,11 +14268,87 @@
                         
                         // 显示成功消息
                         addMessage(`✅ ${I18N.pdf_conversion_success}${I18N.file_label}: ${fileName.split('/').pop()}, ${I18N.size_label}: ${pdfConversion.size_kb}`, 'success');
+                        
+                        // 如果有警告（部分转换失败），也显示
+                        if (data.warnings && data.warnings.length > 0) {
+                            data.warnings.forEach(warning => {
+                                addMessage(`⚠️ ${warning}`, 'warning');
+                            });
+                        }
+                    } else if (pdfConversion) {
+                        // PDF转换失败，显示详细错误信息
+                        const errorDetails = [];
+                        errorDetails.push(`❌ ${I18N.pdf_conversion_failed || 'PDF转换失败'}`);
+                        
+                        if (pdfConversion.error) {
+                            errorDetails.push(`\n错误详情: ${pdfConversion.error}`);
+                        }
+                        
+                        if (pdfConversion.stderr) {
+                            errorDetails.push(`\n详细错误输出:\n${pdfConversion.stderr}`);
+                        }
+                        
+                        if (pdfConversion.stdout) {
+                            errorDetails.push(`\n标准输出:\n${pdfConversion.stdout}`);
+                        }
+                        
+                        if (pdfConversion.return_code !== undefined && pdfConversion.return_code !== null) {
+                            errorDetails.push(`\n返回码: ${pdfConversion.return_code}`);
+                        }
+                        
+                        // 显示错误消息
+                        const errorMessage = errorDetails.join('\n');
+                        addMessage(errorMessage, 'error');
+                        
+                        // 构建alert消息（包含简要错误和可能的建议）
+                        let alertMessage = errorDetails.slice(0, 3).join('\n');
+                        if (data.warnings && data.warnings.length > 0) {
+                            alertMessage += '\n\n建议:\n' + data.warnings.join('\n');
+                        }
+                        alert(alertMessage);
+                        
+                        // 如果有警告，也显示
+                        if (data.warnings && data.warnings.length > 0) {
+                            data.warnings.forEach(warning => {
+                                addMessage(`⚠️ ${warning}`, 'warning');
+                            });
+                        }
                     } else {
-                        alert(`❌ ${I18N.pdf_conversion_failed}: ${pdfConversion?.error || I18N.unknown_error}`);
+                        // PDF转换未执行或未返回结果
+                        addMessage(`❌ ${I18N.pdf_conversion_failed || 'PDF转换失败'}: 未获取到转换结果`, 'error');
+                        alert(`❌ ${I18N.pdf_conversion_failed || 'PDF转换失败'}: 未获取到转换结果`);
                     }
                 } else {
-                    alert(`❌ ${I18N.conversion_failed}: ${data.error}`);
+                    // 整体转换失败，显示详细错误信息
+                    const errorDetails = [];
+                    errorDetails.push(`❌ ${I18N.conversion_failed || '转换失败'}`);
+                    
+                    if (data.error) {
+                        errorDetails.push(`\n错误: ${data.error}`);
+                    }
+                    
+                    if (data.original_error && data.original_error !== data.error) {
+                        errorDetails.push(`\n原始错误: ${data.original_error}`);
+                    }
+                    
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        errorDetails.push(`\n建议:`);
+                        data.suggestions.forEach((suggestion, index) => {
+                            errorDetails.push(`  ${index + 1}. ${suggestion}`);
+                        });
+                    }
+                    
+                    if (data.traceback) {
+                        errorDetails.push(`\n详细堆栈信息:\n${data.traceback}`);
+                    }
+                    
+                    // 显示错误消息
+                    const errorMessage = errorDetails.join('\n');
+                    addMessage(errorMessage, 'error');
+                    
+                    // 同时用alert显示简要错误和建议
+                    const alertMessage = errorDetails.slice(0, data.suggestions ? 3 + data.suggestions.length : 3).join('\n');
+                    alert(alertMessage);
                 }
             })
             .catch(error => {
@@ -14424,9 +15349,7 @@
                 return;
             }
             
-            console.log(`Starting file monitoring for directory: ${selectedDirectory}`);
-            
-            // 立即检查一次文件数量
+            // 立即检查一次文件数量（checkFileCount会在第一次检查时也检查out文件）
             checkFileCount();
             
             // 设置定时器，每10秒检查一次
@@ -14475,7 +15398,8 @@
                     // 如果这是第一次检查，只记录文件数量，不触发刷新
                     if (lastFileCount === null) {
                         lastFileCount = currentFileCount;
-                        console.log(`Initial file count for ${selectedDirectory}: ${currentFileCount}`);
+                        // 第一次检查时也检查out文件
+                        checkOutFiles();
                         return;
                     }
                     
@@ -14486,6 +15410,12 @@
                         
                         // 触发目录刷新
                         manualRefresh();
+                        // 同时检查out文件（文件变化可能包括新的.out文件）
+                        checkOutFiles();
+                    } else {
+                        // 即使文件数量没变化，也定期检查out文件（可能新创建了.out文件）
+                        // 注意：这里只在文件数量没变化时检查，避免频繁调用
+                        checkOutFiles();
                     }
                 } else {
                     console.warn(`Failed to get file count for ${selectedDirectory}:`, data.error);
@@ -14493,6 +15423,42 @@
             })
             .catch(error => {
                 console.warn(`Error checking file count for ${selectedDirectory}:`, error.message);
+            });
+        }
+        
+        /**
+         * 检查当前选定目录的.out文件并更新agent选项框
+         */
+        function checkOutFiles() {
+            if (!selectedDirectory) {
+                return;
+            }
+            
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            let url = `/api/out-files/${encodeURIComponent(selectedDirectory)}`;
+            if (currentUser && currentUser !== 'default') {
+                headers['X-API-Key'] = currentUser;
+                url += `?api_key=${encodeURIComponent(currentUser)}`;
+            }
+            
+            fetch(url, {
+                method: 'GET',
+                headers: headers
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 更新agent选项框
+                    updateAgentSelectDropdown(data.out_files || []);
+                } else {
+                    console.warn(`Failed to get out files for ${selectedDirectory}:`, data.error);
+                }
+            })
+            .catch(error => {
+                console.warn(`Error checking out files for ${selectedDirectory}:`, error.message);
             });
         }
 
@@ -15179,8 +16145,6 @@
                         
                         // 添加点击事件监听器来处理重复选择自定义选项的情况
                         modelSelect.addEventListener('click', handleModelSelectClick);
-                        
-                        console.log(`已加载 ${data.configs.length} 个模型配置，默认选择: ${defaultConfigId || '无'}`);
                     } else {
                         // 如果没有配置或加载失败，显示默认选项
                         allModelConfigs = [];

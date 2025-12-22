@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from src.tools.print_system import print_current
+from src.tools.print_system import print_current, print_debug
 
 
 def call_openai_with_chat_based_tools_non_streaming(executor, messages, system_message):
@@ -46,6 +46,14 @@ def call_openai_with_chat_based_tools_non_streaming(executor, messages, system_m
         top_p=executor.top_p,
         stream=False
     )
+
+    # Print token usage in non-streaming mode
+    if hasattr(response, 'usage') and response.usage:
+        usage = response.usage
+        prompt_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+        completion_tokens = getattr(usage, 'completion_tokens', 0) or 0
+        total_tokens = getattr(usage, 'total_tokens', 0) or 0
+        print_debug(f"📊 Current conversation token usage - Input: {prompt_tokens}, Output: {completion_tokens}, Total: {total_tokens}")
 
     # Regular OpenAI flow
     message = response.choices[0].message

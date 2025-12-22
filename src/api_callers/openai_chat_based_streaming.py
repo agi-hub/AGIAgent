@@ -66,9 +66,11 @@ def call_openai_with_chat_based_tools_streaming(executor, messages, system_messa
             
             # Whether to early-stop stream due to detecting the first complete tool call
             tool_call_detected_early = False
+            last_chunk = None  # 保存最后一个chunk以获取usage信息
             
             try:
                 for chunk in response:
+                    last_chunk = chunk  # 保存每个chunk，最后一个chunk包含usage信息
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta
                         
@@ -157,6 +159,18 @@ def call_openai_with_chat_based_tools_streaming(executor, messages, system_messa
             # Print remaining content not yet printed
             if total_printed < len(content):
                 printer.write(content[total_printed:])
+            
+            # Get token usage from the last chunk of streaming response
+            # OpenAI streaming response contains usage info in the last chunk
+            try:
+                if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
+                    usage = last_chunk.usage
+                    prompt_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+                    completion_tokens = getattr(usage, 'completion_tokens', 0) or 0
+                    total_tokens = getattr(usage, 'total_tokens', 0) or 0
+                    print_debug(f"📊 Current conversation token usage - Input: {prompt_tokens}, Output: {completion_tokens}, Total: {total_tokens}")
+            except Exception as e:
+                print_debug(f"⚠️ Unable to get streaming response token info: {type(e).__name__}: {str(e)}")
             
             # Combine thinking and content if thinking exists (for o1 models)
             if executor.enable_thinking and thinking:

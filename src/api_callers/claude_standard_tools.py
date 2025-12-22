@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
 import time
 from src.tools.print_system import streaming_context, print_debug, print_current, print_error
 from src.utils.parse import validate_tool_call_json
@@ -196,14 +197,16 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                                                 elif delta_type == "text_delta":
                                                     # Streaming of text content
                                                     text = getattr(delta, 'text', '')
-                                                    # Detect hallucination patterns - strict match with two signatures
-                                                    if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
+                                                    # Detect hallucination patterns - case insensitive
+                                                    text_lower = text.lower()
+                                                    if ("llm called following tools" in text_lower or 
+                                                        "tool execution results" in text_lower):
                                                         print_current("\nHallucination detected, stopping conversation")
                                                         hallucination_detected = True
                                                         # Add error feedback to history
                                                         executor._add_error_feedback_to_history(
                                                             error_type='hallucination_detected',
-                                                            error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                                            error_message="Hallucination pattern detected in response (e.g., 'Tool execution results:', '**Tool Execution Results', etc.)"
                                                         )
                                                         break
                                                     printer.write(text)
@@ -266,8 +269,11 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                                                     cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
                                                     cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
 
+                                                    # 总是打印 token 使用情况
                                                     if cache_creation_tokens > 0 or cache_read_tokens > 0:
                                                         print_debug(f"\n📊 Token Usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                                                    else:
+                                                        print_debug(f"\n📊 Token Usage - Input: {input_tokens}, Output: {output_tokens}")
                                         except Exception as e:
                                             print_debug(f"⚠️ Error processing message_delta: {type(e).__name__}: {str(e)}")
                                 
@@ -288,13 +294,16 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                             # Try falling back to text_stream
                             try:
                                 for text in stream.text_stream:
-                                    if "LLM Called Following Tools in this round" in text or "**Tool Execution Results:**" in text:
+                                    # Detect hallucination patterns - case insensitive
+                                    text_lower = text.lower()
+                                    if ("llm called following tools" in text_lower or 
+                                        "tool execution results" in text_lower):
                                         print_current("\nHallucination detected, stopping conversation")
                                         hallucination_detected = True
                                         # Add error feedback to history
                                         executor._add_error_feedback_to_history(
                                             error_type='hallucination_detected',
-                                            error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                                            error_message="Hallucination pattern detected in response (e.g., 'Tool execution results:', '**Tool Execution Results', etc.)"
                                         )
                                         break
                                     printer.write(text)
@@ -308,6 +317,23 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                             return content, []
 
                     print_current("")
+
+                    # Get token usage from final_message
+                    try:
+                        final_message = stream.get_final_message()
+                        if hasattr(final_message, 'usage') and final_message.usage:
+                            usage = final_message.usage
+                            input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                            output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                            cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                            cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+                            
+                            if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                                print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                            else:
+                                print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}")
+                    except Exception as e:
+                        print_debug(f"⚠️ Unable to get final_message token info: {type(e).__name__}: {str(e)}")
 
                     # If there were no complete tool calls collected from streaming, try extracting from the final message
                     if not tool_calls and not stream_error_occurred:
@@ -346,14 +372,25 @@ def call_claude_with_standard_tools(executor, messages, system_message):
 
                 # Execute tool calls
                 if tool_calls:
-                    for tool_call_data in tool_calls:
+                    for i, tool_call_data in enumerate(tool_calls):
                         try:
                             tool_name = tool_call_data['name']
+                            tool_params = tool_call_data['input']
+
+                            # Print tool name and parameters before execution in JSON format
+                            tool_call_json = {
+                                "tool_name": tool_name,
+                                "tool_index": i + 1,
+                                "parameters": tool_params if isinstance(tool_params, dict) else {}
+                            }
+                            print_current("```json")
+                            print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                            print_current("```")
 
                             # Convert to standard format
                             standard_tool_call = {
                                 "name": tool_name,
-                                "arguments": tool_call_data['input']
+                                "arguments": tool_params
                             }
 
                             tool_result = executor.execute_tool(standard_tool_call, streaming_output=True)
@@ -402,6 +439,19 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                 
                 response = executor.client.messages.create(**api_params)
                 
+                # Print token usage in non-streaming mode
+                if hasattr(response, 'usage') and response.usage:
+                    usage = response.usage
+                    input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                    output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                    cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                    cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+                    
+                    if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                        print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                    else:
+                        print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}")
+                
                 content = ""
                 thinking = ""
                 tool_calls = []
@@ -424,28 +474,58 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                         elif content_block.type == "text":
                             content += content_block.text
                         elif content_block.type == "tool_use":
+                            tool_name = content_block.name
+                            tool_input = content_block.input
+                            
+                            # Print tool name and parameters in JSON format
+                            tool_call_json = {
+                                "tool_name": tool_name,
+                                "tool_index": len(tool_calls) + 1,
+                                "parameters": tool_input if isinstance(tool_input, dict) else {}
+                            }
+                            print_current("```json")
+                            print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                            print_current("```")
+                            
                             tool_calls.append({
                                 "id": content_block.id,
-                                "name": content_block.name,
-                                "input": content_block.input
+                                "name": tool_name,
+                                "input": tool_input
                             })
                 
                 # Combine thinking and content if thinking exists
                 if executor.enable_thinking and thinking:
                     content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
-                # Check for hallucination patterns in non-streaming response - strict match
-                if "LLM Called Following Tools in this round" in content or "**Tool Execution Results:**" in content:
+                # Check for hallucination patterns in non-streaming response - case insensitive
+                content_lower = content.lower()
+                hallucination_patterns = [
+                    "llm called following tools",
+                    "**tool execution results",
+                    "tool execution results"
+                ]
+                
+                hallucination_detected = False
+                hallucination_start = len(content)
+                for pattern in hallucination_patterns:
+                    if pattern in content_lower:
+                        # Find the actual position in original content (case-sensitive search for exact match)
+                        pattern_variants = [
+                            pattern,
+                            pattern.capitalize(),
+                            pattern.upper(),
+                            "**" + pattern if not pattern.startswith("**") else pattern
+                        ]
+                        for variant in pattern_variants:
+                            pos = content.find(variant)
+                            if pos != -1:
+                                hallucination_detected = True
+                                hallucination_start = min(hallucination_start, pos)
+                                break
+                
+                if hallucination_detected:
                     print_debug("\nHallucination Detected, stop chat")
                     # Truncate content at hallucination location to avoid printing hallucination string
-                    hallucination_patterns = [
-                        "LLM Called Following Tools in this round",
-                        "**Tool Execution Results:**"
-                    ]
-                    hallucination_start = len(content)
-                    for pattern in hallucination_patterns:
-                        if pattern in content:
-                            hallucination_start = min(hallucination_start, content.find(pattern))
                     if hallucination_start > 0:
                         content = content[:hallucination_start].rstrip()
                     else:

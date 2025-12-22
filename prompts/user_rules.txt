@@ -1,4 +1,4 @@
-Chinese font configuration: For matplotlib, using English text, if user requires Chinese text, configure fonts properly using 'Noto Sans CJK JP'
+Chinese font configuration: For matplotlib, prefer using English text by default. If Chinese text is required, you MUST configure fonts properly using CJK fonts like 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', or 'Arial Unicode MS'. CRITICAL: NEVER include 'DejaVu Sans' in the font list when using Chinese text, as it does not support CJK characters and will cause warnings. If CJK fonts are not available, use English text instead of Chinese to avoid font-related warnings.
 
 Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
 

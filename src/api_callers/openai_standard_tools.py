@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import json
 import time
 from src.tools.print_system import streaming_context, print_debug, print_current, print_error
 from src.utils.parse import validate_tool_call_json
@@ -92,8 +93,10 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                     tool_calls_completed = False
                     empty_chunks_after_tool_calls = 0
                     max_empty_chunks = 3  # Allow up to 3 empty chunks after tool call completion to catch trailing text
+                    last_chunk = None  # 保存最后一个chunk以获取usage信息
                     
                     for chunk in response:
+                        last_chunk = chunk  # 保存每个chunk，最后一个chunk包含usage信息
                         if chunk.choices and len(chunk.choices) > 0:
                             delta = chunk.choices[0].delta
                             finish_reason = chunk.choices[0].finish_reason
@@ -102,6 +105,13 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                             if delta.content is not None:
                                 printer.write(delta.content)
                                 content += delta.content
+                                # Check for hallucination patterns in streaming content
+                                content_lower = content.lower()
+                                if ("tool execution results" in content_lower or 
+                                    "**llm called following tools" in content_lower or
+                                    "**tool execution results" in content_lower):
+                                    hallucination_detected = True
+                                    print_debug("\nHallucination Detected in streaming, stopping...")
                                 # If tool calls have finished, but still getting content, reset empty chunk counter
                                 if tool_calls_completed:
                                     empty_chunks_after_tool_calls = 0
@@ -167,6 +177,18 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                     
                     print_current("")
                 
+                # Get token usage from the last chunk of streaming response
+                # OpenAI streaming response contains usage info in the last chunk
+                try:
+                    if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
+                        usage = last_chunk.usage
+                        prompt_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+                        completion_tokens = getattr(usage, 'completion_tokens', 0) or 0
+                        total_tokens = getattr(usage, 'total_tokens', 0) or 0
+                        print_debug(f"📊 Current conversation token usage - Input: {prompt_tokens}, Output: {completion_tokens}, Total: {total_tokens}")
+                except Exception as e:
+                    print_debug(f"⚠️ Unable to get streaming response token info: {type(e).__name__}: {str(e)}")
+                
                 # Convert tool calls buffer into list
                 if tool_calls_buffer:
                     for idx in sorted(tool_calls_buffer.keys()):
@@ -195,7 +217,15 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                                 )
                                 continue
                             
-                            #print_current(f"🎯 Tool {i + 1}: {tool_name}")
+                            # Print tool name and parameters before execution in JSON format
+                            tool_call_json = {
+                                "tool_name": tool_name,
+                                "tool_index": i + 1,
+                                "parameters": tool_params if tool_params else {}
+                            }
+                            print_current("```json")
+                            print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                            print_current("```")
                             
                             # Convert to standard format
                             standard_tool_call = {
@@ -281,18 +311,36 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                         # Combine thinking and content with clear separation
                         content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
-                # Check for hallucination patterns in non-streaming response - strict match
-                if "**LLM Called Following Tools in this round" in content or "**Tool Execution Results" in content:
+                # Check for hallucination patterns in non-streaming response - case insensitive
+                content_lower = content.lower()
+                hallucination_patterns = [
+                    "**llm called following tools",
+                    "**tool execution results",
+                    "tool execution results:",
+                    "tool execution results"
+                ]
+                
+                hallucination_detected = False
+                hallucination_start = len(content)
+                for pattern in hallucination_patterns:
+                    if pattern in content_lower:
+                        # Find the actual position in original content (case-sensitive search for exact match)
+                        pattern_variants = [
+                            pattern,
+                            pattern.capitalize(),
+                            pattern.upper(),
+                            "**" + pattern if not pattern.startswith("**") else pattern
+                        ]
+                        for variant in pattern_variants:
+                            pos = content.find(variant)
+                            if pos != -1:
+                                hallucination_detected = True
+                                hallucination_start = min(hallucination_start, pos)
+                                break
+                
+                if hallucination_detected:
                     print_debug("\nHallucination Detected, stop chat")
                     # Truncate content at hallucination location to avoid printing hallucination string
-                    hallucination_patterns = [
-                        "**LLM Called Following Tools in this round",
-                        "**Tool Execution Results"
-                    ]
-                    hallucination_start = len(content)
-                    for pattern in hallucination_patterns:
-                        if pattern in content:
-                            hallucination_start = min(hallucination_start, content.find(pattern))
                     if hallucination_start > 0:
                         content = content[:hallucination_start].rstrip()
                     else:
@@ -303,16 +351,42 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                 
                 # Convert OpenAI tool_calls objects to dictionary format
                 tool_calls = []
-                for tool_call in raw_tool_calls:
+                for i, tool_call in enumerate(raw_tool_calls):
+                    tool_name = tool_call.function.name
+                    tool_args_str = tool_call.function.arguments
+                    
+                    # Print tool name and parameters before returning in JSON format
+                    try:
+                        tool_args = json.loads(tool_args_str) if tool_args_str else {}
+                    except:
+                        tool_args = {}
+                    
+                    tool_call_json = {
+                        "tool_name": tool_name,
+                        "tool_index": i + 1,
+                        "parameters": tool_args if isinstance(tool_args, dict) else {}
+                    }
+                    print_current("```json")
+                    print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                    print_current("```")
+                    
                     tool_calls.append({
                         "id": tool_call.id,
                         "type": tool_call.type,
                         "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments
+                            "name": tool_name,
+                            "arguments": tool_args_str
                         }
                     })
                 
+                # Print token usage in non-streaming mode
+                if hasattr(response, 'usage') and response.usage:
+                    usage = response.usage
+                    prompt_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+                    completion_tokens = getattr(usage, 'completion_tokens', 0) or 0
+                    total_tokens = getattr(usage, 'total_tokens', 0) or 0
+                    print_debug(f"📊 Current conversation token usage - Input: {prompt_tokens}, Output: {completion_tokens}, Total: {total_tokens}")
+
                 # Print LLM response in non-streaming mode
                 if content:
                     print_current("")

@@ -157,8 +157,6 @@ class ToolExecutor:
         # Load language configuration from config/config.txt
         self.language = get_language()
         
-        # Load history summarization configuration from config/config.txt
-        self.summary_history = get_summary_history()
         self.summary_max_length = get_summary_max_length()
         self.summary_trigger_length = get_summary_trigger_length()
         
@@ -301,39 +299,16 @@ class ToolExecutor:
         else:
             self.multi_agent_tools = None
         
-        # Initialize summary generator for conversation history summarization
-        if self.summary_history:
-            try:
-                from multi_round_executor.summary_generator import SummaryGenerator
-                self.conversation_summarizer = SummaryGenerator(self, detailed_summary=True)
-                # print_current(f"✅ Conversation history summarizer initialized")
-            except ImportError as e:
-                print_system(f"⚠️ Failed to import SummaryGenerator: {e}, history summarization disabled")
-                self.conversation_summarizer = None
-                self.summary_history = False  # Disable summarization if import fails
-        else:
-            self.conversation_summarizer = None
-        
-        # Initialize enhanced history compressor when summary_history=False
-        if not self.summary_history:
-            try:
-                from tools.enhanced_history_compressor import EnhancedHistoryCompressor
-                # Load compression settings from config
-                min_length = get_compression_min_length()
-                head_length = get_compression_head_length()
-                tail_length = get_compression_tail_length()
-                # EnhancedHistoryCompressor will automatically load trigger_length from config if None
-                self.simple_compressor = EnhancedHistoryCompressor(
-                    min_length=min_length,
-                    head_length=head_length,
-                    tail_length=tail_length,
-                    trigger_length=None,  # Will be loaded from config automatically
-                    keep_recent_rounds=2  # Keep last 2 rounds uncompressed
-                )
-            except ImportError as e:
-                print_system(f"⚠️ Failed to import EnhancedHistoryCompressor: {e}, enhanced compression disabled")
-                self.simple_compressor = None
-        else:
+        # Initialize enhanced history compressor
+        try:
+            from tools.enhanced_history_compressor import EnhancedHistoryCompressor
+            # EnhancedHistoryCompressor will automatically load trigger_length from config if None
+            self.simple_compressor = EnhancedHistoryCompressor(
+                trigger_length=None,  # Will be loaded from config automatically
+                keep_recent_rounds=2  # Keep last 2 rounds uncompressed
+            )
+        except ImportError as e:
+            print_system(f"⚠️ Failed to import EnhancedHistoryCompressor: {e}, enhanced compression disabled")
             self.simple_compressor = None
         
         # Initialize history compression tools
@@ -1140,13 +1115,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         
         messages = []
         processed_history = task_history
-        
-        # Check if history should be summarized
-        total_history_length = sum(len(str(record.get("result", ""))) for record in processed_history)
-        if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
-            print_debug(f"📊 History trimmed")
-            recent_history = self._get_recent_history_subset(processed_history, max_length=self.summary_trigger_length // 2)
-            processed_history = recent_history
 
         # Keep only the most recent temporary error feedback (if any), remove earlier ones
         error_feedback_indices = [i for i, record in enumerate(processed_history) 
@@ -1278,14 +1246,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
         
         # Use task_history directly
         processed_history = task_history
-        
-        total_history_length = sum(len(str(record.get("result", ""))) for record in processed_history)
-        
-        # Check if we need to summarize the history (simplified logic since summarization is now handled upstream)
-        if hasattr(self, 'summary_history') and self.summary_history and hasattr(self, 'summary_trigger_length') and total_history_length > self.summary_trigger_length:
-            print_debug(f"📊 History trimmed")
-            recent_history = self._get_recent_history_subset(processed_history, max_length=self.summary_trigger_length // 2)
-            processed_history = recent_history
 
         # Only keep the most recent temporary error feedback (if any), remove earlier ones
         error_feedback_indices = [i for i, record in enumerate(processed_history) 
@@ -1932,6 +1892,13 @@ END OF ERROR FEEDBACK
                 all_tool_calls.extend(json_tool_calls)
                 if self.debug_mode:
                     print_debug(f"✅ Successfully parsed {len(json_tool_calls)} tool calls from JSON")
+            else:
+                # If JSON format didn't find any tool calls, try XML format as fallback
+                xml_tool_calls = parse_tool_calls_from_xml(content)
+                if xml_tool_calls:
+                    all_tool_calls.extend(xml_tool_calls)
+                    if self.debug_mode:
+                        print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML (fallback from JSON)")
         elif self.tool_call_parse_format == "xml":
             # Try XML format first
             xml_tool_calls = parse_tool_calls_from_xml(content)
@@ -1939,8 +1906,15 @@ END OF ERROR FEEDBACK
                 all_tool_calls.extend(xml_tool_calls)
                 if self.debug_mode:
                     print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML")
+            else:
+                # If XML format didn't find any tool calls, try JSON format as fallback
+                json_tool_calls = parse_tool_calls_from_json(content)
+                if json_tool_calls:
+                    all_tool_calls.extend(json_tool_calls)
+                    if self.debug_mode:
+                        print_debug(f"✅ Successfully parsed {len(json_tool_calls)} tool calls from JSON (fallback from XML)")
         
-        # If no tool calls found from configured format, try Python format for 
+        # If no tool calls found from configured format or fallback, try Python format
         if not all_tool_calls:
             python_tool_calls = parse_python_function_calls(content, self.tool_map)
             if python_tool_calls:
@@ -1996,12 +1970,13 @@ END OF ERROR FEEDBACK
                 except Exception as loop_e:
                     raise RuntimeError(f"Failed to run async coroutine: {loop_e}") from e
 
-    def execute_tool(self, tool_call: Dict[str, Any]) -> Any:
+    def execute_tool(self, tool_call: Dict[str, Any], streaming_output: bool = False) -> Any:
         """
         Execute a tool with the given parameters, optionally with streaming output.
         
         Args:
             tool_call: Dictionary containing tool name and parameters
+            streaming_output: Whether to enable streaming output (currently not used, kept for compatibility)
             
         Returns:
             Result of executing the tool
@@ -2256,12 +2231,17 @@ END OF ERROR FEEDBACK
             # Add parameters if meaningful
             if tool_params:
                 key_params = []
-                for key, value in tool_params.items():
-                    if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
-                        # Show full parameter values without truncation
-                        key_params.append(f"{key}={value}")
-                if key_params:
-                    message_parts.append(f"**Parameters:** {', '.join(key_params)}")
+                # Check if tool_params is a dictionary before calling .items()
+                if isinstance(tool_params, dict):
+                    for key, value in tool_params.items():
+                        if key in ['target_file', 'query', 'command', 'relative_workspace_path', 'search_term', 'instructions']:
+                            # Show full parameter values without truncation
+                            key_params.append(f"{key}={value}")
+                    if key_params:
+                        message_parts.append(f"**Parameters:** {', '.join(key_params)}")
+                else:
+                    # If tool_params is not a dict (e.g., string), just show it as is
+                    message_parts.append(f"**Parameters:** {tool_params}")
             
             # Format the result using _format_dict_as_text for all cases
             message_parts.append("**Result:**")
@@ -2607,18 +2587,23 @@ END OF ERROR FEEDBACK
             # Format parameters in a readable way
             if tool_params:
                 formatted_calls.append("Parameters:")
-                for key, value in tool_params.items():
-                    # Special handling for edit_file tool's code parameters
-                    if tool_name == "edit_file" and key in ["old_code", "code_edit"]:
-                        display_value = self._truncate_code_parameter(str(value))
-                    # Special handling for talk_to_user: skip query parameter (will be printed by the tool itself)
-                    elif tool_name == "talk_to_user" and key == "query":
-                        # Skip printing query content to avoid duplication
-                        continue
-                    else:
-                        # Show complete tool calls without truncation for better debugging
-                        display_value = value
-                        formatted_calls.append(f"  - {key}: {display_value}")
+                # Check if tool_params is a dictionary before calling .items()
+                if isinstance(tool_params, dict):
+                    for key, value in tool_params.items():
+                        # Special handling for edit_file tool's code parameters
+                        if tool_name == "edit_file" and key in ["old_code", "code_edit"]:
+                            display_value = self._truncate_code_parameter(str(value))
+                        # Special handling for talk_to_user: skip query parameter (will be printed by the tool itself)
+                        elif tool_name == "talk_to_user" and key == "query":
+                            # Skip printing query content to avoid duplication
+                            continue
+                        else:
+                            # Show complete tool calls without truncation for better debugging
+                            display_value = value
+                            formatted_calls.append(f"  - {key}: {display_value}")
+                else:
+                    # If tool_params is not a dict (e.g., JSON string), show it as is
+                    formatted_calls.append(f"  {tool_params}")
             else:
                 formatted_calls.append("Parameters: None")
         
@@ -2848,22 +2833,16 @@ END OF ERROR FEEDBACK
     
     def _is_multi_agent_enabled(self) -> bool:
         """
-        Check if multi-agent mode is enabled from configuration.
+        Check if multi-agent mode is enabled from configuration or environment variable.
+        This method checks environment variable first (for GUI override), then falls back to config file.
         
         Returns:
             True if multi-agent mode is enabled, False otherwise
         """
         try:
-            from config_loader import get_config_value
-            multi_agent_config = get_config_value("multi_agent", "True")
-            
-            # Handle different possible values
-            if isinstance(multi_agent_config, str):
-                return multi_agent_config.lower() in ["true", "1", "yes", "on"]
-            elif isinstance(multi_agent_config, bool):
-                return multi_agent_config
-            else:
-                return bool(multi_agent_config)
+            # Use get_multi_agent() which checks environment variable first, then config file
+            from config_loader import get_multi_agent
+            return get_multi_agent()
                 
         except Exception as e:
             print_current(f"⚠️  Error checking multi-agent configuration: {e}")

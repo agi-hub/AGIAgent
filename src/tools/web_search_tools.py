@@ -30,6 +30,7 @@ import concurrent.futures
 import datetime
 import base64
 import io
+import asyncio
 
 # Import config_loader to get truncation length configuration
 import sys
@@ -87,6 +88,46 @@ def is_playwright_available():
     if _PLAYWRIGHT_AVAILABLE is None:
         _PLAYWRIGHT_AVAILABLE = _check_playwright_available()
     return _PLAYWRIGHT_AVAILABLE
+
+
+def _run_async_in_sync_context(coro):
+    """
+    在同步上下文中运行异步代码的辅助函数。
+    如果已经在事件循环中，使用 run_coroutine_threadsafe 或创建新的事件循环。
+    """
+    try:
+        # 尝试获取当前事件循环
+        loop = asyncio.get_running_loop()
+        # 如果已经在事件循环中，需要在新线程中运行
+        import concurrent.futures
+        import threading
+        
+        # 创建新的事件循环在新线程中运行
+        def run_in_thread():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(run_in_thread)
+            return future.result()
+    except RuntimeError:
+        # 没有运行的事件循环，可以直接运行
+        try:
+            return asyncio.run(coro)
+        except RuntimeError:
+            # 如果 asyncio.run 也失败，尝试使用当前事件循环
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果循环正在运行，使用 run_coroutine_threadsafe
+                import concurrent.futures
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                return future.result()
+            else:
+                return loop.run_until_complete(coro)
 
 
 # Dynamically import Anthropic
@@ -232,7 +273,104 @@ class WebSearchTools:
             print_current(f"⚠️ Failed to save webpage HTML: {e}")
             return ""
     
-    def _save_webpage_content(self, page, url: str, title: str, content: str, search_term: str = "") -> tuple:
+    def _save_webpage_content_sync(self, page, url: str, title: str, content: str, search_term: str = "") -> tuple:
+        """
+        Save both webpage HTML and extracted text content to files (sync version for thread pool)
+        """
+        # Ensure the web search result directory exists when needed
+        self._ensure_result_directory()
+        
+        if not self.web_result_dir:
+            return "", ""
+        
+        html_filepath = ""
+        txt_filepath = ""
+        
+        try:
+            # Generate base filename
+            safe_title = re.sub(r'[^\w\s-]', '', title)[:50]  # Remove special chars, limit length
+            safe_title = re.sub(r'[-\s]+', '_', safe_title)  # Replace spaces and hyphens with underscore
+            
+            # Add timestamp for uniqueness
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create base filename
+            if search_term:
+                safe_search = re.sub(r'[^\w\s-]', '', search_term)[:30]
+                safe_search = re.sub(r'[-\s]+', '_', safe_search)
+                base_filename = f"{safe_search}_{safe_title}_{timestamp}"
+            else:
+                base_filename = f"{safe_title}_{timestamp}"
+            
+            # Remove double underscores and ensure filename is not empty
+            base_filename = re.sub(r'_+', '_', base_filename).strip('_')
+            if not base_filename:
+                base_filename = f"webpage_{timestamp}"
+            
+            # Ensure base_filename is not empty and has valid characters
+            if len(base_filename) < 3:
+                base_filename = f"webpage_{timestamp}"
+            
+            # Save HTML content (but check for special pages first)
+            try:
+                html_content = page.content()  # Sync version
+                
+                # Check for special pages that shouldn't be saved as HTML
+                should_skip_html = False
+                if ("当前环境异常，完成验证后即可继续访问。" in html_content or 
+                    "豆丁网" in html_content or "docin.com" in html_content or
+                    "百度学术搜索" in html_content or "xueshu.baidu.com" in html_content or
+                    "百度学术" in html_content or "- 百度学术" in title or
+                    "相关论文" in html_content or "获取方式" in html_content):
+                    should_skip_html = True
+                
+                if not should_skip_html:
+                    # Ensure the HTML file has .html extension
+                    html_filename = f"{base_filename}.html"
+                    html_filepath = os.path.join(self.web_result_dir, html_filename)
+                    with open(html_filepath, 'w', encoding='utf-8') as f:
+                        f.write(html_content)
+                    
+            except Exception as e:
+                print_current(f"⚠️ Failed to save webpage HTML: {e}")
+            
+            # Save text content
+            try:
+                if content and content.strip():
+                    # Clean the content thoroughly for saving
+                    cleaned_content = self._clean_text_for_saving(content)
+                    
+                    if cleaned_content and len(cleaned_content.strip()) > 50:
+                        # Ensure the txt file has .txt extension
+                        txt_filename = f"{base_filename}.txt"
+                        txt_filepath = os.path.join(self.web_result_dir, txt_filename)
+                        
+                        # Create a formatted text file with metadata
+                        formatted_content = f"""Title: {title}
+URL: {url}
+Search Term: {search_term}
+Timestamp: {datetime.datetime.now().isoformat()}
+Original Content Length: {len(content)} characters
+Cleaned Content Length: {len(cleaned_content)} characters
+
+
+{cleaned_content}
+"""
+                        
+                        with open(txt_filepath, 'w', encoding='utf-8') as f:
+                            f.write(formatted_content)
+                else:
+                    print_current(f"⚠️ No text content to save for: {title}")
+            except Exception as e:
+                print_current(f"⚠️ Failed to save text content: {e}")
+            
+            return html_filepath, txt_filepath
+            
+        except Exception as e:
+            print_current(f"⚠️ Failed to save webpage content: {e}")
+            return "", ""
+
+    async def _save_webpage_content(self, page, url: str, title: str, content: str, search_term: str = "") -> tuple:
         """
         Save both webpage HTML and extracted text content to files
         
@@ -282,7 +420,7 @@ class WebSearchTools:
             
             # Save HTML content (but check for special pages first)
             try:
-                html_content = page.content()
+                html_content = await page.content()
                 
                 # Check for special pages that shouldn't be saved as HTML
                 should_skip_html = False
@@ -726,6 +864,15 @@ Please create a detailed, structured analysis that preserves important informati
         """
         Search the web for real-time information using Playwright.
         """
+        # 调用异步版本
+        return _run_async_in_sync_context(
+            self.web_search_async(search_term, fetch_content, max_content_results, **kwargs)
+        )
+    
+    async def web_search_async(self, search_term: str, fetch_content: bool = True, max_content_results: int = 3, **kwargs) -> Dict[str, Any]:
+        """
+        Search the web for real-time information using Playwright (async version).
+        """
         # Check if Playwright is available before proceeding
         if not is_playwright_available():
             print_current("❌ Playwright is not installed or not available")
@@ -770,12 +917,12 @@ Please create a detailed, structured analysis that preserves important informati
         browser = None
         try:
             # Import Playwright (already checked availability above)
-            from playwright.sync_api import sync_playwright
+            from playwright.async_api import async_playwright
             import urllib.parse
             
             results = []
             
-            with sync_playwright() as p:
+            async with async_playwright() as p:
                 # Ensure DISPLAY is unset to prevent X11 usage
                 import os
                 original_display = os.environ.get('DISPLAY')
@@ -783,7 +930,7 @@ Please create a detailed, structured analysis that preserves important informati
                     del os.environ['DISPLAY']
                 
                 try:
-                    browser = p.chromium.launch(
+                    browser = await p.chromium.launch(
                         headless=True,
                         args=[
                             '--no-sandbox',
@@ -830,7 +977,7 @@ Please create a detailed, structured analysis that preserves important informati
                     )
                     
                     # Create context with more realistic configuration to avoid bot detection
-                    context = browser.new_context(
+                    context = await browser.new_context(
                         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                         viewport={'width': 1366, 'height': 768},
                         ignore_https_errors=True,
@@ -858,14 +1005,14 @@ Please create a detailed, structured analysis that preserves important informati
                     # Restore original DISPLAY if it existed
                     if original_display is not None:
                         os.environ['DISPLAY'] = original_display
-                page = context.new_page()
+                page = await context.new_page()
                 
                 # Set shorter page timeout to prevent hanging
                 page.set_default_timeout(8000)  # 8 seconds
                 page.set_default_navigation_timeout(12000)  # 12 seconds
                 
                 # Add stealth script to avoid detection
-                page.add_init_script("""
+                await page.add_init_script("""
                     // Pass the Webdriver Test
                     Object.defineProperty(navigator, 'webdriver', {
                         get: () => undefined,
@@ -898,11 +1045,11 @@ Please create a detailed, structured analysis that preserves important informati
                 if search_term.startswith(('http://', 'https://')):
                     print_current(f"🔗 Direct URL detected, attempting to access: {search_term}")
                     try:
-                        page.goto(search_term, timeout=10000, wait_until='domcontentloaded')
-                        page.wait_for_timeout(1000)
+                        await page.goto(search_term, timeout=10000, wait_until='domcontentloaded')
+                        await page.wait_for_timeout(1000)
                         
                         try:
-                            title = page.title() or "Untitled page"
+                            title = await page.title() or "Untitled page"
                         except:
                             title = "Untitled page"
                         
@@ -922,7 +1069,7 @@ Please create a detailed, structured analysis that preserves important informati
                             content = "结果无可用数据"
                         else:
                             if fetch_content:
-                                content = self._extract_main_content(page)
+                                content = await self._extract_main_content(page)
                             print_current(f"📄 Extracted webpage content length: {len(content)} characters")
                             
                             # Apply LLM filtering if enabled
@@ -931,7 +1078,7 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             # Save both HTML and text content to files
                             if content and len(content.strip()) > 100:
-                                saved_html_path, saved_txt_path = self._save_webpage_content(page, search_term, title, content, search_term)
+                                saved_html_path, saved_txt_path = await self._save_webpage_content(page, search_term, title, content, search_term)
                         
                         # Clean content for better LLM processing
                         cleaned_content = self._clean_text_for_saving(content) if content else ""
@@ -1034,24 +1181,46 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             search_url = engine['url'].format(encoded_term)
                             
-                            # Use very short timeout for search engines
-                            page.goto(search_url, timeout=6000, wait_until='domcontentloaded')
+                            # Use longer timeout for search engines, especially for Baidu
+                            # Baidu can be slow, so use 20 seconds for Baidu, 15 seconds for others
+                            search_timeout = 20000 if engine['name'] == 'Baidu' else 15000
+                            
+                            # Add retry mechanism for search engine access
+                            max_search_retries = 2
+                            search_success = False
+                            last_search_error = None
+                            
+                            for search_attempt in range(max_search_retries):
+                                try:
+                                    await page.goto(search_url, timeout=search_timeout, wait_until='domcontentloaded')
+                                    search_success = True
+                                    break
+                                except Exception as search_error:
+                                    last_search_error = search_error
+                                    if search_attempt < max_search_retries - 1:
+                                        print_debug(f"⚠️ {engine['name']} search attempt {search_attempt + 1} failed: {search_error}, retrying...")
+                                        await page.wait_for_timeout(1000)  # Wait 1 second before retry
+                                    else:
+                                        raise search_error
+                            
+                            if not search_success:
+                                raise last_search_error
                             
                             # Add random delay to mimic human behavior (500-1500ms)
                             import random
                             human_delay = random.randint(500, 1500)
-                            page.wait_for_timeout(human_delay)
+                            await page.wait_for_timeout(human_delay)
                             
                             # Add some mouse movement to mimic human behavior
                             try:
-                                page.mouse.move(random.randint(100, 500), random.randint(100, 400))
-                                page.wait_for_timeout(random.randint(100, 300))
+                                await page.mouse.move(random.randint(100, 500), random.randint(100, 400))
+                                await page.wait_for_timeout(random.randint(100, 300))
                             except:
                                 pass
                             
                             # Check for anti-bot mechanisms (especially for Google)
                             if engine['name'] == 'Google' and 'anti_bot_indicators' in engine:
-                                page_content = page.content()
+                                page_content = await page.content()
                                 for indicator in engine['anti_bot_indicators']:
                                     if indicator.lower() in page_content.lower():
                                         self._verbose_print(f"⚠️ {engine['name']} detected anti-bot mechanism: {indicator}")
@@ -1060,12 +1229,12 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             # Get search results with error handling
                             try:
-                                result_elements = page.query_selector_all(engine['result_selector'])
+                                result_elements = await page.query_selector_all(engine['result_selector'])
                             except Exception as selector_error:
                                 print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
                                 # Fallback to basic result selector
                                 try:
-                                    result_elements = page.query_selector_all('a[href], h3, .result, .g, .rc')
+                                    result_elements = await page.query_selector_all('a[href], h3, .result, .g, .rc')
                                 except Exception as fallback_error:
                                     print_debug(f"❌ Fallback selector also failed: {fallback_error}")
                                     result_elements = []
@@ -1084,7 +1253,7 @@ Please create a detailed, structured analysis that preserves important informati
                                             # For Google results, handle different element types
                                             tag_name = 'unknown'
                                             try:
-                                                tag_name = elem.evaluate('element => element.tagName.toLowerCase()')
+                                                tag_name = await elem.evaluate('element => element.tagName.toLowerCase()')
                                             except Exception as evaluate_error:
                                                 print_debug(f"⚠️ Element evaluate error: {evaluate_error}")
                                                 # Fallback: try to determine tag type from element properties
@@ -1095,33 +1264,33 @@ Please create a detailed, structured analysis that preserves important informati
                                                     pass
                                             
                                             if tag_name == 'h3':
-                                                title = elem.text_content().strip()
+                                                title = (await elem.text_content()).strip()
                                                 # Find parent link element with error handling
                                                 parent_link = None
                                                 try:
-                                                    parent_link = elem.query_selector('xpath=ancestor::a[1]')
+                                                    parent_link = await elem.query_selector('xpath=ancestor::a[1]')
                                                 except Exception as parent_error:
                                                     print_debug(f"⚠️ Parent link selector error: {parent_error}")
                                                 
                                                 if parent_link:
-                                                    url = parent_link.get_attribute('href') or ""
+                                                    url = (await parent_link.get_attribute('href')) or ""
                                                 else:
                                                     # Try to find sibling or nearby link with error handling
                                                     nearby_link = None
                                                     try:
-                                                        nearby_link = elem.query_selector('xpath=../a | xpath=../../a | xpath=../../../a')
+                                                        nearby_link = await elem.query_selector('xpath=../a | xpath=../../a | xpath=../../../a')
                                                     except Exception as nearby_error:
                                                         print_debug(f"⚠️ Nearby link selector error: {nearby_error}")
                                                     
-                                                    url = nearby_link.get_attribute('href') if nearby_link else ""
+                                                    url = (await nearby_link.get_attribute('href')) if nearby_link else ""
                                             else:
                                                 # For link elements
-                                                title = elem.text_content().strip()
-                                                url = elem.get_attribute('href') or ""
+                                                title = (await elem.text_content()).strip()
+                                                url = (await elem.get_attribute('href')) or ""
                                         else:
                                             # For other search engines
-                                            title = elem.text_content().strip()
-                                            url = elem.get_attribute('href') or ""
+                                            title = (await elem.text_content()).strip()
+                                            url = (await elem.get_attribute('href')) or ""
                                         
                                         if url.startswith('/'):
                                             if engine['name'] == 'Zhihu':
@@ -1129,7 +1298,7 @@ Please create a detailed, structured analysis that preserves important informati
                                             elif engine['name'] == 'Wikipedia':
                                                 url = 'https://en.wikipedia.org' + url
                                         
-                                        snippet = self._extract_snippet_from_search_result(elem, engine)
+                                        snippet = await self._extract_snippet_from_search_result(elem, engine)
                                         
                                         # Handle Google URL format
                                         if url and url.startswith('/url?q='):
@@ -1166,39 +1335,21 @@ Please create a detailed, structured analysis that preserves important informati
                             continue
                     
                     if fetch_content and results:
-                        print_debug(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
+                        print_debug(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results...")
                         
-                        # Use parallel processing for better efficiency
+                        # In async context, use async methods directly instead of parallel processing
+                        # (parallel processing uses sync Playwright which conflicts with async context)
                         try:
-                            # Close the shared page since parallel processing will create its own browsers
-                            page = None
-                            
-                            # Use parallel content fetching with 2 concurrent workers to avoid anti-bot detection
-                            self._fetch_webpage_content_parallel(results[:max_content_results], max_workers=2)
-                            
+                            # Use async sequential content fetching with timeout
+                            await self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=20)
                         except Exception as e:
-                            print_current(f"⚠️ Parallel content fetching failed: {e}")
-                            print_current(f"🔄 Falling back to sequential content fetching...")
-                            # Fallback to sequential method if parallel fails
+                            print_current(f"⚠️ Sequential content fetching failed: {e}")
+                            print_current(f"🔄 Falling back to basic method...")
+                            # Final fallback - try basic method
                             try:
-                                # Need to recreate page for fallback
-                                context = browser.new_context(
-                                    user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                                    viewport={'width': 1024, 'height': 768},
-                                    ignore_https_errors=True,
-                                    java_script_enabled=True,
-                                    bypass_csp=True
-                                )
-                                page = context.new_page()
-                                
-                                self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=20)
-                            except Exception as fallback_e:
-                                print_current(f"⚠️ Fallback sequential content fetching also failed: {fallback_e}")
-                                # Final fallback - try basic method
-                                try:
-                                    self._fetch_webpage_content(results[:max_content_results], page)
-                                except Exception as final_e:
-                                    print_current(f"⚠️ All content fetching methods failed: {final_e}")
+                                await self._fetch_webpage_content(results[:max_content_results], page)
+                            except Exception as final_e:
+                                print_current(f"⚠️ All content fetching methods failed: {final_e}")
                         
                         valid_results = []
                         for result in results:
@@ -1221,9 +1372,9 @@ Please create a detailed, structured analysis that preserves important informati
                                 if not result.get('content'):
                                     result['content'] = 'Content not available - search result only'
                 
-                # Ensure browser is closed
+                # Ensure browser is closed (async with will handle this automatically)
                 try:
-                    browser.close()
+                    await browser.close()
                 except:
                     pass
             
@@ -1454,7 +1605,7 @@ Please create a detailed, structured analysis that preserves important informati
             # Emergency browser cleanup
             if browser:
                 try:
-                    browser.close()
+                    await browser.close()
                 except:
                     pass
 
@@ -1477,9 +1628,9 @@ Please create a detailed, structured analysis that preserves important informati
         
         return cleaned
     
-    def _extract_snippet_from_search_result(self, elem, engine) -> str:
+    async def _extract_snippet_from_search_result(self, elem, engine) -> str:
         """
-        Extract snippet/description from search result element
+        Extract snippet/description from search result element (async version)
         """
         snippet = ""
         
@@ -1487,22 +1638,22 @@ Please create a detailed, structured analysis that preserves important informati
             container = None
             if engine['container_selector']:
                 try:
-                    container = elem.query_selector(f'xpath=ancestor::*[contains(@class, "{engine["container_selector"].replace(".", "")}")]')
+                    container = await elem.query_selector(f'xpath=ancestor::*[contains(@class, "{engine["container_selector"].replace(".", "")}")]')
                 except Exception as xpath_error:
                     print_debug(f"⚠️ XPath selector error: {xpath_error}")
             
             if not container:
                 try:
-                    container = elem.query_selector('xpath=ancestor::div[2]')
+                    container = await elem.query_selector('xpath=ancestor::div[2]')
                 except Exception as ancestor_error:
                     print_debug(f"⚠️ Ancestor selector error: {ancestor_error}")
             
             if container:
                 for selector in engine['snippet_selectors']:
                     try:
-                        snippet_elem = container.query_selector(selector)
+                        snippet_elem = await container.query_selector(selector)
                         if snippet_elem:
-                            text = snippet_elem.text_content().strip()
+                            text = (await snippet_elem.text_content()).strip()
                             if text and len(text) > 20 and not text.startswith('http') and '...' not in text[:10]:
                                 snippet = text
                                 break
@@ -1512,10 +1663,10 @@ Please create a detailed, structured analysis that preserves important informati
                 
                 if not snippet:
                     try:
-                        all_text_elems = container.query_selector_all('span, div, p')
+                        all_text_elems = await container.query_selector_all('span, div, p')
                         for text_elem in all_text_elems:
                             try:
-                                text = text_elem.text_content().strip()
+                                text = (await text_elem.text_content()).strip()
                                 if text and len(text) > 30 and len(text) < 200:
                                     if any(char in text for char in '，。？！、；：') or ' ' in text:
                                         snippet = text
@@ -1531,9 +1682,9 @@ Please create a detailed, structured analysis that preserves important informati
         # Clean the snippet to remove excessive whitespace
         return self._clean_snippet(snippet)
 
-    def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 25) -> None:
+    async def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 25) -> None:
         """
-        Fetch webpage content with additional timeout control
+        Fetch webpage content with additional timeout control (async version)
         """
         start_time = time.time()
         
@@ -1595,15 +1746,15 @@ Please create a detailed, structured analysis that preserves important informati
                         try:
                             if attempt > 0:
                                 # print_current(f"🔄 Retry attempt {attempt + 1} for: {result['title'][:30]}...")
-                                page.wait_for_timeout(500)  # Reduced wait before retry for faster processing
+                                await page.wait_for_timeout(500)  # Reduced wait before retry for faster processing
                             
                             # Skip special header settings for faster processing
                             
-                            page.goto(target_url, timeout=timeout_ms, wait_until='domcontentloaded')
+                            await page.goto(target_url, timeout=timeout_ms, wait_until='domcontentloaded')
                             
                             # Optimized wait time for faster processing
                             initial_wait = 1000
-                            page.wait_for_timeout(initial_wait)
+                            await page.wait_for_timeout(initial_wait)
                             
                             # Check if we've been redirected to an error page
                             current_url = page.url
@@ -1632,7 +1783,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 raise nav_error
                     
                     if success:
-                        content = self._extract_main_content(page)
+                        content = await self._extract_main_content(page)
                         
                         if content and len(content.strip()) > 100:
                             search_term = getattr(self, '_current_search_term', '')
@@ -1643,7 +1794,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 content = self._extract_relevant_content_with_llm(content, search_term, title)
                             
                             # Save both HTML and text content to files
-                            saved_html_path, saved_txt_path = self._save_webpage_content(page, target_url, title, content, search_term)
+                            saved_html_path, saved_txt_path = await self._save_webpage_content(page, target_url, title, content, search_term)
                             if saved_html_path:
                                 result['saved_html_path'] = saved_html_path
                             if saved_txt_path:
@@ -1754,6 +1905,45 @@ Please create a detailed, structured analysis that preserves important informati
         print_debug(f"📊 Processing {len(results_to_fetch)} valid URLs for content fetching")
         
         # Use ThreadPoolExecutor for parallel processing with improved timeout handling
+        # Create a wrapper function that ensures clean thread isolation
+        def run_in_isolated_thread(func, *args, **kwargs):
+            """Run function in a thread with no event loop to avoid Playwright sync API issues"""
+            import asyncio
+            import threading
+            
+            # Get current thread ID for debugging
+            thread_id = threading.current_thread().ident
+            
+            # Clear any existing event loop in this thread
+            try:
+                # Try to get the current event loop
+                loop = asyncio.get_event_loop()
+                # If we get here, there's an event loop - we need to remove it
+                try:
+                    loop.close()
+                except:
+                    pass
+            except RuntimeError:
+                # No event loop exists, which is what we want
+                pass
+            
+            # Explicitly set event loop to None to ensure clean state
+            try:
+                asyncio.set_event_loop(None)
+            except:
+                pass
+            
+            # Verify no event loop exists
+            try:
+                asyncio.get_running_loop()
+                # If we get here, there's still a running loop - this shouldn't happen in a new thread
+                print_debug(f"⚠️ Warning: Event loop still exists in thread {thread_id}")
+            except RuntimeError:
+                # Good - no running loop
+                pass
+            
+            return func(*args, **kwargs)
+        
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks with delays to avoid triggering anti-bot detection
             future_to_result = {}
@@ -1765,7 +1955,7 @@ Please create a detailed, structured analysis that preserves important informati
                     print_debug(f"⏱️ Waiting {delay:.1f} seconds before submitting request {idx+1}/{len(results_to_fetch)}")
                     time.sleep(delay)
                 
-                future = executor.submit(self._fetch_single_webpage_content, result, i)
+                future = executor.submit(run_in_isolated_thread, self._fetch_single_webpage_content, result, i)
                 future_to_result[future] = (i, result)
             
             # Collect results as they complete with progressive timeout
@@ -1819,6 +2009,21 @@ Please create a detailed, structured analysis that preserves important informati
         Returns:
             Updated result dictionary with content
         """
+        # Ensure no event loop exists in this thread (critical for Playwright sync API)
+        import asyncio
+        try:
+            # Try to get and close any existing event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if not loop.is_closed():
+                    loop.close()
+            except RuntimeError:
+                pass
+            # Set event loop to None
+            asyncio.set_event_loop(None)
+        except Exception:
+            pass  # Ignore any errors during cleanup
+        
         # Check if Playwright is available before proceeding
         if not is_playwright_available():
             result['content'] = "Playwright not available. Install with: pip install playwright && playwright install chromium"
@@ -1934,7 +2139,8 @@ Please create a detailed, structured analysis that preserves important informati
                             raise nav_error
                 
                 if success:
-                    content = self._extract_main_content(page)
+                    # Use synchronous version since we're using sync Playwright API
+                    content = self._extract_main_content_sync(page)
                     
                     if content and len(content.strip()) > 100:
                         search_term = getattr(self, '_current_search_term', '')
@@ -1944,8 +2150,8 @@ Please create a detailed, structured analysis that preserves important informati
                         if self.enable_llm_filtering:
                             content = self._extract_relevant_content_with_llm(content, search_term, title)
                         
-                        # Save both HTML and text content to files
-                        saved_html_path, saved_txt_path = self._save_webpage_content(page, target_url, title, content, search_term)
+                        # Save both HTML and text content to files (sync version)
+                        saved_html_path, saved_txt_path = self._save_webpage_content_sync(page, target_url, title, content, search_term)
                         
                         print_debug(f"✅ [{index+1}] Successfully fetched {len(content)} characters")
                         browser.close()
@@ -1977,9 +2183,9 @@ Please create a detailed, structured analysis that preserves important informati
             # print_current(f"❌ [{index+1}] Fetch failed: {error_msg}")  # Commented out to reduce terminal noise
             return {'status': 'failed', 'content': f"Content fetch error: {error_msg}"}
 
-    def _fetch_webpage_content(self, results: List[Dict], page) -> None:
+    async def _fetch_webpage_content(self, results: List[Dict], page) -> None:
         """
-        Fetch actual webpage content for the search results (fallback method)
+        Fetch actual webpage content for the search results (fallback method, async version)
         """
         for i, result in enumerate(results):
             start_time = time.time()
@@ -2035,10 +2241,10 @@ Please create a detailed, structured analysis that preserves important informati
                         try:
                             if attempt > 0:
                                 # print_current(f"🔄 Retry attempt {attempt + 1} (fallback) for: {result['title'][:30]}...")
-                                page.wait_for_timeout(500)
+                                await page.wait_for_timeout(500)
                             
-                            page.goto(target_url, timeout=timeout_ms, wait_until='domcontentloaded')
-                            page.wait_for_timeout(500)
+                            await page.goto(target_url, timeout=timeout_ms, wait_until='domcontentloaded')
+                            await page.wait_for_timeout(500)
                             
                             # Check for error pages
                             current_url = page.url
@@ -2055,7 +2261,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 raise nav_error
                     
                     if success:
-                        content = self._extract_main_content(page)
+                        content = await self._extract_main_content(page)
                         
                         if content and len(content.strip()) > 100:
                             search_term = getattr(self, '_current_search_term', '')
@@ -2066,7 +2272,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 content = self._extract_relevant_content_with_llm(content, search_term, title)
                             
                             # Save both HTML and text content to files
-                            saved_html_path, saved_txt_path = self._save_webpage_content(page, target_url, title, content, search_term)
+                            saved_html_path, saved_txt_path = await self._save_webpage_content(page, target_url, title, content, search_term)
                             if saved_html_path:
                                 result['saved_html_path'] = saved_html_path
                             if saved_txt_path:
@@ -2099,9 +2305,9 @@ Please create a detailed, structured analysis that preserves important informati
                 if "timeout" in str(e).lower() or elapsed_time > 2:
                     result['content'] = "Webpage access timeout"
 
-    def _extract_main_content(self, page) -> str:
+    def _extract_main_content_sync(self, page) -> str:
         """
-        Extract main content from a webpage with improved CSS and formatting handling
+        Extract main content from a webpage with improved CSS and formatting handling (sync version for thread pool)
         """
         content = ""
         
@@ -2152,6 +2358,130 @@ Please create a detailed, structured analysis that preserves important informati
                                     
                                     if self._is_quality_content(text):
                                         content = text
+                                        break
+                            except Exception as elem_error:
+                                continue
+                        if content:
+                            break
+                except Exception as selector_error:
+                    print_debug(f"⚠️ Content selector error for '{selector}': {selector_error}")
+                    continue
+            
+            if not content:
+                try:
+                    body_elem = None
+                    try:
+                        body_elem = page.query_selector('body')
+                    except Exception as body_selector_error:
+                        print_debug(f"⚠️ Body selector error: {body_selector_error}")
+                    
+                    body_text = ""
+                    if body_elem:
+                        try:
+                            body_text = body_elem.text_content()
+                        except Exception as body_text_error:
+                            print_debug(f"⚠️ Body text extraction error: {body_text_error}")
+                    
+                    # Check for verification page in body text
+                    if body_text and "当前环境异常，完成验证后即可继续访问。" in body_text:
+                        return "当前环境异常，完成验证后即可继续访问。"
+                    
+                    # Check for DocIn embedded document page in body text
+                    if body_text and ("豆丁网" in body_text or "docin.com" in body_text):
+                        return "正文为嵌入式文档，不可阅读"
+                    
+                    # Check for Baidu Scholar search page in body text
+                    if body_text and ("百度学术搜索" in body_text or "百度学术" in body_text or
+                                      "相关论文" in body_text or "获取方式" in body_text or
+                                      "按相关性按相关性按被引量按时间降序" in body_text):
+                        return "结果无可用数据"
+                    
+                    if body_text and len(body_text) > 300:
+                        cleaned_body = self._clean_body_content(body_text)
+                        if cleaned_body and len(cleaned_body) > 200:
+                            content = cleaned_body
+                except Exception as body_extraction_error:
+                    print_debug(f"⚠️ Body extraction error: {body_extraction_error}")
+            
+            if content:
+                # Check for verification page again before post-processing
+                if "当前环境异常，完成验证后即可继续访问。" in content:
+                    return "当前环境异常，完成验证后即可继续访问。"
+                
+                # Check for DocIn embedded document page again before post-processing
+                if "豆丁网" in content or "docin.com" in content:
+                    return "正文为嵌入式文档，不可阅读"
+                
+                # Check for Baidu Scholar search page again before post-processing
+                if ("百度学术搜索" in content or "百度学术" in content or
+                    "相关论文" in content or "获取方式" in content or
+                    "按相关性按相关性按被引量按时间降序" in content):
+                    return "结果无可用数据"
+                
+                # Post-process extracted content to handle common issues
+                content = self._post_process_extracted_content(content)
+                
+                if len(content) < 100:
+                    return ""
+        
+        except Exception as e:
+            pass
+        
+        return content
+
+    async def _extract_main_content(self, page) -> str:
+        """
+        Extract main content from a webpage with improved CSS and formatting handling (async version)
+        """
+        content = ""
+        
+        try:
+            content_selectors = [
+                '.article_content', '.article-content', '.content-detail', '.text-detail',
+                '.news-detail', '.detail-content', '.article-detail', '.story-detail',
+                '.article_text', '.news_content', '.post-text', '.entry-text',
+                '.story-content', '.article-body', '.post-body', '.entry-content',
+                '.news-content', '.article-text', '.story-text', '.content-body',
+                '.zhengwen', '.neirong', '.wenzhang', '.content_txt', '.txt_content',
+                '.article_txt', '.news_txt', '.detail_txt', '.main_txt',
+                'article', 'main', 
+                '.content', '.main-content', '.post-content', '#content',
+                '.text', '.txt', '.article', '.news', '.detail',
+                '.markdown-body',
+                '.wiki-content',
+                '.documentation',
+                '.docs-content',
+                '[role="main"]',
+                '.container .content', '.container main',
+                '#main-content', '#article-content', '#post-content',
+                '.page-content', '.single-content', '.primary-content',
+                'body'
+            ]
+            
+            for selector in content_selectors:
+                try:
+                    elements = await page.query_selector_all(selector)
+                    if elements:
+                        for elem in elements:
+                            try:
+                                text = (await elem.text_content()).strip()
+                                if text and len(text) > 100:
+                                    # Check for verification page early
+                                    if "当前环境异常，完成验证后即可继续访问。" in text:
+                                        return "当前环境异常，完成验证后即可继续访问。"
+                                    
+                                    # Check for DocIn embedded document page
+                                    if "豆丁网" in text or "docin.com" in text:
+                                        return "正文为嵌入式文档，不可阅读"
+                                    
+                                    # Check for Baidu Scholar search page
+                                    if ("百度学术搜索" in text or "百度学术" in text or 
+                                        "相关论文" in text or "获取方式" in text or
+                                        "按相关性按相关性按被引量按时间降序" in text):
+                                        return "结果无可用数据"
+                                    
+                                    if self._is_quality_content(text):
+                                        content = text
                                         # print_current(f"✅ Successfully extracted content with selector '{selector}'")
                                         break
                             except Exception as elem_error:
@@ -2167,14 +2497,14 @@ Please create a detailed, structured analysis that preserves important informati
                     # print_current("⚠️ Selector method found no content, trying to extract full body text")
                     body_elem = None
                     try:
-                        body_elem = page.query_selector('body')
+                        body_elem = await page.query_selector('body')
                     except Exception as body_selector_error:
                         print_debug(f"⚠️ Body selector error: {body_selector_error}")
                     
                     body_text = ""
                     if body_elem:
                         try:
-                            body_text = body_elem.text_content()
+                            body_text = await body_elem.text_content()
                         except Exception as body_text_error:
                             print_debug(f"⚠️ Body text extraction error: {body_text_error}")
                     
@@ -2663,17 +2993,17 @@ Please create a detailed, structured analysis that preserves important informati
                 except:
                     title = "Untitled page"
                 
-                content = self._extract_main_content(page)
+                content = self._extract_main_content_sync(page)
                 
                 # Apply LLM filtering if enabled and search term provided
                 if content and self.enable_llm_filtering and search_term:
                     content = self._extract_relevant_content_with_llm(content, search_term, title)
                 
-                # Save both HTML and text content to files
+                # Save both HTML and text content to files (using sync version)
                 saved_html_path = ""
                 saved_txt_path = ""
                 if content and len(content.strip()) > 100:
-                    saved_html_path, saved_txt_path = self._save_webpage_content(page, url, title, content, search_term or "")
+                    saved_html_path, saved_txt_path = self._save_webpage_content_sync(page, url, title, content, search_term or "")
                 
                 final_url = page.url
                 

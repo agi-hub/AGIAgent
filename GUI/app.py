@@ -476,7 +476,7 @@ I18N_TEXTS = {
         'config_options': '配置选项',
         'show_config_options': '显示配置选项',
         'hide_config_options': '隐藏配置选项',
-        'routine_file': '任务类型',
+        'routine_file': '技能',
         'task_type': '模式选择',
         'no_routine': '请选择...',
         'enable_web_search': '搜索网络',
@@ -849,7 +849,7 @@ I18N_TEXTS = {
         'config_options': 'Configuration Options',
         'show_config_options': 'Show Configuration',
         'hide_config_options': 'Hide Configuration',
-        'routine_file': 'Task Type',
+        'routine_file': 'Skills',
         'task_type': 'Mode Selection',
         'no_routine': 'Please select...',
         'enable_web_search': 'Web Search',
@@ -3336,6 +3336,14 @@ def convert_markdown():
         
         # Create Tools instance directly to access FileSystemTools
         from src.tools import Tools
+        from src.tools.print_system import set_output_directory
+        from src.tools.agent_context import set_current_agent_id
+        
+        # Set up logging directory for conversion operations
+        # This ensures print_debug() can write to manager.log in the user's output directory
+        set_output_directory(user_base_dir)
+        set_current_agent_id('manager')  # Set agent ID to 'manager' so logs go to manager.log
+        
         tools = Tools(
             workspace_root=user_base_dir,
             out_dir=user_base_dir
@@ -3362,11 +3370,27 @@ def convert_markdown():
                 'converted_files': []
             }
             
-            # Add warnings for failed conversions
+            # Add warnings for failed conversions and log detailed errors
             if failed_conversions:
                 warnings = []
                 for conv_type in failed_conversions:
-                    conv_error = conversions[conv_type].get('error', 'Unknown error')
+                    conv_result = conversions[conv_type]
+                    conv_error = conv_result.get('error', 'Unknown error')
+                    
+                    # Log detailed error information
+                    try:
+                        from src.tools.print_system import print_debug
+                        print_debug(f"❌ {conv_type.upper()} conversion failed for file: {file_path}")
+                        print_debug(f"Error: {conv_error}")
+                        if conv_result.get('stderr'):
+                            print_debug(f"stderr: {conv_result.get('stderr')}")
+                        if conv_result.get('stdout'):
+                            print_debug(f"stdout: {conv_result.get('stdout')}")
+                        if conv_result.get('return_code') is not None:
+                            print_debug(f"Return code: {conv_result.get('return_code')}")
+                    except Exception:
+                        pass  # If logging fails, continue
+                    
                     if 'Cannot load file' in conv_error or 'Invalid' in conv_error:
                         warnings.append(f'{conv_type.upper()} conversion failed due to image format issues. Consider converting WebP/TIFF images to PNG/JPEG.')
                     elif 'Cannot determine size' in conv_error or 'BoundingBox' in conv_error:
@@ -3384,6 +3408,18 @@ def convert_markdown():
             error_msg = conversion_result.get('error', 'Conversion failed')
             user_friendly_error = error_msg
             suggestions = []
+            
+            # Log conversion failure to manager.log
+            try:
+                from src.tools.print_system import print_debug
+                print_debug(f"❌ Markdown conversion failed for file: {file_path}")
+                print_debug(f"Error: {error_msg}")
+                if conversion_result.get('conversions'):
+                    for conv_type, conv_result in conversion_result.get('conversions', {}).items():
+                        if conv_result.get('status') == 'failed':
+                            print_debug(f"  {conv_type.upper()} conversion failed: {conv_result.get('error', 'Unknown error')}")
+            except Exception:
+                pass  # If logging fails, continue with error response
             
             # Provide user-friendly error messages and suggestions
             if 'Cannot load file' in error_msg or 'Invalid' in error_msg:
@@ -3410,8 +3446,23 @@ def convert_markdown():
     
     except Exception as e:
         import traceback
+        error_traceback = traceback.format_exc()
         traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Error occurred during conversion: {str(e)}'})
+        
+        # Log the error to manager.log if logging is set up
+        try:
+            from src.tools.print_system import print_debug
+            print_debug(f"❌ PDF conversion error: {str(e)}")
+            print_debug(f"Traceback:\n{error_traceback}")
+        except Exception:
+            # If logging fails, at least we have the traceback printed above
+            pass
+        
+        return jsonify({
+            'success': False, 
+            'error': f'Error occurred during conversion: {str(e)}',
+            'traceback': error_traceback if app.debug else None  # Only include traceback in debug mode
+        })
 
 @app.route('/api/convert-mermaid-to-images', methods=['POST'])
 def convert_mermaid_to_images():
@@ -3982,25 +4033,74 @@ def handle_select_directory(data):
     if dir_name:
         user_session.selected_output_dir = dir_name
         
-        # 尝试读取manager.out文件内容
-        manager_out_content = None
+        # 获取logs目录下的所有.out文件列表
+        out_files = []
         try:
             user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
-            manager_out_path = os.path.join(user_base_dir, dir_name, 'logs', 'manager.out')
-            
-            if os.path.exists(manager_out_path):
-                with open(manager_out_path, 'r', encoding='utf-8') as f:
-                    manager_out_content = f.read()
+            logs_dir = os.path.join(user_base_dir, dir_name, 'logs')
+            if os.path.exists(logs_dir):
+                # 查找所有.out文件
+                for filename in os.listdir(logs_dir):
+                    if filename.endswith('.out'):
+                        # 移除.out后缀，只保留文件名
+                        agent_name = filename[:-4]  # 移除'.out'
+                        out_files.append(agent_name)
+                # 排序，确保manager在最后（如果存在）
+                out_files.sort(key=lambda x: (x != 'manager', x))
         except Exception as e:
-            logger.warning(f"Failed to read manager.out for directory {dir_name}: {str(e)}")
+            logger.warning(f"Failed to list .out files for directory {dir_name}: {str(e)}")
         
+        # 不再自动读取manager.out文件内容，改为由用户手动点击加载按钮触发
         emit('directory_selected', {
-            'dir_name': dir_name, 
-            'manager_out_content': manager_out_content
+            'dir_name': dir_name,
+            'out_files': out_files
         }, room=session_id)
     else:
         user_session.selected_output_dir = None
-        emit('directory_selected', {'dir_name': None}, room=session_id)
+        emit('directory_selected', {'dir_name': None, 'out_files': []}, room=session_id)
+
+@socketio.on('load_history')
+def handle_load_history(data):
+    """Handle load history request"""
+    session_id = request.sid
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    dir_name = data.get('dir_name', '') or user_session.selected_output_dir
+    agent_name = data.get('agent_name', 'manager')  # 默认为manager
+    
+    if not dir_name:
+        emit('history_loaded', {
+            'success': False,
+            'error': 'No directory selected'
+        }, room=session_id)
+        return
+    
+    # 尝试读取指定的.out文件内容
+    out_content = None
+    try:
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        out_file_path = os.path.join(user_base_dir, dir_name, 'logs', f'{agent_name}.out')
+        
+        if os.path.exists(out_file_path):
+            with open(out_file_path, 'r', encoding='utf-8') as f:
+                out_content = f.read()
+            emit('history_loaded', {
+                'success': True,
+                'manager_out_content': out_content  # 保持字段名不变以兼容前端
+            }, room=session_id)
+        else:
+            emit('history_loaded', {
+                'success': False,
+                'error': f'{agent_name}.out file not found'
+            }, room=session_id)
+    except Exception as e:
+        logger.warning(f"Failed to read {agent_name}.out for directory {dir_name}: {str(e)}")
+        emit('history_loaded', {
+            'success': False,
+            'error': str(e)
+        }, room=session_id)
 
 @socketio.on('append_task')
 def handle_append_task(data):
@@ -4348,6 +4448,63 @@ def get_file_count(dir_name):
             'file_count': file_count
         })
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/out-files/<path:dir_name>', methods=['GET'])
+def get_out_files(dir_name):
+    """Get list of .out files in specified directory's logs folder"""
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # Security check: normalize path and prevent path traversal
+        normalized_dir_name = os.path.normpath(dir_name)
+        if '..' in normalized_dir_name or normalized_dir_name.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'}), 403
+        
+        # Target directory path
+        target_dir = os.path.join(user_base_dir, normalized_dir_name)
+        
+        # Security check: ensure directory is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_target_dir = os.path.realpath(target_dir)
+        if not real_target_dir.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid directory path'}), 403
+        
+        if not os.path.exists(target_dir):
+            return jsonify({
+                'success': False,
+                'error': 'Directory not found'
+            }), 404
+        
+        # Get logs directory
+        logs_dir = os.path.join(target_dir, 'logs')
+        out_files = []
+        
+        if os.path.exists(logs_dir):
+            # Find all .out files
+            for filename in os.listdir(logs_dir):
+                if filename.endswith('.out'):
+                    # Remove .out suffix, keep only filename
+                    agent_name = filename[:-4]  # Remove '.out'
+                    out_files.append(agent_name)
+            # Sort, ensuring manager is last (if exists)
+            out_files.sort(key=lambda x: (x != 'manager', x))
+        
+        return jsonify({
+            'success': True,
+            'out_files': out_files
+        })
+    except Exception as e:
+        logger.warning(f"Failed to list .out files for directory {dir_name}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -5177,10 +5334,7 @@ def save_file():
                 converter = EnhancedSVGToPNGConverter()
                 success, message = converter.convert(svg_path, png_path, enhance_chinese=True, dpi=300)
                 
-                if success:
-                    print(f"✅ SVG自动转换为PNG成功: {png_path.name}")
-                else:
-                    print(f"⚠️ SVG转PNG失败: {message}")
+
             except Exception as e:
                 # 转换失败不影响SVG保存成功
                 print(f"⚠️ SVG转PNG出错: {e}")

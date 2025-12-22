@@ -840,25 +840,6 @@ class MultiRoundTaskExecutor:
                             simple_stats = compression_stats.get('simple_compression', {})
                             truncation_stats = compression_stats.get('truncation_compression', {})
                             
-                            # Enhanced logging with detailed compression information
-                            print_debug(f"🗜️ History compression completed (Round {task_round}):")
-                            print_debug(f"   📊 Before: {original_llm_count} records, {original_total_length:,} chars")
-                            
-                            # Simple compression details
-                            if simple_stats.get('compressed', False):
-                                recent_rounds_kept = simple_stats.get('recent_rounds_kept', 0)
-                                print_debug(f"   ✂️  Simple compression: {simple_stats.get('older_records_compressed', 0)} older records compressed, "
-                                            f"{recent_rounds_kept} recent rounds kept uncompressed ({recent_rounds_length:,} chars)")
-                            else:
-                                print_debug(f"   ✂️  Simple compression: skipped (records <= {self.executor.simple_compressor.keep_recent_rounds})")
-                            
-                            # Truncation compression details
-                            if truncation_stats.get('truncated', False):
-                                deleted_count = truncation_stats.get('records_deleted', 0)
-                                length_reduction = truncation_stats.get('original_length', 0) - truncation_stats.get('final_length', 0)
-                                print_debug(f"   🗑️  Truncation compression: deleted {deleted_count} oldest records, "
-                                            f"length reduced by {length_reduction:,} chars")
-                            
                             # Calculate recent rounds length (after compression)
                             if len(history_for_llm) > 0:
                                 recent_records_after = history_for_llm[-keep_recent_rounds:] if len(history_for_llm) >= keep_recent_rounds else history_for_llm
@@ -869,16 +850,10 @@ class MultiRoundTaskExecutor:
                             else:
                                 recent_rounds_length_after = 0
                             
-                            # Final results
-                            compression_ratio = (1 - final_total_length / original_total_length) * 100 if original_total_length > 0 else 0
-                            print_debug(f"   📊 After: {final_llm_count} records, {final_total_length:,} chars "
-                                        f"(compression ratio: {compression_ratio:.1f}%)")
-                            if len(history_for_llm) > 0:
-                                recent_count = min(keep_recent_rounds, len(history_for_llm))
-                                print_debug(f"   📌 Recent {recent_count} rounds: {recent_rounds_length_after:,} chars")
-                            
-                            # Debug level detailed stats
-                            print_debug(f"🗜️ Enhanced compression detailed stats: {compression_stats}")
+                            # Only print if compression occurred (threshold exceeded)
+                            if truncation_stats.get('truncated', False):
+                                recent_count = min(keep_recent_rounds, len(history_for_llm)) if len(history_for_llm) > 0 else 0
+                                print_debug(f"🗜️ History compression: Before {original_llm_count} records, {original_total_length:,} chars, After {final_llm_count} records, {final_total_length:,} chars, recent {recent_count} rounds {recent_rounds_length_after:,} chars")
                         else:
                             # Fallback to old compression method (backward compatibility)
                             # Only compress if total history length exceeds summary_trigger_length
@@ -889,9 +864,7 @@ class MultiRoundTaskExecutor:
                                 if records_to_compress:
                                     compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
                                     history_for_llm = compressed_older_records + recent_records_to_keep
-                            else:
-                                # History length is below trigger_length, skip compression
-                                print_debug(f"🗜️ History length {total_history_length} <= trigger_length {trigger_length}, skipping compression")
+
                     except Exception as e:
                         print_debug(f"⚠️ History compression failed: {e}")
                         import traceback

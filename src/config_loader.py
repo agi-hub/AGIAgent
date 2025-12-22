@@ -569,6 +569,42 @@ def get_summary_trigger_length(config_file: str = "config/config.txt") -> int:
     
     return 100000  # Default summary trigger length
 
+def get_compression_target_length(config_file: str = "config/config.txt") -> int:
+    """
+    Get compression target length from configuration file
+    When compression is triggered, history will be compressed to this target length
+    (usually smaller than summary_trigger_length to prevent repeated compression cycles)
+    
+    Args:
+        config_file: Path to the configuration file
+    
+    Returns:
+        Compression target length integer (default: 70% of summary_trigger_length)
+    """
+    config = load_config(config_file)
+    compression_target_length_str = config.get('compression_target_length')
+    
+    if compression_target_length_str:
+        try:
+            compression_target_length = int(compression_target_length_str)
+            if compression_target_length <= 0:
+                # If invalid, calculate default as 70% of trigger length
+                trigger_length = get_summary_trigger_length(config_file)
+                default_value = int(trigger_length * 0.7)
+                print(f"Warning: Invalid compression_target_length value '{compression_target_length_str}' in config file, must be positive integer, using default {default_value} (70% of summary_trigger_length)")
+                return default_value
+            return compression_target_length
+        except ValueError:
+            # If invalid, calculate default as 70% of trigger length
+            trigger_length = get_summary_trigger_length(config_file)
+            default_value = int(trigger_length * 0.7)
+            print(f"Warning: Invalid compression_target_length value '{compression_target_length_str}' in config file, must be an integer, using default {default_value} (70% of summary_trigger_length)")
+            return default_value
+    
+    # Default: 70% of summary_trigger_length
+    trigger_length = get_summary_trigger_length(config_file)
+    return int(trigger_length * 0.7)
+
 def get_simplified_search_output(config_file: str = "config/config.txt") -> bool:
     """
     Get simplified search output configuration from configuration file

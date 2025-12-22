@@ -440,7 +440,7 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         prompt_parts.append("")
         
         # Add each tool's description
-        for tool_name, tool_def in sorted(tool_definitions.items()):
+        for tool_name, tool_def in tool_definitions.items():
             description = tool_def.get('description', 'No description available')
             parameters = tool_def.get('parameters', {})
             properties = parameters.get('properties', {})

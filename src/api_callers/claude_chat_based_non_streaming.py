@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from src.tools.print_system import print_current
+from src.tools.print_system import print_current, print_debug
 
 
 def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_message):
@@ -50,6 +50,19 @@ def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_m
         api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
 
     response = executor.client.messages.create(**api_params)
+
+    # Print token usage in non-streaming mode
+    if hasattr(response, 'usage') and response.usage:
+        usage = response.usage
+        input_tokens = getattr(usage, 'input_tokens', 0) or 0
+        output_tokens = getattr(usage, 'output_tokens', 0) or 0
+        cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+        cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+        
+        if cache_creation_tokens > 0 or cache_read_tokens > 0:
+            print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+        else:
+            print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}")
 
     content = ""
     thinking = ""

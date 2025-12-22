@@ -134,7 +134,7 @@ def find_status_updates(output_dir):
 
 
 def find_tool_calls_from_logs(output_dir):
-    """Find all tool calls from agent log files"""
+    """Find all tool calls from agent log files (.out and .log files)"""
     tool_calls = []
     logs_dir = os.path.join(output_dir, 'logs')
     
@@ -142,19 +142,96 @@ def find_tool_calls_from_logs(output_dir):
         return tool_calls
     
     # Pattern to match both formats:
-    # "Tool {tool_name} at {timestamp} with parameters: {params}" (new format)
-    # "Tool {tool_name} with parameters: {params}" (old format, fallback)
-    # Note: (.+) matches everything to end of line for parameters
+    # "Tool {tool_name} at {timestamp} with parameters: {params}" (old text format)
+    # "Tool {tool_name} with parameters: {params}" (old text format, fallback)
     tool_pattern_with_timestamp = re.compile(r'Tool\s+(\w+)\s+at\s+([^\s]+)\s+with\s+parameters:\s+(.+)$')
     tool_pattern_without_timestamp = re.compile(r'Tool\s+(\w+)\s+with\s+parameters:\s+(.+)$')
     
-    # Find all log files (including agent_*.log and manager.log)
+    # Find all .out files (where print_current writes tool calls as JSON)
+    agent_out_files = glob.glob(os.path.join(logs_dir, 'agent_*.out'))
+    manager_out_file = os.path.join(logs_dir, 'manager.out')
+    out_files = agent_out_files.copy()
+    if os.path.exists(manager_out_file):
+        out_files.append(manager_out_file)
+    
+    # Also find .log files for backward compatibility
     agent_log_files = glob.glob(os.path.join(logs_dir, 'agent_*.log'))
     manager_log_file = os.path.join(logs_dir, 'manager.log')
     log_files = agent_log_files.copy()
     if os.path.exists(manager_log_file):
         log_files.append(manager_log_file)
     
+    # Process .out files (JSON format)
+    for out_file in out_files:
+        # Extract agent_id from filename (e.g., agent_001.out -> agent_001, manager.out -> manager)
+        filename = os.path.basename(out_file)
+        if filename == 'manager.out':
+            agent_id = 'manager'
+        else:
+            agent_id = filename.replace('.out', '')
+        
+        try:
+            # Get file modification time as approximate timestamp
+            file_mtime = os.path.getmtime(out_file)
+            file_mtime_iso = datetime.fromtimestamp(file_mtime).isoformat()
+            
+            with open(out_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                # Look for JSON code blocks containing tool calls
+                # Pattern: ```json ... {"tool_name": "...", "parameters": {...}} ... ```
+                json_block_pattern = re.compile(r'```json\s*\n(.*?)\n```', re.DOTALL)
+                json_blocks = list(json_block_pattern.finditer(content))
+                
+                # Track position of each JSON block in file for better ordering
+                for block_idx, json_block_match in enumerate(json_blocks):
+                    json_str = json_block_match.group(1).strip()
+                    try:
+                        tool_call_data = json.loads(json_str)
+                        if isinstance(tool_call_data, dict) and 'tool_name' in tool_call_data:
+                            tool_name = tool_call_data.get('tool_name', 'unknown')
+                            tool_params = tool_call_data.get('parameters', {})
+                            
+                            # Convert parameters dict to string for display
+                            if isinstance(tool_params, dict):
+                                # Remove code_edit parameter for edit_file to reduce size
+                                params_for_display = tool_params.copy()
+                                if tool_name == 'edit_file' and 'code_edit' in params_for_display:
+                                    params_for_display.pop('code_edit')
+                                params_str = json.dumps(params_for_display, ensure_ascii=False)
+                            else:
+                                params_str = str(tool_params)
+                            
+                            # Use file modification time as timestamp
+                            # For multiple tools in same file, add small offset based on block position
+                            # to maintain correct ordering
+                            timestamp_str = file_mtime_iso
+                            if block_idx > 0:
+                                # Add microseconds offset: block_idx * 1000 microseconds
+                                # This ensures tools in the same file are ordered correctly
+                                try:
+                                    base_dt = datetime.fromisoformat(file_mtime_iso.replace('Z', '+00:00'))
+                                    from datetime import timedelta
+                                    offset_dt = base_dt + timedelta(microseconds=block_idx * 1000)
+                                    timestamp_str = offset_dt.isoformat()
+                                except:
+                                    # Fallback: just use base timestamp
+                                    pass
+                            
+                            tool_calls.append({
+                                'agent_id': agent_id,
+                                'tool_name': tool_name,
+                                'timestamp': timestamp_str,
+                                'parameters': params_str,
+                                'line_number': 0  # JSON blocks span multiple lines
+                            })
+                    except json.JSONDecodeError:
+                        # Skip invalid JSON blocks
+                        continue
+        except Exception as e:
+            print(f"Error reading out file {out_file}: {e}")
+            continue
+    
+    # Process .log files (text format, for backward compatibility)
     for log_file in log_files:
         # Extract agent_id from filename (e.g., agent_001.log -> agent_001, manager.log -> manager)
         filename = os.path.basename(log_file)
@@ -225,8 +302,8 @@ def find_tool_calls_from_logs(output_dir):
             print(f"Error reading log file {log_file}: {e}")
             continue
     
-    # Sort by timestamp
-    tool_calls.sort(key=lambda x: x.get('timestamp', ''))
+    # Sort by timestamp (empty timestamps will be sorted first, then by agent_id)
+    tool_calls.sort(key=lambda x: (x.get('timestamp', '') or '', x.get('agent_id', '')))
     return tool_calls
 
 

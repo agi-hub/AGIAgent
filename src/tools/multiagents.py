@@ -552,7 +552,7 @@ class MultiAgentTools:
                         from .message_system import get_message_router
                         router = get_message_router(workspace_dir, cleanup_on_init=False)
                         router.register_agent(task_id)
-                        print_current(task_id, f"📬 Mailbox registered for {task_id}")
+                        #print_current(task_id, f"📬 Mailbox registered for {task_id}")
                     except Exception as e:
                         # Don't silently ignore mailbox registration errors
                         print_current(task_id, f"⚠️ Warning: Failed to register mailbox for {task_id}: {e}")

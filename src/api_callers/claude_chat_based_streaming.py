@@ -17,6 +17,7 @@ limitations under the License.
 """
 
 from email import message
+import re
 from src.tools.print_system import streaming_context, print_debug, print_current
 
 
@@ -47,6 +48,10 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                 "messages": messages,
                 "temperature": temperature
             }
+
+            # Enable thinking for reasoning-capable models
+            if executor.enable_thinking:
+                api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
 
             with executor.client.messages.stream(**api_params) as stream:
                 content = ""
@@ -80,6 +85,25 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                     if thinking_printed_header:
                                         printer.write("\n")
                                     printer.write("\n💬 ")
+                        
+                        # Handle message_delta event (token stats)
+                        elif event_type == "message_delta":
+                            try:
+                                delta = getattr(event, 'delta', None)
+                                if delta:
+                                    usage = getattr(delta, 'usage', None) or getattr(event, 'usage', None)
+                                    if usage:
+                                        input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                                        output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                                        cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                                        cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
+                                        
+                                        if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                                            print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}, Cache Creation: {cache_creation_tokens}, Cache Read: {cache_read_tokens}")
+                                        else:
+                                            print_debug(f"📊 Current conversation token usage - Input: {input_tokens}, Output: {output_tokens}")
+                            except Exception as e:
+                                print_debug(f"⚠️ Error processing message_delta: {type(e).__name__}: {str(e)}")
                         
                         # Handle new content in current content block
                         elif event_type == "content_block_delta":
@@ -135,6 +159,30 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                                 content = content_before_second.rstrip()
                                                 break
                                     
+                                    # Check for multiple XML tool calls - detect complete <invoke> tags
+                                    # Find all complete <invoke>...</invoke> tags
+                                    invoke_pattern = r'<invoke name="[^"]+">.*?</invoke>'
+                                    invoke_matches = list(re.finditer(invoke_pattern, content, re.DOTALL))
+                                    
+                                    if len(invoke_matches) > 0:
+                                        # At least one complete invoke tag found
+                                        first_invoke_end = invoke_matches[0].end()
+                                        remaining_content = content[first_invoke_end:].strip()
+                                        
+                                        # Check if there's another <invoke> tag starting after the first one
+                                        if '<invoke name=' in remaining_content:
+                                            # Check if the second invoke is complete
+                                            second_invoke_match = re.search(r'<invoke name="[^"]+">.*?</invoke>', remaining_content, re.DOTALL)
+                                            if second_invoke_match:
+                                                # Second invoke is also complete - allow multiple complete tool calls
+                                                # Continue streaming to receive all complete tool calls
+                                                print_debug("\n✅ Multiple complete XML tool calls detected, continuing to receive all")
+                                            else:
+                                                # Second invoke is incomplete (streaming), but we have a complete first one
+                                                # Wait a bit to see if it completes, but don't stop immediately
+                                                # Only stop if we've been waiting too long (handled by buffer mechanism)
+                                                pass
+                                    
                                     # If nothing forced an early exit, print except for trailing buffer
                                     unprinted_length = len(content) - total_printed
                                     if unprinted_length >= min_buffer_size:
@@ -160,11 +208,9 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                     except Exception as close_error:
                         print_debug(f"⚠️ Error closing Anthropic stream: {close_error}")
                 
-                
                 # Print remaining content not yet printed
                 if total_printed < len(content):
                     printer.write(content[total_printed:])
-                
 
                 # If a hallucination was detected, add error feedback but still check for tool calls
                 if hallucination_detected:
