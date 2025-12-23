@@ -516,11 +516,10 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
         # Add footer instructions
         prompt_parts.append("### Important Notes:")
         prompt_parts.append("1. Please strictly follow the JSON format above for tool calls")
-        prompt_parts.append("2. NEVER use XML format - Do NOT use XML tags like <invoke>, <function_call>, or <function_calls>. ONLY use JSON format.")
-        prompt_parts.append("3. Tool names must match exactly")
-        prompt_parts.append("4. Required parameters cannot be omitted")
-        prompt_parts.append("5. Parameter types must be correct")
-        prompt_parts.append("6. Multiple tools can be called simultaneously")
+        prompt_parts.append("2. Tool names must match exactly")
+        prompt_parts.append("3. Required parameters cannot be omitted")
+        prompt_parts.append("4. Parameter types must be correct")
+        prompt_parts.append("5. Multiple tools can be called simultaneously")
         
         return "\n".join(prompt_parts)
         
@@ -533,6 +532,150 @@ def generate_tools_prompt_from_json(tool_definitions: Dict[str, Any], language: 
                 print(msg)
                 
         print_current(f"⚠️  Error generating tools prompt from JSON: {e}")
+        return ""
+
+
+def generate_tools_prompt_from_xml(tool_definitions: Dict[str, Any], language: str = 'en') -> str:
+    """
+    Generate tools prompt string from JSON tool definitions for chat-based models using XML format.
+    
+    Args:
+        tool_definitions: Dictionary of tool definitions loaded from JSON
+        language: Language code ('zh' for Chinese, 'en' for English)
+        
+    Returns:
+        Formatted string containing tool descriptions for chat-based models in XML format
+    """
+    try:
+        # For safety, import print_current here to avoid circular imports
+        try:
+            from tools.print_system import print_current
+        except ImportError:
+            def print_current(msg):
+                print(msg)
+        
+        if not tool_definitions:
+            return ""
+        
+        prompt_parts = []
+        
+        # Add header
+        prompt_parts.append("## Available Tools")
+        prompt_parts.append("")
+        prompt_parts.append("Following is the tools you can use to complete tasks. Please call tools using XML format:")
+        prompt_parts.append("")
+        prompt_parts.append("```xml")
+        prompt_parts.append("<invoke name=\"tool_name\">")
+        prompt_parts.append("  <parameter name=\"param_name\">param_value</parameter>")
+        prompt_parts.append("</invoke>")
+        prompt_parts.append("```")
+        prompt_parts.append("")
+        prompt_parts.append("### Tool List:")
+        prompt_parts.append("")
+        
+        # Add each tool's description
+        for tool_name, tool_def in tool_definitions.items():
+            description = tool_def.get('description', 'No description available')
+            parameters = tool_def.get('parameters', {})
+            properties = parameters.get('properties', {})
+            required = parameters.get('required', [])
+            
+            # Tool header
+            prompt_parts.append(f"#### {tool_name}")
+            prompt_parts.append(f"**Description**: {description}" if language == 'zh' else f"**Description**: {description}")
+            prompt_parts.append("")
+            
+            # Parameters
+            if properties:
+                prompt_parts.append("**Parameters**:" if language == 'zh' else "**Parameters**:")
+                for param_name, param_def in properties.items():
+                    param_type = param_def.get('type', 'string')
+                    param_desc = param_def.get('description', 'No description')
+                    param_required = param_name in required
+                    required_marker = " (Required)" if language == 'zh' else " (required)" if param_required else ""
+                    
+                    # Handle array type
+                    if param_type == 'array':
+                        items_type = param_def.get('items', {}).get('type', 'string')
+                        param_type = f"array[{items_type}]"
+                    
+                    prompt_parts.append(f"- `{param_name}` ({param_type}){required_marker}: {param_desc}")
+                
+                prompt_parts.append("")
+            else:
+                prompt_parts.append("**Parameters**: None" if language == 'zh' else "**Parameters**: None")
+                prompt_parts.append("")
+            
+            # Example usage
+            prompt_parts.append("**Example Usage**:")
+            
+            # Generate example based on tool
+            example_params = {}
+            for param_name, param_def in properties.items():
+                if param_name in required:
+                    param_type = param_def.get('type', 'string')
+                    if param_type == 'string':
+                        example_params[param_name] = "example_value"
+                    elif param_type == 'integer':
+                        example_params[param_name] = 1
+                    elif param_type == 'boolean':
+                        example_params[param_name] = True
+                    elif param_type == 'array':
+                        example_params[param_name] = ["item1", "item2"]
+                    elif param_type == 'object':
+                        example_params[param_name] = {"key": "value"}
+            
+            prompt_parts.append("```xml")
+            prompt_parts.append(f"<invoke name=\"{tool_name}\">")
+            
+            if example_params:
+                for key, value in example_params.items():
+                    if isinstance(value, str):
+                        # Escape XML special characters
+                        escaped_value = value.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')
+                        prompt_parts.append(f"  <parameter name=\"{key}\">{escaped_value}</parameter>")
+                    elif isinstance(value, bool):
+                        prompt_parts.append(f"  <parameter name=\"{key}\">{str(value).lower()}</parameter>")
+                    elif isinstance(value, (int, float)):
+                        prompt_parts.append(f"  <parameter name=\"{key}\">{value}</parameter>")
+                    elif isinstance(value, list):
+                        # For arrays, use multiple parameter tags or JSON string
+                        import json
+                        json_str = json.dumps(value)
+                        prompt_parts.append(f"  <parameter name=\"{key}\">{json_str}</parameter>")
+                    elif isinstance(value, dict):
+                        # For objects, use JSON string
+                        import json
+                        json_str = json.dumps(value)
+                        prompt_parts.append(f"  <parameter name=\"{key}\">{json_str}</parameter>")
+            
+            prompt_parts.append("</invoke>")
+            prompt_parts.append("```")
+            prompt_parts.append("")
+            prompt_parts.append("---")
+            prompt_parts.append("")
+        
+        # Add footer instructions
+        prompt_parts.append("### Important Notes:")
+        prompt_parts.append("1. Please strictly follow the XML format above for tool calls")
+        prompt_parts.append("2. Use <invoke name=\"tool_name\">...</invoke> format for each tool call")
+        prompt_parts.append("3. Tool names must match exactly")
+        prompt_parts.append("4. Required parameters cannot be omitted")
+        prompt_parts.append("5. Parameter types must be correct")
+        prompt_parts.append("6. Multiple tools can be called simultaneously by using multiple <invoke> tags")
+        prompt_parts.append("7. For array parameters, you can use JSON format within the parameter value, or use multiple <item> tags")
+        
+        return "\n".join(prompt_parts)
+        
+    except Exception as e:
+        # For safety, import print_current here to avoid circular imports
+        try:
+            from tools.print_system import print_current
+        except ImportError:
+            def print_current(msg):
+                print(msg)
+                
+        print_current(f"⚠️  Error generating tools prompt from XML: {e}")
         return ""
 
 

@@ -93,7 +93,7 @@ Tool_calling_format=False
 # When set to "xml", tries XML format first, then falls back to Python format
 # Python format is always tried as fallback regardless of this setting
 # Default: json
-tool_call_parse_format=json
+tool_call_parse_format=xml
 
 # Thinking support configuration
 # Controls whether to enable and display thinking process from reasoning models (e.g., OpenAI o1, Claude Sonnet 4.5)

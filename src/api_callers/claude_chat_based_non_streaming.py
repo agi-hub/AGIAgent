@@ -49,7 +49,19 @@ def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_m
     if executor.enable_thinking:
         api_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
 
-    response = executor.client.messages.create(**api_params)
+    # Try to create response with thinking parameter, fallback if not supported
+    try:
+        response = executor.client.messages.create(**api_params)
+    except (TypeError, ValueError) as e:
+        # If thinking parameter is not supported, retry without it
+        if executor.enable_thinking and ("thinking" in str(e).lower() or "unexpected keyword" in str(e).lower()):
+            print_debug(f"⚠️ Thinking parameter not supported by this API, disabling thinking mode: {e}")
+            # Remove thinking parameter and retry
+            api_params.pop("thinking", None)
+            response = executor.client.messages.create(**api_params)
+        else:
+            # Re-raise if it's a different error
+            raise
 
     # Print token usage in non-streaming mode
     if hasattr(response, 'usage') and response.usage:

@@ -61,6 +61,7 @@ from utils.get_info import (
 # Import parse utilities
 from utils.parse import (
     generate_tools_prompt_from_json,
+    generate_tools_prompt_from_xml,
     parse_tool_calls_from_json,
     parse_tool_calls_from_xml,
     parse_python_function_calls,
@@ -975,7 +976,13 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 # Generate tools prompt from JSON definitions
                 # Force reload to ensure FastMCP tools are included if they were initialized after first load
                 tool_definitions = self._load_tool_definitions_from_file(force_reload=True)
-                json_tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
+                
+                # Choose format based on tool_call_parse_format configuration
+                if self.tool_call_parse_format == "xml":
+                    tools_prompt = generate_tools_prompt_from_xml(tool_definitions, self.language)
+                else:
+                    # Default to JSON format
+                    tools_prompt = generate_tools_prompt_from_json(tool_definitions, self.language)
                 
                 # Load only rules and plugin prompts (excluding deprecated tool files)
                 rules_tool_files = [
@@ -985,8 +992,8 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 ]
                 
                 rules_parts = []
-                if json_tools_prompt:
-                    rules_parts.append(json_tools_prompt)
+                if tools_prompt:
+                    rules_parts.append(tools_prompt)
                 
                 loaded_files = []
                 
