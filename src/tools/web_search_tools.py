@@ -1023,8 +1023,8 @@ Please create a detailed, structured analysis that preserves important informati
                                 time_since_last_request = current_time - self._last_google_request
                                 # Delay 1-3 seconds to avoid anti-bot detection
                                 import random
-                                min_delay = 1.0
-                                max_delay = 3.0
+                                min_delay = 0.5
+                                max_delay = 2.0
                                 required_delay = random.uniform(min_delay, max_delay)
                                 if time_since_last_request < required_delay:
                                     wait_time = required_delay - time_since_last_request
@@ -1034,43 +1034,8 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             search_url = engine['url'].format(encoded_term)
                             
-                            # Set timeout based on search engine (Baidu needs longer timeout)
-                            if engine['name'] == 'Baidu':
-                                search_timeout = 20000  # 20 seconds for Baidu
-                            else:
-                                search_timeout = 15000  # 15 seconds for other engines
-                            
-                            # Retry logic for timeout errors
-                            max_retries = 2
-                            retry_count = 0
-                            page_loaded = False
-                            
-                            while retry_count <= max_retries and not page_loaded:
-                                try:
-                                    page.goto(search_url, timeout=search_timeout, wait_until='domcontentloaded')
-                                    page_loaded = True
-                                except Exception as goto_error:
-                                    if 'timeout' in str(goto_error).lower() and retry_count < max_retries:
-                                        retry_count += 1
-                                        wait_time = (retry_count * 2)  # Exponential backoff: 2s, 4s
-                                        print_debug(f"⏱️ {engine['name']} timeout (attempt {retry_count}/{max_retries}), retrying after {wait_time}s...")
-                                        time.sleep(wait_time)
-                                        # Increase timeout for retry
-                                        search_timeout = int(search_timeout * 1.5)
-                                    else:
-                                        raise goto_error
-                            
-                            # Add random delay to mimic human behavior (500-1500ms)
-                            import random
-                            human_delay = random.randint(500, 1500)
-                            page.wait_for_timeout(human_delay)
-                            
-                            # Add some mouse movement to mimic human behavior
-                            try:
-                                page.mouse.move(random.randint(100, 500), random.randint(100, 400))
-                                page.wait_for_timeout(random.randint(100, 300))
-                            except:
-                                pass
+                            # Use very short timeout for search engines
+                            page.goto(search_url, timeout=6000, wait_until='domcontentloaded')
                             
                             # Check for anti-bot mechanisms (especially for Google)
                             if engine['name'] == 'Google' and 'anti_bot_indicators' in engine:
