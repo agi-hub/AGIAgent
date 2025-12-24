@@ -1128,6 +1128,7 @@ Please create a detailed, structured analysis that preserves important informati
                         print_debug(f"\n🚀 Starting to fetch webpage content for first {min(max_content_results, len(results))} results using parallel processing...")
                         
                         # Use parallel processing for better efficiency
+                        parallel_success = False
                         try:
                             # Close the shared page since parallel processing will create its own browsers
                             page = None
@@ -1136,10 +1137,33 @@ Please create a detailed, structured analysis that preserves important informati
                             # Increased workers since we're using more bot-friendly search engines
                             self._fetch_webpage_content_parallel(results[:max_content_results], max_workers=2)
                             
+                            # Check if any results have valid content after parallel fetching
+                            has_valid_content = any(
+                                result.get('content') and len(result.get('content', '').strip()) > 100 
+                                for result in results[:max_content_results]
+                            )
+                            
+                            if has_valid_content:
+                                parallel_success = True
+                                print_debug(f"✅ Parallel fetching completed with some successful results")
+                            else:
+                                print_debug(f"⚠️ Parallel fetching completed but no valid content found")
+                                
                         except Exception as e:
                             print_current(f"⚠️ Parallel content fetching failed: {e}")
-                            print_current(f"🔄 Falling back to sequential content fetching...")
-                            # Fallback to sequential method if parallel fails
+                            # Check if any results have valid content despite the exception
+                            has_valid_content = any(
+                                result.get('content') and len(result.get('content', '').strip()) > 100 
+                                for result in results[:max_content_results]
+                            )
+                            if has_valid_content:
+                                parallel_success = True
+                                print_debug(f"✅ Parallel fetching had errors but some results were successful")
+                        
+                        # Only fallback to sequential if parallel completely failed (no valid content at all)
+                        if not parallel_success:
+                            print_current(f"🔄 No valid content from parallel fetching, falling back to sequential content fetching...")
+                            # Fallback to sequential method only if no content was fetched
                             try:
                                 # Need to recreate page for fallback
                                 context = browser.new_context(
@@ -1159,6 +1183,8 @@ Please create a detailed, structured analysis that preserves important informati
                                     self._fetch_webpage_content(results[:max_content_results], page)
                                 except Exception as final_e:
                                     print_current(f"⚠️ All content fetching methods failed: {final_e}")
+                        else:
+                            print_debug(f"✅ Skipping sequential fallback - parallel fetching was successful")
                         
                         valid_results = []
                         for result in results:
