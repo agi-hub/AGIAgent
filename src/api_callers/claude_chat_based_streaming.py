@@ -124,39 +124,6 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                         text = getattr(delta, 'text', '')
                                         content += text
                                         
-                                        # Check for XML format errors (parameter tags outside invoke/tool_call structures)
-                                        if executor.tool_call_parse_format == "xml":
-                                            from src.utils.parse import check_xml_format_error
-                                            has_error, error_message = check_xml_format_error(content)
-                                            if has_error:
-                                                print_debug(f"\n⚠️ XML格式错误检测，停止接收流式输出")
-                                                print_debug(f"{error_message}")
-                                                hallucination_detected = True
-                                                # Truncate content before error
-                                                # Find the position of the problematic parameter tag
-                                                param_pattern = r'<parameter\s+name='
-                                                param_match = re.search(param_pattern, content, re.IGNORECASE)
-                                                if param_match:
-                                                    # Check if it's inside a valid structure
-                                                    invoke_pattern = r'<invoke\s+name="[^"]+">.*?</invoke>'
-                                                    tool_call_pattern = r'<tool_call>([^<>]+)>.*?</\1>'
-                                                    function_call_pattern = r'<function_call>.*?</function_call>'
-                                                    
-                                                    param_pos = param_match.start()
-                                                    is_inside_valid = False
-                                                    for pattern in [invoke_pattern, tool_call_pattern, function_call_pattern]:
-                                                        for m in re.finditer(pattern, content, re.DOTALL):
-                                                            if m.start() <= param_pos < m.end():
-                                                                is_inside_valid = True
-                                                                break
-                                                        if is_inside_valid:
-                                                            break
-                                                    
-                                                    if not is_inside_valid:
-                                                        # Truncate before the problematic parameter
-                                                        content = content[:param_pos].rstrip()
-                                                        break  # Break out of for event in stream loop
-                                        
                                         # Check for hallucination patterns
                                         hallucination_patterns = [
                                             "**LLM Called Following Tools in this round",
@@ -250,25 +217,10 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
 
                     # If a hallucination was detected, add error feedback but still check for tool calls
                     if hallucination_detected:
-                        # Check if it was an XML format error
-                        if executor.tool_call_parse_format == "xml":
-                            from src.utils.parse import check_xml_format_error
-                            has_error, error_message = check_xml_format_error(content)
-                            if has_error:
-                                executor._add_error_feedback_to_history(
-                                    error_type='xml_format_error',
-                                    error_message=error_message or "XML格式错误：检测到在工具调用结构外部出现 <parameter name= 标签。请确保 <parameter> 标签必须位于 <invoke name=\"tool_name\">...</invoke> 或 <tool_call>tool_name>...</tool_name> 结构内部。"
-                                )
-                            else:
-                                executor._add_error_feedback_to_history(
-                                    error_type='hallucination_detected',
-                                    error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
-                                )
-                        else:
-                            executor._add_error_feedback_to_history(
-                                error_type='hallucination_detected',
-                                error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
-                            )
+                        executor._add_error_feedback_to_history(
+                            error_type='hallucination_detected',
+                            error_message="Hallucination pattern detected in response (e.g., '**LLM Called Following Tools in this round' or '**Tool Execution Results:**')"
+                        )
                     
                     # Parse tool calls from the output content
                     # parse_tool_calls now returns standardized format with "input" field

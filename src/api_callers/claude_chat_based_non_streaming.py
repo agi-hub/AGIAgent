@@ -99,22 +99,6 @@ def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_m
     if executor.enable_thinking and thinking:
         content = f"## Thinking Process\n\n{thinking}\n\n## Final Answer\n\n{content}"
 
-    # Check for XML format errors (parameter tags outside invoke/tool_call structures)
-    if executor.tool_call_parse_format == "xml":
-        from src.utils.parse import check_xml_format_error
-        has_error, error_message = check_xml_format_error(content)
-        if has_error:
-            print_debug(f"⚠️ XML格式错误检测")
-            print_debug(f"{error_message}")
-            executor._add_error_feedback_to_history(
-                error_type='xml_format_error',
-                error_message=error_message or "XML格式错误：检测到在工具调用结构外部出现 <parameter name= 标签。请确保 <parameter> 标签必须位于 <invoke name=\"tool_name\">...</invoke> 或 <tool_call>tool_name>...</tool_name> 结构内部。"
-            )
-            # Ensure trailing newline (chat interface)
-            if not content.endswith('\n'):
-                content += '\n'
-            return content, []
-    
     # Check for hallucination patterns (strict, not partial matches)
     hallucination_patterns = [
         "**LLM Called Following Tools in this round",

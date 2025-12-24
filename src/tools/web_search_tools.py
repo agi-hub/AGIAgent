@@ -105,8 +105,6 @@ class WebSearchTools:
         self._google_connectivity_checked = False
         self._google_available = True
         self._last_google_request = 0  # Track last Google request time for rate limiting
-        self._duckduckgo_connectivity_checked = False
-        self._duckduckgo_available = True
         self.verbose = verbose  # Control verbose debug output
         
         # LLM configuration for content filtering and summarization
@@ -148,35 +146,6 @@ class WebSearchTools:
         except Exception as e:
             print_current(f"⚠️ Failed to create result directory: {e}")
             self.web_result_dir = None
-    
-    def _create_search_page(self, context):
-        """Create and configure a new page for search operations"""
-        page = context.new_page()
-        page.set_default_timeout(8000)  # 8 seconds
-        page.set_default_navigation_timeout(12000)  # 12 seconds
-        
-        # Add stealth script to avoid detection
-        page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined,
-            });
-            window.chrome = {
-                runtime: {},
-            };
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
-        """)
-        return page
     
     def _count_txt_files_in_result_dir(self) -> int:
         """Count the number of txt files in the web search result directory"""
@@ -314,7 +283,7 @@ class WebSearchTools:
             # Save HTML content (but check for special pages first)
             try:
                 html_content = page.content()
-
+                
                 # Check for special pages that shouldn't be saved as HTML
                 should_skip_html = False
                 if ("当前环境异常，完成验证后即可继续访问。" in html_content or 
@@ -474,41 +443,6 @@ Cleaned Content Length: {len(cleaned_content)} characters
         
         self._google_connectivity_checked = True
         return self._google_available
-    
-    def _check_duckduckgo_connectivity(self) -> bool:
-        """
-        Check if DuckDuckGo is accessible by trying to download DuckDuckGo homepage
-        Useful for detecting if user is in China where DuckDuckGo may be blocked
-        """
-        if self._duckduckgo_connectivity_checked:
-            return self._duckduckgo_available
-        
-        print_debug("🌐 Checking DuckDuckGo connectivity for the first time...")
-        try:
-            # Try to download DuckDuckGo HTML search page with 2 second timeout
-            response = requests.get('https://html.duckduckgo.com/html/?q=test', 
-                                  timeout=2, 
-                                  headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            
-            if response.status_code == 200 and len(response.text) > 100:
-                print_debug("✅ DuckDuckGo connectivity test passed")
-                self._duckduckgo_available = True
-            else:
-                print_debug(f"❌ DuckDuckGo connectivity test failed: status {response.status_code}")
-                self._duckduckgo_available = False
-                
-        except requests.exceptions.Timeout:
-            print_debug("⚠️ DuckDuckGo connectivity test timeout (>3s), likely blocked in current region")
-            self._duckduckgo_available = False
-        except requests.exceptions.RequestException as e:
-            print_debug(f"⚠️ DuckDuckGo connectivity test error: {e}, likely blocked in current region")
-            self._duckduckgo_available = False
-        except Exception as e:
-            print_debug(f"⚠️ DuckDuckGo connectivity test error: {e}")
-            self._duckduckgo_available = False
-        
-        self._duckduckgo_connectivity_checked = True
-        return self._duckduckgo_available
     
     def _extract_relevant_content_with_llm(self, content: str, search_term: str, title: str = "") -> str:
         """
@@ -1041,18 +975,15 @@ Please create a detailed, structured analysis that preserves important informati
                         })
                         print_debug("🔍 Baidu search engine added as primary option (Chinese query)")
                         
-                        # Check DuckDuckGo connectivity and add as secondary option if available
-                        if self._check_duckduckgo_connectivity():
-                            search_engines.append({
-                                'name': 'DuckDuckGo',
-                                'url': 'https://html.duckduckgo.com/html/?q={}',
-                                'result_selector': '.result__a, .web-result__a, a.result__a, .result a, .links_main a',
-                                'container_selector': '.result, .web-result, .links_main',
-                                'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
-                            })
-                            print_debug("🔍 DuckDuckGo search engine added as secondary option (connectivity confirmed)")
-                        else:
-                            print_debug("⚠️ DuckDuckGo connectivity test failed (likely blocked in current region), skipping DuckDuckGo")
+                        # Add DuckDuckGo as secondary option
+                        search_engines.append({
+                            'name': 'DuckDuckGo',
+                            'url': 'https://html.duckduckgo.com/html/?q={}',
+                            'result_selector': '.result__a, .web-result__a, a.result__a, .result a, .links_main a',
+                            'container_selector': '.result, .web-result, .links_main',
+                            'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
+                        })
+                        print_debug("🔍 DuckDuckGo search engine added as secondary option")
                         
                         # Add Bing
                         search_engines.append({
@@ -1081,18 +1012,15 @@ Please create a detailed, structured analysis that preserves important informati
                         # If query doesn't contain Chinese, use default order: DuckDuckGo -> Bing -> Google -> Baidu
                         print_debug("🔍 Query does not contain Chinese characters, using default search order")
                         
-                        # Check DuckDuckGo connectivity and add first if available (most bot-friendly, no anti-bot measures)
-                        if self._check_duckduckgo_connectivity():
-                            search_engines.append({
-                                'name': 'DuckDuckGo',
-                                'url': 'https://html.duckduckgo.com/html/?q={}',
-                                'result_selector': '.result__a, .web-result__a, a.result__a, .result a, .links_main a',
-                                'container_selector': '.result, .web-result, .links_main',
-                                'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
-                            })
-                            print_debug("🔍 DuckDuckGo search engine added as primary option (bot-friendly, connectivity confirmed)")
-                        else:
-                            print_debug("⚠️ DuckDuckGo connectivity test failed (likely blocked in current region), skipping DuckDuckGo")
+                        # Add DuckDuckGo first (most bot-friendly, no anti-bot measures)
+                        search_engines.append({
+                            'name': 'DuckDuckGo',
+                            'url': 'https://html.duckduckgo.com/html/?q={}',
+                            'result_selector': '.result__a, .web-result__a, a.result__a, .result a, .links_main a',
+                            'container_selector': '.result, .web-result, .links_main',
+                            'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
+                        })
+                        print_debug("🔍 DuckDuckGo search engine added as primary option (bot-friendly)")
                         
                         # Add Bing (more bot-friendly than Google)
                         search_engines.append({
@@ -1137,30 +1065,6 @@ Please create a detailed, structured analysis that preserves important informati
                             print_debug(f"🔍 Trying to search with {engine['name']}...")
                             
                             search_url = engine['url'].format(encoded_term)
-                            
-                            # Try to reuse existing page, but recreate if it's in error state
-                            page_ready = False
-                            try:
-                                # Check if page is still valid by trying to get its URL
-                                _ = page.url
-                                page_ready = True
-                            except Exception:
-                                # Page is in error state, need to recreate
-                                print_debug(f"⚠️ Page object in error state, recreating for {engine['name']}...")
-                                try:
-                                    page.close()
-                                except:
-                                    pass
-                                try:
-                                    page = self._create_search_page(context)
-                                    page_ready = True
-                                except Exception as recreate_error:
-                                    print_debug(f"⚠️ Failed to recreate page: {recreate_error}")
-                            
-                            if not page_ready:
-                                # If we couldn't recreate page, skip this engine
-                                print_current(f"⚠️ {engine['name']} skipped: unable to prepare page")
-                                continue
                             
                             # Use very short timeout for search engines
                             page.goto(search_url, timeout=6000, wait_until='domcontentloaded')
@@ -1217,17 +1121,7 @@ Please create a detailed, structured analysis that preserves important informati
                                 print_current(f"❌ {engine['name']} found no search results")
                         
                         except Exception as e:
-                            print_debug(f"❌ {engine['name']} search failed: {e}")
-                            # Try to recreate page for next engine if current one failed
-                            try:
-                                page.close()
-                            except:
-                                pass
-                            try:
-                                page = self._create_search_page(context)
-                                print_debug(f"✅ Page recreated after {engine['name']} failure, ready for next engine")
-                            except Exception as recreate_error:
-                                print_debug(f"⚠️ Failed to recreate page after {engine['name']} error: {recreate_error}")
+                            print_current(f"❌ {engine['name']} search failed: {e}")
                             continue
                     
                     if fetch_content and results:
@@ -1861,6 +1755,7 @@ Please create a detailed, structured analysis that preserves important informati
             return result
         
         from playwright.sync_api import sync_playwright
+        
         target_url = result.get('_internal_url') or result.get('url', '')
         
         try:
