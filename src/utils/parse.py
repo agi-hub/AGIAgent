@@ -1038,6 +1038,69 @@ def parse_function_calls_xml(function_calls_text: str) -> List[Dict[str, Any]]:
     return function_calls
 
 
+def check_xml_format_error(content: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if there are XML format errors in the content.
+    Specifically, check if <parameter name= appears outside of <invoke> or <tool_call> structures.
+    
+    Args:
+        content: The model's response text
+        
+    Returns:
+        Tuple of (has_error, error_message)
+        has_error: True if format error detected, False otherwise
+        error_message: Error message if error detected, None otherwise
+    """
+    # Find all <parameter name= occurrences
+    parameter_pattern = r'<parameter\s+name='
+    parameter_matches = list(re.finditer(parameter_pattern, content, re.IGNORECASE))
+    
+    if not parameter_matches:
+        return False, None
+    
+    # Find all valid tool call structures
+    # Pattern 1: <invoke name="...">...</invoke>
+    invoke_pattern = r'<invoke\s+name="[^"]+">.*?</invoke>'
+    invoke_ranges = [(m.start(), m.end()) for m in re.finditer(invoke_pattern, content, re.DOTALL)]
+    
+    # Pattern 2: <tool_call>tool_name>...</tool_name>
+    tool_call_pattern = r'<tool_call>([^<>]+)>.*?</\1>'
+    tool_call_ranges = [(m.start(), m.end()) for m in re.finditer(tool_call_pattern, content, re.DOTALL)]
+    
+    # Pattern 3: <function_call>...</function_call>
+    function_call_pattern = r'<function_call>.*?</function_call>'
+    function_call_ranges = [(m.start(), m.end()) for m in re.finditer(function_call_pattern, content, re.DOTALL)]
+    
+    # Combine all valid ranges
+    valid_ranges = invoke_ranges + tool_call_ranges + function_call_ranges
+    
+    # Check each parameter occurrence
+    for param_match in parameter_matches:
+        param_pos = param_match.start()
+        
+        # Check if this parameter is inside any valid tool call structure
+        is_inside_valid_structure = False
+        for start, end in valid_ranges:
+            if start <= param_pos < end:
+                is_inside_valid_structure = True
+                break
+        
+        if not is_inside_valid_structure:
+            # Find the context around this parameter for error message
+            context_start = max(0, param_pos - 50)
+            context_end = min(len(content), param_pos + 100)
+            context = content[context_start:context_end]
+            
+            error_msg = (
+                f"XML格式错误：检测到在工具调用结构外部出现 <parameter name= 标签。\n"
+                f"错误位置上下文：...{context}...\n"
+                f"请确保 <parameter> 标签必须位于 <invoke name=\"tool_name\">...</invoke> 或 <tool_call>tool_name>...</tool_name> 结构内部。"
+            )
+            return True, error_msg
+    
+    return False, None
+
+
 def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     """
     Parse tool calls from XML format.
@@ -1048,6 +1111,14 @@ def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with tool name and parameters
     """
+    # Check for XML format errors first
+    has_error, error_message = check_xml_format_error(content)
+    if has_error:
+        _log_debug(f"⚠️ {error_message}")
+        # Return empty list to indicate parsing failure
+        # The error will be handled by the caller
+        return []
+    
     all_tool_calls = []
     
     # Try to parse individual <function_call> tags (single format)
@@ -1099,6 +1170,18 @@ def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
         for tool_name, args_text in invoke_matches:
             args = parse_arguments_xml(args_text)
             all_tool_calls.append({"name": tool_name, "arguments": args})
+        return all_tool_calls
+    
+    # Try to parse <tool_call>tool_name>...</tool_name> format (common mistake by LLMs)
+    # This handles cases where LLM outputs <tool_call>web_search> instead of <invoke name="web_search">
+    tool_call_pattern = r'<tool_call>([^<>]+)>(.*?)</\1>'
+    tool_call_matches = re.findall(tool_call_pattern, content, re.DOTALL)
+    if tool_call_matches:
+        for tool_name, args_text in tool_call_matches:
+            tool_name = tool_name.strip()
+            args = parse_arguments_xml(args_text)
+            all_tool_calls.append({"name": tool_name, "arguments": args})
+        return all_tool_calls
     
     return all_tool_calls
 
