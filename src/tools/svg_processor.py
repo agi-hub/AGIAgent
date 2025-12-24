@@ -14,6 +14,7 @@ Licensed under the Apache License, Version 2.0
 
 import os
 import re
+import html
 import hashlib
 import tempfile
 import subprocess
@@ -155,6 +156,8 @@ class SVGProcessor:
         
         for match in re.finditer(standard_pattern, content, re.DOTALL | re.IGNORECASE):
             svg_code = match.group(1).strip()
+            # Decode HTML entities (e.g., &lt; -> <, &gt; -> >, &amp; -> &)
+            svg_code = html.unescape(svg_code)
             start_pos = match.start()
             end_pos = match.end()
             full_block = match.group(0)
@@ -188,6 +191,8 @@ class SVGProcessor:
             
             for match in re.finditer(standard_pattern, corrected_content, re.DOTALL | re.IGNORECASE):
                 svg_code = match.group(1).strip()
+                # Decode HTML entities (e.g., &lt; -> <, &gt; -> >, &amp; -> &)
+                svg_code = html.unescape(svg_code)
                 start_pos = match.start()
                 end_pos = match.end()
                 full_block = match.group(0)

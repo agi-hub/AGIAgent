@@ -194,7 +194,6 @@ class EnhancedSVGToPNGConverter:
                 browser.close()
             
             if png_path.exists() and png_path.stat().st_size > 0:
-                print(f"✅ Playwright conversion successful")
                 
                 # 自动裁剪PNG图片，去除空白区域
                 try:

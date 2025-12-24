@@ -1034,8 +1034,31 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             search_url = engine['url'].format(encoded_term)
                             
-                            # Use very short timeout for search engines
-                            page.goto(search_url, timeout=6000, wait_until='domcontentloaded')
+                            # Set timeout based on search engine (Baidu needs longer timeout)
+                            if engine['name'] == 'Baidu':
+                                search_timeout = 20000  # 20 seconds for Baidu
+                            else:
+                                search_timeout = 15000  # 15 seconds for other engines
+                            
+                            # Retry logic for timeout errors
+                            max_retries = 2
+                            retry_count = 0
+                            page_loaded = False
+                            
+                            while retry_count <= max_retries and not page_loaded:
+                                try:
+                                    page.goto(search_url, timeout=search_timeout, wait_until='domcontentloaded')
+                                    page_loaded = True
+                                except Exception as goto_error:
+                                    if 'timeout' in str(goto_error).lower() and retry_count < max_retries:
+                                        retry_count += 1
+                                        wait_time = (retry_count * 2)  # Exponential backoff: 2s, 4s
+                                        print_debug(f"⏱️ {engine['name']} timeout (attempt {retry_count}/{max_retries}), retrying after {wait_time}s...")
+                                        time.sleep(wait_time)
+                                        # Increase timeout for retry
+                                        search_timeout = int(search_timeout * 1.5)
+                                    else:
+                                        raise goto_error
                             
                             # Add random delay to mimic human behavior (500-1500ms)
                             import random
