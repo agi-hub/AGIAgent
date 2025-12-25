@@ -3593,37 +3593,37 @@
         /* 已拷贝提示样式 */
         .copy-toast {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            /* top和left将通过JavaScript动态设置 */
+            transform: translate(-50%, -120%);
             background: rgba(0, 122, 204, 0.95);
             color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 500;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 10000;
-            animation: fadeInOut 1.5s ease-in-out;
+            animation: fadeInOutAtMouse 1.5s ease-in-out;
             pointer-events: none;
+            white-space: nowrap;
         }
 
-        @keyframes fadeInOut {
+        @keyframes fadeInOutAtMouse {
             0% {
                 opacity: 0;
-                transform: translate(-50%, -50%) scale(0.8);
+                transform: translate(-50%, -120%) translateY(10px) scale(0.8);
             }
             20% {
                 opacity: 1;
-                transform: translate(-50%, -50%) scale(1);
+                transform: translate(-50%, -120%) translateY(0) scale(1);
             }
             80% {
                 opacity: 1;
-                transform: translate(-50%, -50%) scale(1);
+                transform: translate(-50%, -120%) translateY(0) scale(1);
             }
             100% {
                 opacity: 0;
-                transform: translate(-50%, -50%) scale(0.8);
+                transform: translate(-50%, -120%) translateY(-10px) scale(0.8);
             }
         }
 
@@ -8140,8 +8140,10 @@
         /**
          * 显示复制成功的提示
          * @param {string} message - 提示信息
+         * @param {number} x - 鼠标X坐标
+         * @param {number} y - 鼠标Y坐标
          */
-        function showCopyToast(message) {
+        function showCopyToast(message, x, y) {
             // 移除可能存在的旧提示
             const existingToast = document.querySelector('.copy-toast');
             if (existingToast) {
@@ -8152,6 +8154,11 @@
             const toast = document.createElement('div');
             toast.className = 'copy-toast';
             toast.textContent = message || '已拷贝';
+            
+            // 设置提示位置在鼠标位置上方
+            toast.style.left = x + 'px';
+            toast.style.top = y + 'px';
+            
             document.body.appendChild(toast);
 
             // 1.5秒后移除提示（与CSS动画时长一致）
@@ -8175,9 +8182,9 @@
 
             const success = await copyToClipboard(text);
             if (success) {
-                showCopyToast('已拷贝');
+                showCopyToast('已拷贝', event.clientX, event.clientY);
             } else {
-                showCopyToast('复制失败');
+                showCopyToast('复制失败', event.clientX, event.clientY);
             }
         }
 
@@ -8234,7 +8241,23 @@
                 }
                 
                 // 获取任务描述，如果没有则使用默认值
-                const taskDesc = dir.task_description || "未布置任务";
+                let taskDesc = dir.task_description || "未布置任务";
+                
+                // 过滤掉"current request:"前缀（不区分大小写）
+                if (taskDesc !== "未布置任务") {
+                    // 使用正则表达式匹配开头的"current request:"（不区分大小写，允许开头有空白字符）
+                    // 匹配模式：开头 + 可选空白 + "current" + 空白 + "request" + 可选空白 + ":" + 可选空白
+                    const match = taskDesc.match(/^\s*current\s+request\s*:\s*/i);
+                    if (match) {
+                        // 去掉匹配到的前缀，保留后面的实际任务描述
+                        taskDesc = taskDesc.substring(match[0].length).trim();
+                        // 如果过滤后为空，则使用默认值
+                        if (!taskDesc) {
+                            taskDesc = "未布置任务";
+                        }
+                    }
+                }
+                
                 // 为双击事件转义任务描述中的特殊字符
                 const taskDescEscaped = taskDesc.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
                 
@@ -8924,6 +8947,97 @@
                 });
         }
 
+        // 全局变量：存储当前文件夹的图像列表
+        window.currentImageList = [];
+        window.currentImageIndex = -1;
+        
+        // 获取同文件夹下的所有图像文件
+        async function loadImagesInFolder(filePath) {
+            try {
+                // 从文件路径中提取目录路径
+                const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+                const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+                
+                // 图像文件扩展名
+                const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico'];
+                
+                console.log('🖼️ Loading images from directory:', dirPath);
+                
+                // 调用API获取目录下的文件列表
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
+                const response = await fetch(`/api/list-directory${apiKeyParam}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        path: dirPath,
+                        api_key: currentUser !== 'default' ? currentUser : undefined
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.files) {
+                    // 过滤出图像文件并排序
+                    const imagesInFolder = data.files
+                        .filter(item => {
+                            if (item.type !== 'file') return false;
+                            const fileExt = item.name.toLowerCase().substring(item.name.lastIndexOf('.'));
+                            return imageExtensions.includes(fileExt);
+                        })
+                        .map(item => dirPath ? `${dirPath}/${item.name}` : item.name)
+                        .sort();
+                    
+                    window.currentImageList = imagesInFolder;
+                    window.currentImageIndex = imagesInFolder.indexOf(filePath);
+                    
+                    console.log('🖼️ Found images in folder:', imagesInFolder);
+                    console.log('🖼️ Current image index:', window.currentImageIndex);
+                    console.log('🖼️ Total images:', imagesInFolder.length);
+                } else {
+                    console.warn('⚠️ Failed to load directory:', data.error);
+                    window.currentImageList = [filePath];
+                    window.currentImageIndex = 0;
+                }
+                
+            } catch (error) {
+                console.error('❌ Error loading images in folder:', error);
+                window.currentImageList = [filePath];
+                window.currentImageIndex = 0;
+            }
+        }
+        
+        // 切换到上一张图片
+        function navigateToPreviousImage() {
+            if (window.currentImageList.length === 0 || window.currentImageIndex <= 0) {
+                alert(I18N?.lang === 'zh' ? '已经是第一张图片了' : 'This is the first image');
+                return;
+            }
+            
+            window.currentImageIndex--;
+            const nextFilePath = window.currentImageList[window.currentImageIndex];
+            const nextFileName = nextFilePath.substring(nextFilePath.lastIndexOf('/') + 1);
+            
+            // 重新加载图片
+            previewFile(nextFilePath, nextFileName);
+        }
+        
+        // 切换到下一张图片
+        function navigateToNextImage() {
+            if (window.currentImageList.length === 0 || window.currentImageIndex >= window.currentImageList.length - 1) {
+                alert(I18N?.lang === 'zh' ? '已经是最后一张图片了' : 'This is the last image');
+                return;
+            }
+            
+            window.currentImageIndex++;
+            const nextFilePath = window.currentImageList[window.currentImageIndex];
+            const nextFileName = nextFilePath.substring(nextFilePath.lastIndexOf('/') + 1);
+            
+            // 重新加载图片
+            previewFile(nextFilePath, nextFileName);
+        }
+        
         function displayImageContent(imageUrl, fileName, filePath) {
             // 设置全局变量以便下载使用
             window.currentActualFilePath = filePath;
@@ -8932,6 +9046,9 @@
             // 保存当前预览的文件路径，用于保存后刷新
             window.currentPreviewFilePath = filePath;
             window.currentPreviewFileName = fileName;
+            
+            // 加载同文件夹下的所有图像
+            loadImagesInFolder(filePath);
             
             // 检查是否是SVG文件
             const fileExt = fileName.toLowerCase().split('.').pop();
@@ -8954,11 +9071,13 @@
                     ${I18N.file_size || 'File Size'}: ${fileSize} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'}
                 </div>
                 <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
-                    <img src="${imageUrl}" 
-                         alt="${fileName}" 
-                         style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
-                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
-                    <div class="preview-button-group" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <div class="preview-button-group" style="margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <button onclick="navigateToPreviousImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="prevImageBtn">
+                            <i class="fas fa-chevron-left"></i> 上一张
+                        </button>
+                        <button onclick="navigateToNextImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="nextImageBtn">
+                            下一张 <i class="fas fa-chevron-right"></i>
+                        </button>
                         ${editButtonHtml}
                         <a href="/api/download-file/${filePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 18px;">
                             <i class="fas fa-download"></i> 下载图片
@@ -8967,8 +9086,47 @@
                             <i class="fas fa-external-link-alt"></i> 新窗口打开
                         </button>
                     </div>
+                    <img src="${imageUrl}" 
+                         alt="${fileName}" 
+                         style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
                 </div>
             `;
+            
+            // 延迟更新按钮状态，确保DOM已渲染
+            setTimeout(() => {
+                updateNavigationButtons();
+            }, 100);
+        }
+        
+        // 更新导航按钮的状态
+        function updateNavigationButtons() {
+            const prevBtn = document.getElementById('prevImageBtn');
+            const nextBtn = document.getElementById('nextImageBtn');
+            
+            if (prevBtn && nextBtn) {
+                // 禁用/启用上一张按钮
+                if (window.currentImageIndex <= 0) {
+                    prevBtn.disabled = true;
+                    prevBtn.style.opacity = '0.5';
+                    prevBtn.style.cursor = 'not-allowed';
+                } else {
+                    prevBtn.disabled = false;
+                    prevBtn.style.opacity = '1';
+                    prevBtn.style.cursor = 'pointer';
+                }
+                
+                // 禁用/启用下一张按钮
+                if (window.currentImageIndex >= window.currentImageList.length - 1) {
+                    nextBtn.disabled = true;
+                    nextBtn.style.opacity = '0.5';
+                    nextBtn.style.cursor = 'not-allowed';
+                } else {
+                    nextBtn.disabled = false;
+                    nextBtn.style.opacity = '1';
+                    nextBtn.style.cursor = 'pointer';
+                }
+            }
         }
 
         function displayFileContent(data, fileName) {
@@ -9561,16 +9719,21 @@
                 const { data: imageData, image_info } = data;
                 const { width, height, format } = image_info;
                 
+                // 加载同文件夹下的所有图像
+                loadImagesInFolder(actualFilePath);
+                
                 previewContent.innerHTML = `
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'} (${format}) | ${I18N.dimensions || 'Dimensions'}: ${width} × ${height}                                                                                          
                     </div>
                     <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
-                        <img src="${imageData}" 
-                             alt="${fileName}" 
-                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
-                             onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
-                        <div class="preview-button-group" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <div class="preview-button-group" style="margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <button onclick="navigateToPreviousImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="prevImageBtn">
+                                <i class="fas fa-chevron-left"></i> 上一张
+                            </button>
+                            <button onclick="navigateToNextImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="nextImageBtn">
+                                下一张 <i class="fas fa-chevron-right"></i>
+                            </button>
                             <a href="/api/download-file/${file_path || currentFilePath}${(currentUser && currentUser !== 'default') ? '?api_key=' + currentUser : ''}" download style="padding: 8px 16px; background: #007acc; color: white; text-decoration: none; border-radius: 4px; font-size: 18px; display: flex; align-items: center; gap: 5px;">
                                 <i class="fas fa-download"></i> 下载图片
                             </a>
@@ -9578,8 +9741,17 @@
                                 <i class="fas fa-search-plus"></i> 放大查看
                             </button>
                         </div>
+                        <img src="${imageData}" 
+                             alt="${fileName}" 
+                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                             onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
                     </div>
                 `;
+                
+                // 延迟更新按钮状态，确保DOM已渲染
+                setTimeout(() => {
+                    updateNavigationButtons();
+                }, 100);
             }
         }
         
