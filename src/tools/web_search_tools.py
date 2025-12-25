@@ -958,8 +958,8 @@ Please create a detailed, structured analysis that preserves important informati
                             
                             search_url = engine['url'].format(encoded_term)
                             
-                            # Use timeout based on search engine: Baidu needs more time (10s), others 2s
-                            timeout_ms = 10000 if engine['name'] == 'Baidu' else 2000
+                            # Use timeout based on search engine: Baidu needs more time (10s), others 5s
+                            timeout_ms = 10000 if engine['name'] == 'Baidu' else 3000
                             page.goto(search_url, timeout=timeout_ms, wait_until='domcontentloaded')
                             
                             # Wait a bit for page to stabilize and avoid navigation issues
@@ -2683,9 +2683,9 @@ Please create a detailed, structured analysis that preserves important informati
                         print_debug(f"🔍 Attempting to use {engine['name']} for image search...")
                         
                         # Visit search page with improved waiting strategy
-                        # Use 2 seconds timeout for Google Images and Baidu Images
+                        # Use 5 seconds timeout for Google Images and Baidu Images (images need more time to load)
                         try:
-                            engine_timeout = 2000 if engine['name'] in ['Google Images', 'Baidu Images'] else 6000
+                            engine_timeout = 5000 if engine['name'] in ['Google Images', 'Baidu Images'] else 6000
                             page.goto(engine['url'], timeout=engine_timeout, wait_until='domcontentloaded')
                             # Wait for page to stabilize
                             page.wait_for_timeout(500)
