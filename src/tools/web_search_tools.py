@@ -141,22 +141,41 @@ class WebSearchTools:
             self.enable_llm_filtering = False
             self.enable_summary = False
     
-    def _detect_special_page(self, content: str, title: str = "") -> tuple:
+    def _detect_special_page(self, content: str, title: str = "", url: str = "") -> tuple:
         """
-        统一检测特殊页面（验证页面、豆丁网嵌入文档、百度学术搜索页面等）
+        统一检测特殊页面（验证页面、豆丁网嵌入文档、百度学术搜索页面、DuckDuckGo帮助页面等）
         
         Args:
             content: 页面内容（HTML或文本）
             title: 页面标题（可选）
+            url: 页面URL（可选）
             
         Returns:
             tuple: (is_special, message_type, message)
             - is_special: 是否是特殊页面
-            - message_type: 特殊页面类型 ("verification", "docin", "baidu_scholar", None)
+            - message_type: 特殊页面类型 ("verification", "docin", "baidu_scholar", "duckduckgo_help", None)
             - message: 返回的消息内容
         """
         if not content:
             return False, None, ""
+        
+        # 检测 DuckDuckGo 帮助页面和广告页面（优先通过 URL 检测）
+        if url:
+            url_lower = url.lower()
+            if ("duckduckgo.com/duckduckgo-help-pages" in url_lower or
+                "duckduckgo-help-pages" in url_lower or
+                "ads-by-microsoft" in url_lower or
+                "ads-by-yelp" in url_lower or
+                "ads-by-tripadvisor" in url_lower):
+                return True, "duckduckgo_help", "DuckDuckGo 帮助/广告页面，已自动过滤"
+        
+        # 通过内容检测 DuckDuckGo 帮助页面
+        if ("duckduckgo-help-pages" in content.lower() or
+            "Ads By Microsoft on DuckDuckGo" in content or
+            "Ads By Yelp on DuckDuckGo" in content or
+            "Ads By Tripadvisor on DuckDuckGo" in content or
+            "Ads by Microsoft on DuckDuckGo Private Search" in content):
+            return True, "duckduckgo_help", "DuckDuckGo 帮助/广告页面，已自动过滤"
         
         # 检测验证页面
         if "当前环境异常，完成验证后即可继续访问。" in content:
@@ -231,6 +250,20 @@ class WebSearchTools:
             print_current(f"⚠️ Cannot save files: directory does not exist: {self.web_result_dir}")
             return "", ""
         
+        # 首先通过 URL 检测特殊页面（快速检测，避免加载页面内容）
+        is_special_by_url = False
+        page_type_by_url = None
+        message_by_url = ""
+        if url:
+            _, page_type_by_url, message_by_url = self._detect_special_page("", title, url)
+            if page_type_by_url:
+                is_special_by_url = True
+        
+        # 如果通过 URL 检测到特殊页面，直接返回，不保存
+        if is_special_by_url:
+            print_current(f"⚠️ {message_by_url}: {url[:80]}...")
+            return "", ""
+        
         html_filepath = ""
         txt_filepath = ""
         
@@ -263,9 +296,12 @@ class WebSearchTools:
             try:
                 html_content = page.content()
                 
-                # 使用统一的特殊页面检测
-                is_special, page_type, message = self._detect_special_page(html_content, title)
-
+                # 使用统一的特殊页面检测（传递 URL 以便检测 DuckDuckGo 帮助页面）
+                is_special, page_type, message = self._detect_special_page(html_content, title, url)
+                
+                if is_special:
+                    print_current(f"⚠️ {message}: {url[:80]}...")
+                    return "", ""  # 检测到特殊页面，不保存
                 
                 if not is_special:
                     # Ensure the HTML file has .html extension
@@ -281,8 +317,34 @@ class WebSearchTools:
             # Save text content
             try:
                 if content and content.strip():
-                    # Clean the content thoroughly for saving
-                    cleaned_content = self._clean_text_for_saving(content)
+                    # For very large content, truncate before cleaning to avoid timeout
+                    MAX_CONTENT_LENGTH_FOR_CLEANING = 500000  # 500KB limit
+                    content_to_clean = content
+                    if len(content) > MAX_CONTENT_LENGTH_FOR_CLEANING:
+                        print_current(f"⚠️ Content too large ({len(content)} chars), truncating to {MAX_CONTENT_LENGTH_FOR_CLEANING} chars before cleaning")
+                        content_to_clean = content[:MAX_CONTENT_LENGTH_FOR_CLEANING]
+                    
+                    # Clean the content thoroughly for saving with timeout protection
+                    cleaned_content = None
+                    try:
+                        # Use threading timeout for cleaning operation (10 seconds max)
+                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(self._clean_text_for_saving, content_to_clean)
+                            try:
+                                cleaned_content = future.result(timeout=10.0)  # 10 second timeout
+                            except FutureTimeoutError:
+                                print_current(f"⚠️ Content cleaning timeout (10s), using truncated content without full cleaning")
+                                # Fallback: use simplified cleaning for timeout case
+                                cleaned_content = self._clean_text_for_saving_simple(content_to_clean)
+                    except Exception as clean_error:
+                        print_current(f"⚠️ Content cleaning failed: {clean_error}, using simplified cleaning")
+                        # Fallback to simplified cleaning
+                        try:
+                            cleaned_content = self._clean_text_for_saving_simple(content_to_clean)
+                        except Exception as simple_clean_error:
+                            print_current(f"⚠️ Simplified cleaning also failed: {simple_clean_error}, saving original content")
+                            cleaned_content = content_to_clean
                     
                     # Log if content was filtered out during cleaning
                     if not cleaned_content or not cleaned_content.strip():
@@ -307,16 +369,24 @@ Cleaned Content Length: {len(cleaned_content)} characters
 {cleaned_content}
 """
                         
-                        with open(txt_filepath, 'w', encoding='utf-8') as f:
-                            f.write(formatted_content)
+                        try:
+                            with open(txt_filepath, 'w', encoding='utf-8') as f:
+                                f.write(formatted_content)
+                        except Exception as write_error:
+                            print_current(f"⚠️ Failed to write text file: {write_error}")
+                            txt_filepath = ""  # Reset filepath on write failure
                     else:
                         # Content exists but was filtered out or too short
                         if content and content.strip():
                             print_current(f"⚠️ Skipped saving text file for: {title[:50]}... (content length: {len(content)}, cleaned length: {len(cleaned_content.strip()) if cleaned_content else 0})")
                 else:
                     print_current(f"⚠️ No text content to save for: {title[:50]}... (content is empty or whitespace only)")
+            except TimeoutError as timeout_err:
+                print_current(f"⚠️ Save text content timeout: {timeout_err}, continuing without txt file")
+                txt_filepath = ""  # Ensure we return empty string on timeout
             except Exception as e:
-                print_current(f"⚠️ Failed to save text content: {e}")
+                print_current(f"⚠️ Failed to save text content: {e}, continuing without txt file")
+                txt_filepath = ""  # Ensure we return empty string on error
             
             return html_filepath, txt_filepath
             
@@ -374,6 +444,8 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 print_current("⚠️ Detected DocIn embedded document page in LLM filtering, skipping LLM processing")
             elif page_type == "baidu_scholar":
                 print_current("⚠️ Detected Baidu Scholar search page in LLM filtering, skipping LLM processing")
+            elif page_type == "duckduckgo_help":
+                print_current("⚠️ Detected DuckDuckGo help/ad page in LLM filtering, skipping LLM processing")
             return message
         
         # Skip processing if content is too short
@@ -1039,7 +1111,7 @@ Please create a detailed, structured analysis that preserves important informati
                         # Use sequential fetching with existing browser and page (no asyncio conflict)
                         # This is simpler, more reliable, and avoids thread pool overhead
                         try:
-                            self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=25)
+                            self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=60)
                         except Exception as e:
                             print_current(f"⚠️ Content fetching failed: {e}")
                             # Try basic method as fallback
@@ -1401,7 +1473,7 @@ Please create a detailed, structured analysis that preserves important informati
         # Clean the snippet to remove excessive whitespace
         return self._clean_snippet(snippet)
 
-    def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 25) -> None:
+    def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 60) -> None:
         """
         Fetch webpage content with additional timeout control
         Uses parallel page loading: opens multiple pages at once, then processes them sequentially
@@ -1482,8 +1554,25 @@ Please create a detailed, structured analysis that preserves important informati
                     if 'chrome-error://' in current_url or 'about:blank' in current_url:
                         raise Exception(f"Redirected to error page: {current_url}")
                     
-                    # Success - extract content
-                    content = self._extract_main_content(loaded_page)
+                    # Success - extract content with timeout protection
+                    # Use Playwright's built-in timeout mechanism by setting shorter timeout
+                    content = None
+                    try:
+                        # Set shorter timeout for content extraction (10 seconds)
+                        loaded_page.set_default_timeout(10000)
+                        content = self._extract_main_content(loaded_page)
+                    except Exception as extract_error:
+                        error_msg = str(extract_error)
+                        if "timeout" in error_msg.lower():
+                            print_current(f"⏰ [{global_index+1}] Content extraction timeout (10s), skipping")
+                            content = "Content extraction timeout"
+                        else:
+                            print_current(f"⚠️ [{global_index+1}] Content extraction error: {extract_error}")
+                            content = f"Content extraction error: {str(extract_error)}"
+                    finally:
+                        # Restore default timeout (8 seconds as used elsewhere in the code)
+                        loaded_page.set_default_timeout(8000)
+                    
                     title = result.get('title', 'Untitled')
                     search_term = getattr(self, '_current_search_term', '')
                     
@@ -1688,7 +1777,23 @@ Please create a detailed, structured analysis that preserves important informati
             
             for selector in content_selectors:
                 try:
-                    elements = page.query_selector_all(selector)
+                    # Add timeout protection using Playwright's built-in timeout mechanism
+                    # Temporarily set shorter timeout for this selector query
+                    try:
+                        page.set_default_timeout(3000)  # 3 seconds timeout per selector
+                        elements = page.query_selector_all(selector)
+                    except Exception as query_error:
+                        # Playwright will raise TimeoutError if timeout occurs
+                        error_msg = str(query_error)
+                        if "timeout" in error_msg.lower():
+                            print_debug(f"⏰ Selector '{selector}' query timeout (3s), trying next selector")
+                        else:
+                            print_debug(f"⚠️ Selector '{selector}' query error: {query_error}")
+                        elements = None
+                    finally:
+                        # Restore default timeout (8 seconds as used elsewhere in the code)
+                        page.set_default_timeout(8000)
+                    
                     if elements:
                         for elem in elements:
                             try:
@@ -1700,23 +1805,43 @@ Please create a detailed, structured analysis that preserves important informati
                                         return message
                                     
                                     if self._is_quality_content(text):
-                                        content = text
-                                        # print_current(f"✅ Successfully extracted content with selector '{selector}'")
-                                        break
+                                        # 如果内容足够长（>500字符），使用它；否则继续尝试其他selector
+                                        if len(text) > 500:
+                                            content = text
+                                            # print_current(f"✅ Successfully extracted content with selector '{selector}'")
+                                            break
+                                        elif not content or len(text) > len(content):
+                                            # 保存当前找到的最长内容，但继续尝试其他selector
+                                            content = text
                             except Exception as elem_error:
                                 continue
-                        if content:
+                        # 如果找到了足够长的内容（>500字符），停止尝试其他selector
+                        if content and len(content) > 500:
                             break
                 except Exception as selector_error:
                     print_debug(f"⚠️ Content selector error for '{selector}': {selector_error}")
                     continue
             
-            if not content:
+            # If no content found or content is too short, try extracting from body
+            if not content or len(content) < 500:
                 try:
-                    # print_current("⚠️ Selector method found no content, trying to extract full body text")
+                    # print_current("⚠️ Selector method found no content or content too short, trying to extract full body text")
                     body_elem = None
                     try:
-                        body_elem = page.query_selector('body')
+                        # Add timeout protection using Playwright's built-in timeout mechanism
+                        try:
+                            page.set_default_timeout(3000)  # 3 seconds timeout
+                            body_elem = page.query_selector('body')
+                        except Exception as body_query_error:
+                            error_msg = str(body_query_error)
+                            if "timeout" in error_msg.lower():
+                                print_debug(f"⏰ Body selector query timeout (3s)")
+                            else:
+                                print_debug(f"⚠️ Body selector query error: {body_query_error}")
+                            body_elem = None
+                        finally:
+                            # Restore default timeout (8 seconds as used elsewhere in the code)
+                            page.set_default_timeout(8000)
                     except Exception as body_selector_error:
                         print_debug(f"⚠️ Body selector error: {body_selector_error}")
                     
@@ -1736,8 +1861,10 @@ Please create a detailed, structured analysis that preserves important informati
                     if body_text and len(body_text) > 300:
                         cleaned_body = self._clean_body_content(body_text)
                         if cleaned_body and len(cleaned_body) > 200:
-                            content = cleaned_body
-                            # print_current("✅ Successfully extracted using body content")
+                            # Use body content if it's longer than current content
+                            if not content or len(cleaned_body) > len(content):
+                                content = cleaned_body
+                                # print_current("✅ Successfully extracted using body content")
                 except Exception as body_extraction_error:
                     print_debug(f"⚠️ Body extraction error: {body_extraction_error}")
             
@@ -1855,15 +1982,18 @@ Please create a detailed, structured analysis that preserves important informati
         words_count = len(text.split())
         
         # Be more lenient with navigation keyword ratio for news content
-        if words_count > 0 and nav_count / words_count > 0.15:  # Increased threshold
+        # Only reject if navigation keywords are very high (>25%) and content is short
+        if words_count > 0 and nav_count / words_count > 0.25 and words_count < 200:
             return False
         
-        # Be more lenient with sentence structure requirement for news titles
+        # Be more lenient with sentence structure requirement
+        # For longer content (>500 chars), don't require sentence endings
         sentence_endings = text.count('。') + text.count('.') + text.count('!') + text.count('？') + text.count('?')
         news_markers = text.count('丨') + text.count('｜') + text.count('：') + text.count('——')
         
-        # If has news markers or is short (likely title), don't require sentence endings
-        if words_count > 30 and sentence_endings == 0 and news_markers == 0:
+        # Only require sentence endings for medium-length content without news markers
+        # Very short content (<100 chars) or very long content (>500 chars) don't need sentence endings
+        if 100 < len(text) < 500 and words_count > 30 and sentence_endings == 0 and news_markers == 0:
             return False
         
         return True
@@ -1880,7 +2010,7 @@ Please create a detailed, structured analysis that preserves important informati
         
         for line in lines:
             line = line.strip()
-            if len(line) < 5:  # More lenient minimum length
+            if len(line) < 3:  # More lenient minimum length (reduced from 5 to 3)
                 continue
             
             # Skip lines that look like navigation but be more conservative
@@ -1896,11 +2026,16 @@ Please create a detailed, structured analysis that preserves important informati
             chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', line))
             if chinese_chars > 0:
                 cleaned_lines.append(line)
-            # Keep meaningful English content
-            elif len(line) >= 10 and len(line.split()) >= 2:
-                cleaned_lines.append(line)
+            # Keep meaningful English content - more lenient criteria
+            elif len(line) >= 5:  # Reduced from 10 to 5, removed word count requirement
+                # Allow single words if they're meaningful (like course codes, titles)
+                word_count = len(line.split())
+                if word_count >= 1:  # Allow single words (reduced from 2)
+                    cleaned_lines.append(line)
         
-        return '\n'.join(cleaned_lines[:100])  # Increased limit to preserve more content
+        # Increased limit significantly to preserve more content (from 100 to 2000)
+        # Return more lines to preserve comprehensive content
+        return '\n'.join(cleaned_lines[:2000])
 
     def _print_webpage_summary(self, index: int, title: str, url: str, content: str) -> None:
         """
@@ -1951,6 +2086,36 @@ Please create a detailed, structured analysis that preserves important informati
             except:
                 pass
     
+    def _clean_text_for_saving_simple(self, content: str) -> str:
+        """
+        Simplified text cleaning for timeout fallback - only basic operations
+        """
+        import re
+        
+        if not content or not content.strip():
+            return ""
+        
+        # 使用统一的特殊页面检测
+        is_special, page_type, message = self._detect_special_page(content)
+        if is_special:
+            return message
+        
+        # Remove HTML tags (basic)
+        content = re.sub(r'<[^>]+>', '', content)
+        
+        # Remove obvious JSON blocks (simplified patterns only)
+        content = re.sub(r'\{"@context"[^}]*\}', '', content, flags=re.DOTALL)
+        content = re.sub(r'\{"__typename"[^}]{100,}\}', '', content, flags=re.DOTALL)
+        
+        # Remove data URIs
+        content = re.sub(r'data:[^;]+;[^,]+,[^\s]+', '', content)
+        
+        # Basic cleanup
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)  # Max 2 consecutive newlines
+        content = re.sub(r' {3,}', '  ', content)  # Max 2 spaces
+        
+        return content.strip()
+    
     def _clean_text_for_saving(self, content: str) -> str:
         """
         Clean text content for saving to txt files, preserving meaningful content
@@ -1959,6 +2124,12 @@ Please create a detailed, structured analysis that preserves important informati
         
         if not content or not content.strip():
             return ""
+        
+        # For very large content, use simplified cleaning to avoid timeout
+        MAX_CONTENT_LENGTH = 300000  # 300KB - use simplified cleaning for larger content
+        if len(content) > MAX_CONTENT_LENGTH:
+            print_debug(f"⚠️ Content too large ({len(content)} chars), using simplified cleaning")
+            return self._clean_text_for_saving_simple(content)
         
         # 使用统一的特殊页面检测
         is_special, page_type, message = self._detect_special_page(content)
@@ -1969,10 +2140,85 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
             elif page_type == "baidu_scholar":
                 print_current("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
+            elif page_type == "duckduckgo_help":
+                print_current("⚠️ Detected DuckDuckGo help/ad page in cleaning, returning message only")
             return message
         
         # Remove HTML tags
         content = re.sub(r'<[^>]+>', '', content)
+        
+        # Remove large JSON/GraphQL/JavaScript blocks BEFORE word separation
+        # This prevents code from being split into words and then partially preserved
+        
+        # Remove JSON-LD blocks
+        content = re.sub(r'\{"@context"[^}]*\}', '', content, flags=re.DOTALL)
+        
+        # Remove GraphQL cache blocks (e.g., "PremiumProductCollections_learningProduct:degree~...")
+        content = re.sub(r'"[A-Za-z0-9_]+~[A-Za-z0-9_]+"\s*:\s*\{[^}]*"__typename"[^}]*\}', '', content, flags=re.DOTALL)
+        
+        # Remove large JSON objects with __typename (GraphQL responses)
+        content = re.sub(r'\{"__typename"[^}]{100,}\}', '', content, flags=re.DOTALL)
+        
+        # Remove JSON objects containing common browser/system properties (often in JSON data)
+        # Pattern: {"system":"...","platform":"...","browser":{...}}
+        content = re.sub(r'\{"system"\s*:\s*"[^"]*"\s*,\s*"platform"\s*:\s*"[^"]*"[^}]*\}', '', content, flags=re.DOTALL)
+        content = re.sub(r'\{"browser"\s*:\s*\{[^}]*"name"\s*:\s*"[^"]*"[^}]*\}', '', content, flags=re.DOTALL)
+        
+        # Remove JSON objects with "userData", "appName", "NaptimeStore" etc. (Apollo cache)
+        content = re.sub(r'\{"userData"\s*:\s*\{[^}]*\}', '', content, flags=re.DOTALL)
+        content = re.sub(r'\{"appName"\s*:\s*"[^"]*"\s*\}', '', content)
+        content = re.sub(r'\{"NaptimeStore"\s*:\s*\{[^}]*\}', '', content, flags=re.DOTALL)
+        
+        # Remove JSON objects with "responseCache", "elementsToUrlMapping" etc.
+        content = re.sub(r'\{"responseCache"\s*:\s*[^}]*\}', '', content, flags=re.DOTALL)
+        content = re.sub(r'\{"elementsToUrlMapping"\s*:\s*[^}]*\}', '', content, flags=re.DOTALL)
+        
+        # Remove JavaScript code blocks - more comprehensive patterns
+        content = re.sub(r'if\s*\(typeof\s+\w+\s*===\s*[\'"]undefined[\'"]\)\s*return[^;]*;', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'window\.\w+\s*=\s*window\.\w+\s*\|\|\s*\[\];', '', content)
+        content = re.sub(r'window\.\w+\.push\([^)]+\);', '', content)
+        content = re.sub(r'window\.localStorage\.(setItem|getItem)\([^)]+\);', '', content)
+        content = re.sub(r'\baddEventListener\s*\([^)]+\);?', '', content, flags=re.IGNORECASE)  # More specific pattern
+        content = re.sub(r'console\.(log|error|warn|debug)\([^)]*\);', '', content)
+        content = re.sub(r'Sentry\.(browserTracingIntegration|setTag|init)\([^)]*\);?', '', content, flags=re.IGNORECASE | re.DOTALL)
+        content = re.sub(r'dataLayer\.push\(\{[^}]*\}\);?', '', content, flags=re.DOTALL)
+        
+        # Remove lines that are mostly JavaScript/JSON (before word separation)
+        # This catches patterns like "addEventListener" that might not be caught above
+        lines_before_sep = content.split('\n')
+        filtered_lines = []
+        for line in lines_before_sep:
+            line_stripped = line.strip()
+            # Skip lines that are clearly code
+            if (re.search(r'\b(addEventListener|typeof|window\.|console\.|Sentry\.|dataLayer\.)', line_stripped, re.IGNORECASE) and
+                (line_stripped.count('(') + line_stripped.count(')') + line_stripped.count(';')) > 2):
+                continue
+            # Skip lines that are mostly JSON structure
+            if len(line_stripped) > 30:
+                json_chars = line_stripped.count('"') + line_stripped.count(':') + line_stripped.count('{') + line_stripped.count('}')
+                if json_chars > len(line_stripped) * 0.3:  # More than 30% JSON characters
+                    text_chars = len(re.findall(r'[A-Za-z\s]', line_stripped))
+                    if text_chars < len(line_stripped) * 0.2:  # Less than 20% text
+                        continue
+            filtered_lines.append(line)
+        content = '\n'.join(filtered_lines)
+        
+        # Fix words stuck together after removing HTML tags
+        # Rule 1: Add space between lowercase letter followed by uppercase letter (e.g., "ForIndividuals" -> "For Individuals")
+        # This handles most cases like "ForIndividuals", "BusinessesFor", "FreeMIT"
+        content = re.sub(r'([a-z])([A-Z])', r'\1 \2', content)
+        
+        # Rule 2: Add space between uppercase letter followed by uppercase letter and then lowercase (e.g., "MITMedia" -> "MIT Media")
+        # This handles acronyms followed by words like "MITMedia", "AILearning"
+        content = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', content)
+        
+        # Rule 3: Add space between digit and letter (e.g., "2024MIT" -> "2024 MIT")
+        content = re.sub(r'(\d)([A-Za-z])', r'\1 \2', content)
+        
+        # Rule 4: Add space between letter and digit when it starts a new word (e.g., "MIT2024" -> "MIT 2024")
+        # But be careful not to break things like "CS101" or "Room123"
+        # Only add space if the digit is followed by more digits or a space
+        content = re.sub(r'([A-Za-z])(\d{4,})', r'\1 \2', content)  # Years and long numbers
         
         # Remove CSS blocks (IMPROVED: More precise to avoid deleting legitimate braces)
         # Only remove blocks that contain CSS properties (colon+semicolon pattern)
@@ -2064,6 +2310,7 @@ Please create a detailed, structured analysis that preserves important informati
         # This preserves important metadata like "作者: 张三;", "时间: 2024年;", etc.
         
         # Process line by line with more lenient filtering for news content
+        # Note: Large JSON/JS blocks have already been removed before word separation
         lines = content.split('\n')
         cleaned_lines = []
         
@@ -2105,6 +2352,198 @@ Please create a detailed, structured analysis that preserves important informati
             ]):
                 continue
             
+            # Skip lines with excessive JSON/GraphQL data (e.g., Apollo cache, GraphQL responses)
+            # These typically contain patterns like "__typename", "PremiumProductCollections", etc.
+            json_indicators = [
+                r'"__typename"\s*:',  # GraphQL typename
+                r'PremiumProductCollections',  # Specific GraphQL cache keys
+                r'[A-Za-z0-9_]+~[A-Za-z0-9_]+"\s*:\s*\{',  # GraphQL cache key patterns
+                r'\{"__ref"\s*:',  # Apollo cache references
+                r'"__typename"[^}]*"__ref"',  # Apollo cache patterns
+            ]
+            if any(re.search(pattern, line) for pattern in json_indicators):
+                continue
+            
+            # Skip lines that are mostly JSON structure (multiple quotes, colons, braces)
+            # Count JSON-like characters
+            json_chars = line.count('"') + line.count(':') + line.count('{') + line.count('}') + line.count(',')
+            if len(line) > 30 and json_chars > len(line) * 0.25:  # More than 25% JSON characters (lowered threshold)
+                # But allow if it contains meaningful text (more than 30% letters/spaces, raised threshold)
+                text_chars = len(re.findall(r'[A-Za-z\s]', line))
+                if text_chars < len(line) * 0.3:  # Less than 30% text (raised threshold)
+                    continue
+            
+            # Skip lines that start with JSON-like patterns (even if incomplete)
+            # These are often fragments of JSON objects
+            if re.match(r'^[,{]\s*"[^"]+"\s*:\s*"[^"]*"', line):  # Starts with ,{"key":"value" or {"key":"value"
+                # Check if it's mostly JSON structure
+                if json_chars > len(line) * 0.2:  # More than 20% JSON characters
+                    continue
+            
+            # Skip lines containing JSON-like key-value pairs with common technical keys
+            json_key_patterns = [
+                r'"system"\s*:\s*"[^"]*"',
+                r'"platform"\s*:\s*"[^"]*"',
+                r'"browser"\s*:\s*\{',
+                r'"userData"\s*:\s*\{',
+                r'"appName"\s*:\s*"[^"]*"',
+                r'"NaptimeStore"\s*:\s*\{',
+                r'"responseCache"\s*:\s*',
+                r'"elementsToUrlMapping"\s*:\s*',
+                r'"isMobileBrowser"\s*:\s*(true|false)',
+                r'"isAndroid"\s*:\s*(true|false)',
+                r'"isMobile"\s*:\s*(true|false)',
+                r'"isIOS"\s*:\s*(true|false)',
+            ]
+            if any(re.search(pattern, line, re.IGNORECASE) for pattern in json_key_patterns):
+                # If line contains these patterns and has high JSON character density, skip it
+                if json_chars > len(line) * 0.2:  # More than 20% JSON characters
+                    continue
+            
+            # Skip lines that look like JavaScript code fragments (after word separation)
+            # These patterns catch code that was split by word separation rules
+            js_fragment_patterns = [
+                r'\b(sentry|config|json|parse|typeof|window|dataLayer|console|addEventListener)\s+(config|json|parse|typeof|window|dataLayer|console|addEventListener)',  # Split variable names
+                r'\bJSON\.parse\s*\(',
+                r'\btypeof\s+\w+\s*===',
+                r'\bnew\s+RegExp\s*\(',
+                r'\breturn\s+\w+\.(elements|test|push)\s*',
+                r'\bif\s*\([^)]*\.(indexOf|test|push)',  # if statements with method calls
+                r'\b\w+\s*=\s*\{[^}]*\}\s*;',  # Object assignments ending with semicolon
+                r'/\*\s*(globals|eslint)',  # Comment markers
+                r'\b\w+\s*=\s*\([^)]*\)\s*;',  # Function assignments ending with semicolon
+            ]
+            if any(re.search(pattern, line, re.IGNORECASE) for pattern in js_fragment_patterns):
+                # Check if line has high code density
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=')) / max(len(line), 1)
+                if code_density > 0.1:  # More than 10% code characters
+                    continue
+            
+            # Skip lines containing code-like patterns with high code character density
+            # This catches fragments like "if (sentry Config && sentry Config.public Dsn)"
+            if re.search(r'\bif\s*\([^)]*&&', line, re.IGNORECASE):  # if statements with &&
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('&&') + line.count('.')) / max(len(line), 1)
+                if code_density > 0.1:  # More than 10% code characters
+                    continue
+            
+            # Skip lines that contain "Config" or "Config." followed by property access (common in JS code fragments)
+            if re.search(r'\b\w+\s+Config\s*\.', line, re.IGNORECASE):  # e.g., "sentry Config.public"
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.')) / max(len(line), 1)
+                if code_density > 0.08:  # More than 8% code characters (lowered threshold)
+                    continue
+            
+            # Skip lines containing common JavaScript library patterns (after word separation)
+            # These patterns catch code that was split by word separation rules
+            js_library_patterns = [
+                r'\bgform\s*\.',  # Gravity Forms
+                r'\bj\s+Query\s*\(',  # jQuery (split)
+                r'\bset\s+Timeout\s*\(',  # setTimeout (split)
+                r'\bclear\s+Timeout\s*\(',  # clearTimeout (split)
+                r'\bwindow\s*\[\s*[\'"]',  # window['...']
+                r'\bsession\s+Storage\s*\.',  # sessionStorage (split)
+                r'\bJSON\s*\.\s*stringify',  # JSON.stringify (split)
+                r'\bobserver\s*\.',  # observer.
+                r'\bdocument\s*\.\s*body',  # document.body (split)
+                r'\bvisibility\s+Test\s+Div',  # visibilityTestDiv (split)
+                r'\bgform\s+Wrapper\s+Div',  # gformWrapperDiv (split)
+                r'\btrigger\s+Post\s+Render',  # triggerPostRender (split)
+                r'\bpost\s+Render\s+Fired',  # postRenderFired (split)
+                r'\bwp\s*\.\s*i18\s+n',  # wp.i18n (split)
+                r'\bsource\s+URL\s*=',  # sourceURL (split)
+                r'\bNREUM\s*\|\|',  # NREUM||
+                r'\beverything\s+Except\s+Flag',  # everythingExceptFlag (split)
+            ]
+            if any(re.search(pattern, line, re.IGNORECASE) for pattern in js_library_patterns):
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.') + line.count('[') + line.count(']') + line.count('||') + line.count('&&')) / max(len(line), 1)
+                if code_density > 0.05:  # More than 5% code characters
+                    continue
+            
+            # Skip lines that look like code fragments with parentheses and property access
+            # Pattern: word space word dot word (e.g., "sentry Config.public Dsn")
+            if re.search(r'\b\w+\s+\w+\s*\.\s*\w+', line):  # Property access pattern
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.') + line.count('&&')) / max(len(line), 1)
+                if code_density > 0.1:  # More than 10% code characters
+                    continue
+            
+            # Skip short lines that contain code-like patterns (common in code fragments)
+            # These are often remnants of JavaScript code after word separation
+            if len(line) < 100:  # Short lines
+                code_indicators = [
+                    r'\b(sentry|config|json|parse|typeof|window|dataLayer|console)\s+(config|json|parse|typeof|window|dataLayer|console)',  # Split variable names
+                    r'\bJSON\.parse',
+                    r'\bnew\s+RegExp',
+                    r'\breturn\s+\w+\.',
+                    r'/\*\s*(globals|eslint)',
+                    r'\bis\s+New\s+Visit',  # Split variable names like "isNewVisit"
+                    r'\breturn\s+arkose',  # Code fragments
+                    r'\breturn\s+epic',  # Code fragments
+                    r'\ballow\s+Urls',  # Split variable names like "allowUrls"
+                ]
+                if any(re.search(pattern, line, re.IGNORECASE) for pattern in code_indicators):
+                    # Check code density
+                    code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.') + line.count('&&') + line.count('[') + line.count(']') + line.count('||')) / max(len(line), 1)
+                    if code_density > 0.08:  # More than 8% code characters
+                        continue
+                
+                # Skip lines with multiple code indicators (return, ||, ;, /*, etc.)
+                code_keywords = ['return', '||', ';', '/*', '*/', 'new', 'RegExp', 'epic', 'Response', 'elements', 'arkose', 'Traces', 'Pattern', 'globals', 'eslint']
+                keyword_count = sum(1 for keyword in code_keywords if keyword.lower() in line.lower())
+                if keyword_count >= 1:  # At least 1 code keyword (lowered threshold)
+                    code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.') + line.count('&&') + line.count('[') + line.count(']') + line.count('||')) / max(len(line), 1)
+                    if code_density > 0.05:  # More than 5% code characters (lowered threshold)
+                        continue
+                
+                # Skip lines that are clearly code comments or fragments
+                if re.search(r'/\*\s*(globals|eslint)', line, re.IGNORECASE) or line.strip().startswith('/*') or line.strip().endswith('*/'):
+                    continue
+                
+                # Skip lines starting with //# (source map comments)
+                if line.strip().startswith('//#'):
+                    continue
+                
+                # Skip lines containing sourceURL patterns (even if split)
+                if re.search(r'source\s+URL\s*=', line, re.IGNORECASE):
+                    continue
+                
+                # Skip lines ending with code operators (&&, ||, ;, etc.)
+                if re.search(r'[&|;]\s*$', line):  # Ends with &&, ||, or ;
+                    code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}') + line.count('=') + line.count('.') + line.count('&&') + line.count('[') + line.count(']') + line.count('||')) / max(len(line), 1)
+                    if code_density > 0.05:  # More than 5% code characters
+                        continue
+            
+            # Skip lines ending with code-like patterns (e.g., "}';", ");", etc.)
+            if re.search(r'[{}();]\s*[\'"]?\s*$', line):  # Ends with code characters
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}')) / max(len(line), 1)
+                if code_density > 0.12:  # More than 12% code characters
+                    continue
+            
+            # Skip lines with excessive escaped Unicode (e.g., \u002F, \u002F)
+            unicode_escapes = len(re.findall(r'\\u[0-9a-fA-F]{4}', line))
+            if unicode_escapes > 3:  # More than 3 Unicode escapes
+                continue
+            
+            # Skip lines that look like JavaScript code (containing common JS patterns)
+            js_patterns = [
+                r'typeof\s+\w+\s*===',  # typeof checks
+                r'window\.\w+\s*=',  # window assignments
+                r'\.push\(',  # array.push
+                r'\.setItem\(',  # localStorage.setItem
+                r'\.getItem\(',  # localStorage.getItem
+                r'addEventListener\(',  # event listeners
+                r'querySelector',  # DOM queries
+                r'dataLayer\.push',  # Google Tag Manager
+                r'Sentry\.',  # Sentry error tracking
+                r'console\.(log|error|warn)',  # console statements
+                r'JSON\.parse',  # JSON parsing
+                r'new RegExp',  # RegExp creation
+                r'return\s+[^;]+;',  # return statements (if line is mostly code)
+            ]
+            # Only skip if line is mostly code (has JS patterns AND high code density)
+            if any(re.search(pattern, line) for pattern in js_patterns):
+                code_density = (line.count('(') + line.count(')') + line.count(';') + line.count('{') + line.count('}')) / max(len(line), 1)
+                if code_density > 0.15:  # More than 15% code characters
+                    continue
+            
             # Skip CSS-like lines but be more specific (IMPROVED: Only skip real CSS, not metadata)
             # Only skip if it looks like actual CSS (has CSS-specific value patterns)
             if re.search(r':\s*[^;]+;', line):
@@ -2138,16 +2577,27 @@ Please create a detailed, structured analysis that preserves important informati
             # Prioritize Chinese content (news titles, content)
             if chinese_chars > 0:
                 cleaned_lines.append(line)
-            # English content needs structure but be more lenient
-            elif word_count >= 2:
+            # English content - much more lenient criteria to preserve course codes, titles, etc.
+            elif word_count >= 1:  # Reduced from 2 to 1 to allow single words
                 has_sentence_structure = any(punct in line for punct in '.!?。！？')
                 has_meaningful_words = len(re.findall(r'\b[a-zA-Z]{2,}\b', line)) >= 1
+                # Allow course codes like "CS221", "248A", etc.
+                has_course_code = bool(re.search(r'\b[A-Z]{2,}\s*\d+[A-Z]?\b', line))
+                # Allow lines with numbers (course numbers, dates, etc.)
+                has_numbers = bool(re.search(r'\d+', line))
                 
-                if has_sentence_structure or has_meaningful_words or len(line) >= 15:
+                # More lenient: keep if it has sentence structure, meaningful words, course codes, numbers, or reasonable length
+                if (has_sentence_structure or has_meaningful_words or has_course_code or 
+                    has_numbers or len(line) >= 10):  # Reduced from 15 to 10
                     cleaned_lines.append(line)
-            # Keep longer titles and meaningful short content
-            elif len(line) >= 5 and word_count >= 1:
-                if not re.match(r'^[a-zA-Z0-9._-]+$', line):
+            # Keep even shorter content if it looks meaningful (course codes, single important words)
+            elif len(line) >= 3:  # Reduced from 5 to 3
+                # Allow course codes, numbers, or lines with letters
+                has_course_code = bool(re.search(r'\b[A-Z]{2,}\s*\d+[A-Z]?\b', line))
+                has_numbers = bool(re.search(r'\d+', line))
+                has_letters = bool(re.search(r'[A-Za-z]', line))
+                
+                if has_course_code or (has_numbers and has_letters) or (has_letters and len(line) >= 5):
                     cleaned_lines.append(line)
         
         # Join cleaned lines
