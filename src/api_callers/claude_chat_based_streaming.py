@@ -19,6 +19,7 @@ limitations under the License.
 from email import message
 import re
 from src.tools.print_system import streaming_context, print_debug, print_current
+from src.utils.parse import fix_wrong_tool_call_format
 
 
 def call_claude_with_chat_based_tools_streaming(executor, messages, system_message):
@@ -123,6 +124,11 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                     elif delta_type == "text_delta":
                                         text = getattr(delta, 'text', '')
                                         content += text
+                                        
+                                        # Fix wrong tool call format before printing
+                                        # This ensures <tool_call>tool_name> is converted to <invoke name="tool_name">
+                                        # before it's printed to terminal, using the buffer mechanism
+                                        content = fix_wrong_tool_call_format(content)
                                         
                                         # Check for hallucination patterns
                                         hallucination_patterns = [

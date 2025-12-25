@@ -85,6 +85,7 @@
             --text-json-content: #cccccc;
             --text-directory-name: #cccccc;
             --text-directory-info: #9cdcfe;
+            --text-task-description: #cccccc;
             --text-file-item: #ffffff;
             --text-file-item-directory: #9cdcfe;
             --text-upload-hint: #9cdcfe;
@@ -198,6 +199,7 @@
             --text-json-content: #24292e;
             --text-directory-name: #24292e;
             --text-directory-info: #0366d6;
+            --text-task-description: #1a1a1a;
             --text-file-item: #24292e;
             --text-file-item-directory: #0366d6;
             --text-upload-hint: #0366d6;
@@ -1320,12 +1322,17 @@
             border-radius: 8px;
             padding: 15px;
             flex-shrink: 0;
+            min-width: 0; /* 允许缩小，防止超出容器 */
+            max-width: 100%; /* 确保不超出容器 */
+            box-sizing: border-box; /* 确保padding计算正确 */
         }
 
         .input-group {
             display: flex;
             gap: 10px;
             align-items: flex-end;
+            min-width: 0; /* 允许缩小 */
+            max-width: 100%; /* 确保不超出容器 */
         }
         
         .input-wrapper {
@@ -1490,6 +1497,8 @@
             align-items: center;
             justify-content: center;
             font-size: 0.9em;
+            flex-shrink: 0; /* 防止按钮被压缩得太小 */
+            box-sizing: border-box; /* 确保padding计算正确 */
         }
 
         .send-button:hover:not(:disabled) {
@@ -1641,8 +1650,18 @@
         }
 
         .directory-item.selected .directory-name,
-        .directory-item.selected .directory-info {
-            color: white;
+        .directory-item.selected .directory-info,
+        .directory-item.selected .task-description {
+            color: white !important;
+        }
+        
+        .directory-item.selected .directory-name > div,
+        .directory-item.selected .directory-name span,
+        .directory-item.selected .directory-name i,
+        .directory-item.selected .directory-info div,
+        .directory-item.selected .directory-info i,
+        .directory-item.selected .task-description {
+            color: white !important;
         }
 
         .directory-item.selected .action-btn {
@@ -1717,7 +1736,7 @@
         }
 
         .directory-info {
-            font-size: 0.85em;
+            font-size: 0.75em;
             color: var(--text-directory-info);
             margin-bottom: 10px;
         }
@@ -2123,7 +2142,7 @@
             /* Chat wrapper optimization */
             .chat-wrapper {
                 flex-direction: column;
-                gap: 10px;
+                gap: 15px; /* 增加间距，确保聊天窗口和工具调用窗口之间有足够空间 */
                 margin-bottom: 10px;
                 width: 100% !important;
                 max-width: none !important;
@@ -2164,7 +2183,7 @@
 
             /* Chat container optimization */
             .chat-container {
-                margin-bottom: 0;
+                margin-bottom: 15px; /* 增加底部间距，防止被工具调用显示框遮挡 */
                 flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 display: flex;
@@ -2188,6 +2207,7 @@
             
             .chat-messages {
                 padding: 10px;
+                padding-bottom: 20px; /* 增加底部padding，防止被工具调用显示框遮挡 */
                 flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 250px;
                 max-height: 400px;
@@ -2285,11 +2305,11 @@
             }
             
             .directory-name {
-                font-size: 0.8em;
+                font-size: 0.85em;
             }
             
             .directory-info {
-                font-size: 0.75em;
+                font-size: 0.7em;
                 margin-bottom: 8px;
             }
             
@@ -2343,6 +2363,7 @@
             
             .chat-messages {
                 padding: 8px;
+                padding-bottom: 20px; /* 增加底部padding，防止被工具调用显示框遮挡 */
                 flex: none; /* 不占据固定空间，随内容自然增长 */
                 min-height: 0;
                 overflow: visible; /* 在手机端不内部滚动，让页面统一滚动 */
@@ -2372,6 +2393,8 @@
                 justify-content: flex-end;
                 flex-wrap: wrap; /* 允许换行以适应小屏幕 */
                 gap: 4px; /* 减小间距以适应小屏幕 */
+                min-width: 0; /* 允许缩小，防止超出容器 */
+                max-width: 100%; /* 确保不超出容器 */
             }
             
             /* 确保"规则文件"label和选择框在同一行，不分开 */
@@ -2387,10 +2410,21 @@
                 margin-left: 0; /* 移除左边距 */
             }
             
+            /* 确保mode-selection中的按钮可以换行 */
+            .mode-selection > button {
+                flex-shrink: 0;
+            }
+            
             .button-row {
                 flex-direction: row !important; /* 确保按钮行始终横排 */
-                flex-wrap: nowrap; /* 按钮不换行，保持左右排列 */
+                flex-wrap: wrap; /* 允许按钮换行，防止超出边界 */
                 justify-content: flex-end; /* 右对齐按钮 */
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .button-row > button {
+                flex-shrink: 0; /* 防止按钮被压缩 */
             }
             
             .send-button {
@@ -2412,11 +2446,11 @@
             }
             
             .directory-name {
-                font-size: 0.75em;
+                font-size: 0.8em;
             }
             
             .directory-info {
-                font-size: 0.7em;
+                font-size: 0.65em;
             }
             
             .sidebar-header {
@@ -2586,6 +2620,29 @@
                 padding: 18px;
             }
             
+            /* 确保按钮区域可以正确折叠 */
+            .mode-selection {
+                flex-wrap: wrap; /* 允许换行 */
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .button-row {
+                flex-wrap: wrap; /* 允许按钮换行 */
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .input-container {
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .input-group {
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
             .chat-messages {
                 padding: 18px;
             }
@@ -2604,6 +2661,31 @@
             
             .api-key-input {
                 font-size: 16px;
+            }
+        }
+        
+        /* Small desktop optimization (1025px to 1200px) - 确保按钮可以折叠 */
+        @media (min-width: 1025px) and (max-width: 1200px) {
+            .mode-selection {
+                flex-wrap: wrap; /* 允许换行 */
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .button-row {
+                flex-wrap: wrap; /* 允许按钮换行 */
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .input-container {
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
+            }
+            
+            .input-group {
+                min-width: 0; /* 允许缩小 */
+                max-width: 100%; /* 确保不超出容器 */
             }
         }
 
@@ -3496,6 +3578,58 @@
             color: #569cd6;
             font-weight: 500;
         }
+
+        /* 任务描述双击复制相关样式 */
+        .task-description {
+            cursor: pointer;
+            user-select: text;
+            position: relative;
+        }
+
+        .task-description:hover {
+            opacity: 0.8;
+        }
+
+        /* 已拷贝提示样式 */
+        .copy-toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 122, 204, 0.95);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+            animation: fadeInOut 1.5s ease-in-out;
+            pointer-events: none;
+        }
+
+        @keyframes fadeInOut {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.8);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            80% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.8);
+            }
+        }
+
+        [data-theme="light"] .copy-toast {
+            background: rgba(3, 102, 214, 0.95);
+        }
     </style>
 </head>
 <body>
@@ -4063,6 +4197,29 @@
         // Internationalization configuration
         const I18N = JSON.parse(document.getElementById('i18nData').textContent);
         const CURRENT_LANG = '{{ lang }}';
+        
+        /**
+         * 获取当前语言设置（动态获取，优先从URL参数，然后localStorage，最后使用页面加载时的值）
+         * @returns {string} 当前语言代码 ('zh' 或 'en')
+         */
+        function getCurrentLanguage() {
+            // 优先从URL参数获取
+            const urlParams = new URLSearchParams(window.location.search);
+            let currentLang = urlParams.get('lang');
+            
+            // 如果没有URL参数，从localStorage获取
+            if (!currentLang) {
+                currentLang = localStorage.getItem('preferred_lang');
+            }
+            
+            // 如果还是没有，使用页面加载时的值
+            if (!currentLang) {
+                currentLang = CURRENT_LANG;
+            }
+            
+            // 确保返回值是有效的语言代码
+            return (currentLang === 'zh' || currentLang === 'en') ? currentLang : 'en';
+        }
     </script>
     <script>
         // User connection management
@@ -6588,8 +6745,8 @@
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
-                    // Add language preference
-                    language: CURRENT_LANG,
+                    // Add language preference (动态获取当前语言)
+                    language: getCurrentLanguage(),
                     // Add execution rounds
                     execution_rounds: executionRounds
                 };
@@ -6661,7 +6818,7 @@
             }
             
             socket.emit('create_new_directory', {
-                language: CURRENT_LANG
+                language: getCurrentLanguage()
             });
         }
 
@@ -6888,8 +7045,8 @@
                     model_max_tokens: result.config.max_tokens,
                     // Add selected MCP servers
                     selected_mcp_servers: getSelectedMCPServers(),
-                    // Add language preference
-                    language: CURRENT_LANG,
+                    // Add language preference (动态获取当前语言)
+                    language: getCurrentLanguage(),
                     // Add execution rounds (如果无限执行模式启用，则设置为-1)
                     execution_rounds: infiniteExecuteMode ? -1 : (() => {
                         const configRoundsSlider = document.getElementById('configRoundsSlider');
@@ -7950,6 +8107,81 @@
         }
 
         /**
+         * 复制文本到剪贴板
+         * @param {string} text - 要复制的文本
+         * @returns {Promise<boolean>} - 复制是否成功
+         */
+        async function copyToClipboard(text) {
+            try {
+                // 尝试使用现代Clipboard API
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } else {
+                    // 降级方案：使用传统的document.execCommand
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    return successful;
+                }
+            } catch (err) {
+                console.error('复制失败:', err);
+                return false;
+            }
+        }
+
+        /**
+         * 显示复制成功的提示
+         * @param {string} message - 提示信息
+         */
+        function showCopyToast(message) {
+            // 移除可能存在的旧提示
+            const existingToast = document.querySelector('.copy-toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            // 创建新提示
+            const toast = document.createElement('div');
+            toast.className = 'copy-toast';
+            toast.textContent = message || '已拷贝';
+            document.body.appendChild(toast);
+
+            // 1.5秒后移除提示（与CSS动画时长一致）
+            setTimeout(() => {
+                toast.remove();
+            }, 1500);
+        }
+
+        /**
+         * 处理任务描述的双击事件
+         * @param {MouseEvent} event - 鼠标事件
+         * @param {string} text - 要复制的文本
+         */
+        async function handleTaskDescriptionDoubleClick(event, text) {
+            event.stopPropagation(); // 阻止事件冒泡，避免触发目录项点击
+            
+            // 如果文本是默认值，不复制
+            if (text === '未布置任务') {
+                return;
+            }
+
+            const success = await copyToClipboard(text);
+            if (success) {
+                showCopyToast('已拷贝');
+            } else {
+                showCopyToast('复制失败');
+            }
+        }
+
+        /**
          * 渲染目录列表到UI
          * @param {Array} directories - 目录数据数组
          * @description 根据目录数据生成HTML结构，包括：
@@ -8001,13 +8233,26 @@
                     classes.push('expanded');
                 }
                 
+                // 获取任务描述，如果没有则使用默认值
+                const taskDesc = dir.task_description || "未布置任务";
+                // 为双击事件转义任务描述中的特殊字符
+                const taskDescEscaped = taskDesc.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+                
                 return `
                     <div class="${classes.join(' ')}" data-dir="${dir.name}" onclick="handleDirectoryItemClick(event, '${dir.name}')">
                         <div class="directory-header">
-                            <div class="directory-name">
-                                <i class="fas fa-folder"></i>
-                                ${dir.name}
-                                ${statusText}
+                            <div class="directory-name" style="flex: 1; min-width: 0;">
+                                <div style="font-size: 0.9em; color: var(--text-directory-name); opacity: 0.7; margin-bottom: 4px;">
+                                    <i class="fas fa-folder" style="font-size: 0.9em;"></i>
+                                    <span>${dir.name}</span>
+                                    ${statusText}
+                                </div>
+                                <div class="task-description" 
+                                     style="font-size: 0.9em; color: var(--text-task-description); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; overflow-wrap: break-word; white-space: normal;" 
+                                     ondblclick="handleTaskDescriptionDoubleClick(event, '${taskDescEscaped}')" 
+                                     title="双击复制任务描述">
+                                    ${taskDesc}
+                                </div>
                             </div>
                             <div class="directory-actions">
                                 <button class="action-btn" onclick="return toggleDirectory('${dir.name}', event)" title="${I18N.expand_collapse}">
@@ -13865,6 +14110,9 @@
             updateUserStatus('disconnected', I18N.user_disconnected);
             enableUI(false);
             
+            // 初始化手机界面下的聊天消息高度调整
+            setTimeout(adjustChatMessagesHeightOnMobile, 200);
+            
             // 检查sessionStorage中是否有注册后的API key（优先级最高）
             const registeredKeyFilled = checkRegisteredApiKey();
             
@@ -13901,6 +14149,7 @@
                 clearTimeout(resizeTimer);
                 resizeTimer = setTimeout(function() {
                     adjustContainerHeight();
+                    adjustChatMessagesHeightOnMobile(); // 调整手机界面下的聊天消息高度
                 }, 150);
             });
             
@@ -14470,6 +14719,50 @@
             }
         }
 
+        // 调整手机界面下聊天消息区域的高度，防止被工具调用窗口遮挡
+        function adjustChatMessagesHeightOnMobile() {
+            // 只在手机界面下执行（宽度小于768px）
+            if (window.innerWidth >= 768) {
+                const chatMessages = document.querySelector('.chat-messages');
+                if (chatMessages) {
+                    chatMessages.style.maxHeight = '';
+                }
+                return;
+            }
+            
+            const chatMessages = document.querySelector('.chat-messages');
+            const detailInfoContainer = document.getElementById('detailInfoContainer');
+            const chatContainer = document.querySelector('.chat-container');
+            const chatHeader = document.querySelector('.chat-header');
+            const chatWrapper = document.querySelector('.chat-wrapper');
+            const inputContainer = document.querySelector('.input-container');
+            const mainContent = document.querySelector('.main-content');
+            
+            if (!chatMessages || !chatContainer) return;
+            
+            // 如果工具调用窗口是隐藏的，恢复默认高度
+            if (!detailInfoContainer || detailInfoContainer.classList.contains('hidden')) {
+                chatMessages.style.maxHeight = '400px';
+                return;
+            }
+            
+            // 使用更准确的方法：计算从聊天消息区域顶部到视口底部的可用空间
+            const chatMessagesRect = chatMessages.getBoundingClientRect();
+            const viewportHeight = window.innerHeight;
+            
+            // 获取工具调用窗口的位置和高度
+            const detailInfoRect = detailInfoContainer.getBoundingClientRect();
+            const detailInfoTop = detailInfoRect.top;
+            
+            // 计算可用高度：从聊天消息区域顶部到工具调用窗口顶部的距离
+            const availableHeight = detailInfoTop - chatMessagesRect.top - 20; // 保留20px缓冲
+            
+            // 确保最小高度为250px，最大高度为400px
+            const maxHeight = Math.max(250, Math.min(400, availableHeight));
+            
+            chatMessages.style.maxHeight = maxHeight + 'px';
+        }
+        
         // 调整chat-wrapper内部布局的全局辅助函数
         function adjustChatWrapperLayout() {
             const chatWrapper = document.querySelector('.chat-wrapper');
@@ -14478,6 +14771,9 @@
             const verticalResizer = document.getElementById('verticalResizer');
             
             if (!chatWrapper || !chatContainer || !detailInfoContainer) return;
+            
+            // 在手机界面下调整聊天消息高度
+            adjustChatMessagesHeightOnMobile();
             
             // 如果细节窗口是隐藏状态，清除chat-container的固定宽度，让它自动填充
             if (detailInfoContainer.classList.contains('hidden')) {
@@ -14753,6 +15049,9 @@
                 if (detailInfoRestoreTag) {
                     detailInfoRestoreTag.classList.add('visible');
                 }
+                
+                // 调整手机界面下的聊天消息高度
+                setTimeout(adjustChatMessagesHeightOnMobile, 100);
             }
 
             function showDetailInfo() {
@@ -14796,6 +15095,9 @@
                 if (detailInfoRestoreTag) {
                     detailInfoRestoreTag.classList.remove('visible');
                 }
+                
+                // 调整手机界面下的聊天消息高度
+                setTimeout(adjustChatMessagesHeightOnMobile, 100);
             }
 
             toggleBtn.addEventListener('click', function(e) {
@@ -14879,6 +15181,9 @@
                         savedDetailWidth = targetDetailWidth.toString();
                         savedChatWidth = targetChatWidth.toString();
                     }
+                    
+                    // 调整手机界面下的聊天消息高度
+                    adjustChatMessagesHeightOnMobile();
                 }, 150); // 150ms防抖延迟
             });
         }

@@ -1168,7 +1168,10 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             else:
                 # 根据语言配置选择routine文件夹
                 # 优先使用前端传递的语言参数，如果没有则使用服务器端配置
-                current_lang = gui_config.get('language') or get_language()
+                current_lang = gui_config.get('language')
+                # 确保语言参数有效（'zh' 或 'en'），否则使用服务器端配置
+                if not current_lang or current_lang not in ('zh', 'en'):
+                    current_lang = get_language()
                 if current_lang == 'zh':
                     routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
                 else:
@@ -1386,8 +1389,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
                         workspace_info += "\nOther files:"
                         workspace_info += "\n" + "\n".join(workspace_files)
                     
-                    if file_count >= max_files:
-                        workspace_info += f"\n  ... (showing first {max_files} files, more files exist)"
+                    
                     
                     if not md_files and not workspace_files:
                         workspace_info += "\n  (Empty directory)"
@@ -1871,6 +1873,9 @@ class AGIAgentGUI:
                         stat = os.stat(item_path)
                         size = self.get_directory_size(item_path)
                         
+                        # 获取任务描述
+                        task_description = self.get_task_description_from_manager_out(item_path)
+                        
                         result.append({
                         'name': item,
                         'path': item_path,
@@ -1879,7 +1884,8 @@ class AGIAgentGUI:
                         'files': self.get_directory_structure(item_path),
                         'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
                         'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
-                            'is_last': item == user_session.last_output_dir  # Mark if it's last used directory
+                            'is_last': item == user_session.last_output_dir,  # Mark if it's last used directory
+                        'task_description': task_description  # 任务描述
                         })
         except (OSError, PermissionError) as e:
             pass
@@ -1949,6 +1955,43 @@ class AGIAgentGUI:
             pass
         
         return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
+    
+    def get_task_description_from_manager_out(self, directory_path):
+        """从manager.out文件中读取任务描述
+        
+        Args:
+            directory_path: 目录路径
+            
+        Returns:
+            str: 任务描述，如果没有找到则返回"未布置任务"
+        """
+        manager_out_path = os.path.join(directory_path, 'logs', 'manager.out')
+        
+        # 检查文件是否存在
+        if not os.path.exists(manager_out_path):
+            return "未布置任务"
+        
+        try:
+            # 读取文件内容
+            with open(manager_out_path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+            
+            # 从后往前查找"Received user requirement:"行
+            task_description = None
+            for line in reversed(lines):
+                if "Received user requirement:" in line:
+                    # 提取冒号后面的内容
+                    parts = line.split("Received user requirement:", 1)
+                    if len(parts) > 1:
+                        task_description = parts[1].strip()
+                        break
+            
+            # 如果找到了任务描述，返回它；否则返回默认值
+            return task_description if task_description else "未布置任务"
+            
+        except (IOError, OSError, UnicodeDecodeError) as e:
+            # 如果读取失败，返回默认值
+            return "未布置任务"
 
 class UserSession:
     def __init__(self, session_id, api_key=None, user_info=None):
@@ -3703,7 +3746,23 @@ def handle_connect(auth):
     
     
     # 检查是否有正在运行的任务（重连恢复的情况）
-    task_running = user_session.current_process and user_session.current_process.is_alive()
+    # 🔧 Fix: 更准确地检查任务状态
+    # 1. 检查进程对象是否存在
+    # 2. 检查进程是否真的在运行
+    # 3. 检查是否有当前输出目录（任务完成时会清理 current_output_dir）
+    # 4. 检查会话是否在活跃任务列表中
+    has_process = user_session.current_process is not None
+    process_alive = has_process and user_session.current_process.is_alive()
+    has_output_dir = user_session.current_output_dir is not None
+    is_in_active_tasks = session_id in gui_instance.concurrency_manager.active_tasks
+    
+    # 只有当进程真的在运行，且有输出目录，且在活跃任务列表中时，才认为任务在运行
+    task_running = process_alive and has_output_dir and is_in_active_tasks
+    
+    # 🔧 Fix: 如果进程对象存在但任务实际上不在运行，清理进程对象
+    if has_process and not task_running:
+        print(f"[{datetime.datetime.now().isoformat()}] 🔧 Cleaning up stale process object: session_id={session_id}, process_alive={process_alive}, has_output_dir={has_output_dir}, is_in_active_tasks={is_in_active_tasks}")
+        user_session.current_process = None
     
     # Send status with guest indicator and performance info
     connection_data = {

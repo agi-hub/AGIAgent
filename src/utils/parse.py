@@ -564,11 +564,15 @@ def generate_tools_prompt_from_xml(tool_definitions: Dict[str, Any], language: s
         prompt_parts.append("")
         prompt_parts.append("Following is the tools you can use to complete tasks. Please call tools using XML format:")
         prompt_parts.append("")
+        prompt_parts.append("**Correct Format (MUST use this):**")
         prompt_parts.append("```xml")
         prompt_parts.append("<invoke name=\"tool_name\">")
         prompt_parts.append("  <parameter name=\"param_name\">param_value</parameter>")
         prompt_parts.append("</invoke>")
         prompt_parts.append("```")
+        prompt_parts.append("")
+        prompt_parts.append("**WRONG Formats (NEVER use these):**")
+        prompt_parts.append("- `<tool_call>tool_name>` ")
         prompt_parts.append("")
         prompt_parts.append("### Tool List:")
         prompt_parts.append("")
@@ -659,11 +663,13 @@ def generate_tools_prompt_from_xml(tool_definitions: Dict[str, Any], language: s
         prompt_parts.append("### Important Notes:")
         prompt_parts.append("1. Please strictly follow the XML format above for tool calls")
         prompt_parts.append("2. Use <invoke name=\"tool_name\">...</invoke> format for each tool call")
-        prompt_parts.append("3. Tool names must match exactly")
-        prompt_parts.append("4. Required parameters cannot be omitted")
-        prompt_parts.append("5. Parameter types must be correct")
-        prompt_parts.append("6. Multiple tools can be called simultaneously by using multiple <invoke> tags")
-        prompt_parts.append("7. For array parameters, you can use JSON format within the parameter value, or use multiple <item> tags")
+        prompt_parts.append("3. **CRITICAL**: NEVER use <tool_call> or <tool_call>tool_name> format - these are WRONG formats")
+        prompt_parts.append("4. **MUST use**: <invoke name=\"tool_name\">...</invoke> format ONLY")
+        prompt_parts.append("5. Tool names must match exactly")
+        prompt_parts.append("6. Required parameters cannot be omitted")
+        prompt_parts.append("7. Parameter types must be correct")
+        prompt_parts.append("8. Multiple tools can be called simultaneously by using multiple <invoke> tags")
+        prompt_parts.append("9. For array parameters, you can use JSON format within the parameter value, or use multiple <item> tags")
         
         return "\n".join(prompt_parts)
         
@@ -1038,6 +1044,47 @@ def parse_function_calls_xml(function_calls_text: str) -> List[Dict[str, Any]]:
     return function_calls
 
 
+def fix_wrong_tool_call_format(content: str) -> str:
+    """
+    Fix wrong tool call format: <tool_call>tool_name> -> <invoke name="tool_name">
+    
+    Args:
+        content: The model's response text that may contain wrong format
+        
+    Returns:
+        Fixed content string
+    """
+    # Pattern: <tool_call>tool_name> -> <invoke name="tool_name">
+    pattern = r'<tool_call>([^<>]+)>'
+    
+    def replace_tool_call(match):
+        tool_name = match.group(1).strip()
+        if tool_name:
+            # Use print_debug instead of _log_warning
+            try:
+                from tools.print_system import print_debug
+                print_debug(f"⚠️ Detected incorrect tool call format: <tool_call>{tool_name}>, automatically converted to: <invoke name=\"{tool_name}\">")
+            except ImportError:
+                pass
+            return f'<invoke name="{tool_name}">'
+        return match.group(0)
+    
+    fixed_content = re.sub(pattern, replace_tool_call, content)
+    
+    # If content was fixed, show corrected version using print_debug
+    if fixed_content != content:
+        try:
+            from tools.print_system import print_debug
+            display_content = fixed_content
+            if len(display_content) > 500:
+                display_content = display_content[:500] + "..."
+            print_debug(f"✅ Fixed tool call format:\n{display_content}")
+        except ImportError:
+            pass
+    
+    return fixed_content
+
+
 def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     """
     Parse tool calls from XML format.
@@ -1048,6 +1095,9 @@ def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with tool name and parameters
     """
+    # Fix wrong tool call format before parsing
+    content = fix_wrong_tool_call_format(content)
+    
     all_tool_calls = []
     
     # Try to parse individual <function_call> tags (single format)

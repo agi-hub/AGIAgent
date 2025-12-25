@@ -788,9 +788,27 @@
                             wrappedParams = lines.slice(0, 5).join('<br/>');
                         }
                         
+                        // Special handling for edit_file: extract target_file and display as "edit_file: filename"
+                        let toolDisplayName = toolName;
+                        if (toolName === 'edit_file') {
+                            try {
+                                // Try to extract target_file from the parameters
+                                const targetFileMatch = params.match(/['"]target_file['"]:\s*['"]([^'"]+)['"]/);
+                                if (targetFileMatch && targetFileMatch[1]) {
+                                    const filename = targetFileMatch[1];
+                                    toolDisplayName = `edit_file: ${filename}`;
+                                    wrappedParams = ''; // Don't show parameters separately since filename is in the title
+                                }
+                            } catch (e) {
+                                // If extraction fails, just show edit_file
+                                console.warn('Failed to extract target_file for edit_file:', e);
+                            }
+                        }
+                        
                         // Add yellow Note for tool call (Mermaid Note doesn't support HTML tags, use plain text)
                         // Format: tool name on first line, parameter values wrapped below
-                        diagram += `    Note over ${agentId}: 🔧 ${toolName}<br/>${wrappedParams}\n`;
+                        const toolDisplay = wrappedParams ? `🔧 ${toolDisplayName}<br/>${wrappedParams}` : `🔧 ${toolDisplayName}`;
+                        diagram += `    Note over ${agentId}: ${toolDisplay}\n`;
                     } else if (event.type === 'status_update') {
                         const statusUpdate = event.data;
                         const agentId = (statusUpdate.agent_id || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_');

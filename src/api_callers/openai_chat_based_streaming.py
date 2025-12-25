@@ -17,6 +17,7 @@ limitations under the License.
 """
 
 from src.tools.print_system import streaming_context, print_debug, print_current
+from src.utils.parse import fix_wrong_tool_call_format
 
 
 def call_openai_with_chat_based_tools_streaming(executor, messages, system_message):
@@ -91,6 +92,11 @@ def call_openai_with_chat_based_tools_streaming(executor, messages, system_messa
                             if thinking_printed_header and not content:
                                 printer.write("\n")
                             content += text
+                            
+                            # Fix wrong tool call format before printing
+                            # This ensures <tool_call>tool_name> is converted to <invoke name="tool_name">
+                            # before it's printed to terminal, using the buffer mechanism
+                            content = fix_wrong_tool_call_format(content)
                             
                             # Check for hallucination patterns
                             hallucination_patterns = [
