@@ -160,7 +160,7 @@ class WebSearchTools:
     
     def _detect_special_page(self, content: str, title: str = "", url: str = "") -> tuple:
         """
-        统一检测特殊页面（验证页面、豆丁网嵌入文档、百度学术搜索页面、DuckDuckGo帮助页面等）
+        统一检测特殊页面（验证页面、豆丁网嵌入文档、百度文库、百度移动端、百度学术搜索页面、DuckDuckGo帮助页面等）
         
         Args:
             content: 页面内容（HTML或文本）
@@ -170,10 +170,15 @@ class WebSearchTools:
         Returns:
             tuple: (is_special, message_type, message)
             - is_special: 是否是特殊页面
-            - message_type: 特殊页面类型 ("verification", "docin", "baidu_scholar", "duckduckgo_help", None)
+            - message_type: 特殊页面类型 ("verification", "docin", "baidu_wenku", "baidu_mbd", "baidu_scholar", "duckduckgo_help", None)
             - message: 返回的消息内容
         """
         if not content:
+            # 即使没有内容，也检查URL（用于快速过滤）
+            if url:
+                url_lower = url.lower()
+                if "wenku.baidu.com" in url_lower:
+                    return True, "baidu_wenku", "Baidu Wenku page, unable to download correct text, automatically filtered"
             return False, None, ""
         
         # 检测 DuckDuckGo 帮助页面和广告页面（优先通过 URL 检测）
@@ -185,6 +190,14 @@ class WebSearchTools:
                 "ads-by-yelp" in url_lower or
                 "ads-by-tripadvisor" in url_lower):
                 return True, "duckduckgo_help", "DuckDuckGo Ads, filtered"
+            
+            # 检测百度文库（优先通过 URL 检测）
+            if "wenku.baidu.com" in url_lower:
+                return True, "baidu_wenku", "Baidu Wenku page, unable to download correct text, automatically filtered"
+            
+            # 检测百度移动端（通常是视频，无法下载正确文字）
+            if "mbd.baidu.com" in url_lower:
+                return True, "baidu_mbd", "Baidu mobile page (usually video), unable to download correct text, automatically filtered"
         
         # 通过内容检测 DuckDuckGo 帮助页面
         if ("duckduckgo-help-pages" in content.lower() or
@@ -201,6 +214,14 @@ class WebSearchTools:
         # 检测豆丁网嵌入式文档页面
         if "豆丁网" in content or "docin.com" in content:
             return True, "docin", "正文为嵌入式文档，不可阅读"
+        
+        # 检测百度文库（通过内容检测，作为URL检测的备用）
+        if "wenku.baidu.com" in content.lower() or "百度文库" in content:
+            return True, "baidu_wenku", "Baidu Wenku page, unable to download correct text, automatically filtered"
+        
+        # 检测百度移动端（通过内容检测，作为URL检测的备用）
+        if "mbd.baidu.com" in content.lower():
+            return True, "baidu_mbd", "Baidu mobile page (usually video), unable to download correct text, automatically filtered"
         
         # 检测百度学术搜索页面
         if ("百度学术搜索" in content or "xueshu.baidu.com" in content or
@@ -282,7 +303,7 @@ class WebSearchTools:
         
         # 如果通过 URL 检测到特殊页面，直接返回，不保存
         if is_special_by_url:
-            print_current(f"⚠️ {message_by_url}: {url[:80]}...")
+            print_debug(f"⚠️ {message_by_url}: {url[:80]}...")
             return "", ""
         
         # 规范化URL并检查是否已下载（去除查询参数、锚点等，只保留基础URL）
@@ -475,6 +496,10 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 print_current("⚠️ Detected verification page in LLM filtering, skipping LLM processing")
             elif page_type == "docin":
                 print_current("⚠️ Detected DocIn embedded document page in LLM filtering, skipping LLM processing")
+            elif page_type == "baidu_wenku":
+                print_debug("⚠️ Detected Baidu Wenku page in LLM filtering, skipping LLM processing")
+            elif page_type == "baidu_mbd":
+                print_debug("⚠️ Detected Baidu MBD page in LLM filtering, skipping LLM processing")
             elif page_type == "baidu_scholar":
                 print_current("⚠️ Detected Baidu Scholar search page in LLM filtering, skipping LLM processing")
             elif page_type == "duckduckgo_help":
@@ -577,10 +602,11 @@ Please provide the extracted relevant content:"""
             return ""
         
         # Filter results with meaningful content and prepare individual result details
+        # Minimum 200 characters after filtering
         valid_results = []
         for i, result in enumerate(results):
             content = result.get('content', '')
-            if content and len(content.strip()) > 100:
+            if content and len(content.strip()) > 200:
                 # Skip error messages and non-content
                 if not any(error_phrase in content.lower() for error_phrase in [
                     'content fetch error', 'processing error', 'timeout', 
@@ -1136,6 +1162,14 @@ Please create a detailed, structured analysis that preserves important informati
                                     for raw_result in all_raw_results:
                                         url = raw_result['url']
                                         
+                                        # Filter out Baidu Wenku and MBD links early (cannot download correct text)
+                                        if 'wenku.baidu.com' in url.lower():
+                                            print_debug(f"⏭️ Skipping Baidu Wenku link: {url[:80]}... (无法下载正确文字)")
+                                            continue
+                                        if 'mbd.baidu.com' in url.lower():
+                                            print_debug(f"⏭️ Skipping Baidu MBD link: {url[:80]}... (通常是视频，无法下载正确文字)")
+                                            continue
+                                        
                                         # Decode redirect URLs to get real destination
                                         if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
                                             decoded_url = self._decode_duckduckgo_redirect_url(url)
@@ -1148,6 +1182,14 @@ Please create a detailed, structured analysis that preserves important informati
                                             if decoded_url != url:
                                                 url = decoded_url
                                                 print_debug(f"🔗 Decoded Baidu redirect: {url[:80]}...")
+                                        
+                                        # Check again after decoding (decoded URL might be Baidu Wenku or MBD)
+                                        if 'wenku.baidu.com' in url.lower():
+                                            print_debug(f"⏭️ Skipping Baidu Wenku link (after decode): {url[:80]}... (无法下载正确文字)")
+                                            continue
+                                        if 'mbd.baidu.com' in url.lower():
+                                            print_debug(f"⏭️ Skipping Baidu MBD link (after decode): {url[:80]}... (通常是视频，无法下载正确文字)")
+                                            continue
                                         
                                         # Normalize URL for deduplication
                                         normalized_url = self._normalize_url_for_dedup(url)
@@ -1187,7 +1229,7 @@ Please create a detailed, structured analysis that preserves important informati
                     
                     if fetch_content and results:
                         # Show which URLs will be downloaded
-                        print_current(f"\n📋 Found {len(results)} unique results after deduplication")
+                        
                         
                         # Download results until we have enough valid ones (max_content_results)
                         downloaded_indices = set()  # Track which results have been downloaded
@@ -1212,7 +1254,7 @@ Please create a detailed, structured analysis that preserves important informati
                             batch_results = [result for _, result in batch_to_download]
                             batch_indices = [idx for idx, _ in batch_to_download]
                             
-                            print_current(f"📖 Fetching webpage content (batch {attempt + 1}): {len(batch_results)} results (have {len(valid_results)}/{max_content_results} valid so far)...")
+                            print_current(f"📖 Fetching webpage content")
                             for idx, result in enumerate(batch_results, 1):
                                 url = result.get('_internal_url') or result.get('url', 'N/A')
                                 title = result.get('title', 'Untitled')[:60]
@@ -1233,11 +1275,19 @@ Please create a detailed, structured analysis that preserves important informati
                                 downloaded_indices.add(idx)
                             
                             # Check which results in this batch are valid
+                            # Valid content must be at least 200 characters after filtering
                             for result in batch_results:
-                                # Keep results with good content
-                                if result.get('content') and len(result['content'].strip()) > 100:
-                                    if result not in valid_results:  # Avoid duplicates
-                                        valid_results.append(result)
+                                # Keep results with good content (minimum 200 characters)
+                                content = result.get('content', '')
+                                if content and len(content.strip()) > 200:
+                                    # Skip error messages and filtered pages
+                                    if not any(error_phrase in content.lower() for error_phrase in [
+                                        'content fetch error', 'processing error', 'timeout',
+                                        '无法下载正确文字', '已自动过滤', 'skip content fetch',
+                                        'video or social media link', 'advertisement page'
+                                    ]):
+                                        if result not in valid_results:  # Avoid duplicates
+                                            valid_results.append(result)
                                 elif not fetch_content:
                                     if result not in valid_results:
                                         valid_results.append(result)
@@ -1255,7 +1305,9 @@ Please create a detailed, structured analysis that preserves important informati
                         # Use valid results, or fall back to all downloaded results
                         if valid_results:
                             results = valid_results[:max_content_results]  # Limit to max_content_results
-                            print_current(f"✅ Successfully got {len(results)} search results with valid content")
+                            # Count results with actual content (not just snippets)
+                            results_with_content = [r for r in results if r.get('content') and len(r.get('content', '').strip()) > 200]
+                            results_with_snippet_only = len(results) - len(results_with_content)
                         else:
                             print_debug("⚠️ No results with valid content found, returning search results only")
                             # Return downloaded results even without content
@@ -1283,7 +1335,8 @@ Please create a detailed, structured analysis that preserves important informati
             if fetch_content:
                 optimized_results = []
                 for result in results:
-                    if result.get('content') and len(result['content'].strip()) > 100:
+                    # Minimum 200 characters to be considered valid content
+                    if result.get('content') and len(result['content'].strip()) > 200:
                         content = result['content']
                         summary_truncation_length = get_truncation_length() // 5  # Use 1/5 of truncation length
                         content_summary = content[:summary_truncation_length] + "..." if len(content) > summary_truncation_length else content
@@ -1630,14 +1683,21 @@ Please create a detailed, structured analysis that preserves important informati
                 if decoded_url != target_url:
                     target_url = self._normalize_url(decoded_url)
             
-            # Skip problematic domains
+            # Skip problematic domains and Baidu Wenku/MBD (cannot download correct text)
             problematic_domains = [
                 'douyin.com', 'tiktok.com', 'youtube.com', 'youtu.be',
                 'bilibili.com', 'b23.tv', 'instagram.com', 'facebook.com',
-                'twitter.com', 'x.com', 'linkedin.com'
+                'twitter.com', 'x.com', 'linkedin.com',
+                'wenku.baidu.com',  # 百度文库，无法下载正确文字
+                'mbd.baidu.com'  # 百度移动端，通常是视频，无法下载正确文字
             ]
             if any(domain in target_url.lower() for domain in problematic_domains):
-                result['content'] = "Video or social media link, skip content fetch"
+                if 'wenku.baidu.com' in target_url.lower():
+                    result['content'] = "Baidu Wenku page, unable to download correct text, automatically filtered"
+                elif 'mbd.baidu.com' in target_url.lower():
+                    result['content'] = "Baidu mobile page (usually video), unable to download correct text, automatically filtered"
+                else:
+                    result['content'] = "Video or social media link, skip content fetch"
                 continue
             
             if target_url.startswith(('javascript:', 'mailto:')):
@@ -1661,6 +1721,8 @@ Please create a detailed, structured analysis that preserves important informati
         
         
         # Phase 2: Sequential processing - wait for load and extract content
+        
+        valid_index = 0  # Counter for valid results that will be printed (starts from 0, will be 1-indexed when printing)
         
         for i, (loaded_page, result, global_index, target_url) in enumerate(page_loads):
             if time.time() - start_time > timeout_seconds:
@@ -1701,10 +1763,10 @@ Please create a detailed, structured analysis that preserves important informati
                     except Exception as extract_error:
                         error_msg = str(extract_error)
                         if "timeout" in error_msg.lower():
-                            print_debug(f"⏰ [{global_index+1}] Content extraction timeout (10s), skipping")
+                            print_debug(f"⏰ Content extraction timeout (10s), skipping")
                             content = "Content extraction timeout"
                         else:
-                            print_debug(f"⚠️ [{global_index+1}] Content extraction error: {extract_error}")
+                            print_debug(f"⚠️ Content extraction error: {extract_error}")
                             content = f"Content extraction error: {str(extract_error)}"
                     finally:
                         # Restore default timeout (8 seconds as used elsewhere in the code)
@@ -1734,11 +1796,12 @@ Please create a detailed, structured analysis that preserves important informati
                     result['content'] = cleaned_content if cleaned_content else (content if content else "Content too short or unable to extract")
                     result['final_url'] = loaded_page.url
                     
-                    # Print webpage summary
+                    # Print webpage summary - only increment valid_index for results that are actually printed
                     if content and len(content.strip()) > 100:
-                        self._print_webpage_summary(global_index + 1, title, target_url, result['content'])
+                        valid_index += 1
+                        self._print_webpage_summary(valid_index, title, target_url, result['content'])
                     else:
-                        print_debug(f"⚠️ [{global_index+1}] Content too short, skipping summary display")
+                        print_debug(f"⚠️ Content too short, skipping summary display")
                 
                 except Exception as e:
                     error_msg = str(e)
@@ -1765,6 +1828,8 @@ Please create a detailed, structured analysis that preserves important informati
         """
         Fetch actual webpage content for the search results (fallback method)
         """
+        valid_index = 0  # Counter for valid results that will be printed (starts from 0, will be 1-indexed when printing)
+        
         for i, result in enumerate(results):
             start_time = time.time()
             try:
@@ -1792,12 +1857,19 @@ Please create a detailed, structured analysis that preserves important informati
                     'bilibili.com', 'b23.tv',
                     'instagram.com', 'facebook.com',
                     'twitter.com', 'x.com',
-                    'linkedin.com'
+                    'linkedin.com',
+                    'wenku.baidu.com',  # 百度文库，无法下载正确文字
+                    'mbd.baidu.com'  # 百度移动端，通常是视频，无法下载正确文字
                 ]
                 
                 if any(domain in target_url.lower() for domain in problematic_domains):
-                    # print_current(f"⏭️ Skip video/social media link: {target_url}")
-                    result['content'] = "Video or social media link, skip content fetch"
+                    if 'wenku.baidu.com' in target_url.lower():
+                        result['content'] = "Baidu Wenku page, unable to download correct text, skip content fetch"
+                    elif 'mbd.baidu.com' in target_url.lower():
+                        result['content'] = "Baidu mobile page (usually video), unable to download correct text, skip content fetch"
+                    else:
+                        # print_current(f"⏭️ Skip video/social media link: {target_url}")
+                        result['content'] = "Video or social media link, skip content fetch"
                     continue
                 
                 # Skip ads-by pages
@@ -1860,9 +1932,10 @@ Please create a detailed, structured analysis that preserves important informati
                     cleaned_content = self._clean_text_for_saving(content) if content else ""
                     result['content'] = cleaned_content if cleaned_content else (content if content else "")
                     
-                    # Print webpage summary
+                    # Print webpage summary - only increment valid_index for results that are actually printed
                     if content:
-                        self._print_webpage_summary(i + 1, title, target_url, result['content'])
+                        valid_index += 1
+                        self._print_webpage_summary(valid_index, title, target_url, result['content'])
                         elapsed_time = time.time() - start_time
                         # print_current(f"✅ Successfully got {len(result['content'])} characters of useful content (time: {elapsed_time:.2f}s)")
                     else:
@@ -2295,6 +2368,10 @@ Please create a detailed, structured analysis that preserves important informati
                 print_current("⚠️ Detected verification page in cleaning, returning verification message only")
             elif page_type == "docin":
                 print_current("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
+            elif page_type == "baidu_wenku":
+                print_debug("⚠️ Detected Baidu Wenku page in cleaning, returning message only")
+            elif page_type == "baidu_mbd":
+                print_debug("⚠️ Detected Baidu MBD page in cleaning, returning message only")
             elif page_type == "baidu_scholar":
                 print_current("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
             elif page_type == "duckduckgo_help":
@@ -2892,7 +2969,8 @@ Please create a detailed, structured analysis that preserves important informati
                 # Save both HTML and text content to files
                 saved_html_path = ""
                 saved_txt_path = ""
-                if content and len(content.strip()) > 100:
+                # Minimum 200 characters to save content
+                if content and len(content.strip()) > 200:
                     saved_html_path, saved_txt_path = self._save_webpage_content(page, url, title, content, search_term or "")
                 
                 final_url = page.url
@@ -3105,10 +3183,21 @@ Please create a detailed, structured analysis that preserves important informati
                 url = real_url
         
         # Also decode Baidu redirect URLs
-        if 'baidu.com/link?url=' in url.lower():
+        # IMPORTANT: If Baidu redirect URL decoding fails, we must keep the full URL
+        # (including query parameters) for deduplication, because different query parameters
+        # may point to different destination URLs
+        is_baidu_redirect = 'baidu.com/link?url=' in url.lower()
+        baidu_decode_failed = False
+        
+        if is_baidu_redirect:
+            original_url = url
             real_url = self._decode_baidu_redirect_url(url)
             if real_url != url:
                 url = real_url
+            else:
+                # Decoding failed - keep original URL with full query parameters
+                baidu_decode_failed = True
+                url = original_url
         
         # First normalize the URL (add protocol if missing)
         normalized = self._normalize_url(url)
@@ -3116,6 +3205,12 @@ Please create a detailed, structured analysis that preserves important informati
         try:
             # Parse the URL
             parsed = urllib.parse.urlparse(normalized)
+            
+            # For Baidu redirect URLs that failed to decode, keep the full URL including query
+            # This ensures different Baidu redirect links are not incorrectly identified as duplicates
+            if baidu_decode_failed:
+                # Keep the full URL (including query parameters) for Baidu redirects that failed to decode
+                return normalized.lower()
             
             # Remove query parameters and fragments for deduplication
             # This helps catch duplicates like:
@@ -3143,8 +3238,6 @@ Please create a detailed, structured analysis that preserves important informati
             # If parsing fails, return normalized URL as-is
             print_debug(f"⚠️ URL normalization failed for {url[:80]}: {e}")
             return normalized.lower()
-        
-        return url
     
     def _optimize_search_term(self, search_term: str) -> str:
         """
