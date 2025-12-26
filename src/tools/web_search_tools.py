@@ -101,7 +101,7 @@ def get_anthropic_client():
 
 
 class WebSearchTools:
-    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, out_dir: str = None, verbose: bool = True):
+    def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, workspace_root: str = None, out_dir: str = None, verbose: bool = True):
         self.verbose = verbose  # Control verbose debug output
         
         # LLM configuration for content filtering and summarization
@@ -114,15 +114,32 @@ class WebSearchTools:
         # Track failed search engines to skip them in future attempts
         self.failed_engines = set()
         
+        # Track downloaded URLs to avoid duplicate downloads
+        self.downloaded_urls = set()
+        
         # Store workspace root for relative path calculation
-        self.workspace_root = out_dir or os.getcwd()
+        # workspace_root should point to the workspace directory, not the parent out_dir
+        if workspace_root:
+            self.workspace_root = workspace_root
+            # Calculate out_dir from workspace_root if not provided
+            if not out_dir:
+                # If workspace_root ends with 'workspace', out_dir is its parent
+                if os.path.basename(workspace_root) == 'workspace':
+                    out_dir = os.path.dirname(workspace_root)
+                else:
+                    out_dir = workspace_root
+        else:
+            # Fallback: use out_dir or current working directory
+            if out_dir:
+                # If out_dir is provided, workspace_root should be out_dir/workspace
+                self.workspace_root = os.path.join(out_dir, "workspace")
+            else:
+                self.workspace_root = os.getcwd()
+                out_dir = os.getcwd()
         
         # Initialize web search result directory path but don't create it yet
-        if out_dir:
-            self.web_result_dir = os.path.join(out_dir, "workspace", "web_search_result")
-        else:
-            # Fallback to current working directory if out_dir is not provided
-            self.web_result_dir = os.path.join(os.getcwd(), "workspace", "web_search_result")
+        # web_result_dir should be in workspace/web_search_result
+        self.web_result_dir = os.path.join(self.workspace_root, "web_search_result")
         
         if (enable_llm_filtering or enable_summary) and llm_api_key and llm_model and llm_api_base:
             try:
@@ -167,7 +184,7 @@ class WebSearchTools:
                 "ads-by-microsoft" in url_lower or
                 "ads-by-yelp" in url_lower or
                 "ads-by-tripadvisor" in url_lower):
-                return True, "duckduckgo_help", "DuckDuckGo 帮助/广告页面，已自动过滤"
+                return True, "duckduckgo_help", "DuckDuckGo Ads, filtered"
         
         # 通过内容检测 DuckDuckGo 帮助页面
         if ("duckduckgo-help-pages" in content.lower() or
@@ -175,7 +192,7 @@ class WebSearchTools:
             "Ads By Yelp on DuckDuckGo" in content or
             "Ads By Tripadvisor on DuckDuckGo" in content or
             "Ads by Microsoft on DuckDuckGo Private Search" in content):
-            return True, "duckduckgo_help", "DuckDuckGo 帮助/广告页面，已自动过滤"
+            return True, "duckduckgo_help", "DuckDuckGo Ads, filtered"
         
         # 检测验证页面
         if "当前环境异常，完成验证后即可继续访问。" in content:
@@ -197,8 +214,12 @@ class WebSearchTools:
     def _ensure_result_directory(self):
         """Ensure the web search result directory exists"""
         if not self.web_result_dir:
-            # If web_result_dir is not set, try to initialize it
-            self.web_result_dir = os.path.join(os.getcwd(), "workspace", "web_search_result")
+            # If web_result_dir is not set, try to initialize it using workspace_root
+            if self.workspace_root:
+                self.web_result_dir = os.path.join(self.workspace_root, "web_search_result")
+            else:
+                # Fallback to current working directory
+                self.web_result_dir = os.path.join(os.getcwd(), "workspace", "web_search_result")
         
         try:
             os.makedirs(self.web_result_dir, exist_ok=True)
@@ -264,6 +285,12 @@ class WebSearchTools:
             print_current(f"⚠️ {message_by_url}: {url[:80]}...")
             return "", ""
         
+        # 规范化URL并检查是否已下载（去除查询参数、锚点等，只保留基础URL）
+        normalized_url = self._normalize_url_for_dedup(url) if url else ""
+        if normalized_url and normalized_url in self.downloaded_urls:
+            print_debug(f"⏭️ 跳过重复URL: {url[:80]}... (已下载)")
+            return "", ""
+        
         html_filepath = ""
         txt_filepath = ""
         
@@ -300,7 +327,7 @@ class WebSearchTools:
                 is_special, page_type, message = self._detect_special_page(html_content, title, url)
                 
                 if is_special:
-                    print_current(f"⚠️ {message}: {url[:80]}...")
+                    print_debug(f"⚠️ {message}: {url[:80]}...")
                     return "", ""  # 检测到特殊页面，不保存
                 
                 if not is_special:
@@ -309,6 +336,9 @@ class WebSearchTools:
                     html_filepath = os.path.join(self.web_result_dir, html_filename)
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
+                    # 成功保存HTML后，记录URL以避免重复下载
+                    if normalized_url:
+                        self.downloaded_urls.add(normalized_url)
 
                     
             except Exception as e:
@@ -348,9 +378,9 @@ class WebSearchTools:
                     
                     # Log if content was filtered out during cleaning
                     if not cleaned_content or not cleaned_content.strip():
-                        print_current(f"⚠️ Content was filtered out during cleaning for: {title[:50]}... (original length: {len(content)})")
+                        print_debug(f"⚠️ Content was filtered out during cleaning for: {title[:50]}... (original length: {len(content)})")
                     elif len(cleaned_content.strip()) <= 50:
-                        print_current(f"⚠️ Content too short after cleaning for: {title[:50]}... (original: {len(content)}, cleaned: {len(cleaned_content.strip())})")
+                        print_debug(f"⚠️ Content too short after cleaning for: {title[:50]}... (original: {len(content)}, cleaned: {len(cleaned_content.strip())})")
                     
                     if cleaned_content and len(cleaned_content.strip()) > 50:
                         # Ensure the txt file has .txt extension
@@ -372,15 +402,18 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         try:
                             with open(txt_filepath, 'w', encoding='utf-8') as f:
                                 f.write(formatted_content)
+                            # 成功保存后，记录URL以避免重复下载
+                            if normalized_url:
+                                self.downloaded_urls.add(normalized_url)
                         except Exception as write_error:
                             print_current(f"⚠️ Failed to write text file: {write_error}")
                             txt_filepath = ""  # Reset filepath on write failure
                     else:
                         # Content exists but was filtered out or too short
                         if content and content.strip():
-                            print_current(f"⚠️ Skipped saving text file for: {title[:50]}... (content length: {len(content)}, cleaned length: {len(cleaned_content.strip()) if cleaned_content else 0})")
+                            print_debug(f"⚠️ Skipped saving text file for: {title[:50]}... (content length: {len(content)}, cleaned length: {len(cleaned_content.strip()) if cleaned_content else 0})")
                 else:
-                    print_current(f"⚠️ No text content to save for: {title[:50]}... (content is empty or whitespace only)")
+                    print_debug(f"⚠️ No text content to save for: {title[:50]}... (content is empty or whitespace only)")
             except TimeoutError as timeout_err:
                 print_current(f"⚠️ Save text content timeout: {timeout_err}, continuing without txt file")
                 txt_filepath = ""  # Ensure we return empty string on timeout
@@ -526,7 +559,7 @@ Please provide the extracted relevant content:"""
             return content
             
         except Exception as e:
-            print_current(f"❌ LLM content filtering failed: {e}")
+            print_current(f"LLM content filtering failed: {e}")
             return content
 
     def _summarize_search_results_with_llm(self, results: List[Dict], search_term: str) -> str:
@@ -691,7 +724,7 @@ Please create a detailed, structured analysis that preserves important informati
                 return ""
                 
         except Exception as e:
-            print_current(f"❌ Search results summarization failed: {e}")
+            print_current(f"Search results summarization failed: {e}")
             return ""
 
     def web_search(self, search_term: str, fetch_content: bool = True, max_content_results: int = 5, **kwargs) -> Dict[str, Any]:
@@ -700,7 +733,7 @@ Please create a detailed, structured analysis that preserves important informati
         """
         # Check if Playwright is available before proceeding
         if not is_playwright_available():
-            print_current("❌ Playwright is not installed or not available")
+            print_current("Playwright is not installed or not available")
             print_current("💡 Install with: pip install playwright && playwright install chromium")
             return {
                 'status': 'failed',
@@ -930,7 +963,7 @@ Please create a detailed, structured analysis that preserves important informati
                         print_current(f"✅ Successfully accessed URL directly, got {len(content)} characters of content")
                         
                     except Exception as e:
-                        print_current(f"❌ Direct URL access failed: {e}")
+                        print_current(f"Direct URL access failed: {e}")
                         results.append({
                             'title': f'Access failed: {search_term}',
                             'url': search_term,
@@ -1046,13 +1079,15 @@ Please create a detailed, structured analysis that preserves important informati
                                 try:
                                     result_elements = page.query_selector_all('a[href], h3, .result, .g, .rc')
                                 except Exception as fallback_error:
-                                    print_debug(f"❌ Fallback selector also failed: {fallback_error}")
+                                    print_debug(f"Fallback selector also failed: {fallback_error}")
                                     result_elements = []
                             
                             if result_elements:
                                 print_debug(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
                                 
-                                for i, elem in enumerate(result_elements[:10]):
+                                # Collect all results first (not just first 10)
+                                all_raw_results = []
+                                for i, elem in enumerate(result_elements):
                                     try:
                                         title = ""
                                         url = ""
@@ -1078,68 +1113,157 @@ Please create a detailed, structured analysis that preserves important informati
                                         if url and url.startswith('/url?q='):
                                             url = urllib.parse.unquote(url.split('&')[0][7:])
                                         
-                                        if title and len(title) > 5:
-                                            # Clean snippet before truncating
-                                            cleaned_snippet = self._clean_snippet(snippet) if snippet else f'Search result from {engine["name"]}'
-                                            results.append({
+                                        if title and len(title) > 5 and url:
+                                            all_raw_results.append({
                                                 'title': title,
-                                                'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {engine["name"]}',
-                                                'source': engine['name'],
-                                                'content': '',
-                                                '_internal_url': url  # Keep URL internally for content fetching
+                                                'snippet': snippet,
+                                                'url': url,
+                                                'source': engine['name']
                                             })
                                     
                                     except Exception as e:
                                         print_debug(f"Error extracting result {i}: {e}")
                                         continue
                                 
+                                # Parse and deduplicate URLs before adding to results
+                                if all_raw_results:
+                                    print_debug(f"📋 Collected {len(all_raw_results)} raw results, parsing URLs and deduplicating...")
+                                    
+                                    # Parse URLs (decode DuckDuckGo/Baidu redirects) and deduplicate
+                                    seen_urls = set()
+                                    deduplicated_results = []
+                                    
+                                    for raw_result in all_raw_results:
+                                        url = raw_result['url']
+                                        
+                                        # Decode redirect URLs to get real destination
+                                        if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
+                                            decoded_url = self._decode_duckduckgo_redirect_url(url)
+                                            if decoded_url != url:
+                                                url = decoded_url
+                                                print_debug(f"🔗 Decoded DuckDuckGo redirect: {url[:80]}...")
+                                        
+                                        if 'baidu.com/link?url=' in url.lower():
+                                            decoded_url = self._decode_baidu_redirect_url(url)
+                                            if decoded_url != url:
+                                                url = decoded_url
+                                                print_debug(f"🔗 Decoded Baidu redirect: {url[:80]}...")
+                                        
+                                        # Normalize URL for deduplication
+                                        normalized_url = self._normalize_url_for_dedup(url)
+                                        
+                                        # Skip if already seen
+                                        if normalized_url in seen_urls:
+                                            print_debug(f"⏭️ Skipping duplicate URL: {url[:80]}...")
+                                            continue
+                                        
+                                        seen_urls.add(normalized_url)
+                                        
+                                        # Clean snippet before truncating
+                                        cleaned_snippet = self._clean_snippet(raw_result['snippet']) if raw_result['snippet'] else f'Search result from {raw_result["source"]}'
+                                        deduplicated_results.append({
+                                            'title': raw_result['title'],
+                                            'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {raw_result["source"]}',
+                                            'source': raw_result['source'],
+                                            'content': '',
+                                            '_internal_url': url,  # Use decoded/normalized URL
+                                            'url': url  # Also store in url field for compatibility
+                                        })
+                                    
+                                    print_debug(f"✅ After deduplication: {len(deduplicated_results)} unique results")
+                                    results.extend(deduplicated_results)
+                                
                                 if results:
                                     break
                             else:
-                                print_debug(f"❌ {engine['name']} found no search results")
+                                print_debug(f"{engine['name']} found no search results")
                         
                         except Exception as e:
-                            print_debug(f"❌ {engine['name']} search failed: {e}")
+                            print_debug(f"{engine['name']} search failed: {e}")
                             # Mark this engine as failed so it won't be retried
                             self.failed_engines.add(engine['name'])
                             print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
                             continue
                     
                     if fetch_content and results:
-                        print_current(f"\n📖 Starting to fetch webpage content for first {min(max_content_results, len(results))} results...")
+                        # Show which URLs will be downloaded
+                        print_current(f"\n📋 Found {len(results)} unique results after deduplication")
                         
-                        # Use sequential fetching with existing browser and page (no asyncio conflict)
-                        # This is simpler, more reliable, and avoids thread pool overhead
-                        try:
-                            self._fetch_webpage_content_with_timeout(results[:max_content_results], page, timeout_seconds=60)
-                        except Exception as e:
-                            print_current(f"⚠️ Content fetching failed: {e}")
-                            # Try basic method as fallback
-                            try:
-                                self._fetch_webpage_content(results[:max_content_results], page)
-                            except Exception as final_e:
-                                print_current(f"⚠️ All content fetching methods failed: {final_e}")
-                        
+                        # Download results until we have enough valid ones (max_content_results)
+                        downloaded_indices = set()  # Track which results have been downloaded
                         valid_results = []
-                        for result in results:
-                            # Keep results with good content, or results without content but with snippets
-                            if result.get('content') and len(result['content'].strip()) > 100:
-                                valid_results.append(result)
-                            elif not fetch_content:
-                                valid_results.append(result)
-                            elif result.get('snippet') and len(result['snippet'].strip()) > 20:
-                                # Keep results with useful snippets even if content fetch failed
-                                valid_results.append(result)
+                        batch_size = max_content_results
+                        max_attempts = min(len(results), max_content_results * 3)  # Try up to 3x the target to find enough valid results
                         
+                        attempt = 0
+                        while len(valid_results) < max_content_results and attempt < max_attempts and len(downloaded_indices) < len(results):
+                            # Find next batch of results to download
+                            batch_to_download = []
+                            for idx, result in enumerate(results):
+                                if idx not in downloaded_indices:
+                                    batch_to_download.append((idx, result))
+                                    if len(batch_to_download) >= batch_size:
+                                        break
+                            
+                            if not batch_to_download:
+                                break
+                            
+                            # Download this batch
+                            batch_results = [result for _, result in batch_to_download]
+                            batch_indices = [idx for idx, _ in batch_to_download]
+                            
+                            print_current(f"📖 Fetching webpage content (batch {attempt + 1}): {len(batch_results)} results (have {len(valid_results)}/{max_content_results} valid so far)...")
+                            for idx, result in enumerate(batch_results, 1):
+                                url = result.get('_internal_url') or result.get('url', 'N/A')
+                                title = result.get('title', 'Untitled')[:60]
+                                print_debug(f"  [{len(downloaded_indices) + idx}] {title} -> {url[:100]}...")
+                            
+                            try:
+                                self._fetch_webpage_content_with_timeout(batch_results, page, timeout_seconds=60)
+                            except Exception as e:
+                                print_debug(f"⚠️ Content fetching failed: {e}")
+                                # Try basic method as fallback
+                                try:
+                                    self._fetch_webpage_content(batch_results, page)
+                                except Exception as final_e:
+                                    print_debug(f"⚠️ All content fetching methods failed: {final_e}")
+                            
+                            # Mark these as downloaded
+                            for idx in batch_indices:
+                                downloaded_indices.add(idx)
+                            
+                            # Check which results in this batch are valid
+                            for result in batch_results:
+                                # Keep results with good content
+                                if result.get('content') and len(result['content'].strip()) > 100:
+                                    if result not in valid_results:  # Avoid duplicates
+                                        valid_results.append(result)
+                                elif not fetch_content:
+                                    if result not in valid_results:
+                                        valid_results.append(result)
+                                elif result.get('snippet') and len(result['snippet'].strip()) > 20:
+                                    # Keep results with useful snippets even if content fetch failed
+                                    if result not in valid_results:
+                                        valid_results.append(result)
+                            
+                            attempt += 1
+                            
+                            # If we have enough valid results, stop
+                            if len(valid_results) >= max_content_results:
+                                break
+                        
+                        # Use valid results, or fall back to all downloaded results
                         if valid_results:
-                            results = valid_results
-                            print_debug(f"✅ Successfully got {len(results)} search results with valid content")
+                            results = valid_results[:max_content_results]  # Limit to max_content_results
+                            print_current(f"✅ Successfully got {len(results)} search results with valid content")
                         else:
-                            print_current("⚠️ All search results failed to get valid webpage content, returning search results only")
-                            # Return search results even without content
-                            for result in results:
+                            print_debug("⚠️ No results with valid content found, returning search results only")
+                            # Return downloaded results even without content
+                            downloaded_results = [results[idx] for idx in sorted(downloaded_indices)][:max_content_results]
+                            for result in downloaded_results:
                                 if not result.get('content'):
                                     result['content'] = 'Content not available - search result only'
+                            results = downloaded_results
                 
                 # Ensure browser is closed
                 try:
@@ -1289,7 +1413,7 @@ Please create a detailed, structured analysis that preserves important informati
             # Handle Playwright browser launch errors (including GLIBC issues)
             error_str = str(playwright_error)
             if 'GLIBC' in error_str or 'version' in error_str or 'not found' in error_str:
-                print_current(f"❌ Playwright system compatibility error: {playwright_error}")
+                print_current(f"Playwright system compatibility error: {playwright_error}")
                 print_current("⚠️  Your system GLIBC version is too old for Playwright")
                 print_current("💡 Suggestion: Try using requests-based fallback or upgrade your system")
                 return {
@@ -1305,7 +1429,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'error': 'glibc_compatibility_error'
                 }
             elif 'PlaywrightContextManager' in error_str or '_playwright' in error_str:
-                print_current(f"❌ Playwright initialization error: {playwright_error}")
+                print_current(f"Playwright initialization error: {playwright_error}")
                 print_current("💡 This might be due to browser installation issues")
                 return {
                     'status': 'failed',
@@ -1320,7 +1444,7 @@ Please create a detailed, structured analysis that preserves important informati
                     'error': 'playwright_init_error'
                 }
             else:
-                print_current(f"❌ Playwright error: {playwright_error}")
+                print_current(f"Playwright error: {playwright_error}")
                 return {
                     'status': 'failed',
                     'search_term': search_term,
@@ -1349,7 +1473,7 @@ Please create a detailed, structured analysis that preserves important informati
             }
         
         except Exception as e:
-            print_current(f"❌ Web search failed: {e}")
+            print_current(f"Web search failed: {e}")
             return {
                 'status': 'failed',
                 'search_term': search_term,
@@ -1493,6 +1617,19 @@ Please create a detailed, structured analysis that preserves important informati
             target_url = result.get('_internal_url') or result.get('url', '')
             target_url = self._normalize_url(target_url)
             
+            # Decode DuckDuckGo redirect URLs to get the real destination URL
+            if 'duckduckgo.com/l/' in target_url.lower() and 'uddg=' in target_url.lower():
+                decoded_url = self._decode_duckduckgo_redirect_url(target_url)
+                if decoded_url != target_url:
+                    target_url = self._normalize_url(decoded_url)
+                    print_debug(f"🎯 Decoded DuckDuckGo redirect: {decoded_url[:100]}...")
+            
+            # Handle Baidu redirect URLs
+            if 'baidu.com/link?url=' in target_url:
+                decoded_url = self._decode_baidu_redirect_url(target_url)
+                if decoded_url != target_url:
+                    target_url = self._normalize_url(decoded_url)
+            
             # Skip problematic domains
             problematic_domains = [
                 'douyin.com', 'tiktok.com', 'youtube.com', 'youtu.be',
@@ -1564,10 +1701,10 @@ Please create a detailed, structured analysis that preserves important informati
                     except Exception as extract_error:
                         error_msg = str(extract_error)
                         if "timeout" in error_msg.lower():
-                            print_current(f"⏰ [{global_index+1}] Content extraction timeout (10s), skipping")
+                            print_debug(f"⏰ [{global_index+1}] Content extraction timeout (10s), skipping")
                             content = "Content extraction timeout"
                         else:
-                            print_current(f"⚠️ [{global_index+1}] Content extraction error: {extract_error}")
+                            print_debug(f"⚠️ [{global_index+1}] Content extraction error: {extract_error}")
                             content = f"Content extraction error: {str(extract_error)}"
                     finally:
                         # Restore default timeout (8 seconds as used elsewhere in the code)
@@ -1581,8 +1718,12 @@ Please create a detailed, structured analysis that preserves important informati
                     if content and self.enable_llm_filtering:
                         content = self._extract_relevant_content_with_llm(content, search_term, title)
                     
+                    # Use the actual loaded URL (after redirects) instead of the original target_url
+                    # This ensures we use the real destination URL, not the DuckDuckGo/Baidu redirect link
+                    actual_url = loaded_page.url
+                    
                     # Save both HTML and text content to files (HTML will be saved even if text is short)
-                    saved_html_path, saved_txt_path = self._save_webpage_content(loaded_page, target_url, title, content or "", search_term)
+                    saved_html_path, saved_txt_path = self._save_webpage_content(loaded_page, actual_url, title, content or "", search_term)
                     if saved_html_path:
                         result['saved_html_path'] = saved_html_path
                     if saved_txt_path:
@@ -1597,11 +1738,11 @@ Please create a detailed, structured analysis that preserves important informati
                     if content and len(content.strip()) > 100:
                         self._print_webpage_summary(global_index + 1, title, target_url, result['content'])
                     else:
-                        print_current(f"⚠️ [{global_index+1}] Content too short, skipping summary display")
+                        print_debug(f"⚠️ [{global_index+1}] Content too short, skipping summary display")
                 
                 except Exception as e:
                     error_msg = str(e)
-                    print_current(f"❌ [{global_index+1}] Failed to process page: {error_msg}")
+                    print_debug(f"[{global_index+1}] Failed to process page: {error_msg}")
                     result['content'] = f"Content extraction error: {error_msg}"
                 
                 finally:
@@ -1612,7 +1753,7 @@ Please create a detailed, structured analysis that preserves important informati
                         print_debug(f"⚠️ [{global_index+1}] Failed to close page: {close_error}")
                 
             except Exception as e:
-                print_debug(f"❌ [{global_index+1}] Error processing result: {e}")
+                print_debug(f"[{global_index+1}] Error processing result: {e}")
                 result['content'] = f"Processing error: {str(e)}"
                 # Try to close page even on error
                 try:
@@ -1740,7 +1881,7 @@ Please create a detailed, structured analysis that preserves important informati
                 
             except Exception as e:
                 elapsed_time = time.time() - start_time
-                # print_current(f"❌ Failed to get webpage content (time: {elapsed_time:.2f}s): {e}")  # Commented out to reduce terminal noise
+                # print_current(f"Failed to get webpage content (time: {elapsed_time:.2f}s): {e}")  # Commented out to reduce terminal noise
                 result['content'] = ""
                 
                 if "timeout" in str(e).lower() or elapsed_time > 2:
@@ -1754,6 +1895,14 @@ Please create a detailed, structured analysis that preserves important informati
         
         try:
             content_selectors = [
+                # Medium-specific selectors (add first for priority)
+                'article section[data-name="body"]',
+                'article [data-testid="post-content"]',
+                'article .postArticle-content',
+                'article .section-content',
+                'article [name="body"]',
+                'article .postArticle',
+                # Common article selectors
                 '.article_content', '.article-content', '.content-detail', '.text-detail',
                 '.news-detail', '.detail-content', '.article-detail', '.story-detail',
                 '.article_text', '.news_content', '.post-text', '.entry-text',
@@ -1823,7 +1972,8 @@ Please create a detailed, structured analysis that preserves important informati
                     continue
             
             # If no content found or content is too short, try extracting from body
-            if not content or len(content) < 500:
+            # Lower threshold to 200 to be more lenient
+            if not content or len(content) < 200:
                 try:
                     # print_current("⚠️ Selector method found no content or content too short, trying to extract full body text")
                     body_elem = None
@@ -1877,8 +2027,10 @@ Please create a detailed, structured analysis that preserves important informati
                 # Post-process extracted content to handle common issues
                 content = self._post_process_extracted_content(content)
                 
-                if len(content) < 100:
-    
+                # Lower threshold to 50 characters to be more lenient
+                # Some pages may have valid but short content
+                if len(content) < 50:
+                    print_debug(f"⚠️ Content too short after post-processing ({len(content)} chars), returning empty")
                     return ""
                 
         except Exception as e:
@@ -1948,6 +2100,11 @@ Please create a detailed, structured analysis that preserves important informati
                     continue
                 # Include news-like content even if short
                 elif chinese_chars > 5 or ('丨' in line) or ('｜' in line) or ('：' in line and chinese_chars > 3):
+                    cleaned_lines.append(line)
+                # For English content (like Medium articles), be more lenient
+                elif len(line) > 30 and not any(nav in line.lower() for nav in ['home', 'login', 'register', 'menu', 'navigation']):
+                    # If line is substantial and doesn't look like navigation, include it
+                    skip_initial_nav = False
                     cleaned_lines.append(line)
                 else:
                     # If we haven't found main content yet but this looks substantial, include it
@@ -2633,7 +2790,7 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Check if Playwright is available before proceeding
         if not is_playwright_available():
-            print_current("❌ Playwright is not installed or not available")
+            print_current("Playwright is not installed or not available")
             print_current("💡 Install with: pip install playwright && playwright install chromium")
             return {
                 'status': 'failed',
@@ -2888,6 +3045,107 @@ Please create a detailed, structured analysis that preserves important informati
         
         return url
     
+    def _decode_duckduckgo_redirect_url(self, ddg_url: str) -> str:
+        """
+        Decode DuckDuckGo redirect URL to get the real destination URL
+        
+        Args:
+            ddg_url: DuckDuckGo redirect URL (format: https://duckduckgo.com/l/?uddg=...)
+            
+        Returns:
+            Real destination URL, or original URL if decoding fails
+        """
+        try:
+            import urllib.parse
+            
+            # DuckDuckGo URL format: https://duckduckgo.com/l/?uddg=encoded_url
+            if 'duckduckgo.com/l/' not in ddg_url.lower() or 'uddg=' not in ddg_url.lower():
+                return ddg_url
+            
+            # Parse the URL
+            parsed = urllib.parse.urlparse(ddg_url)
+            query_params = urllib.parse.parse_qs(parsed.query)
+            
+            # Get the uddg parameter
+            if 'uddg' in query_params:
+                encoded_url = query_params['uddg'][0]
+                # Decode the URL
+                decoded_url = urllib.parse.unquote(encoded_url)
+                return decoded_url
+            
+            return ddg_url
+            
+        except Exception as e:
+            print_debug(f"⚠️ Failed to decode DuckDuckGo redirect URL: {e}")
+            return ddg_url
+    
+    def _normalize_url_for_dedup(self, url: str) -> str:
+        """
+        Normalize URL for deduplication by removing query parameters, fragments, and tracking parameters
+        This helps identify duplicate URLs even if they have different tracking parameters
+        
+        Args:
+            url: URL string
+            
+        Returns:
+            Normalized URL without query parameters and fragments
+        """
+        if not url:
+            return ""
+        
+        import urllib.parse
+        
+        # First, decode DuckDuckGo redirect URLs to get the real destination URL
+        # This is important because DuckDuckGo redirect links all look similar
+        # but point to different destinations
+        if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
+            real_url = self._decode_duckduckgo_redirect_url(url)
+            if real_url != url:
+                # Use the real destination URL for deduplication
+                url = real_url
+        
+        # Also decode Baidu redirect URLs
+        if 'baidu.com/link?url=' in url.lower():
+            real_url = self._decode_baidu_redirect_url(url)
+            if real_url != url:
+                url = real_url
+        
+        # First normalize the URL (add protocol if missing)
+        normalized = self._normalize_url(url)
+        
+        try:
+            # Parse the URL
+            parsed = urllib.parse.urlparse(normalized)
+            
+            # Remove query parameters and fragments for deduplication
+            # This helps catch duplicates like:
+            # - https://example.com/page?utm_source=google
+            # - https://example.com/page?utm_source=bing
+            # - https://example.com/page#section
+            
+            # Reconstruct URL without query and fragment
+            dedup_url = urllib.parse.urlunparse((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,  # Keep params (rarely used)
+                '',  # Remove query
+                ''   # Remove fragment
+            ))
+            
+            # Remove trailing slash for consistency (unless it's the root path)
+            if dedup_url.endswith('/') and parsed.path != '/':
+                dedup_url = dedup_url.rstrip('/')
+            
+            return dedup_url.lower()  # Use lowercase for case-insensitive comparison
+            
+        except Exception as e:
+            # If parsing fails, return normalized URL as-is
+            print_debug(f"⚠️ URL normalization failed for {url[:80]}: {e}")
+            return normalized.lower()
+        
+        return url
+    
     def _optimize_search_term(self, search_term: str) -> str:
         """
         Optimize search terms, especially for time-related searches and academic identifiers
@@ -2983,7 +3241,7 @@ Please create a detailed, structured analysis that preserves important informati
         
         # Check if Playwright is available before proceeding
         if not is_playwright_available():
-            print_current("❌ Playwright is not installed or not available")
+            print_current("Playwright is not installed or not available")
             print_current("💡 Install with: pip install playwright && playwright install chromium")
             return {
                 'status': 'failed',
@@ -3254,7 +3512,7 @@ Please create a detailed, structured analysis that preserves important informati
                                                     future.cancel()  # 取消任务
                                                     continue
                                         except Exception as download_error:
-                                            print_debug(f"❌ Download error for image {i+1}: {download_error}")
+                                            print_debug(f"Download error for image {i+1}: {download_error}")
                                             continue
                                     
                                     # Validate if it's a valid image and get format (unified processing for all image data)
@@ -3369,10 +3627,10 @@ Please create a detailed, structured analysis that preserves important informati
                                 print_current(f"✅ Saved {len(saved_images)} images to web_search_result/images/")
                                 break
                         else:
-                            print_debug(f"❌ {engine['name']} found no valid images")
+                            print_debug(f"{engine['name']} found no valid images")
                             
                     except Exception as e:
-                        print_debug(f"❌ {engine['name']} search failed: {e}")
+                        print_debug(f"{engine['name']} search failed: {e}")
                         # Mark this engine as failed so it won't be retried
                         self.failed_engines.add(engine['name'])
                         print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
@@ -3385,7 +3643,7 @@ Please create a detailed, structured analysis that preserves important informati
                         'error': 'No valid images found',
                         'suggestion': 'Please try using more specific search keywords, or check your network connection'
                     })
-                    print_current(f"❌ Image search failed: {query}")
+                    print_current(f"Image search failed: {query}")
                 else:
                     print_debug(f"🎉 Image search completed successfully: {query}")
                 
@@ -3513,7 +3771,7 @@ Please create a detailed, structured analysis that preserves important informati
             print_debug(f"🎯 Successfully extracted {len(valid_images)} images from Google Images metadata")
             
         except Exception as e:
-            print_debug(f"❌ Error extracting Google Images metadata: {e}")
+            print_debug(f"Error extracting Google Images metadata: {e}")
             
         return valid_images
     
@@ -3613,7 +3871,7 @@ Please create a detailed, structured analysis that preserves important informati
                     image_elements = page.query_selector_all('img')
                     print_debug(f"🔍 {engine['name']} fallback found {len(image_elements)} image elements")
                 except Exception as fallback_error:
-                    print_debug(f"❌ Fallback selector also failed: {fallback_error}")
+                    print_debug(f"Fallback selector also failed: {fallback_error}")
                     return valid_images, processed_count, skipped_reasons
             
             # Process all images
@@ -3703,7 +3961,7 @@ Please create a detailed, structured analysis that preserves important informati
                     continue
         
         except Exception as e:
-            print_debug(f"❌ Error extracting images from {engine['name']}: {e}")
+            print_debug(f"Error extracting images from {engine['name']}: {e}")
             
         return valid_images, processed_count, skipped_reasons
     

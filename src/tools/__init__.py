@@ -70,7 +70,7 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
             CodeSearchTools.__init__(self)
             FileSystemTools.__init__(self, workspace_root)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
-            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, workspace_root=workspace_root, out_dir=out_dir)
             HelpTools.__init__(self)
             MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
@@ -151,7 +151,7 @@ elif MCP_KB_TOOLS_AVAILABLE:
             CodeSearchTools.__init__(self)
             FileSystemTools.__init__(self, workspace_root)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
-            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, workspace_root=workspace_root, out_dir=out_dir)
             HelpTools.__init__(self)
             MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
@@ -230,7 +230,7 @@ else:
             CodeSearchTools.__init__(self)
             FileSystemTools.__init__(self, workspace_root)
             TerminalTools.__init__(self, workspace_root)  # Pass workspace_root to TerminalTools
-            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, out_dir)
+            WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, workspace_root=workspace_root, out_dir=out_dir)
             HelpTools.__init__(self)
             MouseTools.__init__(self)
         
