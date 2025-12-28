@@ -3043,13 +3043,13 @@ Cleaned Content Length: {len(cleaned_content)} characters
             if page_type == "verification":
                 print_current("⚠️ Detected verification page in cleaning, returning verification message only")
             elif page_type == "docin":
-                print_current("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
+                print_debug("⚠️ Detected DocIn embedded document page in cleaning, returning message only")
             elif page_type == "baidu_wenku":
                 print_debug("⚠️ Detected Baidu Wenku page in cleaning, returning message only")
             elif page_type == "baidu_mbd":
                 print_debug("⚠️ Detected Baidu MBD page in cleaning, returning message only")
             elif page_type == "baidu_scholar":
-                print_current("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
+                print_debug("⚠️ Detected Baidu Scholar search page in cleaning, returning message only")
             elif page_type == "duckduckgo_help":
                 print_current("⚠️ Detected DuckDuckGo help/ad page in cleaning, returning message only")
             return message
@@ -4173,9 +4173,14 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         print_debug(f"🔍 Attempting to use {engine['name']} for image search...")
                         
                         # Visit search page with improved waiting strategy
-                        # Use 5 seconds timeout for Google Images and Baidu Images (images need more time to load)
+                        # Use 5 seconds timeout for Google Images, 20 seconds for Baidu Images (Baidu needs more time)
                         try:
-                            engine_timeout = 5000 if engine['name'] in ['Google Images', 'Baidu Images'] else 6000
+                            if engine['name'] == 'Baidu Images':
+                                engine_timeout = 20000  # 20 seconds for Baidu Images (no timeout limit)
+                            elif engine['name'] == 'Google Images':
+                                engine_timeout = 5000  # 5 seconds for Google Images
+                            else:
+                                engine_timeout = 6000  # 6 seconds for other engines
                             page.goto(engine['url'], timeout=engine_timeout, wait_until='domcontentloaded')
                             # Wait for page to stabilize
                             page.wait_for_timeout(500)

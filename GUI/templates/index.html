@@ -5983,83 +5983,166 @@
                     // 将💬消息作为普通消息显示（会继续执行下面的逻辑）
                     // 不return，继续处理当前消息
                 } else {
-                    // 智能添加换行：如果消息本身已经以换行结尾，不再添加
-                    // 如果消息不以换行结尾，添加换行
-                    if (message.endsWith('\n')) {
-                        jsonCollectingState.jsonContent += message;
-                    } else {
-                        jsonCollectingState.jsonContent += message + '\n';
-                    }
-                    
-                    // 根据内容类型处理
-                    if (jsonCollectingState.contentType === 'json') {
-                        jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
-                    } else if (jsonCollectingState.contentType === 'xml') {
-                        // XML处理：检查是否已闭合
-                        const isClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
-                        if (isClosed) {
-                            // XML结构完成
-                            jsonCollectingState.isCollecting = false;
-                        }
-                    }
-                    
-                    // 更新折叠框内容
-                    if (jsonCollectingState.jsonContainer) {
-                        const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
-                        if (contentDiv) {
-                            if (jsonCollectingState.contentType === 'json') {
-                                contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
-                            } else {
-                                contentDiv.textContent = jsonCollectingState.jsonContent;
-                            }
-                        }
-                        
-                        // 如果还没有提取工具名称，尝试提取
-                        if (!jsonCollectingState.toolName) {
-                            let toolName = null;
-                            if (jsonCollectingState.contentType === 'json') {
-                                toolName = extractToolName(jsonCollectingState.jsonContent);
-                            } else if (jsonCollectingState.contentType === 'xml') {
-                                toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
-                            }
-                            if (toolName) {
-                                jsonCollectingState.toolName = toolName;
-                                const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
-                                if (titleSpan) {
-                                    titleSpan.textContent = toolName;
+                    // 对于XML类型，先检查当前内容是否已经闭合
+                    // 如果已经闭合，不应该追加新消息，而应该重置状态并让新消息正常显示
+                    if (jsonCollectingState.contentType === 'xml') {
+                        const wasClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
+                        if (wasClosed) {
+                            // XML已经闭合（在之前的消息中），不应该追加当前消息
+                            // 更新折叠框内容
+                            if (jsonCollectingState.jsonContainer) {
+                                const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                                if (contentDiv) {
+                                    contentDiv.textContent = jsonCollectingState.jsonContent;
+                                }
+                                
+                                // 如果还没有提取工具名称，尝试提取
+                                if (!jsonCollectingState.toolName) {
+                                    const toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                                    if (toolName) {
+                                        jsonCollectingState.toolName = toolName;
+                                        const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                                        if (titleSpan) {
+                                            titleSpan.textContent = toolName;
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-                    
-                    // 更新细节窗口显示内容
-                    updateDetailInfoWithJson(jsonCollectingState.jsonContent);
-                    
-                    // 检查是否结束
-                    if (jsonCollectingState.contentType === 'json') {
-                        if (jsonCollectingState.braceCount === 0) {
-                            // JSON结构完成，但可能还有结束标记```，等待下一个消息
-                            jsonCollectingState.isCollecting = false;
-                            jsonCollectingState.waitingForJsonEnd = true;
-                            // 不重置状态，等待下一个消息
-                        }
-                    } else if (jsonCollectingState.contentType === 'xml') {
-                        // XML已在上面检查闭合状态
-                        if (!jsonCollectingState.isCollecting) {
-                            // XML已闭合，完成收集
+                            
+                            // 更新细节窗口显示内容
+                            updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                            
+                            // XML已闭合，完成收集并重置状态
                             resetJsonCollectingState();
                             lastMessageType = null;
                             lastMessageDiv = null;
                             lastMessageContent = null;
+                            
+                            if (shouldScroll) {
+                                throttledAutoScroll(true);
+                            }
+                            // 不return，让当前消息继续执行下面的逻辑正常显示
+                            // 这样XML闭合后的搜索结果就能正常显示了
+                        } else {
+                            // XML未闭合，追加当前消息
+                            // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                            // 如果消息不以换行结尾，添加换行
+                            if (message.endsWith('\n')) {
+                                jsonCollectingState.jsonContent += message;
+                            } else {
+                                jsonCollectingState.jsonContent += message + '\n';
+                            }
+                            
+                            // 检查追加后是否闭合
+                            const isClosed = checkXmlInvokeClosed(jsonCollectingState.jsonContent);
+                            if (isClosed) {
+                                // XML结构完成
+                                jsonCollectingState.isCollecting = false;
+                            }
+                            
+                            // 更新折叠框内容
+                            if (jsonCollectingState.jsonContainer) {
+                                const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                                if (contentDiv) {
+                                    contentDiv.textContent = jsonCollectingState.jsonContent;
+                                }
+                                
+                                // 如果还没有提取工具名称，尝试提取
+                                if (!jsonCollectingState.toolName) {
+                                    const toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                                    if (toolName) {
+                                        jsonCollectingState.toolName = toolName;
+                                        const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                                        if (titleSpan) {
+                                            titleSpan.textContent = toolName;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 更新细节窗口显示内容
+                            updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                            
+                            // 检查是否结束
+                            if (!jsonCollectingState.isCollecting) {
+                                // XML已闭合，完成收集
+                                resetJsonCollectingState();
+                                lastMessageType = null;
+                                lastMessageDiv = null;
+                                lastMessageContent = null;
+                            }
+                            
+                            if (shouldScroll) {
+                                throttledAutoScroll(true);
+                            } else {
+                                // showNewMessageIndicator(); // 已禁用
+                            }
+                            return;
                         }
-                    }
-                    
-                    if (shouldScroll) {
-                        throttledAutoScroll(true);
                     } else {
-                        // showNewMessageIndicator(); // 已禁用
+                        // JSON或其他类型，继续原有逻辑
+                        // 智能添加换行：如果消息本身已经以换行结尾，不再添加
+                        // 如果消息不以换行结尾，添加换行
+                        if (message.endsWith('\n')) {
+                            jsonCollectingState.jsonContent += message;
+                        } else {
+                            jsonCollectingState.jsonContent += message + '\n';
+                        }
+                        
+                        // 根据内容类型处理
+                        if (jsonCollectingState.contentType === 'json') {
+                            jsonCollectingState.braceCount = countJsonBraces(jsonCollectingState.jsonContent);
+                        }
+                        
+                        // 更新折叠框内容
+                        if (jsonCollectingState.jsonContainer) {
+                            const contentDiv = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-content');
+                            if (contentDiv) {
+                                if (jsonCollectingState.contentType === 'json') {
+                                    contentDiv.textContent = filterJsonMarkers(jsonCollectingState.jsonContent);
+                                } else {
+                                    contentDiv.textContent = jsonCollectingState.jsonContent;
+                                }
+                            }
+                            
+                            // 如果还没有提取工具名称，尝试提取
+                            if (!jsonCollectingState.toolName) {
+                                let toolName = null;
+                                if (jsonCollectingState.contentType === 'json') {
+                                    toolName = extractToolName(jsonCollectingState.jsonContent);
+                                } else if (jsonCollectingState.contentType === 'xml') {
+                                    toolName = extractToolNameFromXml(jsonCollectingState.jsonContent);
+                                }
+                                if (toolName) {
+                                    jsonCollectingState.toolName = toolName;
+                                    const titleSpan = jsonCollectingState.jsonContainer.querySelector('.json-collapsible-title span:last-child');
+                                    if (titleSpan) {
+                                        titleSpan.textContent = toolName;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 更新细节窗口显示内容
+                        updateDetailInfoWithJson(jsonCollectingState.jsonContent);
+                        
+                        // 检查是否结束
+                        if (jsonCollectingState.contentType === 'json') {
+                            if (jsonCollectingState.braceCount === 0) {
+                                // JSON结构完成，但可能还有结束标记```，等待下一个消息
+                                jsonCollectingState.isCollecting = false;
+                                jsonCollectingState.waitingForJsonEnd = true;
+                                // 不重置状态，等待下一个消息
+                            }
+                        }
+                        
+                        if (shouldScroll) {
+                            throttledAutoScroll(true);
+                        } else {
+                            // showNewMessageIndicator(); // 已禁用
+                        }
+                        return;
                     }
-                    return;
                 }
             }
             

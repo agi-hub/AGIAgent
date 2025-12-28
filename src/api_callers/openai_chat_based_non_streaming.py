@@ -75,8 +75,7 @@ def call_openai_with_chat_based_tools_non_streaming(executor, messages, system_m
     # Print LLM response in non-streaming mode
     if content:
         print_current("")
-        print_current("💬 LLM Response:")
-        print_current(content)
+        print_current("💬"+content)
     
     return content, tool_calls
 

@@ -109,6 +109,12 @@ class CliMcpWrapper:
             # Load configuration
             await self._load_config()
             
+            # If no servers to handle (all handled by FastMCP), skip tool discovery
+            if not self.servers:
+                self.initialized = True
+                print_system(f"✅ cli-mcp client initialized (no servers to handle, all handled by FastMCP)")
+                return True
+            
             # Discover all tools
             await self._discover_tools()
             
@@ -130,15 +136,24 @@ class CliMcpWrapper:
 
             # Check for FastMCP wrapper to avoid conflicts
             fastmcp_wrapper = None
-            if FASTMCP_AVAILABLE:
+            if _check_fastmcp_available():
                 try:
-                    fastmcp_wrapper = get_fastmcp_wrapper(self.config_path)
+                    # Try to get FastMCP wrapper with the same config path
+                    # First try with the same config path as cli-mcp
+                    from .fastmcp_wrapper import get_fastmcp_wrapper as _get_fastmcp_wrapper
+                    fastmcp_wrapper = _get_fastmcp_wrapper(self.config_path)
                     # Ensure FastMCP wrapper is initialized to check server support
                     if fastmcp_wrapper and not fastmcp_wrapper.initialized:
                         await fastmcp_wrapper.initialize()
                 except Exception as e:
-                    print_current(f"⚠️ Could not initialize FastMCP wrapper: {e}")
-                    fastmcp_wrapper = None
+                    # If that fails, try with default config path
+                    try:
+                        fastmcp_wrapper = get_fastmcp_wrapper()
+                        if fastmcp_wrapper and not fastmcp_wrapper.initialized:
+                            await fastmcp_wrapper.initialize()
+                    except Exception as e2:
+                        print_current(f"⚠️ Could not initialize FastMCP wrapper: {e2}")
+                        fastmcp_wrapper = None
 
             # Filter out SSE servers, only handle NPX/NPM format servers
             self.servers = {}
@@ -149,10 +164,13 @@ class CliMcpWrapper:
                     continue
 
                 # Check if FastMCP is already handling this server
+                # If FastMCP exists and supports this server, skip it completely
                 if (fastmcp_wrapper and
+                    fastmcp_wrapper.initialized and
                     server_config.get("command") and
                     fastmcp_wrapper.supports_server(server_name)):
-                    print_current(f"⏭️  Skipping server {server_name}, already handled by FastMCP")
+                    # FastMCP is handling this server, skip cli-mcp completely
+                    print_debug(f"⏭️  Skipping server {server_name}, already handled by FastMCP")
                     continue
 
                 # Only handle servers with command field (NPX/NPM format)

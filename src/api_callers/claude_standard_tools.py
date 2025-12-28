@@ -394,12 +394,34 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                         try:
                             tool_name = tool_call_data['name']
                             tool_params = tool_call_data['input']
+                            
+                            # Ensure tool_params is a dict - parse if it's a string
+                            if isinstance(tool_params, str):
+                                is_valid, parsed_params, error_msg = validate_tool_call_json(tool_params, tool_name)
+                                if not is_valid:
+                                    print_error(f"❌ Tool {tool_name} parameter parsing failed: {error_msg}")
+                                    print_debug(f"   Raw parameters: {tool_params[:200]}...")
+                                    # Add error feedback to history
+                                    executor._add_error_feedback_to_history(
+                                        error_type='json_parse_error',
+                                        error_message=f"Tool {tool_name} parameter parsing failed: {error_msg}"
+                                    )
+                                    continue
+                                tool_params = parsed_params
+                            
+                            # Ensure tool_params is a dict (default to empty dict if None)
+                            if not isinstance(tool_params, dict):
+                                if tool_params is None:
+                                    tool_params = {}
+                                else:
+                                    print_error(f"❌ Tool {tool_name} parameters must be a dict, got {type(tool_params).__name__}")
+                                    continue
 
                             # Print tool name and parameters before execution in JSON format
                             tool_call_json = {
                                 "tool_name": tool_name,
                                 "tool_index": i + 1,
-                                "parameters": tool_params if isinstance(tool_params, dict) else {}
+                                "parameters": tool_params
                             }
                             print_current("```json")
                             print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
@@ -485,6 +507,7 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                 content = ""
                 thinking = ""
                 tool_calls = []
+                tool_call_jsons = []  # Store tool call JSONs for printing after message
                 
                 # Extract thinking and content from Anthropic response
                 if executor.enable_thinking:
@@ -507,15 +530,13 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                             tool_name = content_block.name
                             tool_input = content_block.input
                             
-                            # Print tool name and parameters in JSON format
+                            # Store tool call JSON for printing after message
                             tool_call_json = {
                                 "tool_name": tool_name,
                                 "tool_index": len(tool_calls) + 1,
                                 "parameters": tool_input if isinstance(tool_input, dict) else {}
                             }
-                            print_current("```json")
-                            print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
-                            print_current("```")
+                            tool_call_jsons.append(tool_call_json)
                             
                             tool_calls.append({
                                 "id": content_block.id,
@@ -562,11 +583,16 @@ def call_claude_with_standard_tools(executor, messages, system_message):
                         content = ""
                     return content, []
 
-                # Print LLM response in non-streaming mode
+                # Print LLM response in non-streaming mode (before tool calls)
                 if content:
                     print_current("")
-                    print_current("💬 LLM Response:")
-                    print_current(content)
+                    print_current("💬"+content)
+                
+                # Print tool call JSONs after message
+                for tool_call_json in tool_call_jsons:
+                    print_current("```json")
+                    print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                    print_current("```")
 
                 return content, tool_calls
 

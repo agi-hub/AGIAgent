@@ -295,8 +295,7 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                     # Print LLM response in non-streaming mode
                     if content:
                         print_current("")
-                        print_current("💬 LLM Response:")
-                        print_current(content)
+                        print_current("💬"+content)
                     
                     return content, tool_calls
 
@@ -351,11 +350,12 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                 
                 # Convert OpenAI tool_calls objects to dictionary format
                 tool_calls = []
+                tool_call_jsons = []  # Store tool call JSONs for printing after message
                 for i, tool_call in enumerate(raw_tool_calls):
                     tool_name = tool_call.function.name
                     tool_args_str = tool_call.function.arguments
                     
-                    # Print tool name and parameters before returning in JSON format
+                    # Store tool call JSON for printing after message
                     try:
                         tool_args = json.loads(tool_args_str) if tool_args_str else {}
                     except:
@@ -366,9 +366,7 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                         "tool_index": i + 1,
                         "parameters": tool_args if isinstance(tool_args, dict) else {}
                     }
-                    print_current("```json")
-                    print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
-                    print_current("```")
+                    tool_call_jsons.append(tool_call_json)
                     
                     tool_calls.append({
                         "id": tool_call.id,
@@ -387,11 +385,16 @@ def call_openai_with_standard_tools(executor, messages, system_message):
                     total_tokens = getattr(usage, 'total_tokens', 0) or 0
                     print_debug(f"📊 Current conversation token usage - Input: {prompt_tokens}, Output: {completion_tokens}, Total: {total_tokens}")
 
-                # Print LLM response in non-streaming mode
+                # Print LLM response in non-streaming mode (before tool calls)
                 if content:
                     print_current("")
-                    print_current("💬 LLM Response:")
-                    print_current(content)
+                    print_current("💬"+content)
+                
+                # Print tool call JSONs after message
+                for tool_call_json in tool_call_jsons:
+                    print_current("```json")
+                    print_current(json.dumps(tool_call_json, ensure_ascii=False, indent=2))
+                    print_current("```")
                 
                 # print_current("✅ Generation completed")
                 return content, tool_calls

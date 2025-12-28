@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import re
 from src.tools.print_system import print_current, print_debug
 
 
@@ -116,6 +117,13 @@ def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_m
             content += '\n'
         return content, []
 
+    # Add newline before tool call markers (<invoke or <tool_call) if not already present
+    # Handle string start and non-newline character cases
+    if content and (content.startswith('<invoke') or content.startswith('<tool_call')):
+        content = '\n' + content
+    # Replace non-newline character followed by tool call marker
+    content = re.sub(r'([^\n])(<invoke|<tool_call)', r'\1\n\2', content)
+    
     # Parse tool calls from the (only) relevant content
     tool_calls = executor.parse_tool_calls(content)
 
@@ -126,8 +134,7 @@ def call_claude_with_chat_based_tools_non_streaming(executor, messages, system_m
     # Print LLM response in non-streaming mode
     if content:
         print_current("")
-        print_current("💬 LLM Response:")
-        print_current(content)
+        print_current("💬" + content)
     
     return content, tool_calls
 

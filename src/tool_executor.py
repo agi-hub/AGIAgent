@@ -413,6 +413,49 @@ class ToolExecutor:
         
 
         # Initialize MCP clients
+        # Initialize FastMCP wrapper first (has higher priority)
+        self.fastmcp_initialized = False
+        try:
+            from tools.fastmcp_wrapper import get_fastmcp_wrapper, initialize_fastmcp_wrapper
+            
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                if loop and loop.is_running():
+                    # We're in an async context, use thread pool for initialization
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        try:
+                            future_fastmcp = executor.submit(asyncio.run, initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                            self.fastmcp_initialized = future_fastmcp.result(timeout=30)
+                            if self.fastmcp_initialized:
+                                print_system(f"✅ FastMCP client initialized during startup with config: {self.MCP_config_file}")
+                        except Exception as e:
+                            print_system(f"⚠️ FastMCP client startup initialization failed: {e}")
+                            self.fastmcp_initialized = False
+                else:
+                    # Safe to run async initialization directly
+                    try:
+                        self.fastmcp_initialized = asyncio.run(initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                        if self.fastmcp_initialized:
+                            print_system(f"✅ FastMCP client initialized during startup with config: {self.MCP_config_file}")
+                    except Exception as e:
+                        print_system(f"⚠️ FastMCP client startup initialization failed: {e}")
+                        self.fastmcp_initialized = False
+            except RuntimeError:
+                # No event loop, safe to create one
+                try:
+                    self.fastmcp_initialized = asyncio.run(initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                    if self.fastmcp_initialized:
+                        print_system(f"✅ FastMCP client initialized during startup with config: {self.MCP_config_file}")
+                except Exception as e:
+                    print_system(f"⚠️ FastMCP client startup initialization failed: {e}")
+                    self.fastmcp_initialized = False
+        except Exception as e:
+            print_system(f"⚠️ FastMCP wrapper not available: {e}")
+            self.fastmcp_initialized = False
+        
+        # Initialize cli-mcp wrapper (will skip servers already handled by FastMCP)
         self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
         self.cli_mcp_initialized = False
         
@@ -451,7 +494,7 @@ class ToolExecutor:
                 self.cli_mcp_initialized = False
         
         # Add MCP tools to tool_map after successful initialization
-        if self.cli_mcp_initialized:
+        if self.fastmcp_initialized or self.cli_mcp_initialized:
             self._add_mcp_tools_to_map()
             #print_current(f"🔧 MCP tools loaded successfully during startup")
 
@@ -1991,6 +2034,35 @@ END OF ERROR FEEDBACK
         tool_name = tool_call["name"]
         params = tool_call.get("input") or tool_call.get("arguments")
         
+        # Ensure params is a dict - parse if it's a string
+        if isinstance(params, str):
+            try:
+                import json
+                params = json.loads(params)
+            except (json.JSONDecodeError, TypeError) as e:
+                error_result = {
+                    'tool': tool_name,
+                    'status': 'error',
+                    'error': f"Failed to parse parameters as JSON: {str(e)}",
+                    'parameters': params
+                }
+                print_debug(f"❌ Tool execution failed: {error_result}")
+                return error_result
+        
+        # Ensure params is a dict (default to empty dict if None)
+        if not isinstance(params, dict):
+            if params is None:
+                params = {}
+            else:
+                error_result = {
+                    'tool': tool_name,
+                    'status': 'error',
+                    'error': f"Parameters must be a dict, got {type(params).__name__}",
+                    'parameters': params
+                }
+                print_debug(f"❌ Tool execution failed: {error_result}")
+                return error_result
+        
         tool_source = getattr(self, 'tool_source_map', {}).get(tool_name, 'regular')
         
         # Handle FastMCP tools
@@ -2738,9 +2810,36 @@ END OF ERROR FEEDBACK
             
             # Load FastMCP tool definitions dynamically
             try:
-                from tools.fastmcp_wrapper import get_fastmcp_wrapper
+                from tools.fastmcp_wrapper import get_fastmcp_wrapper, initialize_fastmcp_wrapper
 
                 fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
+                
+                # If FastMCP wrapper exists but is not initialized, try to initialize it
+                if fastmcp_wrapper and not getattr(fastmcp_wrapper, 'initialized', False):
+                    try:
+                        import asyncio
+                        # Try to initialize FastMCP wrapper synchronously
+                        try:
+                            loop = asyncio.get_running_loop()
+                            if loop and loop.is_running():
+                                # We're in an async context, use thread pool for initialization
+                                import concurrent.futures
+                                with concurrent.futures.ThreadPoolExecutor() as executor:
+                                    future = executor.submit(asyncio.run, initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                                    future.result(timeout=30)
+                            else:
+                                # Safe to run async initialization directly
+                                asyncio.run(initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                        except RuntimeError:
+                            # No event loop, safe to create one
+                            asyncio.run(initialize_fastmcp_wrapper(self.MCP_config_file, workspace_dir=self.workspace_dir))
+                        
+                        # Refresh wrapper reference after initialization
+                        fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
+                        print_debug(f"✅ FastMCP wrapper initialized during tool definition load")
+                    except Exception as init_error:
+                        print_debug(f"⚠️ Failed to initialize FastMCP wrapper: {init_error}")
+                
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
                     fastmcp_tools = fastmcp_wrapper.get_available_tools()
                     if fastmcp_tools:
@@ -2787,33 +2886,66 @@ END OF ERROR FEEDBACK
             
             # Load cli-mcp tool definitions dynamically
             try:
-                if hasattr(self, 'tool_source_map'):
-                    cli_mcp_tools = [tool_name for tool_name, source in self.tool_source_map.items() 
-                                   if source == 'cli_mcp']
+                if self.cli_mcp_initialized and self.cli_mcp_client:
+                    # Get available tools directly from cli-mcp client
+                    cli_mcp_tools = self.cli_mcp_client.get_available_tools()
                     
-                    if cli_mcp_tools and self.cli_mcp_initialized and self.cli_mcp_client:
-                        print_debug(f"🔧 Loading {len(cli_mcp_tools)} cli-mcp tool definitions")
+                    if cli_mcp_tools:
+                        # Filter out tools that are already handled by FastMCP
+                        # Get FastMCP tools if available
+                        fastmcp_tools = set()
+                        if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
+                            fastmcp_tools = set(fastmcp_wrapper.get_available_tools())
                         
+                        # Filter cli-mcp tools
+                        filtered_cli_mcp_tools = []
                         for tool_name in cli_mcp_tools:
-                            try:
-                                # Get tool definition from cli-mcp wrapper
-                                tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
-                                if tool_def:
-                                    # Convert to the format expected by our tool definitions
-                                    tool_definitions[tool_name] = {
-                                        "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
-                                        "parameters": {
-                                            "type": "object",
-                                            "properties": tool_def.get("input_schema", {}).get("properties", {}),
-                                            "required": tool_def.get("input_schema", {}).get("required", [])
-                                        }
-                                    }
-                                    print_debug(f"✅ Added cli-mcp tool definition: {tool_name}")
-                            except Exception as e:
-                                print_debug(f"⚠️ Failed to load cli-mcp tool definition for {tool_name}: {e}")
+                            # Skip if tool is already handled by FastMCP
+                            if tool_name in fastmcp_tools:
                                 continue
+                            
+                            # Also check if server is handled by FastMCP
+                            if '_' in tool_name:
+                                server_part = tool_name.split('_')[0]
+                                if fastmcp_wrapper and fastmcp_wrapper.supports_server(server_part):
+                                    # Check if FastMCP has tools for this server
+                                    fastmcp_server_tools = fastmcp_wrapper.get_server_tools(server_part)
+                                    if fastmcp_server_tools:
+                                        continue  # Skip, FastMCP is handling this server
+                            
+                            filtered_cli_mcp_tools.append(tool_name)
                         
-                        print_debug(f"✅ cli-mcp tool definitions loaded successfully")
+                        if filtered_cli_mcp_tools:
+                            should_print = force_reload or not hasattr(self, '_cli_mcp_loaded_before')
+                            
+                            if should_print:
+                                print_debug(f"🔧 Loading {len(filtered_cli_mcp_tools)} cli-mcp tool definitions")
+                            
+                            for tool_name in filtered_cli_mcp_tools:
+                                try:
+                                    # Get tool definition from cli-mcp wrapper
+                                    tool_def = self.cli_mcp_client.get_tool_definition(tool_name)
+                                    if tool_def:
+                                        # Convert to the format expected by our tool definitions
+                                        tool_definitions[tool_name] = {
+                                            "description": tool_def.get("description", f"cli-mcp tool: {tool_name}"),
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": tool_def.get("input_schema", {}).get("properties", {}),
+                                                "required": tool_def.get("input_schema", {}).get("required", [])
+                                            }
+                                        }
+                                        if should_print:
+                                            print_debug(f"✅ Added cli-mcp tool definition: {tool_name}")
+                                except Exception as e:
+                                    print_debug(f"⚠️ Failed to load cli-mcp tool definition for {tool_name}: {e}")
+                                    continue
+                            
+                            if should_print:
+                                print_debug(f"✅ cli-mcp tool definitions loaded successfully")
+                            
+                            # Mark that we've loaded cli-mcp tools before
+                            self._cli_mcp_loaded_before = True
                     
             except Exception as e:
                 print_debug(f"⚠️ Failed to load cli-mcp tool definitions: {e}")
