@@ -22,6 +22,71 @@ from src.tools.print_system import streaming_context, print_debug, print_current
 from src.utils.parse import fix_wrong_tool_call_format
 
 
+def _ensure_newline_before_invoke(content: str) -> str:
+    """
+    确保在消息文本和工具调用标签之间添加换行符。
+    
+    检测模式：非XML标签的文本内容后面紧跟着 <invoke name=
+    在它们之间插入换行符，使输出更清晰。
+    
+    例如：
+    "💬 现在开始撰写报告。<invoke name="edit_file">"
+    会被转换为：
+    "💬 现在开始撰写报告。\n<invoke name="edit_file">"
+    
+    Args:
+        content: 原始内容字符串
+        
+    Returns:
+        处理后的内容字符串
+    """
+    if not content:
+        return content
+    
+    # 使用正则表达式匹配：在同一行中，非空白字符、非XML标签字符后面紧跟着 <invoke name=
+    # 模式：匹配文本内容（非标签，非空白）后面直接跟着 <invoke name=，且它们在同一行
+    
+    # 更精确的实现：逐行处理，对于包含 <invoke name= 的行，检查前面是否有文本
+    # 但要注意：流式输出中，内容可能跨行，所以需要全局处理
+    
+    # 使用正则表达式匹配：文本内容（不在标签内）后面紧跟着 <invoke name=
+    # 匹配模式：
+    # 1. 非标签字符序列（至少一个非空白字符）
+    # 2. 后面直接跟着（可选空白 + <invoke name=）
+    # 3. 且它们之间没有换行符（即在同一行）
+    
+    # 匹配非标签文本后紧跟着 <invoke name= 的情况
+    # 使用负向前瞻和后顾断言确保不在标签内
+    # 模式：(?<!>) - 前面不是 >
+    #      ([^\s<>]+(?:\s+[^\s<>]+)*) - 文本内容（至少一个非空白字符）
+    #      \s* - 可选空白
+    #      (<invoke\s+name=) - <invoke name=
+    
+    # 但上面的模式在流式输出中可能不够准确，使用更简单的方法：
+    # 查找所有 <invoke name= 的位置，检查前面是否需要换行
+    
+    lines = content.split('\n')
+    result_lines = []
+    
+    for line_idx, line in enumerate(lines):
+        if '<invoke name=' in line:
+            # 在这一行中找到 <invoke name= 的位置
+            invoke_pos = line.find('<invoke name=')
+            if invoke_pos > 0:
+                # 检查 <invoke 前面的内容
+                before_invoke = line[:invoke_pos].rstrip()
+                # 如果有文本内容且不是标签的一部分，需要分割
+                if before_invoke and not before_invoke.endswith('>') and not before_invoke.endswith('</invoke'):
+                    # 在同一行，需要分成两行
+                    result_lines.append(before_invoke)
+                    result_lines.append(line[invoke_pos:])
+                    continue
+        
+        result_lines.append(line)
+    
+    return '\n'.join(result_lines)
+
+
 def call_claude_with_chat_based_tools_streaming(executor, messages, system_message):
     """
     Call Claude API with chat-based tool calling in streaming mode.
@@ -197,8 +262,24 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                         if unprinted_length >= min_buffer_size:
                                             print_length = unprinted_length - min_buffer_size
                                             if print_length > 0:
-                                                printer.write(content[total_printed:total_printed + print_length])
-                                                total_printed += print_length
+                                                # 在打印前，确保在消息文本和工具调用标签之间添加换行
+                                                # 需要对整个content进行处理，然后基于处理后的内容计算打印位置
+                                                content_processed = _ensure_newline_before_invoke(content)
+                                                
+                                                # 如果处理后的内容长度发生变化，需要重新计算打印位置
+                                                if len(content_processed) != len(content):
+                                                    # 内容被修改了，更新content并重新计算
+                                                    content = content_processed
+                                                    unprinted_length = len(content) - total_printed
+                                                    if unprinted_length >= min_buffer_size:
+                                                        print_length = unprinted_length - min_buffer_size
+                                                        if print_length > 0:
+                                                            printer.write(content[total_printed:total_printed + print_length])
+                                                            total_printed += print_length
+                                                else:
+                                                    # 内容没有变化，正常打印
+                                                    printer.write(content[total_printed:total_printed + print_length])
+                                                    total_printed += print_length
                     except Exception as e:
                         # Catch exceptions during streaming
                         stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
@@ -219,6 +300,8 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                     
                     # Print remaining content not yet printed
                     if total_printed < len(content):
+                        # 在打印前，确保在消息文本和工具调用标签之间添加换行
+                        content = _ensure_newline_before_invoke(content)
                         printer.write(content[total_printed:])
 
                     # If a hallucination was detected, add error feedback but still check for tool calls
@@ -288,6 +371,9 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                             text = getattr(delta, 'text', '')
                                             content += text
                                             
+                                            # Fix wrong tool call format before printing
+                                            content = fix_wrong_tool_call_format(content)
+                                            
                                             hallucination_patterns = [
                                                 "**LLM Called Following Tools in this round",
                                                 "**Tool Execution Results:**"
@@ -339,8 +425,21 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                             if unprinted_length >= min_buffer_size:
                                                 print_length = unprinted_length - min_buffer_size
                                                 if print_length > 0:
-                                                    printer.write(content[total_printed:total_printed + print_length])
-                                                    total_printed += print_length
+                                                    # 在打印前，确保在消息文本和工具调用标签之间添加换行
+                                                    content_processed = _ensure_newline_before_invoke(content)
+                                                    
+                                                    # 如果处理后的内容长度发生变化，需要重新计算打印位置
+                                                    if len(content_processed) != len(content):
+                                                        content = content_processed
+                                                        unprinted_length = len(content) - total_printed
+                                                        if unprinted_length >= min_buffer_size:
+                                                            print_length = unprinted_length - min_buffer_size
+                                                            if print_length > 0:
+                                                                printer.write(content[total_printed:total_printed + print_length])
+                                                                total_printed += print_length
+                                                    else:
+                                                        printer.write(content[total_printed:total_printed + print_length])
+                                                        total_printed += print_length
                         except Exception as e:
                             stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
                             print_debug(f"⚠️ {stream_error_message}")
@@ -357,6 +456,8 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                 print_debug(f"⚠️ Error closing Anthropic stream: {close_error}")
                         
                         if total_printed < len(content):
+                            # 在打印前，确保在消息文本和工具调用标签之间添加换行
+                            content = _ensure_newline_before_invoke(content)
                             printer.write(content[total_printed:])
                         
                         if hallucination_detected:

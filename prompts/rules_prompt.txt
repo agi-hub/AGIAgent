@@ -1,4 +1,12 @@
 You should follow these rules to finish the task:
+## Strict tool-calling format
+You MUST follow the following XML format for tool-calling.
+
+<invoke name="tool_name">
+  <parameter name="parameter_name">...</parameter>
+</invoke>
+
+If no </invoke> found, the tool calling will failed. 
 
 ## Making Code Changes
 

@@ -90,6 +90,8 @@
             --text-file-item-directory: #9cdcfe;
             --text-upload-hint: #9cdcfe;
             --text-progress: #9cdcfe;
+            --link-color: #4a9eff;
+            --link-color-hover: #6bb3ff;
             
             --border-primary: #3e3e42;
             --border-secondary: #3e3e42;
@@ -1193,6 +1195,18 @@
             overflow-wrap: anywhere;
             line-height: 1.4;
             font-size: 1em;
+        }
+        
+        .message-text a {
+            color: var(--link-color, #4a9eff);
+            text-decoration: underline;
+            cursor: pointer;
+            word-break: break-all;
+        }
+        
+        .message-text a:hover {
+            color: var(--link-color-hover, #6bb3ff);
+            text-decoration: underline;
         }
 
         @keyframes fadeIn {
@@ -4327,7 +4341,7 @@
         // File monitoring variables
         let fileMonitoringTimer = null;
         let lastFileCount = null;
-        let fileMonitoringInterval = 10000; // 10 seconds
+        let fileMonitoringInterval = 2000; // 2 seconds
 
         // User connection management functions
         function updateUserStatus(status, message, identity = '', isGuest = false) {
@@ -5408,6 +5422,30 @@
             return div.innerHTML;
         }
         
+        // Convert URLs in text to clickable links
+        function convertUrlsToLinks(text) {
+            if (!text) return '';
+            
+            // URL正则表达式：匹配 http://, https://, 或 www. 开头的URL
+            // 也匹配其他常见协议如 ftp://, mailto: 等
+            const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+|www\.[^\s<>"{}|\\^`\[\]]+|ftp:\/\/[^\s<>"{}|\\^`\[\]]+|mailto:[^\s<>"{}|\\^`\[\]]+)/gi;
+            
+            // 先转义HTML，防止XSS攻击
+            const escapedText = escapeHtml(text);
+            
+            // 将URL替换为链接
+            return escapedText.replace(urlRegex, function(url) {
+                // 如果URL以www.开头，添加https://前缀
+                let href = url;
+                if (url.toLowerCase().startsWith('www.')) {
+                    href = 'https://' + url;
+                }
+                
+                // 创建链接，在新标签页中打开
+                return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+            });
+        }
+        
         /**
          * 检测JSON开始（检测到{开头）
          * @param {string} message 消息内容
@@ -5430,43 +5468,66 @@
         }
         
         /**
-         * 检测XML工具调用开始（检测到<invoke）
+         * 检测XML工具调用开始（检测到<invoke或<tool_call>）
          * @param {string} message 消息内容
          * @returns {boolean} 是否是XML工具调用开始
          */
         function detectXmlInvokeStart(message) {
             const trimmed = message.trim();
-            // 检测是否包含<invoke（忽略大小写，忽略前导空格）
-            if (/<invoke\s/i.test(trimmed)) {
+            // 检测是否包含<invoke或<tool_call>（忽略大小写，忽略前导空格）
+            // 注意：/<tool_call/i 会匹配 <tool_call>、<tool_call name= 等格式
+            if (/<invoke\s/i.test(trimmed) || /<tool_call/i.test(trimmed)) {
                 return true;
             }
-            // 检测是否以💬开头，且后面包含<invoke
+            // 检测是否以💬开头，且后面包含<invoke或<tool_call>
+            // 这个检查是冗余的（因为上面已经检查了），但保留作为额外保险
             if (trimmed.startsWith('💬')) {
                 const withoutEmoji = trimmed.replace(/^💬\s*/, '').trim();
-                return /<invoke\s/i.test(withoutEmoji);
+                if (/<invoke\s/i.test(withoutEmoji) || /<tool_call/i.test(withoutEmoji)) {
+                    return true;
+                }
             }
             return false;
         }
         
         /**
-         * 检测XML工具调用结束（检测到</invoke>）
+         * 检测XML工具调用结束（检测到</invoke>或</tool_call>）
          * @param {string} message 消息内容
          * @returns {boolean} 是否包含XML工具调用结束标记
          */
         function detectXmlInvokeEnd(message) {
-            return /<\/invoke>/i.test(message);
+            return /<\/invoke>/i.test(message) || /<\/tool_call>/i.test(message);
         }
         
         /**
-         * 计算XML标签匹配情况（用于检测<invoke>是否闭合）
+         * 计算XML标签匹配情况（用于检测<invoke>或<tool_call>是否闭合）
          * @param {string} text 文本内容
-         * @returns {boolean} 是否已闭合（true表示已找到</invoke>）
+         * @returns {boolean} 是否已闭合（true表示已找到对应的结束标签）
          */
         function checkXmlInvokeClosed(text) {
-            // 简单检测：查找<invoke和</invoke>标签
-            const openMatches = text.match(/<invoke\s[^>]*>/gi) || [];
-            const closeMatches = text.match(/<\/invoke>/gi) || [];
-            return closeMatches.length >= openMatches.length;
+            // 检测<invoke>标签
+            const invokeOpenMatches = text.match(/<invoke\s[^>]*>/gi) || [];
+            const invokeCloseMatches = text.match(/<\/invoke>/gi) || [];
+            const invokeClosed = invokeCloseMatches.length >= invokeOpenMatches.length;
+            
+            // 检测<tool_call>标签
+            const toolCallOpenMatches = text.match(/<tool_call[^>]*>/gi) || [];
+            const toolCallCloseMatches = text.match(/<\/tool_call>/gi) || [];
+            const toolCallClosed = toolCallCloseMatches.length >= toolCallOpenMatches.length;
+            
+            // 如果同时包含两种标签，需要都闭合才返回true
+            if (invokeOpenMatches.length > 0 && toolCallOpenMatches.length > 0) {
+                return invokeClosed && toolCallClosed;
+            }
+            // 如果只包含一种标签，检查对应标签是否闭合
+            if (invokeOpenMatches.length > 0) {
+                return invokeClosed;
+            }
+            if (toolCallOpenMatches.length > 0) {
+                return toolCallClosed;
+            }
+            // 如果都没有标签，返回true（视为已闭合）
+            return true;
         }
         
         /**
@@ -5546,10 +5607,21 @@
          */
         function extractToolNameFromXml(xmlText) {
             try {
-                // 匹配 <invoke name="tool_name"> 或 <invoke name='tool_name'>
-                const nameMatch = xmlText.match(/<invoke\s+[^>]*name\s*=\s*["']([^"']+)["']/i);
+                // 优先匹配 <invoke name="tool_name"> 或 <invoke name='tool_name'>
+                let nameMatch = xmlText.match(/<invoke\s+[^>]*name\s*=\s*["']([^"']+)["']/i);
                 if (nameMatch) {
                     return nameMatch[1];
+                }
+                // 匹配 <tool_call name="tool_name"> 或 <tool_call name='tool_name'>
+                nameMatch = xmlText.match(/<tool_call\s+[^>]*name\s*=\s*["']([^"']+)["']/i);
+                if (nameMatch) {
+                    return nameMatch[1];
+                }
+                // 匹配 <tool_call>tool_name> 格式（工具名称直接在标签后面）
+                // 例如: <tool_call>edit_file> 或 <tool_call>tool_name>
+                nameMatch = xmlText.match(/<tool_call>([^<>\s]+)>/i);
+                if (nameMatch) {
+                    return nameMatch[1].trim();
                 }
             } catch (e) {
                 // 忽略解析错误
@@ -5844,6 +5916,8 @@
             // 检测消息中是否包含💬（无论位置）
             if (message.includes('💬')) {
                 // 如果当前正在收集JSON/XML或等待JSON结束/开始，强制结束
+                // 注意：即使消息中包含新的工具调用标记，也应该先结束之前的收集，
+                // 然后让后续的检测逻辑（第6254行）来处理新工具调用的开始
                 if (jsonCollectingState.isCollecting || 
                     jsonCollectingState.waitingForJsonEnd || 
                     jsonCollectingState.waitingForJsonStart) {
@@ -5869,9 +5943,9 @@
                     const textSpan = lastMessageDiv.querySelector('.message-text');
                     if (textSpan) {
                         // 直接替换内容，不添加换行
-                        textSpan.textContent = message;
+                        textSpan.innerHTML = convertUrlsToLinks(message);
                     } else {
-                        lastMessageDiv.textContent = message;
+                        lastMessageDiv.innerHTML = convertUrlsToLinks(message);
                     }
                     // 更新lastMessageContent
                     lastMessageContent = message;
@@ -6179,7 +6253,7 @@
                     messageDiv.className = `message ${type}`;
                     const textSpan = document.createElement('span');
                     textSpan.className = 'message-text';
-                    textSpan.textContent = filteredMarker;
+                    textSpan.innerHTML = convertUrlsToLinks(filteredMarker);
                     messageDiv.appendChild(textSpan);
                     chatMessages.appendChild(messageDiv);
                     lastMessageType = type;
@@ -6327,7 +6401,9 @@
             // 对于info类型的消息，总是尝试追加到上一个info消息框中
             // 也包括normal类型的消息，如果它们是警告信息的话
             // 但确保不会追加到JSON/XML折叠框中
+            // 注意：如果当前消息包含工具调用开始标记，不应该追加，应该创建新的工具调用框
             if ((type === 'info' || (type === 'normal' && (message.includes('⚠️') || message.includes('W: ')))) &&
+                !detectXmlInvokeStart(message) && // 如果消息包含工具调用标记，不追加
                 lastMessageType === 'info' && lastMessageDiv && lastMessageDiv.parentNode === chatMessages &&
                 !lastMessageDiv.classList.contains('json-collapsible') &&
                 !jsonCollectingState.isCollecting &&
@@ -6339,10 +6415,10 @@
                 // 追加到现有的info消息框（使用过滤后的消息）
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
-                    textSpan.innerHTML += '<br>' + escapeHtml(filteredMessage);
+                    textSpan.innerHTML += '<br>' + convertUrlsToLinks(filteredMessage);
                 } else {
                     // If no text span found, fallback to original method but with escaping
-                    lastMessageDiv.innerHTML += '<br>' + escapeHtml(filteredMessage);
+                    lastMessageDiv.innerHTML += '<br>' + convertUrlsToLinks(filteredMessage);
                 }
                 // 更新lastMessageContent（使用过滤后的消息）
                 if (lastMessageContent) {
@@ -6369,10 +6445,10 @@
                 // For consecutive messages of the same type, safely add content（使用过滤后的消息）
                 const textSpan = lastMessageDiv.querySelector('.message-text');
                 if (textSpan) {
-                    textSpan.innerHTML += '<br>' + escapeHtml(filteredMessage);
+                    textSpan.innerHTML += '<br>' + convertUrlsToLinks(filteredMessage);
                 } else {
                     // If no text span found, fallback to original method but with escaping
-                    lastMessageDiv.innerHTML += '<br>' + escapeHtml(filteredMessage);
+                    lastMessageDiv.innerHTML += '<br>' + convertUrlsToLinks(filteredMessage);
                 }
                 // 更新lastMessageContent（使用过滤后的消息）
                 if (lastMessageContent) {
@@ -6434,7 +6510,7 @@
                     if (questionText) {
                         const questionSpan = document.createElement('span');
                         questionSpan.className = 'message-text';
-                        questionSpan.textContent = questionText;
+                        questionSpan.innerHTML = convertUrlsToLinks(questionText);
                         messageDiv.appendChild(questionSpan);
                     }
                     
@@ -6507,14 +6583,14 @@
                     // 如果没有方框字符选项，正常显示消息
                     const textSpan = document.createElement('span');
                     textSpan.className = 'message-text';
-                    textSpan.textContent = filteredMessage;
+                    textSpan.innerHTML = convertUrlsToLinks(filteredMessage);
                     messageDiv.appendChild(textSpan);
                 }
             } else {
                 // 对于其他类型的消息，正常显示
                 const textSpan = document.createElement('span');
                 textSpan.className = 'message-text';
-                textSpan.textContent = filteredMessage;
+                textSpan.innerHTML = convertUrlsToLinks(filteredMessage);
                 messageDiv.appendChild(textSpan);
             }
             
@@ -7495,6 +7571,10 @@
             // 如果有多个.out文件，显示下拉框并列出所有.out文件（不包括.out后缀）
             wrapper.style.display = 'flex';
             
+            // 保存当前选择的值（如果存在且不是默认值）
+            const currentValue = dropdown.value;
+            const shouldPreserveSelection = currentValue && currentValue !== outFiles[0] && outFiles.includes(currentValue);
+            
             // 清空现有选项
             dropdown.innerHTML = '';
             
@@ -7509,10 +7589,15 @@
             // 初始化change事件监听器（如果还没有绑定）
             initAgentSelectDropdownListener();
             
-            // 默认选择第一个（通常是manager，如果存在的话）
+            // 如果用户之前选择了非manager的选项，且该选项仍然存在，则保持选择
+            // 否则默认选择第一个（通常是manager，如果存在的话）
             // 注意：不再自动加载历史记录，用户需要手动点击"加载历史"按钮
             if (outFiles.length > 0) {
-                dropdown.value = outFiles[0];
+                if (shouldPreserveSelection) {
+                    dropdown.value = currentValue;
+                } else {
+                    dropdown.value = outFiles[0];
+                }
             }
         }
         
@@ -7977,7 +8062,24 @@
          */
                         function refreshDirectories(autoSelectFirst = false) {
             // 保存当前展开状态，避免刷新后用户展开的目录被重置
+            // 🔧 修复：不仅从expandedDirectories Set中读取，还要从DOM中读取当前真实的展开状态
+            // 这样可以确保即使expandedDirectories没有及时更新，也能正确保存展开状态
             const currentExpanded = new Set(expandedDirectories);
+            
+            // 从DOM中读取所有当前展开的目录（通过检查tree元素是否有'show'类）
+            const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
+            allDirectoryItems.forEach(item => {
+                const dirName = item.getAttribute('data-dir');
+                if (dirName) {
+                    const treeElement = document.getElementById(`tree-${dirName}`);
+                    if (treeElement && treeElement.classList.contains('show')) {
+                        // 如果DOM中显示为展开，添加到展开集合中
+                        currentExpanded.add(dirName);
+                        // 同时更新expandedDirectories Set，确保状态同步
+                        expandedDirectories.add(dirName);
+                    }
+                }
+            });
 
             // 保存当前滚动位置
             const currentScrollTop = directoryList.scrollTop;
@@ -15723,7 +15825,24 @@
             refreshBtn.disabled = true;
 
             // 保存当前展开状态
+            // 🔧 修复：不仅从expandedDirectories Set中读取，还要从DOM中读取当前真实的展开状态
+            // 这样可以确保即使expandedDirectories没有及时更新，也能正确保存展开状态
             const currentExpanded = new Set(expandedDirectories);
+            
+            // 从DOM中读取所有当前展开的目录（通过检查tree元素是否有'show'类）
+            const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
+            allDirectoryItems.forEach(item => {
+                const dirName = item.getAttribute('data-dir');
+                if (dirName) {
+                    const treeElement = document.getElementById(`tree-${dirName}`);
+                    if (treeElement && treeElement.classList.contains('show')) {
+                        // 如果DOM中显示为展开，添加到展开集合中
+                        currentExpanded.add(dirName);
+                        // 同时更新expandedDirectories Set，确保状态同步
+                        expandedDirectories.add(dirName);
+                    }
+                }
+            });
 
             // 保存当前滚动位置
             const currentScrollTop = directoryList.scrollTop;

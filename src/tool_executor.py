@@ -2134,6 +2134,9 @@ END OF ERROR FEEDBACK
                         error_msg += f", and {len(tools_list) - 10} more..."
             return error_msg
         
+        # Initialize processed_keys set first
+        processed_keys = {'error', 'status', 'success'}
+        
         # Show status if present
         if 'status' in data:
             if data['status'] == 'success':
@@ -2146,6 +2149,26 @@ END OF ERROR FEEDBACK
             status = "✅ Success" if data['success'] else "❌ Failed"
             lines.append(status)
         
+        # Special handling for idle tool with early_exit (message detected)
+        if tool_name == 'idle' and data.get('early_exit') and data.get('infinite_sleep'):
+            # Prioritize showing the new message content prominently
+            if 'content' in data:
+                lines.append("🔔 URGENT: NEW MESSAGE DETECTED!")
+                lines.append("=" * 60)
+                lines.append(self._format_content_field(data['content']))
+                lines.append("=" * 60)
+                processed_keys.add('content')
+            elif 'new_message_content' in data:
+                lines.append("🔔 URGENT: NEW MESSAGE DETECTED!")
+                lines.append("=" * 60)
+                lines.append(f"Message from {data.get('new_message_sender', 'unknown')}: {data['new_message_content']}")
+                lines.append("=" * 60)
+                processed_keys.add('new_message_content')
+                processed_keys.add('new_message_sender')
+            if 'description' in data:
+                lines.append(f"\n⚠️ {data['description']}")
+                processed_keys.add('description')
+        
         # Handle key fields in priority order
         field_handlers = [
             ('result', lambda v: f"Result: {v}"),
@@ -2156,9 +2179,8 @@ END OF ERROR FEEDBACK
         ]
         
         # Process high-priority fields
-        processed_keys = {'error', 'status', 'success'}
         for field_name, handler in field_handlers:
-            if field_name in data:
+            if field_name in data and field_name not in processed_keys:
                 try:
                     formatted_value = handler(data[field_name])
                     if formatted_value:

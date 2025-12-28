@@ -344,6 +344,37 @@ class WebSearchTools:
             try:
                 html_content = page.content()
                 
+                # 确保html_content是字符串类型（Playwright通常返回UTF-8字符串）
+                if isinstance(html_content, bytes):
+                    # 如果是字节，尝试检测编码并解码
+                    detected_encoding = self._detect_html_encoding(html_content)
+                    try:
+                        html_content = html_content.decode(detected_encoding)
+                    except (UnicodeDecodeError, LookupError):
+                        try:
+                            html_content = html_content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            html_content = html_content.decode('utf-8', errors='replace')
+                            print_debug(f"⚠️ Used error replacement for HTML encoding")
+                
+                # 确保HTML中的charset声明是UTF-8
+                if re.search(r'<meta[^>]*charset', html_content, re.IGNORECASE):
+                    html_content = re.sub(
+                        r'(<meta[^>]*charset\s*=\s*["\']?)[^"\'\s>]+',
+                        r'\1utf-8',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+                elif '<head>' in html_content.lower():
+                    html_content = re.sub(
+                        r'(<head[^>]*>)',
+                        r'\1\n<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+                
                 # 使用统一的特殊页面检测（传递 URL 以便检测 DuckDuckGo 帮助页面）
                 is_special, page_type, message = self._detect_special_page(html_content, title, url)
                 
@@ -861,7 +892,8 @@ Please create a detailed, structured analysis that preserves important informati
                         ]
                     )
                     
-                    # Create context with more realistic configuration to avoid bot detection
+                    # 搜索结果页面使用桌面版以确保正确的DOM结构
+                    # Search results page uses desktop version for proper DOM structure
                     context = browser.new_context(
                         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                         viewport={'width': 1366, 'height': 768},
@@ -871,7 +903,7 @@ Please create a detailed, structured analysis that preserves important informati
                         locale='en-US',
                         timezone_id='America/New_York',
                         extra_http_headers={
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
                             'Accept-Language': 'en-US,en;q=0.9',
                             'Accept-Encoding': 'gzip, deflate, br',
                             'DNT': '1',
@@ -892,9 +924,14 @@ Please create a detailed, structured analysis that preserves important informati
                         os.environ['DISPLAY'] = original_display
                 page = context.new_page()
                 
-                # Set shorter page timeout to prevent hanging
-                page.set_default_timeout(8000)  # 8 seconds
-                page.set_default_navigation_timeout(12000)  # 12 seconds
+                # 🚀 性能优化：搜索结果页面不拦截资源，确保页面正常加载
+                # Performance optimization: No blocking on search pages to ensure proper loading
+                # Note: We only optimize content download pages, not search result pages
+                print_debug("🔍 Search results page: no resource blocking to ensure compatibility")
+                
+                # Set longer page timeout to prevent connection issues
+                page.set_default_timeout(15000)  # 15 seconds (increased from 8s)
+                page.set_default_navigation_timeout(20000)  # 20 seconds (increased from 12s)
                 
                 # Add stealth script to avoid detection
                 page.add_init_script("""
@@ -1000,27 +1037,30 @@ Please create a detailed, structured analysis that preserves important informati
                             'access_status': 'failed'
                         })
                 else:
-                    # Initialize available search engines
-                    # Check if query contains Chinese characters
-                    has_chinese = bool(re.search(r'[\u4e00-\u9fff]', search_term))
+                    # Try using requests first for faster search (no browser needed)
+                    print_debug("🔍 Trying requests-based search (faster, no browser)")
                     
-                    search_engines = []
+                    try:
+                        results = self._search_with_requests(search_term)
+                        if results:
+                            print_debug(f"✅ Requests-based search successful, found {len(results)} results")
+                        else:
+                            print_debug("⚠️ Requests-based search returned no results, falling back to Playwright")
+                            results = []
+                    except Exception as e:
+                        print_debug(f"⚠️ Requests-based search failed: {e}, falling back to Playwright")
+                        results = []
                     
-                    if has_chinese:
-                        # If query contains Chinese, prioritize Baidu first
-                        print_debug("🔍 Query contains Chinese characters, prioritizing Baidu")
+                    # If requests search failed, fall back to Playwright
+                    if not results:
+                        print_debug("🔍 Using Playwright for search")
+                        # Initialize available search engines
+                        # DuckDuckGo always as primary search engine (most bot-friendly, no anti-bot measures)
+                        print_debug("🔍 Using DuckDuckGo as primary search engine")
                         
-                        # Add Baidu first for Chinese queries
-                        search_engines.append({
-                            'name': 'Baidu',
-                            'url': 'https://www.baidu.com/s?wd={}',
-                            'result_selector': 'h3.t a',
-                            'container_selector': '.result',
-                            'snippet_selectors': ['.c-abstract', '.c-span9', 'span', 'div']
-                        })
-                        print_debug("🔍 Baidu search engine added as primary option (Chinese query)")
+                        search_engines = []
                         
-                        # Add DuckDuckGo as secondary option
+                        # Add DuckDuckGo first (always first regardless of language)
                         search_engines.append({
                             'name': 'DuckDuckGo',
                             'url': 'https://html.duckduckgo.com/html/?q={}',
@@ -1028,9 +1068,23 @@ Please create a detailed, structured analysis that preserves important informati
                             'container_selector': '.result, .web-result, .links_main',
                             'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
                         })
-                        print_debug("🔍 DuckDuckGo search engine added as secondary option")
+                        print_debug("🔍 DuckDuckGo search engine added as primary option")
                         
-                        # Add Google directly without connectivity check
+                        # Check if query contains Chinese characters for secondary options
+                        has_chinese = bool(re.search(r'[\u4e00-\u9fff]', search_term))
+                        
+                        if has_chinese:
+                            # For Chinese queries, add Baidu as secondary option
+                            search_engines.append({
+                                'name': 'Baidu',
+                                'url': 'https://www.baidu.com/s?wd={}',
+                                'result_selector': 'h3.t a, h3 a, .t a, .c-title-text, .c-title a, .result h3 a, .c-container h3 a, .c-title a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
+                                'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small',
+                                'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12']
+                            })
+                            print_debug("🔍 Baidu search engine added as secondary option (Chinese query)")
+                        
+                        # Add Google as fallback option
                         search_engines.append({
                             'name': 'Google',
                             'url': 'https://www.google.com/search?q={}&gl=us&hl=en&safe=off',
@@ -1040,192 +1094,235 @@ Please create a detailed, structured analysis that preserves important informati
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
                         print_debug("🔍 Google search engine added as fallback option")
-                    else:
-                        # If query doesn't contain Chinese, use default order: DuckDuckGo -> Bing -> Google -> Baidu
-                        print_debug("🔍 Query does not contain Chinese characters, using default search order")
                         
-                        # Add DuckDuckGo first (most bot-friendly, no anti-bot measures)
-                        search_engines.append({
-                            'name': 'DuckDuckGo',
-                            'url': 'https://html.duckduckgo.com/html/?q={}',
-                            'result_selector': '.result__a, .web-result__a, a.result__a, .result a, .links_main a',
-                            'container_selector': '.result, .web-result, .links_main',
-                            'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
-                        })
-                        print_debug("🔍 DuckDuckGo search engine added as primary option (bot-friendly)")
+                        # If not Chinese query, also add Baidu as last resort
+                        if not has_chinese:
+                            search_engines.append({
+                                'name': 'Baidu',
+                                'url': 'https://www.baidu.com/s?wd={}',
+                                'result_selector': 'h3.t a, h3 a, .t a, .c-title-text, .c-title a, .result h3 a, .c-container h3 a, .c-title a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
+                                'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small',
+                                'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12']
+                            })
+                            print_debug("🔍 Baidu search engine added as last resort option")
                         
-                        # Add Google directly without connectivity check (lower priority due to anti-bot)
-                        search_engines.append({
-                            'name': 'Google',
-                            'url': 'https://www.google.com/search?q={}&gl=us&hl=en&safe=off',
-                            'result_selector': 'h3 a, h1 a, .g a h3, .yuRUbf a h3, .LC20lb, .DKV0Md, [data-ved] h3',
-                            'container_selector': '.g, .tF2Cxc, [data-ved]',
-                            'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
-                            'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
-                        })
-                        print_debug("🔍 Google search engine added as fallback option")
+                        optimized_search_term = self._optimize_search_term(search_term)
+                        encoded_term = urllib.parse.quote_plus(optimized_search_term)
                         
-                        # Always add Baidu as fallback option
-                        search_engines.append({
-                            'name': 'Baidu',
-                            'url': 'https://www.baidu.com/s?wd={}',
-                            'result_selector': 'h3.t a',
-                            'container_selector': '.result',
-                            'snippet_selectors': ['.c-abstract', '.c-span9', 'span', 'div']
-                        })
-                        print_debug("🔍 Baidu search engine added to available options")
-                    
-                    optimized_search_term = self._optimize_search_term(search_term)
-                    encoded_term = urllib.parse.quote_plus(optimized_search_term)
-                    
-                    for engine_idx, engine in enumerate(search_engines):
-                        try:
-                            # Skip this engine if it has failed before
-                            if engine['name'] in self.failed_engines:
-                                print_debug(f"⏭️ Skipping {engine['name']} (failed in previous attempt)")
-                                continue
-                            
-                            print_debug(f"🔍 Trying to search with {engine['name']}")
-                            
-                            search_url = engine['url'].format(encoded_term)
-                            
-                            # Use timeout based on search engine: Baidu needs more time (10s), others 5s
-                            timeout_ms = 10000 if engine['name'] == 'Baidu' else 3000
-                            page.goto(search_url, timeout=timeout_ms, wait_until='domcontentloaded')
-                            
-                            # Wait a bit for page to stabilize and avoid navigation issues
-                            page.wait_for_timeout(500)
-                            
-                            # Get search results with error handling
+                        for engine_idx, engine in enumerate(search_engines):
                             try:
-                                result_elements = page.query_selector_all(engine['result_selector'])
-                            except Exception as selector_error:
-                                print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
-                                # Fallback to basic result selector
-                                try:
-                                    result_elements = page.query_selector_all('a[href], h3, .result, .g, .rc')
-                                except Exception as fallback_error:
-                                    print_debug(f"Fallback selector also failed: {fallback_error}")
-                                    result_elements = []
-                            
-                            if result_elements:
-                                print_debug(f"✅ {engine['name']} search successful, found {len(result_elements)} results")
+                                # Skip this engine if it has failed before
+                                if engine['name'] in self.failed_engines:
+                                    print_debug(f"⏭️ Skipping {engine['name']} (failed in previous attempt)")
+                                    continue
                                 
-                                # Collect all results first (not just first 10)
-                                all_raw_results = []
-                                for i, elem in enumerate(result_elements):
+                                print_debug(f"🔍 Trying to search with {engine['name']}")
+                                
+                                search_url = engine['url'].format(encoded_term)
+                                
+                                # Use longer timeout for all search engines to ensure reliability
+                                # DuckDuckGo: 12s, Baidu: 20s (longer for better results), Google: 12s
+                                timeout_ms = 20000 if engine['name'] == 'Baidu' else 12000
+                                page.goto(search_url, timeout=timeout_ms, wait_until='domcontentloaded')
+                                
+                                # Wait longer for page to stabilize and load results
+                                # Baidu needs more time to load all results
+                                wait_time = 2500 if engine['name'] == 'Baidu' else 1500
+                                page.wait_for_timeout(wait_time)
+                                
+                                # For Baidu, try to scroll down to load more results (lazy loading)
+                                if engine['name'] == 'Baidu':
                                     try:
-                                        title = ""
-                                        url = ""
-                                        snippet = ""
-
-                                        # Safely get text content
+                                        # Scroll down multiple times to trigger lazy loading
+                                        # Increase scroll attempts to load more results
+                                        for scroll_attempt in range(5):  # Increased from 3 to 5
+                                            # Scroll to bottom
+                                            page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                                            page.wait_for_timeout(1000)  # Increased wait time from 800ms to 1000ms
+                                            # Also try scrolling incrementally
+                                            scroll_position = (scroll_attempt + 1) * 1000
+                                            page.evaluate(f'window.scrollTo(0, {scroll_position})')
+                                            page.wait_for_timeout(500)
+                                        # Scroll back to top
+                                        page.evaluate('window.scrollTo(0, 0)')
+                                        page.wait_for_timeout(1000)  # Increased wait time
+                                        print_debug(f"📜 Scrolled Baidu page {5} times to load more results")
+                                    except Exception as scroll_error:
+                                        print_debug(f"⚠️ Baidu scroll failed: {scroll_error}")
+                                
+                                # Get search results with error handling
+                                # For Baidu, query multiple times after scrolling to ensure we get all loaded results
+                                result_elements = []
+                                try:
+                                    # First attempt
+                                    result_elements = page.query_selector_all(engine['result_selector'])
+                                    if engine['name'] == 'Baidu':
+                                        # Wait a bit more and query again (lazy loading may need more time)
+                                        page.wait_for_timeout(1000)
+                                        # Query again to get newly loaded results
+                                        additional_elements = page.query_selector_all(engine['result_selector'])
+                                        if len(additional_elements) > len(result_elements):
+                                            result_elements = additional_elements
+                                            print_debug(f"📜 Baidu: Found {len(result_elements)} results after additional wait")
+                                except Exception as selector_error:
+                                    print_debug(f"⚠️ Selector error for {engine['name']}: {selector_error}")
+                                    # Fallback to basic result selector
+                                    try:
+                                        result_elements = page.query_selector_all('a[href], h3, .result, .g, .rc')
+                                    except Exception as fallback_error:
+                                        print_debug(f"Fallback selector also failed: {fallback_error}")
+                                        result_elements = []
+                                
+                                if result_elements:
+                                    print_debug(f"✅ {engine['name']} search successful, found {len(result_elements)} result elements")
+                                    
+                                    # Collect all results first (not just first 10)
+                                    all_raw_results = []
+                                    valid_count = 0
+                                    skipped_count = 0
+                                    for i, elem in enumerate(result_elements):
                                         try:
-                                            title = elem.text_content().strip()
-                                        except Exception as text_error:
-                                            # If text_content fails (e.g., "Execution context was destroyed"), try inner_text
+                                            title = ""
+                                            url = ""
+                                            snippet = ""
+
+                                            # Safely get text content
                                             try:
-                                                title = elem.inner_text().strip()
-                                            except:
-                                                print_debug(f"⚠️ Failed to extract title for result {i}: {text_error}")
-                                                continue  # Skip this result
+                                                title = elem.text_content().strip()
+                                            except Exception as text_error:
+                                                # If text_content fails (e.g., "Execution context was destroyed"), try inner_text
+                                                try:
+                                                    title = elem.inner_text().strip()
+                                                except:
+                                                    print_debug(f"⚠️ Failed to extract title for result {i}: {text_error}")
+                                                    continue  # Skip this result
+                                            
+                                            url = elem.get_attribute('href') or ""
+                                            
+                                            # For Baidu, if URL is not found on the element itself, try to find it in parent/container
+                                            if engine['name'] == 'Baidu' and (not url or not url.startswith(('http://', 'https://', '/', 'javascript:', 'mailto:'))):
+                                                try:
+                                                    # Try to find link in parent container
+                                                    parent = elem.query_selector('xpath=ancestor::*[contains(@class, "result") or contains(@class, "c-container") or contains(@class, "c-row")][1]')
+                                                    if parent:
+                                                        # Look for link in parent
+                                                        link_in_parent = parent.query_selector('a[href]')
+                                                        if link_in_parent:
+                                                            url = link_in_parent.get_attribute('href') or url
+                                                except Exception as parent_error:
+                                                    print_debug(f"⚠️ Failed to find URL in parent for Baidu result {i}: {parent_error}")
+                                            
+                                            snippet = self._extract_snippet_from_search_result(elem, engine)
+                                            
+                                            # Handle Google URL format
+                                            if url and url.startswith('/url?q='):
+                                                url = urllib.parse.unquote(url.split('&')[0][7:])
+                                            
+                                            # Handle Baidu URL format (may be relative or absolute)
+                                            if url and not url.startswith(('http://', 'https://', 'javascript:', 'mailto:')):
+                                                # Baidu may use relative URLs, try to construct absolute URL
+                                                if url.startswith('/'):
+                                                    url = 'https://www.baidu.com' + url
+                                                elif url.startswith('//'):
+                                                    url = 'https:' + url
+                                                # If still not absolute, try to get from href attribute again
+                                                if not url.startswith(('http://', 'https://')):
+                                                    # Try to get the actual href
+                                                    try:
+                                                        actual_href = elem.get_attribute('href')
+                                                        if actual_href and actual_href.startswith(('http://', 'https://')):
+                                                            url = actual_href
+                                                    except:
+                                                        pass
+                                            
+                                            # More lenient filtering for Baidu (minimum 3 chars for title)
+                                            min_title_length = 3 if engine['name'] == 'Baidu' else 5
+                                            if title and len(title) >= min_title_length and url and url.startswith(('http://', 'https://')):
+                                                all_raw_results.append({
+                                                    'title': title,
+                                                    'snippet': snippet,
+                                                    'url': url,
+                                                    'source': engine['name']
+                                                })
+                                                valid_count += 1
+                                            else:
+                                                skipped_count += 1
+                                                if engine['name'] == 'Baidu' and i < 5:  # Debug first 5 skipped results
+                                                    print_debug(f"⚠️ Baidu result {i+1} skipped: title_len={len(title) if title else 0}, url_valid={url.startswith(('http://', 'https://')) if url else False}")
                                         
-                                        url = elem.get_attribute('href') or ""
+                                        except Exception as e:
+                                            print_debug(f"Error extracting result {i}: {e}")
+                                            skipped_count += 1
+                                            continue
+                                    
+                                    print_debug(f"📊 {engine['name']} extraction stats: {valid_count} valid, {skipped_count} skipped out of {len(result_elements)} elements")
+                                    
+                                    # Parse and deduplicate URLs before adding to results
+                                    if all_raw_results:
+                                        # Parse URLs (decode DuckDuckGo/Baidu redirects) and deduplicate
+                                        seen_urls = set()
+                                        deduplicated_results = []
                                         
-                                        
-                                        snippet = self._extract_snippet_from_search_result(elem, engine)
-                                        
-                                        # Handle Google URL format
-                                        if url and url.startswith('/url?q='):
-                                            url = urllib.parse.unquote(url.split('&')[0][7:])
-                                        
-                                        if title and len(title) > 5 and url:
-                                            all_raw_results.append({
-                                                'title': title,
-                                                'snippet': snippet,
-                                                'url': url,
-                                                'source': engine['name']
+                                        for raw_result in all_raw_results:
+                                            url = raw_result['url']
+                                            
+                                            # Filter out Baidu Wenku and MBD links early (cannot download correct text)
+                                            if 'wenku.baidu.com' in url.lower():
+                                                continue
+                                            if 'mbd.baidu.com' in url.lower():
+                                                continue
+                                            
+                                            # Decode redirect URLs to get real destination
+                                            if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
+                                                decoded_url = self._decode_duckduckgo_redirect_url(url)
+                                                if decoded_url != url:
+                                                    url = decoded_url
+                                            
+                                            if 'baidu.com/link?url=' in url.lower():
+                                                decoded_url = self._decode_baidu_redirect_url(url)
+                                                if decoded_url != url:
+                                                    url = decoded_url
+                                            
+                                            # Check again after decoding (decoded URL might be Baidu Wenku or MBD)
+                                            if 'wenku.baidu.com' in url.lower():
+                                                continue
+                                            if 'mbd.baidu.com' in url.lower():
+                                                continue
+                                            
+                                            # Normalize URL for deduplication
+                                            normalized_url = self._normalize_url_for_dedup(url)
+                                            
+                                            # Skip if already seen
+                                            if normalized_url in seen_urls:
+                                                continue
+                                            
+                                            seen_urls.add(normalized_url)
+                                            
+                                            # Clean snippet before truncating
+                                            cleaned_snippet = self._clean_snippet(raw_result['snippet']) if raw_result['snippet'] else f'Search result from {raw_result["source"]}'
+                                            deduplicated_results.append({
+                                                'title': raw_result['title'],
+                                                'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {raw_result["source"]}',
+                                                'source': raw_result['source'],
+                                                'content': '',
+                                                '_internal_url': url,  # Use decoded/normalized URL
+                                                'url': url  # Also store in url field for compatibility
                                             })
+                                        
+                                        print_debug(f"📋 {engine['name']} deduplication: {len(all_raw_results)} raw → {len(deduplicated_results)} unique results")
+                                        results.extend(deduplicated_results)
                                     
-                                    except Exception as e:
-                                        print_debug(f"Error extracting result {i}: {e}")
-                                        continue
-                                
-                                # Parse and deduplicate URLs before adding to results
-                                if all_raw_results:
-                                    print_debug(f"📋 Collected {len(all_raw_results)} raw results, parsing URLs and deduplicating...")
-                                    
-                                    # Parse URLs (decode DuckDuckGo/Baidu redirects) and deduplicate
-                                    seen_urls = set()
-                                    deduplicated_results = []
-                                    
-                                    for raw_result in all_raw_results:
-                                        url = raw_result['url']
-                                        
-                                        # Filter out Baidu Wenku and MBD links early (cannot download correct text)
-                                        if 'wenku.baidu.com' in url.lower():
-                                            print_debug(f"⏭️ Skipping Baidu Wenku link: {url[:80]}... (无法下载正确文字)")
-                                            continue
-                                        if 'mbd.baidu.com' in url.lower():
-                                            print_debug(f"⏭️ Skipping Baidu MBD link: {url[:80]}... (通常是视频，无法下载正确文字)")
-                                            continue
-                                        
-                                        # Decode redirect URLs to get real destination
-                                        if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
-                                            decoded_url = self._decode_duckduckgo_redirect_url(url)
-                                            if decoded_url != url:
-                                                url = decoded_url
-                                                print_debug(f"🔗 Decoded DuckDuckGo redirect: {url[:80]}...")
-                                        
-                                        if 'baidu.com/link?url=' in url.lower():
-                                            decoded_url = self._decode_baidu_redirect_url(url)
-                                            if decoded_url != url:
-                                                url = decoded_url
-                                                print_debug(f"🔗 Decoded Baidu redirect: {url[:80]}...")
-                                        
-                                        # Check again after decoding (decoded URL might be Baidu Wenku or MBD)
-                                        if 'wenku.baidu.com' in url.lower():
-                                            print_debug(f"⏭️ Skipping Baidu Wenku link (after decode): {url[:80]}... (无法下载正确文字)")
-                                            continue
-                                        if 'mbd.baidu.com' in url.lower():
-                                            print_debug(f"⏭️ Skipping Baidu MBD link (after decode): {url[:80]}... (通常是视频，无法下载正确文字)")
-                                            continue
-                                        
-                                        # Normalize URL for deduplication
-                                        normalized_url = self._normalize_url_for_dedup(url)
-                                        
-                                        # Skip if already seen
-                                        if normalized_url in seen_urls:
-                                            print_debug(f"⏭️ Skipping duplicate URL: {url[:80]}...")
-                                            continue
-                                        
-                                        seen_urls.add(normalized_url)
-                                        
-                                        # Clean snippet before truncating
-                                        cleaned_snippet = self._clean_snippet(raw_result['snippet']) if raw_result['snippet'] else f'Search result from {raw_result["source"]}'
-                                        deduplicated_results.append({
-                                            'title': raw_result['title'],
-                                            'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {raw_result["source"]}',
-                                            'source': raw_result['source'],
-                                            'content': '',
-                                            '_internal_url': url,  # Use decoded/normalized URL
-                                            'url': url  # Also store in url field for compatibility
-                                        })
-                                    
-                                    print_debug(f"✅ After deduplication: {len(deduplicated_results)} unique results")
-                                    results.extend(deduplicated_results)
-                                
-                                if results:
-                                    break
-                            else:
-                                print_debug(f"{engine['name']} found no search results")
-                        
-                        except Exception as e:
-                            print_debug(f"{engine['name']} search failed: {e}")
-                            # Mark this engine as failed so it won't be retried
-                            self.failed_engines.add(engine['name'])
-                            print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
-                            continue
+                                    if results:
+                                        break
+                                else:
+                                    print_debug(f"{engine['name']} found no search results")
+                            
+                            except Exception as e:
+                                print_debug(f"{engine['name']} search failed: {e}")
+                                # Mark this engine as failed so it won't be retried
+                                self.failed_engines.add(engine['name'])
+                                print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
+                                continue
                     
                     if fetch_content and results:
                         # Show which URLs will be downloaded
@@ -1236,6 +1333,9 @@ Please create a detailed, structured analysis that preserves important informati
                         valid_results = []
                         batch_size = max_content_results
                         max_attempts = min(len(results), max_content_results * 3)  # Try up to 3x the target to find enough valid results
+                        
+                        # Print header once before all batches
+                        #print_current(f"📖 Fetching webpage content")
                         
                         attempt = 0
                         while len(valid_results) < max_content_results and attempt < max_attempts and len(downloaded_indices) < len(results):
@@ -1254,11 +1354,12 @@ Please create a detailed, structured analysis that preserves important informati
                             batch_results = [result for _, result in batch_to_download]
                             batch_indices = [idx for idx, _ in batch_to_download]
                             
-                            print_current(f"📖 Fetching webpage content")
-                            for idx, result in enumerate(batch_results, 1):
+                            # Print batch details with continuous numbering
+                            current_offset = len(downloaded_indices)
+                            for idx, result in enumerate(batch_results):
                                 url = result.get('_internal_url') or result.get('url', 'N/A')
                                 title = result.get('title', 'Untitled')[:60]
-                                print_debug(f"  [{len(downloaded_indices) + idx}] {title} -> {url[:100]}...")
+                                print_debug(f"  [{current_offset + idx + 1}] {title} -> {url[:100]}...")
                             
                             try:
                                 self._fetch_webpage_content_with_timeout(batch_results, page, timeout_seconds=60)
@@ -1650,6 +1751,226 @@ Please create a detailed, structured analysis that preserves important informati
         # Clean the snippet to remove excessive whitespace
         return self._clean_snippet(snippet)
 
+    def _search_with_requests(self, search_term: str) -> List[Dict]:
+        """
+        使用 requests 进行搜索（不需要浏览器，更快）
+        目前只支持 DuckDuckGo HTML 版本
+        
+        Args:
+            search_term: 搜索词
+            
+        Returns:
+            搜索结果列表
+        """
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+            import urllib.parse
+            
+            # 禁用 SSL 警告
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            # 使用 DuckDuckGo HTML 版本（对爬虫友好）
+            encoded_term = urllib.parse.quote_plus(search_term)
+            search_url = f'https://html.duckduckgo.com/html/?q={encoded_term}'
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive'
+            }
+            
+            # 发送搜索请求
+            response = requests.get(search_url, headers=headers, timeout=10, verify=False)
+            
+            if response.status_code != 200:
+                print_debug(f"⚠️ Search request failed with status {response.status_code}")
+                return []
+            
+            # 解析 HTML
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 查找搜索结果
+            # DuckDuckGo HTML 使用 .result 类
+            result_divs = soup.find_all('div', class_='result')
+            
+            if not result_divs:
+                # 尝试其他可能的选择器
+                result_divs = soup.find_all('div', class_='web-result')
+            
+            if not result_divs:
+                print_debug(f"⚠️ No results found in HTML")
+                return []
+            
+            print_debug(f"🔍 Found {len(result_divs)} result containers")
+            
+            results = []
+            for i, result_div in enumerate(result_divs[:30]):  # 限制最多 30 个结果
+                try:
+                    # 提取标题和链接
+                    title_link = result_div.find('a', class_='result__a')
+                    if not title_link:
+                        # 尝试其他可能的类名
+                        title_link = result_div.find('a', class_='web-result__a')
+                    if not title_link:
+                        continue
+                    
+                    title = title_link.get_text(strip=True)
+                    url = title_link.get('href', '')
+                    
+                    if not title or not url:
+                        continue
+                    
+                    # 提取摘要
+                    snippet = ""
+                    snippet_elem = result_div.find('a', class_='result__snippet')
+                    if snippet_elem:
+                        snippet = snippet_elem.get_text(strip=True)
+                    
+                    if not snippet:
+                        # 尝试其他可能的选择器
+                        snippet_elem = result_div.find('div', class_='result__snippet')
+                        if snippet_elem:
+                            snippet = snippet_elem.get_text(strip=True)
+                    
+                    results.append({
+                        'title': title,
+                        'snippet': snippet or f'Search result from DuckDuckGo',
+                        'url': url,
+                        'source': 'DuckDuckGo'
+                    })
+                    
+                except Exception as e:
+                    print_debug(f"⚠️ Error parsing result {i}: {e}")
+                    continue
+            
+            print_debug(f"✅ Extracted {len(results)} results from DuckDuckGo")
+            
+            # 解析和去重 URL
+            if results:
+                seen_urls = set()
+                deduplicated_results = []
+                
+                for raw_result in results:
+                    url = raw_result['url']
+                    
+                    # 过滤百度文库等
+                    if 'wenku.baidu.com' in url.lower():
+                        continue
+                    if 'mbd.baidu.com' in url.lower():
+                        continue
+                    
+                    # 解码 DuckDuckGo 重定向 URL
+                    if 'duckduckgo.com/l/' in url.lower() and 'uddg=' in url.lower():
+                        decoded_url = self._decode_duckduckgo_redirect_url(url)
+                        if decoded_url != url:
+                            url = decoded_url
+                    
+                    # 再次检查解码后的 URL
+                    if 'wenku.baidu.com' in url.lower():
+                        continue
+                    if 'mbd.baidu.com' in url.lower():
+                        continue
+                    
+                    # 规范化 URL 用于去重
+                    normalized_url = self._normalize_url_for_dedup(url)
+                    
+                    # 跳过重复
+                    if normalized_url in seen_urls:
+                        continue
+                    
+                    seen_urls.add(normalized_url)
+                    
+                    # 清理摘要
+                    cleaned_snippet = self._clean_snippet(raw_result['snippet']) if raw_result['snippet'] else f'Search result from {raw_result["source"]}'
+                    
+                    deduplicated_results.append({
+                        'title': raw_result['title'],
+                        'snippet': cleaned_snippet[:get_truncation_length()] if cleaned_snippet else f'Search result from {raw_result["source"]}',
+                        'source': raw_result['source'],
+                        'content': '',
+                        '_internal_url': url,
+                        'url': url
+                    })
+                
+                return deduplicated_results
+            
+            return []
+            
+        except Exception as e:
+            print_debug(f"⚠️ Requests-based search failed: {e}")
+            return []
+    
+    def _download_single_webpage(self, result: Dict, global_index: int, target_url: str, search_term: str) -> Dict:
+        """
+        下载单个网页（用于并行下载）
+        
+        Args:
+            result: 搜索结果字典
+            global_index: 全局索引
+            target_url: 目标 URL
+            search_term: 搜索词
+            
+        Returns:
+            更新后的 result 字典，包含 success 标志
+        """
+        try:
+            # 使用 requests 下载网页
+            html_content, final_url, title = self._download_webpage_with_requests(target_url, timeout=5.0)
+            
+            if not html_content:
+                result['content'] = "Failed to download webpage"
+                result['success'] = False
+                return result
+            
+            # 从 HTML 提取文本内容
+            content = self._extract_content_from_html(html_content)
+            
+            if not content or len(content.strip()) < 100:
+                result['content'] = "Content too short or unable to extract"
+                result['success'] = False
+                return result
+            
+            # 更新标题（如果从 HTML 获取的更好）
+            if title and title != "Untitled":
+                result['title'] = title
+            else:
+                title = result.get('title', 'Untitled')
+            
+            # Apply LLM filtering if enabled and content exists
+            if content and self.enable_llm_filtering:
+                content = self._extract_relevant_content_with_llm(content, search_term, title)
+            
+            # 使用最终 URL（处理重定向后的）
+            actual_url = final_url if final_url else target_url
+            
+            # 保存文件
+            saved_html_path, saved_txt_path = self._save_webpage_content_from_html(
+                html_content, actual_url, title, content or "", search_term
+            )
+            
+            if saved_html_path:
+                result['saved_html_path'] = saved_html_path
+            if saved_txt_path:
+                result['saved_txt_path'] = saved_txt_path
+            
+            # Clean content for better LLM processing
+            cleaned_content = self._clean_text_for_saving(content) if content else ""
+            result['content'] = cleaned_content if cleaned_content else (content if content else "Content too short or unable to extract")
+            result['final_url'] = actual_url
+            result['success'] = True
+            
+            return result
+            
+        except Exception as e:
+            print_debug(f"[{global_index+1}] Error processing result: {e}")
+            result['content'] = f"Processing error: {str(e)}"
+            result['success'] = False
+            return result
+
     def _fetch_webpage_content_with_timeout(self, results: List[Dict], page, timeout_seconds: int = 60) -> None:
         """
         Fetch webpage content with additional timeout control
@@ -1657,14 +1978,14 @@ Please create a detailed, structured analysis that preserves important informati
         """
         start_time = time.time()
         
-        # Get browser context from the page
+        # Get browser context from the page (只用于搜索，不用于下载内容)
         context = page.context
         
-        # Phase 1: Fast parallel page loading - open all pages quickly
+        # Phase 1: 准备要下载的URL列表（不使用 Playwright）
         
-        page_loads = []  # List of (page, result, index, target_url)
+        urls_to_download = []  # List of (result, index, target_url)
         
-        # Open all pages at once (no batching for maximum speed)
+        # 准备所有需要下载的 URL
         for i, result in enumerate(results):
             # Prepare URL
             target_url = result.get('_internal_url') or result.get('url', '')
@@ -1675,7 +1996,6 @@ Please create a detailed, structured analysis that preserves important informati
                 decoded_url = self._decode_duckduckgo_redirect_url(target_url)
                 if decoded_url != target_url:
                     target_url = self._normalize_url(decoded_url)
-                    print_debug(f"🎯 Decoded DuckDuckGo redirect: {decoded_url[:100]}...")
             
             # Handle Baidu redirect URLs
             if 'baidu.com/link?url=' in target_url:
@@ -1704,125 +2024,69 @@ Please create a detailed, structured analysis that preserves important informati
                 result['content'] = "Non-webpage link, skip content fetch"
                 continue
             
-            # Create new page and start loading
-            try:
-                new_page = context.new_page()
+            # 添加到下载列表
+            urls_to_download.append((result, i, target_url))
+        
+        
+        # Phase 2: 使用 requests 并行下载内容（更快更轻量）
+        
+        search_term = getattr(self, '_current_search_term', '')
+        
+        # 使用 ThreadPoolExecutor 并行下载
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+        
+        # 最多同时下载 5 个页面
+        max_workers = min(5, len(urls_to_download))
+        
+        print_debug(f"🚀 Starting parallel download with {max_workers} workers for {len(urls_to_download)} pages...")
+        
+        # 线程安全的计数器
+        valid_index_lock = threading.Lock()
+        valid_index = [0]  # 使用列表以便在闭包中修改
+        
+        # 提交所有下载任务
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 创建 future -> (result, global_index, target_url) 的映射
+            future_to_info = {}
+            
+            for result, global_index, target_url in urls_to_download:
+                if time.time() - start_time > timeout_seconds:
+                    print_current(f"⏰ Overall content fetching timeout reached ({timeout_seconds}s), stopping")
+                    break
                 
-                # Use 'commit' instead of 'domcontentloaded' - much faster!
-                # 'commit' only waits for navigation to be committed (request sent)
-                # Actual loading happens in background
-                new_page.goto(target_url, timeout=8000, wait_until='commit')
+                future = executor.submit(
+                    self._download_single_webpage,
+                    result, global_index, target_url, search_term
+                )
+                future_to_info[future] = (result, global_index, target_url)
+            
+            # 处理完成的下载任务（按完成顺序）
+            completed_count = 0
+            
+            for future in as_completed(future_to_info):
+                completed_count += 1
+                result, global_index, target_url = future_to_info[future]
                 
-                page_loads.append((new_page, result, i, target_url))
-            except Exception as e:
-                print_current(f"⚠️ [{i+1}] Failed to open page: {e}")
-                result['content'] = f"Failed to open page: {str(e)}"
-                continue
-        
-        
-        # Phase 2: Sequential processing - wait for load and extract content
-        
-        valid_index = 0  # Counter for valid results that will be printed (starts from 0, will be 1-indexed when printing)
-        
-        for i, (loaded_page, result, global_index, target_url) in enumerate(page_loads):
-            if time.time() - start_time > timeout_seconds:
-                print_current(f"⏰ Overall content fetching timeout reached ({timeout_seconds}s), stopping")
-                # Close remaining pages
-                for j in range(i, len(page_loads)):
-                    try:
-                        page_loads[j][0].close()
-                    except:
-                        pass
-                break
-                
-            try:
-                # Page is loading in background, wait for it to complete
                 try:
-                    # Wait for page to be fully loaded (since we only waited for 'commit' in Phase 1)
-                    try:
-                        loaded_page.wait_for_load_state('domcontentloaded', timeout=8000)
-                    except:
-                        # If timeout, proceed anyway (better than failing completely)
-                        pass
+                    # 获取下载结果（result 已经被更新）
+                    updated_result = future.result()
                     
-                    # Additional short wait for dynamic content
-                    #loaded_page.wait_for_timeout(800)
+                    # 打印进度（线程安全）
+                    if updated_result.get('success') and updated_result.get('content'):
+                        if len(updated_result['content'].strip()) > 100:
+                            with valid_index_lock:
+                                valid_index[0] += 1
+                                current_index = valid_index[0]
+                            
+                            title = updated_result.get('title', 'Untitled')
+                            self._print_webpage_summary(current_index, title, target_url, updated_result['content'])
                     
-                    # Check if we've been redirected to an error page
-                    current_url = loaded_page.url
-                    if 'chrome-error://' in current_url or 'about:blank' in current_url:
-                        raise Exception(f"Redirected to error page: {current_url}")
-                    
-                    # Success - extract content with timeout protection
-                    # Use Playwright's built-in timeout mechanism by setting shorter timeout
-                    content = None
-                    try:
-                        # Set shorter timeout for content extraction (10 seconds)
-                        loaded_page.set_default_timeout(10000)
-                        content = self._extract_main_content(loaded_page)
-                    except Exception as extract_error:
-                        error_msg = str(extract_error)
-                        if "timeout" in error_msg.lower():
-                            print_debug(f"⏰ Content extraction timeout (10s), skipping")
-                            content = "Content extraction timeout"
-                        else:
-                            print_debug(f"⚠️ Content extraction error: {extract_error}")
-                            content = f"Content extraction error: {str(extract_error)}"
-                    finally:
-                        # Restore default timeout (8 seconds as used elsewhere in the code)
-                        loaded_page.set_default_timeout(8000)
-                    
-                    title = result.get('title', 'Untitled')
-                    search_term = getattr(self, '_current_search_term', '')
-                    
-                    # Always try to save HTML file (even if text content is short)
-                    # Apply LLM filtering if enabled and content exists
-                    if content and self.enable_llm_filtering:
-                        content = self._extract_relevant_content_with_llm(content, search_term, title)
-                    
-                    # Use the actual loaded URL (after redirects) instead of the original target_url
-                    # This ensures we use the real destination URL, not the DuckDuckGo/Baidu redirect link
-                    actual_url = loaded_page.url
-                    
-                    # Save both HTML and text content to files (HTML will be saved even if text is short)
-                    saved_html_path, saved_txt_path = self._save_webpage_content(loaded_page, actual_url, title, content or "", search_term)
-                    if saved_html_path:
-                        result['saved_html_path'] = saved_html_path
-                    if saved_txt_path:
-                        result['saved_txt_path'] = saved_txt_path
-                    
-                    # Clean content for better LLM processing
-                    cleaned_content = self._clean_text_for_saving(content) if content else ""
-                    result['content'] = cleaned_content if cleaned_content else (content if content else "Content too short or unable to extract")
-                    result['final_url'] = loaded_page.url
-                    
-                    # Print webpage summary - only increment valid_index for results that are actually printed
-                    if content and len(content.strip()) > 100:
-                        valid_index += 1
-                        self._print_webpage_summary(valid_index, title, target_url, result['content'])
-                    else:
-                        print_debug(f"⚠️ Content too short, skipping summary display")
-                
                 except Exception as e:
-                    error_msg = str(e)
-                    print_debug(f"[{global_index+1}] Failed to process page: {error_msg}")
-                    result['content'] = f"Content extraction error: {error_msg}"
-                
-                finally:
-                    # Always close the page after processing
-                    try:
-                        loaded_page.close()
-                    except Exception as close_error:
-                        print_debug(f"⚠️ [{global_index+1}] Failed to close page: {close_error}")
-                
-            except Exception as e:
-                print_debug(f"[{global_index+1}] Error processing result: {e}")
-                result['content'] = f"Processing error: {str(e)}"
-                # Try to close page even on error
-                try:
-                    loaded_page.close()
-                except:
-                    pass
+                    print_debug(f"[{global_index+1}] Failed to get download result: {e}")
+                    result['content'] = f"Download failed: {str(e)}"
+        
+        print_debug(f"✅ Parallel download completed: {completed_count} pages processed, {valid_index[0]} pages with valid content")
 
     def _fetch_webpage_content(self, results: List[Dict], page) -> None:
         """
@@ -2267,15 +2531,433 @@ Please create a detailed, structured analysis that preserves important informati
         # Return more lines to preserve comprehensive content
         return '\n'.join(cleaned_lines[:2000])
 
+    def _detect_html_encoding(self, html_bytes: bytes, default_encoding: str = 'utf-8') -> str:
+        """
+        检测HTML内容的编码
+        
+        Args:
+            html_bytes: HTML字节内容
+            default_encoding: 默认编码
+            
+        Returns:
+            检测到的编码名称
+        """
+        try:
+            # 方法1: 从HTTP Content-Type头检测（如果可用）
+            # 这里我们主要从HTML内容本身检测
+            
+            # 方法2: 从HTML meta标签检测charset
+            # 检查前10KB内容（通常charset在开头）
+            content_preview = html_bytes[:10240].decode('latin-1', errors='ignore')
+            
+            # 查找charset声明（多种格式）
+            charset_patterns = [
+                r'<meta[^>]*charset\s*=\s*["\']?([^"\'\s>]+)',
+                r'<meta[^>]*content\s*=\s*["\'][^"\']*charset\s*=\s*([^"\'\s;]+)',
+                r'charset\s*=\s*["\']?([^"\'\s>]+)',
+            ]
+            
+            for pattern in charset_patterns:
+                match = re.search(pattern, content_preview, re.IGNORECASE)
+                if match:
+                    detected_charset = match.group(1).strip().lower()
+                    # 规范化编码名称
+                    encoding_map = {
+                        'gb2312': 'gbk',
+                        'gb_2312': 'gbk',
+                        'gb-2312': 'gbk',
+                        'gbk': 'gbk',
+                        'utf-8': 'utf-8',
+                        'utf8': 'utf-8',
+                        'big5': 'big5',
+                        'big-5': 'big5',
+                    }
+                    detected_charset = encoding_map.get(detected_charset, detected_charset)
+                    if detected_charset:
+                        return detected_charset
+            
+            # 方法3: 使用chardet库检测（如果可用）
+            try:
+                import chardet
+                detected = chardet.detect(html_bytes[:50000])  # 检测前50KB
+                if detected and detected.get('encoding'):
+                    detected_encoding = detected['encoding'].lower()
+                    # 规范化编码名称
+                    if detected_encoding in ['gb2312', 'gb_2312', 'gb-2312']:
+                        detected_encoding = 'gbk'
+                    if detected_encoding and detected.get('confidence', 0) > 0.7:
+                        return detected_encoding
+            except ImportError:
+                pass  # chardet不可用，跳过
+            
+            return default_encoding
+            
+        except Exception as e:
+            print_debug(f"⚠️ Encoding detection failed: {e}, using default {default_encoding}")
+            return default_encoding
+    
+    def _download_webpage_with_requests(self, url: str, timeout: float = 5.0) -> tuple:
+        """
+        使用 requests 下载网页，返回 HTML 内容和最终 URL
+        
+        Args:
+            url: 目标 URL
+            timeout: 超时时间（秒）
+            
+        Returns:
+            (html_content, final_url, title) 或 (None, None, None) 如果失败
+        """
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+            # 禁用 SSL 警告
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True, verify=False)
+            
+            if response.status_code != 200:
+                return None, None, None
+            
+            # 获取最终 URL（处理重定向）
+            final_url = response.url
+            
+            # 使用字节内容而不是text，以便正确检测编码
+            html_bytes = response.content
+            
+            # 检测编码
+            detected_encoding = self._detect_html_encoding(html_bytes)
+            
+            # 尝试使用检测到的编码解码
+            try:
+                html_content = html_bytes.decode(detected_encoding)
+            except (UnicodeDecodeError, LookupError):
+                # 如果检测的编码失败，尝试UTF-8
+                try:
+                    html_content = html_bytes.decode('utf-8')
+                    detected_encoding = 'utf-8'
+                except UnicodeDecodeError:
+                    # 如果UTF-8也失败，尝试GBK（常见中文编码）
+                    try:
+                        html_content = html_bytes.decode('gbk')
+                        detected_encoding = 'gbk'
+                    except UnicodeDecodeError:
+                        # 最后尝试使用errors='replace'来避免完全失败
+                        html_content = html_bytes.decode('utf-8', errors='replace')
+                        detected_encoding = 'utf-8'
+                        print_debug(f"⚠️ Used error replacement for encoding, some characters may be lost")
+            
+            # 解析 HTML 获取标题（使用正确解码的内容）
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # 提取标题
+            title = None
+            if soup.title:
+                title = soup.title.string
+            if not title:
+                title = "Untitled"
+            
+            # 确保HTML内容使用UTF-8编码（统一编码）
+            # 如果原始编码不是UTF-8，需要更新HTML中的charset声明
+            if detected_encoding.lower() not in ['utf-8', 'utf8']:
+                # 更新或添加charset声明
+                if re.search(r'<meta[^>]*charset', html_content, re.IGNORECASE):
+                    html_content = re.sub(
+                        r'(<meta[^>]*charset\s*=\s*["\']?)[^"\'\s>]+',
+                        r'\1utf-8',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+                elif '<head>' in html_content.lower():
+                    html_content = re.sub(
+                        r'(<head[^>]*>)',
+                        r'\1\n<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+            
+            return html_content, final_url, title
+            
+        except Exception as e:
+            print_debug(f"⚠️ Requests download failed: {e}")
+            return None, None, None
+    
+    def _extract_content_from_html(self, html_content: str) -> str:
+        """
+        从 HTML 内容中提取主要文本内容
+        
+        Args:
+            html_content: HTML 字符串（应该是UTF-8编码）
+            
+        Returns:
+            提取的文本内容
+        """
+        try:
+            from bs4 import BeautifulSoup
+            
+            # 确保html_content是字符串类型
+            if isinstance(html_content, bytes):
+                # 如果是字节，尝试检测编码并解码
+                detected_encoding = self._detect_html_encoding(html_content)
+                try:
+                    html_content = html_content.decode(detected_encoding)
+                except (UnicodeDecodeError, LookupError):
+                    try:
+                        html_content = html_content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        html_content = html_content.decode('utf-8', errors='replace')
+            
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # 移除 script 和 style 标签
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                tag.decompose()
+            
+            # 尝试找到主要内容区域
+            content_selectors = [
+                'article', 'main', '.article-content', '.content', '.post-content',
+                '.entry-content', '.article-body', '#content', '.main-content'
+            ]
+            
+            content_text = ""
+            for selector in content_selectors:
+                if selector.startswith('.'):
+                    elements = soup.find_all(class_=selector[1:])
+                elif selector.startswith('#'):
+                    elements = [soup.find(id=selector[1:])] if soup.find(id=selector[1:]) else []
+                else:
+                    elements = soup.find_all(selector)
+                
+                if elements:
+                    for elem in elements:
+                        if elem:
+                            text = elem.get_text(separator='\n', strip=True)
+                            if len(text) > len(content_text):
+                                content_text = text
+                    if len(content_text) > 500:
+                        break
+            
+            # 如果没找到主要内容，使用 body
+            if not content_text or len(content_text) < 200:
+                body = soup.find('body')
+                if body:
+                    content_text = body.get_text(separator='\n', strip=True)
+            
+            return content_text
+            
+        except Exception as e:
+            print_debug(f"⚠️ Content extraction failed: {e}")
+            return ""
+
+    def _save_webpage_content_from_html(self, html_content: str, url: str, title: str, content: str, search_term: str = "") -> tuple:
+        """
+        从 HTML 字符串保存网页内容（不需要 Playwright page 对象）
+        
+        Args:
+            html_content: HTML 内容字符串
+            url: 原始 URL
+            title: 页面标题
+            content: 提取的文本内容
+            search_term: 搜索词
+            
+        Returns:
+            Tuple of (html_filepath, txt_filepath) or empty strings if failed
+        """
+        # Ensure the web search result directory exists when needed
+        self._ensure_result_directory()
+        
+        if not self.web_result_dir:
+            print_current(f"⚠️ Cannot save files: web_result_dir is not set")
+            return "", ""
+        
+        # Verify directory exists before attempting to save
+        if not os.path.exists(self.web_result_dir):
+            print_current(f"⚠️ Cannot save files: directory does not exist: {self.web_result_dir}")
+            return "", ""
+        
+        # 检测特殊页面（快速检测，避免保存无用内容）
+        is_special_by_url = False
+        if url:
+            _, page_type_by_url, message_by_url = self._detect_special_page("", title, url)
+            if page_type_by_url:
+                is_special_by_url = True
+        
+        # 如果通过 URL 检测到特殊页面，直接返回，不保存
+        if is_special_by_url:
+            print_debug(f"⚠️ {message_by_url}: {url[:80]}...")
+            return "", ""
+        
+        # 规范化URL并检查是否已下载
+        normalized_url = self._normalize_url_for_dedup(url) if url else ""
+        if normalized_url and normalized_url in self.downloaded_urls:
+            print_debug(f"⏭️ 跳过重复URL: {url[:80]}... (已下载)")
+            return "", ""
+        
+        html_filepath = ""
+        txt_filepath = ""
+        
+        try:
+            # Generate base filename
+            safe_title = re.sub(r'[^\w\s-]', '', title)[:50]
+            safe_title = re.sub(r'[-\s]+', '_', safe_title)
+            
+            # Add timestamp for uniqueness
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create base filename
+            if search_term:
+                safe_search = re.sub(r'[^\w\s-]', '', search_term)[:30]
+                safe_search = re.sub(r'[-\s]+', '_', safe_search)
+                base_filename = f"{safe_search}_{safe_title}_{timestamp}"
+            else:
+                base_filename = f"{safe_title}_{timestamp}"
+            
+            # Remove double underscores and ensure filename is not empty
+            base_filename = re.sub(r'_+', '_', base_filename).strip('_')
+            if not base_filename:
+                base_filename = f"webpage_{timestamp}"
+            
+            # Ensure base_filename is not empty and has valid characters
+            if len(base_filename) < 3:
+                base_filename = f"webpage_{timestamp}"
+            
+            # Save HTML content
+            try:
+                # 确保html_content是字符串类型
+                if isinstance(html_content, bytes):
+                    # 如果是字节，尝试检测编码并解码
+                    detected_encoding = self._detect_html_encoding(html_content)
+                    try:
+                        html_content = html_content.decode(detected_encoding)
+                    except (UnicodeDecodeError, LookupError):
+                        try:
+                            html_content = html_content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            html_content = html_content.decode('utf-8', errors='replace')
+                            print_debug(f"⚠️ Used error replacement for HTML encoding")
+                
+                # 确保HTML中的charset声明是UTF-8
+                if re.search(r'<meta[^>]*charset', html_content, re.IGNORECASE):
+                    html_content = re.sub(
+                        r'(<meta[^>]*charset\s*=\s*["\']?)[^"\'\s>]+',
+                        r'\1utf-8',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+                elif '<head>' in html_content.lower():
+                    html_content = re.sub(
+                        r'(<head[^>]*>)',
+                        r'\1\n<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />',
+                        html_content,
+                        flags=re.IGNORECASE,
+                        count=1
+                    )
+                
+                # 检测HTML中的特殊页面
+                is_special, page_type, message = self._detect_special_page(html_content, title, url)
+                
+                if is_special:
+                    print_debug(f"⚠️ {message}: {url[:80]}...")
+                    return "", ""
+                
+                if not is_special:
+                    html_filename = f"{base_filename}.html"
+                    html_filepath = os.path.join(self.web_result_dir, html_filename)
+                    with open(html_filepath, 'w', encoding='utf-8') as f:
+                        f.write(html_content)
+                    # 成功保存HTML后，记录URL以避免重复下载
+                    if normalized_url:
+                        self.downloaded_urls.add(normalized_url)
+                    
+            except Exception as e:
+                print_current(f"⚠️ Failed to save webpage HTML: {e}")
+            
+            # Save text content
+            try:
+                if content and content.strip():
+                    # For very large content, truncate before cleaning
+                    MAX_CONTENT_LENGTH_FOR_CLEANING = 500000
+                    content_to_clean = content
+                    if len(content) > MAX_CONTENT_LENGTH_FOR_CLEANING:
+                        print_current(f"⚠️ Content too large ({len(content)} chars), truncating to {MAX_CONTENT_LENGTH_FOR_CLEANING} chars before cleaning")
+                        content_to_clean = content[:MAX_CONTENT_LENGTH_FOR_CLEANING]
+                    
+                    # Clean the content
+                    cleaned_content = None
+                    try:
+                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(self._clean_text_for_saving, content_to_clean)
+                            try:
+                                cleaned_content = future.result(timeout=10.0)
+                            except FutureTimeoutError:
+                                print_current(f"⚠️ Content cleaning timeout (10s), using simplified cleaning")
+                                cleaned_content = self._clean_text_for_saving_simple(content_to_clean)
+                    except Exception as clean_error:
+                        print_current(f"⚠️ Content cleaning failed: {clean_error}, using simplified cleaning")
+                        try:
+                            cleaned_content = self._clean_text_for_saving_simple(content_to_clean)
+                        except Exception as simple_clean_error:
+                            print_current(f"⚠️ Simplified cleaning also failed: {simple_clean_error}, saving original content")
+                            cleaned_content = content_to_clean
+                    
+                    if cleaned_content and len(cleaned_content.strip()) > 50:
+                        txt_filename = f"{base_filename}.txt"
+                        txt_filepath = os.path.join(self.web_result_dir, txt_filename)
+                        
+                        # Create a formatted text file with metadata
+                        formatted_content = f"""Title: {title}
+URL: {url}
+Search Term: {search_term}
+Timestamp: {datetime.datetime.now().isoformat()}
+Original Content Length: {len(content)} characters
+Cleaned Content Length: {len(cleaned_content)} characters
+
+
+{cleaned_content}
+"""
+                        
+                        try:
+                            with open(txt_filepath, 'w', encoding='utf-8') as f:
+                                f.write(formatted_content)
+                            # 成功保存后，记录URL
+                            if normalized_url:
+                                self.downloaded_urls.add(normalized_url)
+                        except Exception as write_error:
+                            print_current(f"⚠️ Failed to write text file: {write_error}")
+                            txt_filepath = ""
+                            
+            except Exception as e:
+                print_current(f"⚠️ Failed to save text content: {e}")
+                txt_filepath = ""
+            
+            return html_filepath, txt_filepath
+            
+        except Exception as e:
+            print_current(f"⚠️ Failed to save webpage content: {e}")
+            return "", ""
+    
     def _print_webpage_summary(self, index: int, title: str, url: str, content: str) -> None:
         """
-        Print a summary of the downloaded webpage
+        Print a summary of the downloaded webpage (title and URL, no content preview)
         
         Args:
             index: Index of the result (1-based)
             title: Webpage title
             url: Webpage URL
-            content: Webpage content
+            content: Webpage content (not printed, only used for validation)
         """
         try:
             # Skip if content is too short or is an error message
@@ -2286,33 +2968,27 @@ Please create a detailed, structured analysis that preserves important informati
             if 'ads-by' in url.lower():
                 return
             
-            # Extract preview text (first 250 characters, cleaned)
-            preview = str(content).strip()[:250].replace('\n', ' ').replace('\r', ' ')
-            # Truncate at word boundary if possible
-            if len(str(content)) > 250:
-                last_space = preview.rfind(' ')
-                if last_space > 150:  # Only truncate if we have enough content
-                    preview = preview[:last_space] + '...'
-                else:
-                    preview = preview + '...'
-            
-            # Truncate URL if too long
-            display_url = url
-            if len(display_url) > 80:
-                display_url = display_url[:77] + '...'
+            # Remove newlines and carriage returns from title, replace with space
+            import re
+            display_title = re.sub(r'[\n\r]+', ' ', str(title)).strip()
             
             # Truncate title if too long
-            display_title = title
-            if len(display_title) > 60:
-                display_title = display_title[:57] + '...'
+            if len(display_title) > 100:
+                display_title = display_title[:97] + '...'
             
-            # Print summary
-            print_current(f"[{index}] {display_title}\n {preview}")
+            # Print title and URL (URL on new line)
+            print_current(f"[{index}] {display_title}")
+            print_current(f"    {url}")
             
         except Exception as e:
             # If summary generation fails, just print basic info
             try:
-                print_current(f"📄 [{index}] {title[:60] if title else 'Untitled'}... | {len(str(content)) if content else 0} characters")
+                import re
+                clean_title = re.sub(r'[\n\r]+', ' ', str(title)).strip() if title else 'Untitled'
+                clean_title = clean_title[:100]
+                print_current(f"[{index}] {clean_title}")
+                if url:
+                    print_current(f"    {url}")
             except:
                 pass
     
@@ -2919,9 +3595,10 @@ Please create a detailed, structured analysis that preserves important informati
                         ]
                     )
                     
+                    # 使用移动版 User Agent 获取更轻量的页面
                     context = browser.new_context(
-                        user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                        viewport={'width': 1024, 'height': 768},
+                        user_agent='Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                        viewport={'width': 414, 'height': 896},  # iPhone 尺寸
                         ignore_https_errors=True,
                         java_script_enabled=True,
                         bypass_csp=True
@@ -2931,6 +3608,18 @@ Please create a detailed, structured analysis that preserves important informati
                     if original_display is not None:
                         os.environ['DISPLAY'] = original_display
                 page = context.new_page()
+                
+                # 🚀 性能优化：阻止加载图片、CSS、字体、媒体等资源
+                def block_resources(route):
+                    """阻止加载非必要资源以加快页面加载速度"""
+                    resource_type = route.request.resource_type
+                    if resource_type in ['image', 'stylesheet', 'font', 'media', 'other']:
+                        route.abort()
+                    else:
+                        route.continue_()
+                
+                page.route('**/*', block_resources)
+                print_debug("🚀 Performance optimization: blocking images, CSS, fonts, and media")
                 
                 # Use optimized timeout for faster processing
                 final_timeout = 10000

@@ -5248,8 +5248,8 @@ def get_routine_files():
                     'type': 'workspace_file'
                 })
         
-        # 按名称排序
-        routine_files.sort(key=lambda x: x['name'])
+        # 按名称排序（反向排序，推荐类文件在上边）
+        routine_files.sort(key=lambda x: x['name'], reverse=True)
         
         return jsonify({
             'success': True,

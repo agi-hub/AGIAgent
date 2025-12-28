@@ -42,6 +42,7 @@ class BaseTools:
         self.workspace_root = workspace_root
         self.model = model  # Store model name for vision API detection
         self.last_edit = None  # Store last edit info (used for debugging and context)
+        self._agent_id = None  # Store agent_id for this tools instance
 
         # Initialize code repository parser
         self.code_parser = None
@@ -54,6 +55,12 @@ class BaseTools:
         # Initialize sensor data collector
         self.sensor_collector = None
         self._init_sensor_collector()
+    
+    def set_agent_context(self, agent_id: str):
+        """Set agent ID for this tools instance and update context."""
+        self._agent_id = agent_id
+        from .agent_context import set_current_agent_id
+        set_current_agent_id(agent_id)
 
     def _init_code_parser(self):
         """Initialize code repository parser with background update enabled"""
@@ -214,7 +221,7 @@ class BaseTools:
     def idle(self, reason: str = None, sleep: float = 10) -> Dict[str, Any]:
         """
         Idle tool - represents doing nothing in this round, mainly used for multi-agent synchronization.
-        Monitors manager's inbox for new extmsg messages and exits sleep early if detected.
+        Monitors current agent's inbox for new extmsg messages and exits sleep early if detected.
         Default sleep time is 10 seconds to wait for other agents.
         
         Args:
@@ -243,27 +250,59 @@ class BaseTools:
         if reason:
             print_current(f"   Reason: {reason}")
         
-        # Get manager's inbox directory and mailbox
-        manager_inbox_dir = None
+        # Get current agent's inbox directory and mailbox
+        # Use current agent_id if available, otherwise use "manager"
+        agent_inbox_dir = None
         mailbox = None
+        agent_id = None
         try:
             # Try to get workspace root to determine mailbox path
             workspace_root = self.workspace_root
             if workspace_root:
                 from .message_system import get_message_router
+                from .agent_context import get_current_agent_id
+                
                 router = get_message_router(workspace_root, cleanup_on_init=False)
-                mailbox = router.get_mailbox("manager")
+                
+                # Get current agent ID from multiple sources
+                agent_id = get_current_agent_id()
+                
+                # If not set in context, try to get from tools instance
+                if not agent_id and hasattr(self, '_agent_id') and self._agent_id:
+                    agent_id = self._agent_id
+                
+                # If still not set, try to extract from workspace_root path
+                # e.g., /path/to/agents_output/agent_001/workspace -> agent_001
+                if not agent_id and workspace_root:
+                    import re
+                    # Look for agent_XXX pattern in the path
+                    match = re.search(r'agent_\d+', workspace_root)
+                    if match:
+                        agent_id = match.group(0)
+                
+                # Default to "manager" if still not set
+                if not agent_id:
+                    agent_id = "manager"
+                
+                mailbox = router.get_mailbox(agent_id)
+                
+                # If mailbox not found, try to register the agent
+                if not mailbox:
+                    try:
+                        mailbox = router.register_agent(agent_id)
+                    except Exception as e:
+                        print_current(f"   ⚠️ Failed to register mailbox for {agent_id}: {e}")
                 
                 if mailbox:
-                    manager_inbox_dir = mailbox.inbox_dir
+                    agent_inbox_dir = mailbox.inbox_dir
         except Exception as e:
             print_current(f"   ⚠️ Could not access message router: {e}")
         
         # Handle infinite sleep (sleep == -1)
         if sleep == -1:
-            print_current("   ⏸️  Infinite sleep mode - waiting for user message to wake up...")
+            print_current(f"   ⏸️  Infinite sleep mode - waiting for user message to wake up...")
             
-            if manager_inbox_dir and os.path.exists(manager_inbox_dir) and mailbox:
+            if agent_inbox_dir and os.path.exists(agent_inbox_dir) and mailbox:
                 # Infinite loop checking for new messages
                 check_interval = 0.5  # Check every 0.5 seconds
                 while True:
@@ -272,18 +311,54 @@ class BaseTools:
                     # Check for unread extmsg messages
                     try:
                         unread_messages = mailbox.get_unread_messages()
+                        
                         # Check if any unread message is an extmsg
                         for msg in unread_messages:
                             if msg.message_id.startswith("extmsg_"):
                                 print_current(f"   ⚡ Detected new extmsg message ({msg.message_id}), waking up from infinite sleep")
+                                
+                                # Extract message content
+                                message_content = ""
+                                if isinstance(msg.content, dict):
+                                    message_content = msg.content.get('text', str(msg.content))
+                                else:
+                                    message_content = str(msg.content)
+                                
+                                # Format message for agent
+                                formatted_message = f"""
+**NEW MESSAGE RECEIVED:**
+- Message ID: {msg.message_id}
+- From: {msg.sender_id}
+- To: {msg.receiver_id}
+- Type: {msg.message_type.value}
+- Priority: {msg.priority.value}
+- Content: {message_content}
+- Timestamp: {msg.timestamp}
+
+**ACTION REQUIRED:** Please process this message immediately.
+"""
+                                
                                 result['early_exit'] = True
                                 result['extmsg_detected'] = msg.message_id
                                 result['infinite_sleep'] = True
+                                result['message'] = formatted_message
+                                result['description'] = f"Idle interrupted: New extmsg message ({msg.message_id}) received from {msg.sender_id}. Message content: {message_content}"
+                                result['content'] = formatted_message  # Add content field for better LLM visibility
+                                result['new_message_content'] = message_content  # Direct content access
+                                result['new_message_sender'] = msg.sender_id
+                                
+                                # Mark message as read since we've processed it
+                                try:
+                                    mailbox.mark_as_read(msg.message_id)
+                                    print_current(f"   ✅ Marked message {msg.message_id} as read")
+                                except Exception as e:
+                                    print_current(f"   ⚠️ Warning: Could not mark message as read: {e}")
+                                
                                 return result
                     except Exception as e:
                         print_current(f"   ⚠️ Error checking for extmsg: {e}")
             else:
-                print_current("   ⚠️ Cannot enter infinite sleep mode: manager inbox not available")
+                print_current(f"   ⚠️ Cannot enter infinite sleep mode: {agent_id}'s inbox not available")
                 result['error'] = 'inbox_not_available'
         
         # If sleep time is specified (and not -1), monitor inbox and sleep
@@ -291,7 +366,7 @@ class BaseTools:
             print_current(f"   Sleeping for {sleep} seconds, monitoring for new extmsg messages...")
             
             # Monitor inbox and sleep
-            if manager_inbox_dir and os.path.exists(manager_inbox_dir) and mailbox:
+            if agent_inbox_dir and os.path.exists(agent_inbox_dir) and mailbox:
                 # Sleep with periodic checks for new messages
                 check_interval = 0.5  # Check every 0.5 seconds
                 elapsed_time = 0.0
@@ -309,8 +384,43 @@ class BaseTools:
                         for msg in unread_messages:
                             if msg.message_id.startswith("extmsg_"):
                                 print_current(f"   ⚡ Detected new extmsg message ({msg.message_id}), exiting sleep early")
+                                
+                                # Extract message content
+                                message_content = ""
+                                if isinstance(msg.content, dict):
+                                    message_content = msg.content.get('text', str(msg.content))
+                                else:
+                                    message_content = str(msg.content)
+                                
+                                # Format message for agent
+                                formatted_message = f"""
+**NEW MESSAGE RECEIVED:**
+- Message ID: {msg.message_id}
+- From: {msg.sender_id}
+- To: {msg.receiver_id}
+- Type: {msg.message_type.value}
+- Priority: {msg.priority.value}
+- Content: {message_content}
+- Timestamp: {msg.timestamp}
+
+**ACTION REQUIRED:** Please process this message immediately.
+"""
+                                
                                 result['early_exit'] = True
                                 result['extmsg_detected'] = msg.message_id
+                                result['message'] = formatted_message
+                                result['description'] = f"Idle interrupted: New extmsg message ({msg.message_id}) received from {msg.sender_id}. Message content: {message_content}"
+                                result['content'] = formatted_message  # Add content field for better LLM visibility
+                                result['new_message_content'] = message_content  # Direct content access
+                                result['new_message_sender'] = msg.sender_id
+                                
+                                # Mark message as read since we've processed it
+                                try:
+                                    mailbox.mark_as_read(msg.message_id)
+                                    print_current(f"   ✅ Marked message {msg.message_id} as read")
+                                except Exception as e:
+                                    print_current(f"   ⚠️ Warning: Could not mark message as read: {e}")
+                                
                                 early_exit = True
                                 break
                         
@@ -323,8 +433,8 @@ class BaseTools:
                     print_current(f"   ✅ Sleep completed ({elapsed_time:.1f} seconds)")
             else:
                 # If inbox directory not found, just sleep normally
-                if manager_inbox_dir:
-                    print_current(f"   ⚠️ Manager inbox directory not found: {manager_inbox_dir}, sleeping normally")
+                if agent_inbox_dir:
+                    print_current(f"   ⚠️ {agent_id}'s inbox directory not found: {agent_inbox_dir}, sleeping normally")
                 time.sleep(sleep)
                 print_current(f"   ✅ Sleep completed ({sleep} seconds)")
         

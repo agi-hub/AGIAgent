@@ -674,6 +674,7 @@ class MultiRoundTaskExecutor:
                 bool(enable_round_sync)
                 and bool(sync_step)
                 and not current_agent_finished  # Don't apply barrier to finished agents
+                and not infinite_loop  # Don't apply barrier in infinite loop mode
                 and (
                     (not is_manager)  # Regular Spawned Agent Always Follows
                     or (is_manager and multi_agent_active)  # Manager Also Follows When Other Agents Exist

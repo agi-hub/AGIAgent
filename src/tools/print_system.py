@@ -30,8 +30,9 @@ Features:
 import os
 import builtins
 import re
+import threading
 from contextlib import contextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict
 from src.tools.agent_context import get_current_agent_id, get_current_log_dir, set_current_log_dir
 from src.config_loader import get_emoji_disabled 
 
@@ -41,6 +42,10 @@ from src.config_loader import get_emoji_disabled
 # _LOG_DIR: Optional[str] = None  # Removed global variable
 
 _EMOJI_DISABLED: Optional[bool] = None
+
+# File write locks: use a lock per file to prevent concurrent write issues
+_file_write_locks: Dict[str, threading.Lock] = {}
+_file_locks_lock = threading.Lock()  # Lock to protect the dictionary of locks
 
 def _emoji_disabled() -> bool:
     """Detect whether to remove emoji (with cache)."""
@@ -100,20 +105,33 @@ def _process_newlines_for_terminal(text: str) -> str:
 
 
 def _write_to_file(file_path: str, content: str, newline: bool = True) -> None:
-    """Append to file inside configured LOG_DIR (if any), auto-create dirs."""
+    """Append to file inside configured LOG_DIR (if any), auto-create dirs.
+    
+    Thread-safe: uses per-file locks to prevent concurrent write issues that could
+    cause content to be interleaved (e.g., when streaming output is interrupted by
+    token usage logs).
+    """
     # Get LOG_DIR from context instead of global variable
     log_dir = get_current_log_dir()
     final_path = os.path.join(log_dir, file_path) if log_dir else file_path
+
+    # Get or create a lock for this specific file path
+    with _file_locks_lock:
+        if final_path not in _file_write_locks:
+            _file_write_locks[final_path] = threading.Lock()
+        file_lock = _file_write_locks[final_path]
 
     dir_name = os.path.dirname(final_path)
     if dir_name and not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
 
-    with open(final_path, 'a', encoding='utf-8', errors='ignore', buffering=1) as fh:
-        fh.write(content)
-        if newline:
-            fh.write('\n')
-        fh.flush()
+    # Use file-specific lock to ensure atomic writes
+    with file_lock:
+        with open(final_path, 'a', encoding='utf-8', errors='ignore', buffering=1) as fh:
+            fh.write(content)
+            if newline:
+                fh.write('\n')
+            fh.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -303,16 +321,47 @@ class _StreamWriter:
     def get_content(self) -> str:
         """Return written content (no newline)."""
         return ''.join(self.buffer)
+    
+    def flush(self) -> None:
+        """Flush any pending output to ensure all content is displayed.
+        
+        This is important especially in GUI mode where QueueSocketHandler
+        buffers content until flush() is called.
+        """
+        import sys
+        if self.agent_id == 'manager':
+            # Ensure stdout is flushed in both GUI and terminal modes
+            if hasattr(sys.stdout, 'flush'):
+                try:
+                    sys.stdout.flush()
+                except:
+                    pass
 
 
 @contextmanager
 def streaming_context(show_start_message: bool = True):
     _ = show_start_message
     writer = _StreamWriter(get_current_agent_id())
+    import sys
     try:
         yield writer
     finally:
-        pass
+        # Ensure all buffered content is flushed before context exits
+        # This is critical to prevent output truncation, especially in GUI mode
+        writer.flush()
+        
+        # Check if any exception occurred (using sys.exc_info() in finally block)
+        exc_type, exc_val, exc_tb = sys.exc_info()
+        if exc_type is not None:
+            # An exception occurred, record interruption info
+            if exc_type == KeyboardInterrupt:
+                print_debug("\n⚠️ Streaming output was forcibly interrupted (KeyboardInterrupt)")
+            else:
+                exception_name = exc_type.__name__ if exc_type else "Unknown"
+                print_debug(f"\n⚠️ Streaming output was abnormally interrupted: {exception_name}")
+        else:
+            # Completed normally; all content received
+            print_debug("\n✅ Streaming output completed normally, all content received")
 
 @contextmanager
 def with_agent_print(agent_id: str):
