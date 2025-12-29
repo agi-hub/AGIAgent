@@ -1055,12 +1055,22 @@ Please create a detailed, structured analysis that preserves important informati
                     if not results:
                         print_debug("🔍 Using Playwright for search")
                         # Initialize available search engines
-                        # DuckDuckGo always as primary search engine (most bot-friendly, no anti-bot measures)
-                        print_debug("🔍 Using DuckDuckGo as primary search engine")
+                        # Baidu as primary search engine, DuckDuckGo as secondary
+                        print_debug("🔍 Using Baidu -> DuckDuckGo -> Google search order")
                         
                         search_engines = []
                         
-                        # Add DuckDuckGo first (always first regardless of language)
+                        # Add Baidu first (always first regardless of language)
+                        search_engines.append({
+                            'name': 'Baidu',
+                            'url': 'https://www.baidu.com/s?wd={}',
+                            'result_selector': 'h3.t a, h3 a, .t a, .c-title-text, .c-title a, .result h3 a, .c-container h3 a, .c-title a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
+                            'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small',
+                            'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12']
+                        })
+                        print_debug("🔍 Baidu search engine added as primary option")
+                        
+                        # Add DuckDuckGo as secondary option (after Baidu)
                         search_engines.append({
                             'name': 'DuckDuckGo',
                             'url': 'https://html.duckduckgo.com/html/?q={}',
@@ -1068,21 +1078,7 @@ Please create a detailed, structured analysis that preserves important informati
                             'container_selector': '.result, .web-result, .links_main',
                             'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
                         })
-                        print_debug("🔍 DuckDuckGo search engine added as primary option")
-                        
-                        # Check if query contains Chinese characters for secondary options
-                        has_chinese = bool(re.search(r'[\u4e00-\u9fff]', search_term))
-                        
-                        if has_chinese:
-                            # For Chinese queries, add Baidu as secondary option
-                            search_engines.append({
-                                'name': 'Baidu',
-                                'url': 'https://www.baidu.com/s?wd={}',
-                                'result_selector': 'h3.t a, h3 a, .t a, .c-title-text, .c-title a, .result h3 a, .c-container h3 a, .c-title a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
-                                'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small',
-                                'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12']
-                            })
-                            print_debug("🔍 Baidu search engine added as secondary option (Chinese query)")
+                        print_debug("🔍 DuckDuckGo search engine added as secondary option")
                         
                         # Add Google as fallback option
                         search_engines.append({
@@ -1094,17 +1090,6 @@ Please create a detailed, structured analysis that preserves important informati
                             'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                         })
                         print_debug("🔍 Google search engine added as fallback option")
-                        
-                        # If not Chinese query, also add Baidu as last resort
-                        if not has_chinese:
-                            search_engines.append({
-                                'name': 'Baidu',
-                                'url': 'https://www.baidu.com/s?wd={}',
-                                'result_selector': 'h3.t a, h3 a, .t a, .c-title-text, .c-title a, .result h3 a, .c-container h3 a, .c-title a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
-                                'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small',
-                                'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12']
-                            })
-                            print_debug("🔍 Baidu search engine added as last resort option")
                         
                         optimized_search_term = self._optimize_search_term(search_term)
                         encoded_term = urllib.parse.quote_plus(optimized_search_term)
