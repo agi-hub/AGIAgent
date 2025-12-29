@@ -13,7 +13,7 @@ pandoc>=2.0.0
 pillow
 pandocfilters
 cairosvg
-
+beautifulsoup4
 
 # GUI dependencies
 flask>=2.0.0
