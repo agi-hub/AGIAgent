@@ -1376,3 +1376,29 @@ def get_all_model_configs(config_file: str = "config/config.txt") -> list:
         import traceback
         traceback.print_exc()
         return []
+
+
+def get_zhipu_search_api_key(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get Zhipu AI web search API key from configuration
+
+    Args:
+        config_file: Path to the configuration file
+
+    Returns:
+        Zhipu search API key if configured, None otherwise
+    """
+    return get_config_value("zhipu_search_api_key", config_file=config_file)
+
+
+def get_zhipu_search_engine(config_file: str = "config/config.txt") -> str:
+    """
+    Get Zhipu AI web search engine configuration
+
+    Args:
+        config_file: Path to the configuration file
+
+    Returns:
+        Search engine type, defaults to "search_std"
+    """
+    return get_config_value("zhipu_search_engine", default="search_std", config_file=config_file)

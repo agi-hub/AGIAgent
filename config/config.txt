@@ -10,14 +10,15 @@ LANG=zh
 # GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.5
+model=glm-4.7
 max_tokens=16384
 
+
 # Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
-# max_tokens=32768
+#api_key=your key
+#api_base=https://api.openai-proxy.org/anthropic
+#model=claude-sonnet-4-0
+#max_tokens=32768
 
 # Openrouter
 # api_key=your key
@@ -56,8 +57,13 @@ max_tokens=16384
 
 # Note: only the last configuration is valid.
 
-# Streaming output configuration: True for streaming, False for batch output
-streaming=True
+
+# Zhipu AI Web Search API configuration
+# If configured, will use Zhipu web search API as default search engine
+# If not configured or empty, falls back to original search engine (Playwright-based)
+#zhipu_search_api_key=your key
+#zhipu_search_engine=search_std
+
 
 # Long-term memory configuration
 enable_long_term_memory=False
@@ -79,6 +85,10 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # vision_api_key=your key
 # vision_api_base=https://api.openai.com/v1
 # vision_max_tokens=4096
+
+
+# Streaming output configuration: True for streaming, False for batch output
+streaming=True
 
 # Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
 # When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
