@@ -73,10 +73,6 @@ class MouseTools:
                             print_current("⚠️ PyNput 需要辅助功能权限。请在系统设置中授予权限。")
             except ImportError:
                 pass
-        
-        # 如果都没有，将使用系统命令
-        if not self.pyautogui_available and not self.pynput_available:
-            print_debug("⚠️ 未找到 PyAutoGUI 或 PyNput，将尝试使用系统命令进行鼠标操作")
     
     def mouse_control(self, action: str, x: Optional[int] = None, y: Optional[int] = None, 
                      button: Optional[str] = None, clicks: Optional[int] = None, 

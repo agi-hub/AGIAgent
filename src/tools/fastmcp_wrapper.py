@@ -260,13 +260,36 @@ class FastMcpWrapper:
     
     def _run_shared_loop(self):
         """Run the shared event loop in a separate thread"""
-        asyncio.set_event_loop(self._shared_loop)
         try:
+            # Check if there's already a running event loop in this thread
+            try:
+                existing_loop = asyncio.get_running_loop()
+                # If there's a running loop, we can't set a new one
+                print_debug(f"⚠️ Cannot run shared event loop: another loop is already running in this thread")
+                return
+            except RuntimeError:
+                # No running loop, safe to proceed
+                pass
+            
+            # Set the event loop for this thread
+            asyncio.set_event_loop(self._shared_loop)
+            
+            # Run the event loop
             self._shared_loop.run_forever()
+        except RuntimeError as e:
+            # Handle "Cannot run the event loop while another loop is running"
+            if "another loop is running" in str(e).lower():
+                print_debug(f"⚠️ Shared event loop: another loop is running, skipping")
+            else:
+                print_current(f"⚠️ Shared event loop error: {e}")
         except Exception as e:
             print_current(f"⚠️ Shared event loop error: {e}")
         finally:
-            self._shared_loop.close()
+            try:
+                if self._shared_loop and not self._shared_loop.is_closed():
+                    self._shared_loop.close()
+            except Exception:
+                pass
 
     def _initialize_shared_loop(self):
         """Initialize shared event loop for all servers (all are treated as stateful)"""
@@ -682,6 +705,68 @@ class FastMcpWrapper:
                 if server_name_lower in env_var.lower():
                     auto_env_vars[env_var] = os.environ[env_var]
 
+            # IMPORTANT: Set sys.stderr BEFORE creating MCPConfig or Client
+            # FastMCP may check sys.stderr during initialization, so we need to set it early
+            # This is critical in GUI mode where sys.stderr is QueueSocketHandler
+            from contextlib import redirect_stderr
+            import sys
+
+            # Save original stderr file descriptor and sys.stderr
+            original_stderr_fd = os.dup(2)
+            original_sys_stderr = sys.stderr
+            original_sys___stderr__ = getattr(sys, '__stderr__', None)
+
+            # Create a temporary file for stderr redirection
+            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+            temp_file_path = temp_file.name
+            temp_file.close()
+            
+            # Open the temp file and redirect file descriptor 2 to it
+            temp_fd = os.open(temp_file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+            os.dup2(temp_fd, 2)
+            os.close(temp_fd)
+            
+            # Set sys.stderr to a valid file object with fileno() method
+            # This MUST be done before creating MCPConfig or Client object
+            # CRITICAL: FastMCP checks sys.stderr.fileno() when creating subprocesses
+            # In GUI mode, sys.stderr is QueueSocketHandler which doesn't have fileno()
+            temp_stderr_file = open(temp_file_path, 'w')
+            
+            # Verify that the file object has fileno() method before proceeding
+            # This ensures FastMCP won't fail when checking stderr
+            try:
+                _ = temp_stderr_file.fileno()
+                # File object has fileno(), use it directly
+                sys.stderr = temp_stderr_file
+                sys.__stderr__ = temp_stderr_file
+            except (AttributeError, OSError):
+                # If fileno() doesn't work, create a wrapper that provides it
+                # Use file descriptor 2 since we've already redirected it
+                class StderrWrapper:
+                    def __init__(self, file_obj, fd):
+                        self._file = file_obj
+                        self._fd = fd
+                    
+                    def fileno(self):
+                        return self._fd
+                    
+                    def write(self, s):
+                        return self._file.write(s)
+                    
+                    def flush(self):
+                        return self._file.flush()
+                    
+                    def close(self):
+                        return self._file.close()
+                    
+                    def __getattr__(self, name):
+                        return getattr(self._file, name)
+                
+                wrapped_stderr = StderrWrapper(temp_stderr_file, 2)  # Use fd 2 which we redirected
+                sys.stderr = wrapped_stderr
+                sys.__stderr__ = wrapped_stderr
+                temp_stderr_file = wrapped_stderr
+
             # For HTTP servers, we don't need MCPConfig, just use URL directly
             if is_http_server:
                 transport = url
@@ -692,11 +777,20 @@ class FastMcpWrapper:
                     # TODO: Find alternative way to pass headers to HTTP requests
             else:
                 # For command-based servers, create MCPConfig
+                # IMPORTANT: Force stderr to be set before creating MCPConfig
+                # FastMCP may check stderr during MCPConfig initialization
+                sys.stderr = temp_stderr_file
+                sys.__stderr__ = temp_stderr_file
+                
                 # Merge config env vars with auto-detected vars
                 if env_vars or auto_env_vars:
                     final_env_vars = {**auto_env_vars, **env_vars}
                     server_config_for_fastmcp["env"] = final_env_vars
 
+                # Ensure stderr is still set before creating MCPConfig
+                sys.stderr = temp_stderr_file
+                sys.__stderr__ = temp_stderr_file
+                
                 mcp_config = MCPConfig(
                     mcpServers={
                         server_name: server_config_for_fastmcp
@@ -706,76 +800,100 @@ class FastMcpWrapper:
                 client_kwargs = {}
 
             # Query tools using temporary client with timeout
-            from contextlib import redirect_stderr
-
             stderr_buffer = io.StringIO()
-
+            
             try:
-
-                original_stderr = os.dup(2)
-
-                # write logo to file
-                with tempfile.NamedTemporaryFile(mode='w', delete=True) as temp_file:
-
-                    os.dup2(temp_file.fileno(), 2)
-
-                    try:
-                        # Add timeout to prevent hanging (Python 3.10 compatible)
-                        async with Client(transport, **client_kwargs) as client:
-                            
-                            # Track subprocess for tool discovery (temporary client)
-                            # Only track subprocesses for command-based servers
-                            if not is_http_server:
-                                try:
-                                    if hasattr(client, '_process') and client._process:
+                # CRITICAL: Create a context manager to ensure stderr stays correct
+                # throughout the entire Client lifecycle
+                class StderrContext:
+                    def __init__(self, stderr_file):
+                        self.stderr_file = stderr_file
+                        self.original_stderr = None
+                        self.original___stderr__ = None
+                    
+                    def __enter__(self):
+                        # Save originals
+                        self.original_stderr = sys.stderr
+                        self.original___stderr__ = getattr(sys, '__stderr__', None)
+                        
+                        # Force set stderr before Client creation
+                        sys.stderr = self.stderr_file
+                        sys.__stderr__ = self.stderr_file
+                        
+                        # Verify it has fileno()
+                        if not hasattr(sys.stderr, 'fileno'):
+                            raise RuntimeError("sys.stderr does not have fileno() method")
+                        try:
+                            _ = sys.stderr.fileno()
+                        except (AttributeError, OSError) as e:
+                            raise RuntimeError(f"sys.stderr.fileno() failed: {e}")
+                        
+                        return self
+                    
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        # Restore originals
+                        if self.original_stderr:
+                            sys.stderr = self.original_stderr
+                        if self.original___stderr__ is not None:
+                            sys.__stderr__ = self.original___stderr__
+                
+                # Use context manager to protect stderr during Client creation and usage
+                with StderrContext(temp_stderr_file):
+                    # Ensure stderr is set one more time (defensive)
+                    sys.stderr = temp_stderr_file
+                    sys.__stderr__ = temp_stderr_file
+                    
+                    async with Client(transport, **client_kwargs) as client:
+                        
+                        # Track subprocess for tool discovery (temporary client)
+                        # Only track subprocesses for command-based servers
+                        if not is_http_server:
+                            try:
+                                if hasattr(client, '_process') and client._process:
+                                    temp_process_info = {
+                                        'pid': client._process.pid,
+                                        'command': command,
+                                        'args': args,
+                                        'server_name': f"{server_name}_discovery",
+                                        'temporary': True
+                                    }
+                                    self._track_subprocess(f"{server_name}_discovery", temp_process_info)
+                                elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
+                                    proc = client._transport._proc
+                                    if proc:
                                         temp_process_info = {
-                                            'pid': client._process.pid,
+                                            'pid': proc.pid,
                                             'command': command,
                                             'args': args,
                                             'server_name': f"{server_name}_discovery",
                                             'temporary': True
                                         }
                                         self._track_subprocess(f"{server_name}_discovery", temp_process_info)
-                                    elif hasattr(client, '_transport') and hasattr(client._transport, '_proc'):
-                                        proc = client._transport._proc
-                                        if proc:
-                                            temp_process_info = {
-                                                'pid': proc.pid,
-                                                'command': command,
-                                                'args': args,
-                                                'server_name': f"{server_name}_discovery",
-                                                'temporary': True
-                                            }
-                                            self._track_subprocess(f"{server_name}_discovery", temp_process_info)
-                                except Exception as track_error:
-                                    # Silently ignore tracking errors for discovery
-                                    pass
+                            except Exception as track_error:
+                                # Silently ignore tracking errors for discovery
+                                pass
 
-                            # Use asyncio.wait_for for Python 3.10 compatibility
-                            tools = await asyncio.wait_for(client.list_tools(), timeout=10)
-                    finally:
-
-                        os.dup2(original_stderr, 2)
-                        os.close(original_stderr)
-                
-                discovered_tools = {}
-                
-                for tool in tools:
-                    tool_name = f"{server_name}_{tool.name}"
+                        # Use asyncio.wait_for for Python 3.10 compatibility
+                        tools = await asyncio.wait_for(client.list_tools(), timeout=10)
                     
-                    # Convert tool schema to our format
-                    parameters = self._convert_tool_schema(tool.inputSchema) if hasattr(tool, 'inputSchema') else []
+                    # Process discovered tools (after async with block exits, but still in stderr context)
+                    discovered_tools = {}
+                    for tool in tools:
+                        tool_name = f"{server_name}_{tool.name}"
+                        
+                        # Convert tool schema to our format
+                        parameters = self._convert_tool_schema(tool.inputSchema) if hasattr(tool, 'inputSchema') else []
+                        
+                        discovered_tools[tool_name] = {
+                            "server": server_name,
+                            "tool": tool.name,
+                            "original_name": tool.name,
+                            "api_name": tool_name,
+                            "description": tool.description or f"Tool from {server_name}",
+                            "parameters": parameters
+                        }
                     
-                    discovered_tools[tool_name] = {
-                        "server": server_name,
-                        "tool": tool.name,
-                        "original_name": tool.name,
-                        "api_name": tool_name,
-                        "description": tool.description or f"Tool from {server_name}",
-                        "parameters": parameters
-                    }
-                
-                return discovered_tools
+                    return discovered_tools
             except asyncio.TimeoutError:
                 print_current(f"⚠️ Tool discovery timeout for {server_name}")
                 return {}
@@ -784,6 +902,36 @@ class FastMcpWrapper:
                 import traceback
                 traceback.print_exc()
                 return {}
+            finally:
+                # Close the temp file object and restore sys.stderr
+                try:
+                    if 'sys' in locals() and 'original_sys_stderr' in locals():
+                        if sys.stderr != original_sys_stderr:
+                            try:
+                                sys.stderr.close()
+                            except Exception:
+                                pass
+                        # Restore sys.stderr and sys.__stderr__
+                        sys.stderr = original_sys_stderr
+                        # Also restore sys.__stderr__ if we modified it
+                        if 'original_sys___stderr__' in locals() and original_sys___stderr__ is not None:
+                            try:
+                                sys.__stderr__ = original_sys___stderr__
+                            except Exception:
+                                pass
+                        # Then restore file descriptor 2
+                        if 'original_stderr_fd' in locals():
+                            os.dup2(original_stderr_fd, 2)
+                            os.close(original_stderr_fd)
+                        # Clean up temp file
+                        if 'temp_file_path' in locals():
+                            try:
+                                os.unlink(temp_file_path)
+                            except Exception:
+                                pass
+                except (NameError, AttributeError) as e:
+                    # If variables are not defined (shouldn't happen, but be safe)
+                    pass
                 
         except Exception as e:
             print_current(f"⚠️ Failed to discover tools from {server_name}: {e}")
@@ -899,8 +1047,72 @@ class FastMcpWrapper:
                     client_kwargs = {}
 
                 # Create and initialize persistent client
-                client = Client(transport, **client_kwargs)
+                # Save original stderr to handle QueueSocketHandler issues
+                import sys
+                original_sys_stderr = sys.stderr
+                original_sys___stderr__ = getattr(sys, '__stderr__', None)
+                original_stderr_fd = os.dup(2)
+                temp_stderr_file = None
+                temp_stderr_path = None
+                
+                # Temporarily set sys.stderr to a valid file object with fileno() method
+                # This is critical: FastMCP checks sys.stderr.fileno() when creating subprocesses
                 try:
+                    # Create a temporary file for stderr redirection
+                    temp_stderr_file_obj = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                    temp_stderr_path = temp_stderr_file_obj.name
+                    temp_stderr_file_obj.close()
+                    
+                    # Open the temp file and redirect file descriptor 2 to it
+                    temp_fd = os.open(temp_stderr_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+                    os.dup2(temp_fd, 2)
+                    os.close(temp_fd)
+                    
+                    # Open the file and verify it has fileno()
+                    temp_stderr_file = open(temp_stderr_path, 'w')
+                    try:
+                        _ = temp_stderr_file.fileno()
+                        # File object has fileno(), use it directly
+                        sys.stderr = temp_stderr_file
+                        sys.__stderr__ = temp_stderr_file
+                    except (AttributeError, OSError):
+                        # If fileno() doesn't work, create a wrapper
+                        class StderrWrapper:
+                            def __init__(self, file_obj, fd):
+                                self._file = file_obj
+                                self._fd = fd
+                            
+                            def fileno(self):
+                                return self._fd
+                            
+                            def write(self, s):
+                                return self._file.write(s)
+                            
+                            def flush(self):
+                                return self._file.flush()
+                            
+                            def close(self):
+                                return self._file.close()
+                            
+                            def __getattr__(self, name):
+                                return getattr(self._file, name)
+                        
+                        wrapped_stderr = StderrWrapper(temp_stderr_file, 2)
+                        sys.stderr = wrapped_stderr
+                        sys.__stderr__ = wrapped_stderr
+                        temp_stderr_file = wrapped_stderr
+                except Exception:
+                    # If all else fails, try to use os.devnull
+                    try:
+                        devnull_file = open(os.devnull, 'w')
+                        sys.stderr = devnull_file
+                        sys.__stderr__ = devnull_file
+                        temp_stderr_file = devnull_file
+                    except Exception:
+                        pass  # Keep original if everything fails
+                
+                try:
+                    client = Client(transport, **client_kwargs)
                     await client.__aenter__()
                     self._persistent_clients[server_name] = {
                         'client': client,
@@ -939,6 +1151,33 @@ class FastMcpWrapper:
                 except Exception as e:
                     # print_current(f"❌ Failed to connect persistent client for {server_name}: {e}")
                     pass
+                finally:
+                    # Restore original sys.stderr and file descriptor
+                    if sys.stderr != original_sys_stderr:
+                        try:
+                            sys.stderr.close()
+                        except Exception:
+                            pass
+                    sys.stderr = original_sys_stderr
+                    # Also restore sys.__stderr__ if we modified it
+                    if 'original_sys___stderr__' in locals() and original_sys___stderr__ is not None:
+                        try:
+                            sys.__stderr__ = original_sys___stderr__
+                        except Exception:
+                            pass
+                    # Restore file descriptor 2
+                    if 'original_stderr_fd' in locals():
+                        try:
+                            os.dup2(original_stderr_fd, 2)
+                            os.close(original_stderr_fd)
+                        except Exception:
+                            pass
+                    # Clean up temp file if it was created
+                    if temp_stderr_path:
+                        try:
+                            os.unlink(temp_stderr_path)
+                        except Exception:
+                            pass
             
             client_info = self._persistent_clients[server_name]
             client = client_info['client']
@@ -1025,8 +1264,97 @@ class FastMcpWrapper:
                                     }
                                 )
                                 
-                                new_client = Client(mcp_config)
-                                await new_client.__aenter__()
+                                # Temporarily fix sys.stderr for subprocess creation
+                                import sys
+                                original_sys_stderr_reconnect = sys.stderr
+                                original_sys___stderr__reconnect = getattr(sys, '__stderr__', None)
+                                original_stderr_fd_reconnect = os.dup(2)
+                                temp_stderr_file_reconnect = None
+                                temp_stderr_path_reconnect = None
+                                
+                                try:
+                                    # Create a temporary file for stderr redirection
+                                    temp_stderr_file_obj_reconnect = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                                    temp_stderr_path_reconnect = temp_stderr_file_obj_reconnect.name
+                                    temp_stderr_file_obj_reconnect.close()
+                                    
+                                    # Open the temp file and redirect file descriptor 2 to it
+                                    temp_fd_reconnect = os.open(temp_stderr_path_reconnect, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+                                    os.dup2(temp_fd_reconnect, 2)
+                                    os.close(temp_fd_reconnect)
+                                    
+                                    # Open the file and verify it has fileno()
+                                    temp_stderr_file_reconnect = open(temp_stderr_path_reconnect, 'w')
+                                    try:
+                                        _ = temp_stderr_file_reconnect.fileno()
+                                        # File object has fileno(), use it directly
+                                        sys.stderr = temp_stderr_file_reconnect
+                                        sys.__stderr__ = temp_stderr_file_reconnect
+                                    except (AttributeError, OSError):
+                                        # If fileno() doesn't work, create a wrapper
+                                        class StderrWrapper:
+                                            def __init__(self, file_obj, fd):
+                                                self._file = file_obj
+                                                self._fd = fd
+                                            
+                                            def fileno(self):
+                                                return self._fd
+                                            
+                                            def write(self, s):
+                                                return self._file.write(s)
+                                            
+                                            def flush(self):
+                                                return self._file.flush()
+                                            
+                                            def close(self):
+                                                return self._file.close()
+                                            
+                                            def __getattr__(self, name):
+                                                return getattr(self._file, name)
+                                        
+                                        wrapped_stderr_reconnect = StderrWrapper(temp_stderr_file_reconnect, 2)
+                                        sys.stderr = wrapped_stderr_reconnect
+                                        sys.__stderr__ = wrapped_stderr_reconnect
+                                        temp_stderr_file_reconnect = wrapped_stderr_reconnect
+                                except Exception:
+                                    try:
+                                        devnull_file_reconnect = open(os.devnull, 'w')
+                                        sys.stderr = devnull_file_reconnect
+                                        sys.__stderr__ = devnull_file_reconnect
+                                        temp_stderr_file_reconnect = devnull_file_reconnect
+                                    except Exception:
+                                        pass
+                                
+                                try:
+                                    new_client = Client(mcp_config)
+                                    await new_client.__aenter__()
+                                finally:
+                                    # Restore original sys.stderr and file descriptor
+                                    if sys.stderr != original_sys_stderr_reconnect:
+                                        try:
+                                            sys.stderr.close()
+                                        except Exception:
+                                            pass
+                                    sys.stderr = original_sys_stderr_reconnect
+                                    # Also restore sys.__stderr__ if we modified it
+                                    if 'original_sys___stderr__reconnect' in locals() and original_sys___stderr__reconnect is not None:
+                                        try:
+                                            sys.__stderr__ = original_sys___stderr__reconnect
+                                        except Exception:
+                                            pass
+                                    # Restore file descriptor 2
+                                    if 'original_stderr_fd_reconnect' in locals():
+                                        try:
+                                            os.dup2(original_stderr_fd_reconnect, 2)
+                                            os.close(original_stderr_fd_reconnect)
+                                        except Exception:
+                                            pass
+                                    # Clean up temp file if it was created
+                                    if temp_stderr_path_reconnect:
+                                        try:
+                                            os.unlink(temp_stderr_path_reconnect)
+                                        except Exception:
+                                            pass
                                 self._persistent_clients[server_name] = {
                                     'client': new_client,
                                     'entered': True
@@ -1300,15 +1628,40 @@ class FastMcpWrapper:
                 
                 def run_shared_loop():
                     """Run the shared event loop in a separate thread"""
-                    self._shared_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(self._shared_loop)
-                    loop_ready.set()  # Signal that loop is ready
                     try:
-                        self._shared_loop.run_forever()
+                        # Check if there's already a running event loop in this thread
+                        try:
+                            existing_loop = asyncio.get_running_loop()
+                            # If there's a running loop, we can't set a new one
+                            loop_ready.set()  # Signal anyway to avoid blocking
+                            print_debug(f"⚠️ Cannot run shared event loop: another loop is already running in this thread")
+                            return
+                        except RuntimeError:
+                            # No running loop, safe to proceed
+                            pass
+                        
+                        self._shared_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(self._shared_loop)
+                        loop_ready.set()  # Signal that loop is ready
+                        try:
+                            self._shared_loop.run_forever()
+                        except RuntimeError as e:
+                            # Handle "Cannot run the event loop while another loop is running"
+                            if "another loop is running" in str(e).lower():
+                                print_debug(f"⚠️ Shared event loop: another loop is running, skipping")
+                            else:
+                                print_current(f"⚠️ Shared event loop error: {e}")
+                        except Exception as e:
+                            print_current(f"⚠️ Shared event loop error: {e}")
+                        finally:
+                            try:
+                                if self._shared_loop and not self._shared_loop.is_closed():
+                                    self._shared_loop.close()
+                            except Exception:
+                                pass
                     except Exception as e:
-                        print_current(f"⚠️ Shared event loop error: {e}")
-                    finally:
-                        self._shared_loop.close()
+                        loop_ready.set()  # Signal anyway to avoid blocking
+                        print_current(f"⚠️ Error in run_shared_loop: {e}")
                 
                 self._shared_thread = threading.Thread(target=run_shared_loop, daemon=True)
                 self._shared_thread.start()

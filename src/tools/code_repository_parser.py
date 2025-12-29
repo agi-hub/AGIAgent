@@ -28,6 +28,7 @@ from tqdm import tqdm
 import logging
 import time
 import threading
+import warnings
 from datetime import datetime
 from .print_system import print_system, print_current, print_debug, print_error
 
@@ -163,13 +164,69 @@ def _check_faiss_available():
         return FAISS_AVAILABLE
     
     try:
+        # 修复 faiss 库中的 distutils 弃用警告问题
+        # 使用 monkey patch 将 LooseVersion 替换为 packaging.version.Version
+        import sys
+        from packaging import version as packaging_version
+        
+        # 创建一个兼容 LooseVersion 的包装类
+        class LooseVersionCompat:
+            """兼容 LooseVersion 的包装类，使用 packaging.version.Version"""
+            def __init__(self, vstring):
+                self.version = packaging_version.parse(vstring)
+            
+            def __ge__(self, other):
+                if isinstance(other, str):
+                    other = packaging_version.parse(other)
+                return self.version >= other
+            
+            def __le__(self, other):
+                if isinstance(other, str):
+                    other = packaging_version.parse(other)
+                return self.version <= other
+            
+            def __gt__(self, other):
+                if isinstance(other, str):
+                    other = packaging_version.parse(other)
+                return self.version > other
+            
+            def __lt__(self, other):
+                if isinstance(other, str):
+                    other = packaging_version.parse(other)
+                return self.version < other
+            
+            def __eq__(self, other):
+                if isinstance(other, str):
+                    other = packaging_version.parse(other)
+                return self.version == other
+        
+        # 在导入 faiss 之前，替换 distutils.version.LooseVersion
+        import distutils.version
+        original_loose_version = distutils.version.LooseVersion
+        distutils.version.LooseVersion = LooseVersionCompat
+        
+        # 直接导入 faiss（问题已通过 monkey patch 修复，无需抑制警告）
         import faiss as _faiss
+        
+        # 恢复原始的 LooseVersion（可选，但保持干净）
+        distutils.version.LooseVersion = original_loose_version
+        
         faiss = _faiss
         FAISS_AVAILABLE = True
-        print_debug("✅ FAISS 库已加载")
+        print_debug("✅ FAISS 库已加载（已修复 distutils 弃用警告）")
     except ImportError:
         FAISS_AVAILABLE = False
         print_debug("ℹ️ FAISS 不可用，将使用 numpy 进行向量存储")
+    except Exception as e:
+        # 如果修复失败，尝试直接导入（可能会有警告，但功能正常）
+        try:
+            import faiss as _faiss
+            faiss = _faiss
+            FAISS_AVAILABLE = True
+            print_debug(f"✅ FAISS 库已加载（修复失败但导入成功: {e}）")
+        except ImportError:
+            FAISS_AVAILABLE = False
+            print_debug("ℹ️ FAISS 不可用，将使用 numpy 进行向量存储")
     
     return FAISS_AVAILABLE
 
