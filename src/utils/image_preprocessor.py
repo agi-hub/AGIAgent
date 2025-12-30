@@ -242,7 +242,6 @@ def convert_svg_for_pdf(svg_path: Path, output_dir: Path, temp_files: List[str] 
 
     try:
         import subprocess
-        import xml.etree.ElementTree as ET
 
         # 生成输出文件名
         base_name = svg_path.stem
@@ -257,31 +256,41 @@ def convert_svg_for_pdf(svg_path: Path, output_dir: Path, temp_files: List[str] 
         # 检查并修复SVG文件（添加viewBox如果缺失）
         fixed_svg_path = svg_path
         try:
-            tree = ET.parse(svg_path)
-            root = tree.getroot()
-
-            # 检查是否已有viewBox
-            if 'viewBox' not in root.attrib:
-                # 如果没有viewBox，尝试从width和height添加
-                width = root.get('width')
-                height = root.get('height')
-
-                if width and height:
-                    # 提取数值部分（去除单位）
-                    width_val = ''.join(filter(str.isdigit, width))
-                    height_val = ''.join(filter(str.isdigit, height))
-
-                    if width_val and height_val:
-                        # 添加viewBox属性
-                        root.set('viewBox', f'0 0 {width_val} {height_val}')
-
+            # 读取原始SVG内容（保持原始格式）
+            with open(svg_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+            
+            # 检查是否已有viewBox（使用正则表达式，不解析整个XML树）
+            viewbox_match = re.search(r'viewBox\s*=', svg_content, re.IGNORECASE)
+            if viewbox_match is None:
+                # 尝试从width和height提取值
+                width_match = re.search(r'width\s*=\s*["\']?(\d+(?:\.\d+)?)', svg_content, re.IGNORECASE)
+                height_match = re.search(r'height\s*=\s*["\']?(\d+(?:\.\d+)?)', svg_content, re.IGNORECASE)
+                
+                if width_match and height_match:
+                    width_val = width_match.group(1)
+                    height_val = height_match.group(1)
+                    
+                    # 在<svg标签后添加viewBox属性（使用正则表达式匹配<svg标签）
+                    svg_tag_pattern = r'(<svg[^>]*)>'
+                    def add_viewbox(match):
+                        svg_tag = match.group(1)
+                        # 检查是否已经有viewBox（再次检查，以防万一）
+                        if 'viewBox' not in svg_tag:
+                            return f'{svg_tag} viewBox="0 0 {width_val} {height_val}">'
+                        return match.group(0)
+                    
+                    fixed_content = re.sub(svg_tag_pattern, add_viewbox, svg_content, count=1, flags=re.IGNORECASE)
+                    
+                    if fixed_content != svg_content:
                         # 创建临时文件来保存修复后的SVG
                         import tempfile
                         temp_fd, temp_svg_path = tempfile.mkstemp(suffix='_fixed.svg', prefix=f"{base_name}_", dir=None)
-                        os.close(temp_fd)  # 关闭文件描述符，我们只需要路径
-
+                        
+                        with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                            f.write(fixed_content)
+                        
                         fixed_svg_path = Path(temp_svg_path)
-                        tree.write(fixed_svg_path, encoding='utf-8', xml_declaration=True)
                         temp_files.append(str(fixed_svg_path))  # 添加到临时文件列表
                         print(f"📝 Fixed SVG viewBox: {fixed_svg_path}")
 

@@ -4475,8 +4475,8 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 
                 for engine in search_engines:
                     try:
-                        # Skip this engine if it has failed before
-                        if engine['name'] in self.failed_engines:
+                        # Skip this engine if it has failed before (except Baidu Images which should always be tried)
+                        if engine['name'] in self.failed_engines and engine['name'] != 'Baidu Images':
                             print_debug(f"⏭️ Skipping {engine['name']} (failed in previous attempt)")
                             continue
                         
@@ -4501,9 +4501,12 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                 pass  # Continue even if no images found
                         except Exception as page_error:
                             print_debug(f"⚠️ Page loading error for {engine['name']}: {page_error}")
-                            # Mark this engine as failed
-                            self.failed_engines.add(engine['name'])
-                            print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
+                            # Mark this engine as failed (except Baidu Images which should always be tried)
+                            if engine['name'] != 'Baidu Images':
+                                self.failed_engines.add(engine['name'])
+                                print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
+                            else:
+                                print_debug(f"⚠️ {engine['name']} failed but will not be skipped in future attempts")
                             continue
                         
                         # 根据搜索引擎类型使用不同的图片提取方法

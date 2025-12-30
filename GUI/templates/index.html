@@ -9182,7 +9182,14 @@
                         .sort();
                     
                     window.currentImageList = imagesInFolder;
-                    window.currentImageIndex = imagesInFolder.indexOf(filePath);
+                    let foundIndex = imagesInFolder.indexOf(filePath);
+                    // 如果找不到，尝试只匹配文件名
+                    if (foundIndex === -1) {
+                        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+                        foundIndex = imagesInFolder.findIndex(img => img.endsWith(fileName));
+                    }
+                    // 如果还是找不到，默认设为0
+                    window.currentImageIndex = foundIndex >= 0 ? foundIndex : 0;
                     
                     console.log('🖼️ Found images in folder:', imagesInFolder);
                     console.log('🖼️ Current image index:', window.currentImageIndex);
@@ -9198,6 +9205,11 @@
                 window.currentImageList = [filePath];
                 window.currentImageIndex = 0;
             }
+            
+            // 加载完成后更新按钮状态
+            setTimeout(() => {
+                updateNavigationButtons();
+            }, 50);
         }
         
         // 切换到上一张图片
@@ -9297,8 +9309,12 @@
             const nextBtn = document.getElementById('nextImageBtn');
             
             if (prevBtn && nextBtn) {
+                // 确保currentImageList和currentImageIndex有有效值
+                const imageList = window.currentImageList || [];
+                const currentIndex = window.currentImageIndex >= 0 ? window.currentImageIndex : 0;
+                
                 // 禁用/启用上一张按钮
-                if (window.currentImageIndex <= 0) {
+                if (currentIndex <= 0 || imageList.length <= 1) {
                     prevBtn.disabled = true;
                     prevBtn.style.opacity = '0.5';
                     prevBtn.style.cursor = 'not-allowed';
@@ -9309,7 +9325,7 @@
                 }
                 
                 // 禁用/启用下一张按钮
-                if (window.currentImageIndex >= window.currentImageList.length - 1) {
+                if (currentIndex >= imageList.length - 1 || imageList.length <= 1) {
                     nextBtn.disabled = true;
                     nextBtn.style.opacity = '0.5';
                     nextBtn.style.cursor = 'not-allowed';

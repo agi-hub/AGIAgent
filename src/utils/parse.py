@@ -1112,6 +1112,11 @@ def fix_incomplete_invoke_closing_tags(content: str) -> str:
     This handles cases like:
     - <invoke name="tool">...</invoke_name> -> <invoke name="tool">...</invoke>
     - <invoke name="tool">...</parameter> -> <invoke name="tool">...</invoke>
+    - <invoke name="edit_file">...</edit_file> -> <invoke name="edit_file">...</invoke>
+    - <invoke name="tool">...</tool_name> -> <invoke name="tool">...</invoke>
+    
+    Any closing tag that is not </invoke> (case insensitive) will be replaced with </invoke>,
+    except for nested </parameter> tags which are handled separately.
     
     Args:
         content: The model's response text that may contain incomplete closing tags

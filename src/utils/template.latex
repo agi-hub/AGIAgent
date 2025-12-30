@@ -19,6 +19,9 @@
 \usepackage{xurl}
 \usepackage{calc}
 
+% Support for unnumbered tables in Pandoc 3.8+
+\newcounter{none}
+
 \geometry{margin=2.5cm}
 
 % Font settings

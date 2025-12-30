@@ -397,6 +397,115 @@ install_xelatex() {
     fi
 }
 
+# Install Chinese fonts (Linux)
+install_chinese_fonts_linux() {
+    print_info "Installing Chinese fonts for SVG to PDF conversion..."
+    
+    # Check if fonts are already installed
+    if fc-list :lang=zh | grep -qi "noto.*cjk\|wenquanyi"; then
+        print_warning "Chinese fonts appear to be already installed"
+        print_info "Do you want to reinstall? (y/n)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            return 0
+        fi
+    fi
+    
+    print_info "Installing Chinese fonts requires sudo privileges"
+    
+    # Detect Linux distribution
+    if [ -f /etc/debian_version ]; then
+        # Debian/Ubuntu
+        print_info "Detected Debian/Ubuntu system, installing fonts-noto-cjk..."
+        sudo apt-get update
+        sudo apt-get install -y fonts-noto-cjk fonts-wqy-microhei fonts-wqy-zenhei
+    elif [ -f /etc/redhat-release ]; then
+        # RedHat/CentOS/Fedora
+        print_info "Detected RedHat/CentOS/Fedora system, installing google-noto-cjk-fonts..."
+        sudo yum install -y google-noto-cjk-fonts wqy-microhei-fonts wqy-zenhei-fonts
+    elif [ -f /etc/arch-release ]; then
+        # Arch Linux
+        print_info "Detected Arch Linux system, installing noto-fonts-cjk..."
+        sudo pacman -S --noconfirm noto-fonts-cjk wqy-microhei wqy-zenhei
+    else
+        print_warning "Unable to auto-detect Linux distribution, trying apt-get..."
+        sudo apt-get update
+        sudo apt-get install -y fonts-noto-cjk fonts-wqy-microhei fonts-wqy-zenhei
+    fi
+    
+    # Refresh font cache
+    if command -v fc-cache &> /dev/null; then
+        print_info "Refreshing font cache..."
+        fc-cache -fv > /dev/null 2>&1
+    fi
+    
+    if fc-list :lang=zh | grep -qi "noto.*cjk\|wenquanyi"; then
+        print_success "Chinese fonts installed successfully"
+    else
+        print_warning "Chinese fonts installation completed, but verification failed"
+        print_info "Fonts may be available after system restart"
+    fi
+}
+
+# Install Chinese fonts (Mac)
+install_chinese_fonts_mac() {
+    print_info "Installing Chinese fonts for SVG to PDF conversion..."
+    
+    # Check if fonts are already installed
+    if fc-list :lang=zh | grep -qi "noto.*cjk"; then
+        print_warning "Chinese fonts appear to be already installed"
+        print_info "Do you want to reinstall? (y/n)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            return 0
+        fi
+    fi
+    
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        print_error "Homebrew package manager not found"
+        print_info "Please install Homebrew first: https://brew.sh/"
+        print_info "Or install fonts manually from: https://www.google.com/get/noto/"
+        return 1
+    fi
+    
+    print_info "Installing Noto Sans CJK SC font with Homebrew..."
+    brew install --cask font-noto-sans-cjk-sc
+    
+    # Refresh font cache
+    if command -v fc-cache &> /dev/null; then
+        print_info "Refreshing font cache..."
+        fc-cache -fv > /dev/null 2>&1
+    fi
+    
+    if fc-list :lang=zh | grep -qi "noto.*cjk"; then
+        print_success "Chinese fonts installed successfully"
+    else
+        print_warning "Chinese fonts installation completed, but verification failed"
+        print_info "Fonts may be available after system restart or font cache refresh"
+    fi
+}
+
+# Install Chinese fonts
+install_chinese_fonts() {
+    echo ""
+    print_info "Chinese fonts are required for proper Chinese text rendering in SVG to PDF conversion"
+    print_info "Do you want to install Chinese fonts? (y/n)"
+    read -r response
+    
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        print_warning "Skipping Chinese fonts installation"
+        print_info "You can install them later manually if needed for SVG to PDF conversion"
+        return 0
+    fi
+    
+    if [ "$OS" == "linux" ]; then
+        install_chinese_fonts_linux
+    elif [ "$OS" == "mac" ]; then
+        install_chinese_fonts_mac
+    fi
+}
+
 # Verify installation
 verify_installation() {
     print_info "Verifying installation..."
@@ -427,6 +536,13 @@ verify_installation() {
         print_success "✓ XeLaTeX is installed: $(xelatex --version | head -n 1)"
     else
         print_warning "✗ XeLaTeX is not installed (optional, needed for PDF generation)"
+    fi
+    
+    # Check Chinese fonts
+    if fc-list :lang=zh 2>/dev/null | grep -qi "noto.*cjk\|wenquanyi"; then
+        print_success "✓ Chinese fonts are installed"
+    else
+        print_warning "✗ Chinese fonts are not installed (optional, needed for SVG to PDF conversion with Chinese text)"
     fi
     
     echo ""
@@ -493,6 +609,9 @@ main() {
     
     # Install XeLaTeX (optional, for PDF generation)
     install_xelatex
+    
+    # Install Chinese fonts (optional, for SVG to PDF conversion)
+    install_chinese_fonts
     
     # Reactivate virtual environment for verification
     activate_venv
