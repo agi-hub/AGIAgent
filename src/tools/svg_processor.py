@@ -455,6 +455,62 @@ class SVGProcessor:
             print_debug(f"⚠️ Error converting CSS background to SVG: {e}")
             return svg_code  # 如果转换失败，返回原始代码
     
+    def _fix_path_fill_attributes(self, svg_code: str) -> str:
+        """
+        自动修复SVG中path元素的fill属性
+        
+        对于有stroke但没有fill属性的path元素，自动添加fill="none"以避免黑底问题。
+        这解决了大模型生成SVG时忘记设置fill="none"导致的渲染问题。
+        
+        Args:
+            svg_code: 原始SVG代码
+            
+        Returns:
+            修正后的SVG代码
+        """
+        try:
+            fixed_count = 0
+            
+            def fix_path_fill(match):
+                nonlocal fixed_count
+                full_tag = match.group(0)
+                attributes = match.group(1)
+                closing_bracket = match.group(2) if len(match.groups()) > 1 else '>'
+                
+                # 检查是否有stroke属性
+                has_stroke = re.search(r'\bstroke\s*=', attributes, re.IGNORECASE)
+                # 检查是否已经有fill属性
+                has_fill = re.search(r'\bfill\s*=', attributes, re.IGNORECASE)
+                
+                # 如果有stroke但没有fill，添加fill="none"
+                if has_stroke and not has_fill:
+                    fixed_count += 1
+                    # 在属性字符串末尾添加 fill="none"
+                    # 确保属性之间有空格
+                    attributes = attributes.strip()
+                    if attributes:
+                        new_attributes = attributes + ' fill="none"'
+                    else:
+                        new_attributes = 'fill="none"'
+                    
+                    return f'<path {new_attributes}{closing_bracket}'
+                
+                return full_tag
+            
+            # 匹配 <path ...> 或 <path .../> 标签
+            # 捕获属性部分和结束的 > 或 />
+            pattern = r'<path(\s+[^>]*?)(/?>)'
+            fixed_code = re.sub(pattern, fix_path_fill, svg_code, flags=re.IGNORECASE)
+            
+            if fixed_count > 0:
+                print_debug(f"🔧 Fixed {fixed_count} path element(s) by adding fill='none' to prevent black background")
+            
+            return fixed_code
+            
+        except Exception as e:
+            print_debug(f"⚠️ Error fixing path fill attributes: {e}")
+            return svg_code  # 如果修复失败，返回原始代码
+    
     def generate_svg_file(self, svg_code: str, output_dir: Path, svg_id: str) -> Optional[Path]:
         """
         Generate an SVG file from SVG code
@@ -476,6 +532,9 @@ class SVGProcessor:
             
             # 将CSS背景转换为SVG标准元素（解决转换工具不支持CSS background的问题）
             fixed_svg_code = self._convert_css_background_to_svg(fixed_svg_code)
+            
+            # 自动修复path元素的fill属性（解决大模型忘记设置fill="none"导致的黑底问题）
+            fixed_svg_code = self._fix_path_fill_attributes(fixed_svg_code)
             
             # Generate SVG filename
             svg_filename = f"svg_{svg_id}.svg"
