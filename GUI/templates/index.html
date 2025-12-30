@@ -4715,7 +4715,8 @@
                 // If task is running, give special prompt
                 if (isTaskRunning) {
                     console.log(`[${new Date().toISOString()}] ⚠️ 任务运行中断开连接!`);
-                    addMessage('⚠️ 连接中断，正在尝试重新连接...', 'warning');
+                    const message = I18N.connection_interrupted_reconnecting || '连接中断，正在尝试重新连接...';
+                    addMessage(`⚠️ ${message}`, 'warning');
                     // 连接中断时，清除所有蓝色勾选状态
                     clearAllDirectorySelections();
                 }
@@ -7029,8 +7030,8 @@
             // Scroll to bottom
             scrollToBottom(false);
             
-            // Notify server
-            socket.emit('clear_chat');
+            // Notify server with language preference
+            socket.emit('clear_chat', { language: getCurrentLanguage() });
         }
 
         function clearChat() {
@@ -7079,8 +7080,8 @@
                 // Scroll to bottom
                 scrollToBottom(false);
                 
-                // Notify server
-                socket.emit('clear_chat');
+                // Notify server with language preference
+                socket.emit('clear_chat', { language: getCurrentLanguage() });
             }
         }
 
@@ -8361,7 +8362,8 @@
             event.stopPropagation(); // 阻止事件冒泡，避免触发目录项点击
             
             // 如果文本是默认值，不复制
-            if (text === '未布置任务') {
+            const noTaskText = I18N.no_task_assigned || '未布置任务';
+            if (text === noTaskText || text === '未布置任务' || text === 'No task assigned') {
                 return;
             }
 
@@ -8426,10 +8428,14 @@
                 }
                 
                 // 获取任务描述，如果没有则使用默认值
-                let taskDesc = dir.task_description || "未布置任务";
+                const noTaskText = I18N.no_task_assigned || '未布置任务';
+                let taskDesc = dir.task_description || noTaskText;
                 
-                // 过滤掉"current request:"前缀（不区分大小写）
-                if (taskDesc !== "未布置任务") {
+                // 如果任务描述是默认值（无论是中文还是英文），统一替换为当前语言的I18N翻译
+                if (taskDesc === "未布置任务" || taskDesc === "No task assigned" || taskDesc === noTaskText) {
+                    taskDesc = noTaskText;
+                } else {
+                    // 过滤掉"current request:"前缀（不区分大小写）
                     // 使用正则表达式匹配开头的"current request:"（不区分大小写，允许开头有空白字符）
                     // 匹配模式：开头 + 可选空白 + "current" + 空白 + "request" + 可选空白 + ":" + 可选空白
                     const match = taskDesc.match(/^\s*current\s+request\s*:\s*/i);
@@ -8438,7 +8444,7 @@
                         taskDesc = taskDesc.substring(match[0].length).trim();
                         // 如果过滤后为空，则使用默认值
                         if (!taskDesc) {
-                            taskDesc = "未布置任务";
+                            taskDesc = noTaskText;
                         }
                     }
                 }
@@ -9662,8 +9668,14 @@
                 }, 100);
             } else if (type === 'pdf') {
                 previewContent.innerHTML = `
-                    <div style="background: var(--bg-secondary); padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: var(--text-primary);">
-                        ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: PDF
+                    <div id="pdfInfoBar" style="background: var(--bg-secondary); padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: var(--text-primary); display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <span>
+                            ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: PDF
+                        </span>
+                        <span id="pdfPagesInfo"></span>
+                        <a id="pdfDownloadLink" href="#" download style="padding: 5px 10px; background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; border-radius: 3px; font-size: 18px; border: 1px solid var(--border-primary); display: none; align-items: center; gap: 6px; margin-left: auto;">
+                            <i class="fas fa-download"></i> ${I18N.download_pdf || 'Download PDF'}
+                        </a>
                     </div>
                     <div id="pdfContainer" style="width: 100%; min-height: calc(90vh - 160px); border: 1px solid var(--border-primary); border-radius: 4px; overflow: visible; background: var(--bg-primary); margin-top: 0;">
                         <div style="text-align: center; padding: 20px; color: var(--text-primary);">
@@ -10135,19 +10147,21 @@
                 container.style.marginTop = '0';
                 container.innerHTML = '';
                 
-                // 创建页面导航
-                const nav = document.createElement('div');
-                nav.style.cssText = 'background: var(--bg-secondary); color: var(--text-primary); padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px); border-bottom: 1px solid var(--border-primary);';
+                // 更新第一个横条，添加总页数和下载链接
                 const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                 const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
-                
-                nav.innerHTML = `
-                    <span id="pageInfo">${I18N.pdf_pages.replace('{pages}', pdf.numPages)}</span>
-                    <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; border-radius: 3px; font-size: 18px; border: 1px solid var(--border-primary);">
-                        <i class="fas fa-download"></i> ${I18N.download_pdf}
-                    </a>
-                `;
-                container.appendChild(nav);
+                const pagesInfo = document.getElementById('pdfPagesInfo');
+                const downloadLink = document.getElementById('pdfDownloadLink');
+                if (pagesInfo) {
+                    pagesInfo.textContent = I18N.pdf_pages.replace('{pages}', pdf.numPages);
+                }
+                if (downloadLink) {
+                    downloadLink.href = downloadUrl;
+                    downloadLink.style.display = 'inline-flex';
+                    downloadLink.style.alignItems = 'center';
+                    downloadLink.style.gap = '6px';
+                    downloadLink.style.marginLeft = 'auto';
+                }
                 
                 // 创建页面容器
                 const pagesContainer = document.createElement('div');
@@ -10188,25 +10202,27 @@
                         container.style.marginTop = '0';
                         container.innerHTML = '';
                         
-                        // 创建页面导航
-                        const nav = document.createElement('div');
-                        nav.style.cssText = 'background: var(--bg-secondary); color: var(--text-primary); padding: 10px; text-align: center; position: sticky; top: 0; z-index: 10; margin: 0; margin-left: -1px; margin-right: -1px; width: calc(100% + 2px); border-bottom: 1px solid var(--border-primary);';
+                        // 更新第一个横条，添加总页数和下载链接
                         const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${currentUser}` : '';
                         const downloadUrl = `/api/download-file/${downloadFilePath}${apiKeyParam}`;
+                        const pagesInfo = document.getElementById('pdfPagesInfo');
+                        const downloadLink = document.getElementById('pdfDownloadLink');
+                        if (pagesInfo) {
+                            pagesInfo.textContent = I18N.pdf_pages_simple.replace('{pages}', pdf.numPages);
+                        }
+                        if (downloadLink) {
+                            downloadLink.href = downloadUrl;
+                            downloadLink.style.display = 'inline-flex';
+                            downloadLink.style.alignItems = 'center';
+                            downloadLink.style.gap = '6px';
+                            downloadLink.style.marginLeft = 'auto';
+                        }
                         
-                        nav.innerHTML = `
-                            <span id="pageInfo">${I18N.pdf_pages_simple.replace('{pages}', pdf.numPages)}</span>
-                            <a href="${downloadUrl}" download style="margin-left: 15px; padding: 5px 10px; background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; border-radius: 3px; font-size: 18px; border: 1px solid var(--border-primary);">
-                                <i class="fas fa-download"></i> ${I18N.download_pdf}
-                            </a>
-                        `;
-                        container.appendChild(nav);
-                        
-                                            // 创建页面容器
-                    const pagesContainer = document.createElement('div');
-                    pagesContainer.id = 'pdfPages';
-                    pagesContainer.style.cssText = 'padding: 20px; text-align: center; width: 100%; max-width: none;';
-                    container.appendChild(pagesContainer);
+                        // 创建页面容器
+                        const pagesContainer = document.createElement('div');
+                        pagesContainer.id = 'pdfPages';
+                        pagesContainer.style.cssText = 'padding: 20px; text-align: center; width: 100%; max-width: none;';
+                        container.appendChild(pagesContainer);
                         
                         // 存储PDF对象
                         window.currentPDF = pdf;
@@ -13677,7 +13693,10 @@
                 });
                 
                 // 更新页面信息
-                document.getElementById('pageInfo').textContent = I18N.pdf_pages.replace('{pages}', window.currentPDF.numPages);
+                const pagesInfo = document.getElementById('pdfPagesInfo');
+                if (pagesInfo) {
+                    pagesInfo.textContent = I18N.pdf_pages.replace('{pages}', window.currentPDF.numPages);
+                }
             }).catch(function(error) {
                 console.error('PDF页面渲染失败:', error);
                 pagesContainer.innerHTML = `

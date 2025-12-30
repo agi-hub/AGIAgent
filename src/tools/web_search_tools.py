@@ -34,7 +34,7 @@ import io
 # Import config_loader to get truncation length configuration
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from config_loader import get_web_content_truncation_length, get_truncation_length, get_zhipu_search_api_key, get_zhipu_search_engine
+from config_loader import get_web_content_truncation_length, get_truncation_length, get_zhipu_search_api_key, get_zhipu_search_engine, get_language
 
 
 class TimeoutError(Exception):
@@ -1124,25 +1124,27 @@ Please create a detailed, structured analysis that preserves important informati
                     # Use Playwright for search (Phase 1)
                     print_debug("🔍 Using Playwright for search (Phase 1)")
                     # Initialize available search engines
-                    # Baidu as primary search engine, DuckDuckGo as secondary
-                    print_debug("🔍 Using Baidu -> DuckDuckGo -> Google search order")
-
+                    # Get language setting to decide whether to include Baidu
+                    current_lang = get_language()
+                    print_debug(f"🌐 Current language setting: {current_lang}")
+                    
                     search_engines = []
 
-                    # Add Baidu first (always first regardless of language)
-                    search_engines.append({
-                        'name': 'Baidu',
-                        'url': 'https://www.baidu.com/s?wd={}&ie=utf-8&tn=baiduhome_pg',
-                        # Updated selectors for current Baidu layout (2024)
-                        'result_selector': 'h3 a, .c-title a, .t a, h3.t a, .result h3 a, .c-container h3 a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
-                        'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small, .result-op',
-                        'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12', '.c-line-clamp3']
-                    })
+                    # Add Baidu only if language is Chinese (zh)
+                    if current_lang == 'zh':
+                        search_engines.append({
+                            'name': 'Baidu',
+                            'url': 'https://www.baidu.com/s?wd={}&ie=utf-8&tn=baiduhome_pg',
+                            # Updated selectors for current Baidu layout (2024)
+                            'result_selector': 'h3 a, .c-title a, .t a, h3.t a, .result h3 a, .c-container h3 a, a[data-click], .result-op h3 a, .c-row h3 a, .c-gap-top-small h3 a',
+                            'container_selector': '.result, .c-container, .result-op, .c-row, .c-gap-top-small, .result-op',
+                            'snippet_selectors': ['.c-abstract', '.c-span9', '.c-abstract-text', '.c-color-text', 'span', 'div', '.c-span12', '.c-line-clamp3']
+                        })
+                        print_debug("🔍 Baidu search engine added (language is Chinese)")
+                    else:
+                        print_debug("🔍 Baidu search engine skipped (language is English)")
 
-                    # Removed Baidu Mobile as requested by user
-                    print_debug("🔍 Baidu search engine added as primary option")
-
-                    # Add DuckDuckGo as secondary option (after Baidu)
+                    # Add DuckDuckGo as primary/secondary option (depending on language)
                     search_engines.append({
                         'name': 'DuckDuckGo',
                         'url': 'https://html.duckduckgo.com/html/?q={}',
@@ -1150,7 +1152,10 @@ Please create a detailed, structured analysis that preserves important informati
                         'container_selector': '.result, .web-result, .links_main',
                         'snippet_selectors': ['.result__snippet', '.result__body', '.snippet', '.result__description']
                     })
-                    print_debug("🔍 DuckDuckGo search engine added as secondary option")
+                    if current_lang == 'zh':
+                        print_debug("🔍 DuckDuckGo search engine added as secondary option")
+                    else:
+                        print_debug("🔍 DuckDuckGo search engine added as primary option")
 
                     # Add Google as fallback option
                     search_engines.append({
@@ -1161,7 +1166,14 @@ Please create a detailed, structured analysis that preserves important informati
                         'snippet_selectors': ['.VwiC3b', '.s', '.st', 'span', '.IsZvec', '.aCOpRe', '.yXK7lf'],
                         'anti_bot_indicators': ['Our systems have detected unusual traffic', 'g-recaptcha', 'captcha', 'verify you are human', 'blocked', 'unusual activity']
                     })
-                    print_debug("🔍 Google search engine added as fallback option")
+                    if current_lang == 'zh':
+                        print_debug("🔍 Google search engine added as fallback option")
+                    else:
+                        print_debug("🔍 Google search engine added as secondary option")
+                    
+                    # Print final search order
+                    engine_names = [e['name'] for e in search_engines]
+                    print_debug(f"🔍 Search order: {' -> '.join(engine_names)}")
 
                     optimized_search_term = self._optimize_search_term(search_term)
                     encoded_term = urllib.parse.quote_plus(optimized_search_term)
@@ -2210,6 +2222,12 @@ Please create a detailed, structured analysis that preserves important informati
                     result['content'] = "Video or social media link, skip content fetch"
                 continue
             
+            # 检测百度搜索结果页面（包含 /s?wd= 参数，即使URL被转码，这个路径特征仍然存在）
+            if 'baidu.com' in target_url.lower() and '/s?wd=' in target_url.lower():
+                result['content'] = "Baidu search result page (contains search query parameter), skip content fetch"
+                print_debug(f"⚠️ [{i+1}] Skipping Baidu search result page: {target_url[:100]}...")
+                continue
+            
             if target_url.startswith(('javascript:', 'mailto:')):
                 result['content'] = "Non-webpage link, skip content fetch"
                 continue
@@ -2364,6 +2382,12 @@ Please create a detailed, structured analysis that preserves important informati
                     else:
                         # print_current(f"⏭️ Skip video/social media link: {target_url}")
                         result['content'] = "Video or social media link, skip content fetch"
+                    continue
+                
+                # 检测百度搜索结果页面（包含 /s?wd= 参数，即使URL被转码，这个路径特征仍然存在）
+                if 'baidu.com' in target_url.lower() and '/s?wd=' in target_url.lower():
+                    result['content'] = "Baidu search result page (contains search query parameter), skip content fetch"
+                    print_debug(f"⚠️ Skipping Baidu search result page: {target_url[:100]}...")
                     continue
                 
                 # Skip ads-by pages
@@ -3806,6 +3830,17 @@ Cleaned Content Length: {len(cleaned_content)} characters
             print_current(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
         
         print_debug(f"Fetching content from: {url}")
+        
+        # 检测百度搜索结果页面（包含 /s?wd= 参数，即使URL被转码，这个路径特征仍然存在）
+        if 'baidu.com' in url.lower() and '/s?wd=' in url.lower():
+            print_debug(f"⚠️ Skipping Baidu search result page: {url[:100]}...")
+            return {
+                'status': 'skipped',
+                'url': url,
+                'content': 'Baidu search result page (contains search query parameter), skip content fetch',
+                'error': 'baidu_search_page',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
         
         # Set timeout for this operation
         old_handler = None

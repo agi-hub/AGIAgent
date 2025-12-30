@@ -19,7 +19,7 @@ limitations under the License.
 from email import message
 import re
 from src.tools.print_system import streaming_context, print_debug, print_current
-from src.utils.parse import fix_wrong_tool_call_format
+from src.utils.parse import fix_wrong_tool_call_format, fix_incomplete_invoke_closing_tags
 
 
 def _ensure_newline_before_invoke(content: str) -> str:
@@ -234,9 +234,16 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                                     break  # Break out of for event in stream loop
                                         
                                         # Check for multiple XML tool calls - detect complete <invoke> tags
-                                        # Find all complete <invoke>...</invoke> tags
-                                        invoke_pattern = r'<invoke name="[^"]+">.*?</invoke>'
-                                        invoke_matches = list(re.finditer(invoke_pattern, content, re.DOTALL))
+                                        # First, try to fix incomplete closing tags
+                                        content_fixed = fix_incomplete_invoke_closing_tags(content)
+                                        if content_fixed != content:
+                                            # Update content if it was fixed
+                                            content = content_fixed
+                                        
+                                        # Find all complete <invoke>...</invoke> tags (including fixed ones)
+                                        # Also match incomplete tags that end with any </ tag
+                                        invoke_pattern = r'<invoke\s+name="[^"]+"[^>]*>.*?</(?:invoke|invoke_name|parameter)[^>]*>'
+                                        invoke_matches = list(re.finditer(invoke_pattern, content, re.DOTALL | re.IGNORECASE))
                                         
                                         if len(invoke_matches) > 0:
                                             # At least one complete invoke tag found
@@ -409,15 +416,21 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                                                         content = content_before_second.rstrip()
                                                         break
                                             
-                                            invoke_pattern = r'<invoke name="[^"]+">.*?</invoke>'
-                                            invoke_matches = list(re.finditer(invoke_pattern, content, re.DOTALL))
+                                            # Try to fix incomplete closing tags first
+                                            content_fixed = fix_incomplete_invoke_closing_tags(content)
+                                            if content_fixed != content:
+                                                content = content_fixed
+                                            
+                                            # Match complete invoke tags (including those with incorrect closing tags that we can detect)
+                                            invoke_pattern = r'<invoke\s+name="[^"]+"[^>]*>.*?</(?:invoke|invoke_name|parameter)[^>]*>'
+                                            invoke_matches = list(re.finditer(invoke_pattern, content, re.DOTALL | re.IGNORECASE))
                                             
                                             if len(invoke_matches) > 0:
                                                 first_invoke_end = invoke_matches[0].end()
                                                 remaining_content = content[first_invoke_end:].strip()
                                                 
-                                                if '<invoke name=' in remaining_content:
-                                                    second_invoke_match = re.search(r'<invoke name="[^"]+">.*?</invoke>', remaining_content, re.DOTALL)
+                                                if '<invoke name=' in remaining_content or '<invoke name=' in remaining_content.lower():
+                                                    second_invoke_match = re.search(r'<invoke\s+name="[^"]+"[^>]*>.*?</(?:invoke|invoke_name|parameter)[^>]*>', remaining_content, re.DOTALL | re.IGNORECASE)
                                                     if second_invoke_match:
                                                         print_debug("\n✅ Multiple complete XML tool calls detected, continuing to receive all")
                                             

@@ -1,10 +1,21 @@
 Code to Documentation
 
 ## Objective
-Analyze the given codebase and generate detailed, structured technical documentation covering in-depth analysis of all aspects of the system. Detailed discussion required.
-First, gain sufficient understanding of the codebase, master key information such as purpose, objectives, overall architecture, etc., then output according to the documentation structure requirements. During the output process, you can further read the code and documentation in the code repository in detail.
+Analyze the given codebase and generate detailed, 
+structured technical documentation covering in-depth analysis of all aspects of the system. 
+Detailed discussion required.
+First, gain sufficient understanding of the codebase, 
+master key information such as purpose, objectives, 
+overall architecture, etc., 
+then output according to the documentation structure requirements. 
+During the output process, 
+you can further read the code and documentation in the code repository in detail.
 If the code has not been downloaded, please download it first before analysis.
-Try to use grep, codebase_search, terminal tools and code analysis tools (such as python ast standard library) for analysis, and try to avoid reading large amounts of code.
+Try to use grep, codebase_search, 
+terminal tools and code analysis tools (such as python ast standard library) for analysis, 
+and try to avoid reading large amounts of code.
+
+Please output in ENGLISH.
 
 ## Documentation Structure Requirements
 

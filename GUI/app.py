@@ -409,6 +409,7 @@ I18N_TEXTS = {
         'task_completed': '任务执行完成！',
         'task_completed_with_errors': '任务达到最大轮数，可能未完全完成',
         'task_failed': '任务执行失败',
+        'no_task_assigned': '未布置任务',
         'creating_directory': '正在自动创建新工作目录...',
         'directory_created': '已创建新工作目录',
         'directory_selected': '已选择目录',
@@ -565,6 +566,7 @@ I18N_TEXTS = {
         'user_connection_failed': '连接失败',
         'connection_error': '连接错误',
         'reconnecting': '正在尝试重新连接...',
+        'connection_interrupted_reconnecting': '连接中断，正在尝试重新连接...',
         'reconnect_attempt': '正在尝试重新连接',
         'reconnect_success': '已重新连接到服务器',
         'reconnect_failed_cleanup': '自动重连失败，已清空工作目录，请重新连接',
@@ -782,6 +784,7 @@ I18N_TEXTS = {
         'task_completed': 'Task completed successfully!',
         'task_completed_with_errors': 'Task reached maximum rounds, may not be fully completed',
         'task_failed': 'Task execution failed',
+        'no_task_assigned': 'No task assigned',
         'creating_directory': 'Creating new workspace directory...',
         'directory_created': 'New workspace directory created',
         'directory_selected': 'Directory selected',
@@ -938,6 +941,7 @@ I18N_TEXTS = {
         'user_connection_failed': 'Connection Failed',
         'connection_error': 'Connection error',
         'reconnecting': 'Attempting to reconnect...',
+        'connection_interrupted_reconnecting': 'Connection interrupted, attempting to reconnect...',
         'reconnect_attempt': 'Attempting to reconnect',
         'reconnect_success': 'Reconnected to server',
         'reconnect_failed_cleanup': 'Auto reconnection failed. Workspace has been cleared, please reconnect.',
@@ -1147,6 +1151,11 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         if gui_config is None:
             gui_config = {}
         
+        # Get language from gui_config if available, otherwise use default
+        user_lang = gui_config.get('language')
+        if user_lang and user_lang in ('zh', 'en'):
+            i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
+        
         # Set default values based on user requirements
         enable_web_search = gui_config.get('enable_web_search', True)
         enable_multi_agent = gui_config.get('enable_multi_agent', False)
@@ -1298,6 +1307,9 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         
         # Set environment variable for GUI mode detection
         os.environ['AGIA_GUI_MODE'] = 'true'
+        
+        # Print task initiation message before starting AGIAgent
+        output_queue.put({'event': 'output', 'data': {'message': i18n['task_emitted'], 'type': 'info'}})
         
         agia = AGIAgentMain(
             out_dir=out_dir,
@@ -1963,13 +1975,17 @@ class AGIAgentGUI:
             directory_path: 目录路径
             
         Returns:
-            str: 任务描述，如果没有找到则返回"未布置任务"
+            str: 任务描述，如果没有找到则返回i18n翻译后的"未布置任务"
         """
+        # 获取i18n文本
+        i18n = get_i18n_texts()
+        no_task_text = i18n.get('no_task_assigned', '未布置任务')
+        
         manager_out_path = os.path.join(directory_path, 'logs', 'manager.out')
         
         # 检查文件是否存在
         if not os.path.exists(manager_out_path):
-            return "未布置任务"
+            return no_task_text
         
         try:
             # 读取文件内容
@@ -1987,11 +2003,11 @@ class AGIAgentGUI:
                         break
             
             # 如果找到了任务描述，返回它；否则返回默认值
-            return task_description if task_description else "未布置任务"
+            return task_description if task_description else no_task_text
             
         except (IOError, OSError, UnicodeDecodeError) as e:
             # 如果读取失败，返回默认值
-            return "未布置任务"
+            return no_task_text
 
 class UserSession:
     def __init__(self, session_id, api_key=None, user_info=None):
@@ -4402,14 +4418,18 @@ def handle_create_new_directory(data=None):
         }, room=session_id)
 
 @socketio.on('clear_chat')
-def handle_clear_chat():
+def handle_clear_chat(data=None):
     """Handle clear chat request"""
     session_id = request.sid
     if session_id not in gui_instance.user_sessions:
         return
     
     try:
-        i18n = get_i18n_texts()
+        # Get language from data if available, otherwise use default
+        user_lang = get_language()
+        if data and isinstance(data, dict):
+            user_lang = data.get('language', user_lang)
+        i18n = I18N_TEXTS.get(user_lang, I18N_TEXTS['en'])
         
         # Clear server-side conversation history
         user_session = gui_instance.user_sessions[session_id]

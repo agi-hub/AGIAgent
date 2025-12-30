@@ -60,3 +60,5 @@ Clearly indicate:
 - Use bold formatting for important technical points
 - Include text descriptions of diagrams if needed
 - Number each technical step for explanation
+
+Please output in ENGLISH.

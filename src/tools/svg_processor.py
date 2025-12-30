@@ -318,6 +318,143 @@ class SVGProcessor:
             print_debug(f"⚠️ Error fixing XML entities: {e}")
             return svg_code  # 如果修复失败，返回原始代码
     
+    def _convert_css_background_to_svg(self, svg_code: str) -> str:
+        """
+        将SVG中的CSS background样式转换为SVG标准元素
+        
+        很多SVG转换工具（如CairoSVG、Inkscape）不支持CSS的background属性，
+        需要将其转换为SVG的<rect>元素和<linearGradient>元素。
+        
+        Args:
+            svg_code: 原始SVG代码
+            
+        Returns:
+            转换后的SVG代码
+        """
+        try:
+            # 查找SVG标签中的style属性，包含background
+            pattern = r'<svg([^>]*?)(style\s*=\s*["\']([^"\']*?)["\'])([^>]*?)>'
+            match = re.search(pattern, svg_code, re.IGNORECASE | re.DOTALL)
+            
+            if not match:
+                return svg_code  # 没有找到style属性，直接返回
+            
+            svg_attrs_before = match.group(1)
+            style_attr = match.group(2)
+            style_content = match.group(3)
+            svg_attrs_after = match.group(4)
+            
+            # 检查style中是否包含background
+            if 'background' not in style_content.lower():
+                return svg_code  # 没有background，直接返回
+            
+            # 提取SVG的width和height属性
+            width_match = re.search(r'width\s*=\s*["\'](\d+)["\']', svg_code, re.IGNORECASE)
+            height_match = re.search(r'height\s*=\s*["\'](\d+)["\']', svg_code, re.IGNORECASE)
+            
+            width = width_match.group(1) if width_match else '900'
+            height = height_match.group(1) if height_match else '650'
+            
+            # 解析background样式
+            # 支持格式: background: linear-gradient(135deg, #2d1b69 0%, #11998e 100%);
+            bg_match = re.search(r'background\s*:\s*linear-gradient\s*\(([^)]+)\)', style_content, re.IGNORECASE)
+            
+            if not bg_match:
+                # 如果不是linear-gradient，尝试提取纯色背景
+                color_match = re.search(r'background\s*:\s*([#\w]+)', style_content, re.IGNORECASE)
+                if color_match:
+                    bg_color = color_match.group(1)
+                    # 创建简单的纯色背景rect
+                    bg_rect = f'<rect x="0" y="0" width="{width}" height="{height}" fill="{bg_color}"/>'
+                    # 移除style中的background
+                    new_style = re.sub(r'background\s*:[^;]+;?\s*', '', style_content, flags=re.IGNORECASE).strip()
+                    if new_style:
+                        new_svg_tag = f'<svg{svg_attrs_before}style="{new_style}"{svg_attrs_after}>'
+                    else:
+                        new_svg_tag = f'<svg{svg_attrs_before}{svg_attrs_after}>'
+                    # 在<svg>标签后插入背景rect
+                    new_svg_code = svg_code.replace(match.group(0), new_svg_tag + bg_rect)
+                    print_debug("🎨 Converted CSS background to SVG rect element")
+                    return new_svg_code
+                return svg_code
+            
+            # 解析linear-gradient参数
+            grad_params = bg_match.group(1)
+            
+            # 提取角度（如果有）
+            angle_match = re.search(r'(\d+)deg', grad_params, re.IGNORECASE)
+            angle = int(angle_match.group(1)) if angle_match else 0
+            
+            # 提取颜色停止点
+            # 格式: #2d1b69 0%, #11998e 100%
+            stops = re.findall(r'([#\w]+)\s+(\d+)%', grad_params)
+            
+            if not stops or len(stops) < 2:
+                return svg_code  # 无法解析，返回原始代码
+            
+            # 生成唯一的渐变ID
+            import random
+            grad_id = f'bgGrad_{random.randint(1000, 9999)}'
+            
+            # 计算渐变方向（根据角度）
+            # SVG linearGradient使用x1, y1, x2, y2定义方向
+            import math
+            rad = math.radians(angle)
+            x1 = 0.5 - 0.5 * math.cos(rad)
+            y1 = 0.5 - 0.5 * math.sin(rad)
+            x2 = 0.5 + 0.5 * math.cos(rad)
+            y2 = 0.5 + 0.5 * math.sin(rad)
+            
+            # 创建linearGradient定义
+            gradient_def = f'<defs><linearGradient id="{grad_id}" x1="{x1:.3f}" y1="{y1:.3f}" x2="{x2:.3f}" y2="{y2:.3f}">'
+            for color, offset in stops:
+                gradient_def += f'<stop offset="{offset}%" style="stop-color:{color};stop-opacity:1" />'
+            gradient_def += '</linearGradient></defs>'
+            
+            # 创建背景rect
+            bg_rect = f'<rect x="0" y="0" width="{width}" height="{height}" fill="url(#{grad_id})"/>'
+            
+            # 移除style中的background
+            new_style = re.sub(r'background\s*:[^;]+;?\s*', '', style_content, flags=re.IGNORECASE).strip()
+            
+            # 构建新的SVG标签
+            if new_style:
+                new_svg_tag = f'<svg{svg_attrs_before}style="{new_style}"{svg_attrs_after}>'
+            else:
+                # 如果style为空，完全移除style属性
+                new_svg_tag = f'<svg{svg_attrs_before}{svg_attrs_after}>'
+            
+            # 替换SVG标签，并在<svg>后插入渐变定义和背景rect
+            # 需要找到<defs>标签的位置，如果没有则插入在<svg>后
+            if '<defs>' in svg_code:
+                # 如果有defs，在defs内插入gradient
+                defs_pattern = r'(<defs[^>]*>)'
+                defs_match = re.search(defs_pattern, svg_code, re.IGNORECASE)
+                if defs_match:
+                    # 在defs标签后插入gradient
+                    new_svg_code = svg_code.replace(match.group(0), new_svg_tag)
+                    new_svg_code = new_svg_code.replace(defs_match.group(0), defs_match.group(0) + f'<linearGradient id="{grad_id}" x1="{x1:.3f}" y1="{y1:.3f}" x2="{x2:.3f}" y2="{y2:.3f}">' + ''.join([f'<stop offset="{offset}%" style="stop-color:{color};stop-opacity:1" />' for color, offset in stops]) + '</linearGradient>', 1)
+                    # 在第一个非defs元素前插入背景rect
+                    first_element_pattern = r'(</defs>\s*)(<[^/])'
+                    first_element_match = re.search(first_element_pattern, new_svg_code, re.IGNORECASE)
+                    if first_element_match:
+                        new_svg_code = new_svg_code.replace(first_element_match.group(0), first_element_match.group(1) + bg_rect + '\n' + first_element_match.group(2), 1)
+                    else:
+                        # 如果没有其他元素，在defs后插入
+                        new_svg_code = new_svg_code.replace('</defs>', '</defs>' + bg_rect, 1)
+                else:
+                    new_svg_code = svg_code.replace(match.group(0), new_svg_tag + gradient_def + bg_rect)
+            else:
+                # 没有defs，直接插入
+                new_svg_code = svg_code.replace(match.group(0), new_svg_tag + gradient_def + bg_rect)
+            
+            print_debug("🎨 Converted CSS linear-gradient background to SVG gradient and rect element")
+            return new_svg_code
+            
+        except Exception as e:
+            print_debug(f"⚠️ Error converting CSS background to SVG: {e}")
+            return svg_code  # 如果转换失败，返回原始代码
+    
     def generate_svg_file(self, svg_code: str, output_dir: Path, svg_id: str) -> Optional[Path]:
         """
         Generate an SVG file from SVG code
@@ -336,6 +473,9 @@ class SVGProcessor:
             
             # 自动修复SVG中的XML实体问题
             fixed_svg_code = self._fix_svg_xml_entities(svg_code)
+            
+            # 将CSS背景转换为SVG标准元素（解决转换工具不支持CSS background的问题）
+            fixed_svg_code = self._convert_css_background_to_svg(fixed_svg_code)
             
             # Generate SVG filename
             svg_filename = f"svg_{svg_id}.svg"
@@ -364,51 +504,77 @@ class SVGProcessor:
             True if conversion successful, False otherwise
         """
         import platform
+        import tempfile
+        import os
         
-        # On Windows, try enhanced SVG converter first if available
-        if platform.system().lower() == "windows":
+        # 预处理SVG：将CSS背景转换为SVG标准元素
+        temp_svg_path = None
+        original_svg_path = svg_path
+        try:
+            with open(svg_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+            processed_svg = self._convert_css_background_to_svg(svg_content)
+            if processed_svg != svg_content:
+                # 如果内容被修改，创建临时文件
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.svg', delete=False, encoding='utf-8') as tmp_file:
+                    tmp_file.write(processed_svg)
+                    temp_svg_path = Path(tmp_file.name)
+                svg_path = temp_svg_path
+        except Exception as e:
+            print_debug(f"⚠️ SVG background preprocessing failed: {e}, using original file")
+        
+        try:
+            # On Windows, try enhanced SVG converter first if available
+            if platform.system().lower() == "windows":
+                try:
+                    from .svg_to_png import EnhancedSVGToPNGConverter
+                    converter = EnhancedSVGToPNGConverter()
+                    success, message = converter.convert(svg_path, png_path)
+                    if success:
+                        print_debug(f"✅ Enhanced SVG converter successful: {message}")
+                        return True
+                    else:
+                        print_debug(f"⚠️ Enhanced SVG converter failed: {message}")
+                except Exception as e:
+                    print_debug(f"⚠️ Enhanced SVG converter not available: {e}")
+            
+            # Try Inkscape first (best quality)
+            if self.inkscape_available:
+                if self._convert_with_inkscape(svg_path, png_path):
+                    return True
+            
+            # Try rsvg-convert
+            if self.rsvg_convert_available:
+                if self._convert_with_rsvg(svg_path, png_path):
+                    return True
+            
+            # Try CairoSVG (Python package)
+            if self.cairosvg_available:
+                if self._convert_with_cairosvg(svg_path, png_path):
+                    return True
+            
+            # Last resort: try Playwright-based conversion
             try:
                 from .svg_to_png import EnhancedSVGToPNGConverter
                 converter = EnhancedSVGToPNGConverter()
                 success, message = converter.convert(svg_path, png_path)
                 if success:
-                    print_debug(f"✅ Enhanced SVG converter successful: {message}")
+                    print_debug(f"✅ Playwright fallback successful: {message}")
                     return True
                 else:
-                    print_debug(f"⚠️ Enhanced SVG converter failed: {message}")
+                    print_debug(f"❌ Playwright fallback failed: {message}")
             except Exception as e:
-                print_debug(f"⚠️ Enhanced SVG converter not available: {e}")
-        
-        # Try Inkscape first (best quality)
-        if self.inkscape_available:
-            if self._convert_with_inkscape(svg_path, png_path):
-                return True
-        
-        # Try rsvg-convert
-        if self.rsvg_convert_available:
-            if self._convert_with_rsvg(svg_path, png_path):
-                return True
-        
-        # Try CairoSVG (Python package)
-        if self.cairosvg_available:
-            if self._convert_with_cairosvg(svg_path, png_path):
-                return True
-        
-        # Last resort: try Playwright-based conversion
-        try:
-            from .svg_to_png import EnhancedSVGToPNGConverter
-            converter = EnhancedSVGToPNGConverter()
-            success, message = converter.convert(svg_path, png_path)
-            if success:
-                print_debug(f"✅ Playwright fallback successful: {message}")
-                return True
-            else:
-                print_debug(f"❌ Playwright fallback failed: {message}")
-        except Exception as e:
-            print_debug(f"❌ Playwright fallback error: {e}")
-        
-        print_debug("❌ All SVG conversion methods failed")
-        return False
+                print_debug(f"❌ Playwright fallback error: {e}")
+            
+            print_debug("❌ All SVG conversion methods failed")
+            return False
+        finally:
+            # 清理临时文件
+            if temp_svg_path and temp_svg_path.exists():
+                try:
+                    os.unlink(temp_svg_path)
+                except Exception as e:
+                    print_debug(f"⚠️ Failed to clean up temp SVG file: {e}")
     
     def _convert_with_inkscape(self, svg_path: Path, png_path: Path) -> bool:
         """Convert SVG to PNG using Inkscape"""

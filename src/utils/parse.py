@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Copyright (c) 2025 AGI Agent Research Group.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 JSON parsing and fixing utilities.
 
 This module contains utility functions for parsing and fixing malformed JSON strings,
@@ -721,8 +735,13 @@ def convert_xml_parameter_value(value: str) -> Any:
         except json.JSONDecodeError:
             pass
     
-    # Return original value (not stripped) for string parameters to preserve formatting
-    return value
+    # Decode XML/HTML entities (e.g., &lt; -> <, &gt; -> >, &quot; -> ")
+    # This is necessary because XML values extracted from tags may contain entities
+    import html
+    decoded_value = html.unescape(value)
+    
+    # Return decoded value (not stripped) for string parameters to preserve formatting
+    return decoded_value
 
 
 def _find_second_json_block_start(content: str) -> int:
@@ -1085,6 +1104,100 @@ def fix_wrong_tool_call_format(content: str) -> str:
     return fixed_content
 
 
+def fix_incomplete_invoke_closing_tags(content: str) -> str:
+    """
+    Fix incomplete XML invoke closing tags. If an <invoke> tag is not properly closed with </invoke>
+    but ends with any </ tag, treat it as closed.
+    
+    This handles cases like:
+    - <invoke name="tool">...</invoke_name> -> <invoke name="tool">...</invoke>
+    - <invoke name="tool">...</parameter> -> <invoke name="tool">...</invoke>
+    
+    Args:
+        content: The model's response text that may contain incomplete closing tags
+        
+    Returns:
+        Fixed content string with properly closed invoke tags
+    """
+    import re
+    
+    # Pattern to find <invoke name="..."> that may not be properly closed
+    # Match: <invoke name="..."> ... any content ... </anything>
+    # But we need to be careful not to match nested tags incorrectly
+    
+    fixed_content = content
+    changes_made = False
+    
+    # Find all <invoke> start tags
+    invoke_start_pattern = r'<invoke\s+name="([^"]+)"[^>]*>'
+    
+    # Iterate through all invoke tags
+    last_pos = 0
+    while True:
+        start_match = re.search(invoke_start_pattern, fixed_content[last_pos:], re.IGNORECASE)
+        if not start_match:
+            break
+        
+        start_pos = last_pos + start_match.start()
+        invoke_start = last_pos + start_match.end()
+        tool_name = start_match.group(1)
+        
+        # Look for closing tag from the invoke start position
+        # First, try to find proper </invoke> closing tag
+        proper_close_match = re.search(r'</invoke\s*>', fixed_content[invoke_start:], re.IGNORECASE)
+        
+        if proper_close_match:
+            # Properly closed, move to after this tag
+            last_pos = invoke_start + proper_close_match.end()
+            continue
+        
+        # No proper </invoke> found, look for any </...> tag that might be a mistaken closing
+        # Look for closing tags like </invoke_name>, </parameter>, </invoke>, etc.
+        # We need to be careful about nested <parameter> tags - count them to find the outermost closing
+        any_close_match = re.search(r'</([^>\s]+)\s*>', fixed_content[invoke_start:])
+        
+        if any_close_match:
+            close_pos = invoke_start + any_close_match.start()
+            close_tag_name = any_close_match.group(1)
+            
+            # Check if this is a nested closing (e.g., </parameter> inside parameters)
+            # Count open and close parameter tags between invoke_start and close_pos
+            between_content = fixed_content[invoke_start:close_pos]
+            open_params = len(re.findall(r'<parameter\s+[^>]*>', between_content, re.IGNORECASE))
+            close_params = len(re.findall(r'</parameter\s*>', between_content, re.IGNORECASE))
+            
+            # If close_tag_name is 'parameter' and we have unmatched open parameters, this is nested
+            if close_tag_name.lower() == 'parameter' and open_params > close_params:
+                # This is a nested </parameter>, skip it and look for the next closing tag
+                last_pos = close_pos + any_close_match.end()
+                continue
+            
+            # Only fix if it's not already </invoke> (case insensitive)
+            if close_tag_name.lower() != 'invoke':
+                # Replace the incorrect closing tag with </invoke>
+                fixed_content = (
+                    fixed_content[:close_pos] + 
+                    '</invoke>' + 
+                    fixed_content[close_pos + any_close_match.end():]
+                )
+                changes_made = True
+                try:
+                    from tools.print_system import print_debug
+                    print_debug(f"⚠️ Fixed incomplete invoke closing tag: </{close_tag_name}> -> </invoke> for tool '{tool_name}'")
+                except ImportError:
+                    pass
+                # Update last_pos to after the fixed closing tag
+                last_pos = close_pos + len('</invoke>')
+            else:
+                last_pos = invoke_start + any_close_match.end()
+        else:
+            # No closing tag found, can't fix this one
+            # Move past the current invoke start to avoid infinite loop
+            last_pos = invoke_start + 1
+    
+    return fixed_content
+
+
 def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     """
     Parse tool calls from XML format.
@@ -1097,6 +1210,9 @@ def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
     """
     # Fix wrong tool call format before parsing
     content = fix_wrong_tool_call_format(content)
+    
+    # Fix incomplete closing tags (e.g., </invoke_name> -> </invoke>)
+    content = fix_incomplete_invoke_closing_tags(content)
     
     all_tool_calls = []
     

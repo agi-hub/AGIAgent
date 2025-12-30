@@ -15,7 +15,7 @@ For explicit imports, use:
 # Removed module-level imports to avoid loading heavy dependencies at startup
 # Users should import explicitly from submodules as needed
 
-__version__ = "0.1.0"
+__version__ = "1.2.0"
 __author__ = "AGI Agent Team"
 __email__ = "contact@agia.ai"
 __description__ = "AI Code Auto-Generator - Intelligent code generation and task execution system based on Claude Sonnet"

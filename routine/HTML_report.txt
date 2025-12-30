@@ -6,3 +6,4 @@ Add sufficient details to support your viewpoints. Paragraphs should adopt a gen
 Search for images from the internet and add illustrations, or use standard SVG syntax for illustrations.
 Make full use of research data, analyze data with programs and generate images. Make full use of tables to elaborate data or viewpoints.
 You can add a references section to summarize data sources.
+Please output in ENGLISH.

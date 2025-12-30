@@ -5,6 +5,8 @@ Use examples and illustrations to explain your viewpoints. Paragraphs should ado
 For each chapter, please search for relevant information from web pages, knowledge bases, and code repositories and organize it according to the guidelines (requirements) in the prompts. When writing each chapter, add illustrations. You can use SVG/mermaid for drawing or search for images from the internet.
 Make full use of research data, analyze data with programs and generate images. Make full use of tables to elaborate data or viewpoints.
 
+Please output in ENGLISH.
+
 Title:
 XXXX Project Application
 

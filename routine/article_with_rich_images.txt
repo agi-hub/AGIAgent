@@ -9,7 +9,8 @@ Based on user requirements, include data visualization charts generated from cod
 Add explanatory text based on the images.
 Please add a references section to summarize data sources.
 Multiple documents can be written and finally merged using the merge_file tool.
-Please determine the writing language based on the language used in the user's requirements. If the user's requirements are in English, write in English; if in Chinese, write in Chinese.
+Please determine the writing language based on the language used in the user's requirements. 
+Please write in ENGLISH.
 Be sure to add citation sources for each specific data point, or avoid writing specific numbers.
 
 

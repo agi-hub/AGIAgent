@@ -558,7 +558,9 @@ class FileSystemTools:
         # Clean markdown code block markers from code_edit
         cleaned_code_edit = self._clean_markdown_markers(code_edit)
         
-        # Auto-correct HTML entities in code_edit
+        # Auto-correct HTML/XML entities in code_edit
+        # Always decode entities because they come from XML parsing where entities like &lt; &gt; &quot; need decoding
+        # Note: html.unescape is safe to call multiple times - it won't change already-decoded content
         cleaned_code_edit = self._fix_html_entities(cleaned_code_edit)
         
         # Process markdown content (convert \n markers and ensure newline at end)
@@ -623,6 +625,23 @@ class FileSystemTools:
                         print_debug(f"📝 Applied bullet formatting preprocessing to markdown file")
                 except Exception as e:
                     print_debug(f"⚠️ Error during bullet formatting preprocessing: {e}")
+            
+            # Special handling for plan.md: replace graph LR with graph TD
+            target_file_lower = target_file.lower()
+            file_basename = os.path.basename(target_file_lower)
+            if target_file_lower.endswith('.md') and file_basename == 'plan.md':
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        plan_content = f.read()
+                    
+                    # Replace graph LR with graph TD
+                    if 'graph LR' in plan_content:
+                        plan_content = plan_content.replace('graph LR', 'graph TD')
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(plan_content)
+                        print_debug(f"📝 Applied graph LR → graph TD replacement for plan.md")
+                except Exception as e:
+                    print_debug(f"⚠️ Error during plan.md graph replacement: {e}")
             
             # Save original markdown file to logs before image processing
             original_md_saved_path = None

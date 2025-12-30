@@ -7,3 +7,4 @@ For each chapter, please search for relevant information from web pages, knowled
 When writing each chapter, add illustrations. You can use various chart styles of SVG/mermaid for drawing, or search for images from the internet.
 Make full use of research data, analyze data with programs and generate images. Make full use of tables to elaborate data or viewpoints.
 You can add a references section to summarize data sources.
+Please output in ENGLISH.

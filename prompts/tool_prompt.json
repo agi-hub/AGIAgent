@@ -251,19 +251,6 @@
       "required": []
     }
   },
-  "plan_tools": {
-    "description": "Plan and dynamically load tools for the next round based on a search query. This tool searches through all available tools in workspace/tool_pool.json using TFIDF matching, selects the TOP3 most relevant tools based on the query, and writes them to workspace/current_tool_list.json. These tools will be available in the next round of conversation. The current_tool_list.json file is automatically cleared after being loaded to prevent repeated loading.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "Search query describing the type of tools needed for the next task. This should describe the functionality or purpose of the tools you need, e.g., 'image processing', 'data analysis', 'file manipulation', etc."
-        }
-      },
-      "required": ["query"]
-    }
-  },
   "idle": {
     "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
     "parameters": {
@@ -271,7 +258,7 @@
       "properties": {
         "reason": {
           "type": "string",
-          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'task_completed', 'no_action_needed')"
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'no_action_needed')"
         },
         "sleep": {
           "type": "number",

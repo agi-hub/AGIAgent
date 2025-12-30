@@ -1,4 +1,9 @@
-When writing IEEE Transactions-style journal papers, please strictly follow the following standards. You can write different chapters into different md files, and finally use the merge_file tool to combine them into a complete paper. Do not merge them into a large md file yourself.
+When writing IEEE Transactions-style journal papers, please strictly follow the following standards. 
+You can write different chapters into different md files, 
+and finally use the merge_file tool to combine them into a complete paper. 
+Do not merge them into a large md file yourself.
+
+Please write in ENGLISH.
 
 ## IEEE Transactions Journal Paper Structure and Format Requirements
 
