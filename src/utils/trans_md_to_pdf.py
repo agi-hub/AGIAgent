@@ -175,36 +175,6 @@ def get_cjk_fonts():
         )
 
 
-def get_pandoc_highlight_option():
-    """
-    Get the correct syntax highlighting option based on Pandoc version.
-    Pandoc 2.18+ uses --syntax-highlighting, older versions use --highlight-style.
-    
-    Returns:
-        str: The appropriate highlight option flag
-    """
-    try:
-        result = subprocess.run(['pandoc', '--version'], 
-                              capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=5)
-        if result.returncode == 0:
-            version_output = result.stdout
-            # Extract version number (e.g., "pandoc 2.18" or "pandoc 3.1.2")
-            version_match = re.search(r'pandoc\s+(\d+)\.(\d+)', version_output, re.IGNORECASE)
-            if version_match:
-                major = int(version_match.group(1))
-                minor = int(version_match.group(2))
-                # Pandoc 2.18+ supports --syntax-highlighting
-                if major > 2 or (major == 2 and minor >= 18):
-                    return '--syntax-highlighting=tango'
-                else:
-                    return '--highlight-style=tango'
-    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError, ValueError):
-        pass
-    
-    # Default to old style for compatibility if version detection fails
-    return '--highlight-style=tango'
-
-
 def check_pdf_engine_availability():
     """Check which PDF engines are available and return the best one"""
     engines = [
@@ -338,14 +308,12 @@ def run_pandoc_latex_conversion(input_file, output_file, filter_path=None, templ
     ]
     
     # Add common options
-    # Get the correct highlight option based on Pandoc version
-    highlight_option = get_pandoc_highlight_option()
     cmd.extend([
         '-V', 'fontsize=12pt',
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=1.15',
-        highlight_option,
+        '--highlight-style=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
@@ -534,14 +502,12 @@ def run_pandoc_conversion(input_file, output_file, filter_path=None, template_pa
     cmd.extend(engine_options)
     
     # Add common options
-    # Get the correct highlight option based on Pandoc version
-    highlight_option = get_pandoc_highlight_option()
     cmd.extend([
         '-V', 'fontsize=12pt',
         '-V', 'geometry:margin=2.5cm',
         '-V', 'geometry:a4paper',
         '-V', 'linestretch=1.15',
-        highlight_option,
+        '--highlight-style=tango',
         '-V', 'colorlinks=true',
         '-V', 'linkcolor=blue',
         '-V', 'urlcolor=blue',
