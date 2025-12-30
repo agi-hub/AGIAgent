@@ -3,8 +3,23 @@
 [**中文**](README_zh.md) | **English**
 
 ## 🚀 Project Introduction
+**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. As an open-source alternative to Cursor and Manus, it offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 20+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs using it like Cursor or Claude Code, with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
 
-**AGI Agent** is an L3-level fully automated general-purpose intelligent agent powered by Large Language Models (LLM). It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIAgent can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIAgent's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
+### 🤔 Is This Software Right for You?
+
+- **Looking for a Cursor alternative?** If you need a cloud-deployable solution for online code writing for small teams, AGI Agent might be a great fit.
+- **Need a Manus-like general-purpose tool?** If you're looking for a versatile system that processes Word/PDF inputs and generates analysis code, charts, and reports, give it a try.
+- **Writing complex professional documents?** If you need to create richly illustrated, complex professional reports such as academic papers, in-depth research, or patents, AGI Agent excels at this.
+- **Seeking a locally deployable agent?** If you want an agent system that supports local deployment and is compatible with various Anthropic/OpenAI interface models, this could be your solution.
+- **Vibe enthusiast?** If you're passionate about the Vibe workflow, you'll love what AGI Agent offers.
+
+
+## GUI for Vibe Everything
+
+[![Watch Demo Video](./md/images/AGIAgent_GUI.png)](https://www.youtube.com/watch?v=dsRfuH3s9Kk)
+
+
+**AGI Agent** follows a Plan based ReAct model for complicated task execution. It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIAgent can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIAgent's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
 
 
 <div align="center">
@@ -12,6 +27,7 @@
 </div>
 
 ## 🚀 News
+2025/12/30 GUI Updated, for efficient Vibe Coding, Vibe Doc, Vibe Research, Vibe Everything <https://agiagentonline.com>.
 
 2025/10/27 AGIAgent online registration is now open! Click the registration button on the right side of <https://agiagentonline.com> to register and start using.
 
@@ -106,15 +122,113 @@ As a general-purpose task agent, AGI Agent has the capability to call system ter
 
 <br/>
 
-## 🎬 Demo Video
+### 📦 Easy Installation
 
-[![Watch Demo Video](./md/images/AGIAgent_CLI.png)](https://www.youtube.com/watch?v=7kW_mH18YFM)
+Installation is straightforward. You can use `install.sh` for one-click installation. Basic functionality only requires Python 3.8+ environment. For document conversion and Mermaid image conversion, Playwright and LaTeX are needed. For basic features, you only need to configure the large model API. You don't need to configure an Embedding model, as the code includes built-in vectorized code retrieval functionality.
 
-> If you cannot play directly, please [click here to watch the demo video](https://www.youtube.com/watch?v=7kW_mH18YFM)
+### Basic Usage
 
-## 📋 Demo Cases
+### GUI
+```bash
+python GUI/app.py
 
-To understand AGI Agent's comprehensive capabilities in various scenarios, please check our [Demo Cases](md/DEMO.md). This includes real use cases, output files, and detailed examples of what AGI Agent can accomplish.
+# Then access through browser at http://localhost:5001
+```
+Web GUI displays file lists. Folders with workspace subdirectories are listed by default, otherwise they won't be shown. The root directory location can be configured in config/config.txt.
+Note: Web GUI is currently experimental, providing only a single-user development version (not suitable for industrial deployment).
+
+
+#### CLI
+```bash
+#### New task
+python agia.py "Write a joke" 
+#### 📁 Specify Output Directory
+python agia.py "Write a joke" --dir "my_dir"
+#### 🔄 Continue Task Execution
+python agia.py -c
+#### ⚡ Set Execution Rounds
+python agia.py --loops 5 -r "Requirement description"
+#### 🔧 Custom Model Configuration
+python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
+```
+
+> **Note**: 
+1. Continue execution only restores the working directory and the last requirement prompt, not the large model's context.
+
+2. Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
+
+## 🎯 Core Features
+
+- **🧠 Intelligent Task Decomposition**: AI automatically decomposes complex requirements into executable subtasks
+- **🔄 Multi-round Iterative Execution**: Each task supports multi-round optimization to ensure quality (default 50 rounds)
+- **🔍 Intelligent Code Search**: Semantic search + keyword search for quick code location
+- **🌐 Network Search Integration**: Real-time network search for latest information and solutions
+- **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
+- **🛠️ Rich Tool Ecosystem**: Complete local tools + operating system command calling capabilities, supporting full development processes
+- **🖼️ Image Input Support**: Use `[img=path]` syntax to include images in requirements, supporting Claude and OpenAI vision models
+- **🔗 MCP Integration Support**: Integrate external tools through Model Context Protocol, including third-party services like AI search
+- **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
+- **📊 Dual Format Reports**: JSON detailed logs + Markdown readable reports
+- **⚡ Real-time Feedback**: Detailed execution progress and status display
+- **🤝 Interactive Control**: Optional user confirmation mode with step-by-step control
+- **📁 Flexible Output**: Custom output directory with automatic timestamp naming for new projects
+
+
+
+## 🤖 Model Selection
+
+AGI Agent supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets. With streaming / non-streaming support, tool-call or chat-based tool interface, Anthropic / OpenAI API compatibility.
+
+
+**🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
+
+### Quick Recommendations
+
+- **🏆 Quality First**: Claude Sonnet 4.5 - Best intelligence and code quality 
+- **💰 Cost-Effective**: DeepSeek V3.2 / GLM-4.7 - Excellent cost-effectiveness ratio
+- **🆓 Local deployment**: Qwen3-30B-A3B / GLM-4.5-air - Simple tasks
+
+> 💡 **Tip**: For detailed model comparisons, configuration methods, and performance optimization suggestions, please refer to [MODELS.md](md/MODELS.md)
+
+## ⚙️ Configuration Files
+
+AGI Agent uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
+
+### Quick Configuration
+After installation, please configure the following basic options:
+
+```ini
+# Required configuration: API key and model
+api_key=your_api_key
+api_base=the_api_base
+model=claude-sonnet-4-0
+
+# Language setting
+LANG=en
+```
+
+> 💡 **Tip**: For detailed configuration options, usage suggestions, and troubleshooting, please refer to [CONFIG.md](md/CONFIG.md)
+
+## 🔧 Environment Requirements and Installation
+
+### System Requirements
+- **Python 3.8+**
+- **Network Connection**: For API calls and network search functionality
+
+### Installation Steps
+We recommend to use install.sh for automatic install.
+If you wish a minimum installation, following:
+
+```bash
+# Install from source
+pip install -r requirements.txt
+
+# Install web scraping tools (if web scraping is needed)
+playwright install-deps
+playwright install chromium
+```
+
+After installation, don't forget to configure api key, api base, model, and language setting LANG=en or LANG=zh in config/config.txt. 
 
 ## 🔗 Extended Features
 
@@ -145,191 +259,3 @@ Supports Model Context Protocol (MCP) for communication with external tool serve
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
 *Click the badge above to launch AGI Agent directly in your browser and start experiencing autonomous AI programming.*
-
-### Basic Usage
-
-#### 🔥 Single Task Mode (Recommended)
-Suitable for single-objective tasks such as bug fixes and feature optimization. If no `-r` parameter is specified, the program will prompt you to enter a task description, supporting multi-line complex prompts.
-
-```bash
-python agia.py --requirement "Search today's news"
-python agia.py -r "Write a joke"
-
-# Image input support
-python agia.py -r "Analyze this chart: [img=chart.png]"
-
-# MCP tool integration
-python agia.py -r "Use AISearch_search to search for AI news"
-```
-
-#### 💬 Interactive Mode
-Provides a more flexible interactive experience where the system guides you to input task requirements.
-
-```bash
-python agia.py -i
-python agia.py --interactive 
-```
-
-#### 📁 Specify Output Directory
-Customize project output location. If not specified, the system will automatically create an `output_` directory with timestamp.
-
-```bash
-python agia.py --dir "my_dir"
-```
-
-#### 🔄 Continue Task Execution
-Resume previous task execution. AGI Agent remembers the last used output directory.
-
-```bash
-python agia.py -c
-python agia.py --continue
-```
-
-> **Note**: Continue execution only restores the working directory and the last requirement prompt, not the large model's context.
-
-#### ⚡ Set Execution Rounds
-Control the maximum number of task execution rounds to avoid infinite loops.
-
-```bash
-python agia.py --loops 5 -r "Requirement description"
-python agia.py -d "my_dir" -l 10 -r "Requirement description"
-```
-
-> **Note**: Rounds do not equal model call count. Each round usually calls the large model once, but may call it an additional time for summarization when chat history is too long, and may also summarize after task completion.
-
-#### 🔧 Custom Model Configuration
-Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
-
-```bash
-python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.com/v1
-```
-
-## 🎯 Core Features
-
-- **🧠 Intelligent Task Decomposition**: AI automatically decomposes complex requirements into executable subtasks
-- **🔄 Multi-round Iterative Execution**: Each task supports multi-round optimization to ensure quality (default 50 rounds)
-- **🔍 Intelligent Code Search**: Semantic search + keyword search for quick code location
-- **🌐 Network Search Integration**: Real-time network search for latest information and solutions
-- **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
-- **🛠️ Rich Tool Ecosystem**: Complete local tools + operating system command calling capabilities, supporting full development processes
-- **🖼️ Image Input Support**: Use `[img=path]` syntax to include images in requirements, supporting Claude and OpenAI vision models
-- **🔗 MCP Integration Support**: Integrate external tools through Model Context Protocol, including third-party services like AI search
-- **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
-- **📊 Dual Format Reports**: JSON detailed logs + Markdown readable reports
-- **⚡ Real-time Feedback**: Detailed execution progress and status display
-- **🤝 Interactive Control**: Optional user confirmation mode with step-by-step control
-- **📁 Flexible Output**: Custom output directory with automatic timestamp naming for new projects
-
-## 🌐 Network Search Function
-
-AGI Agent integrates powerful network search functionality to obtain real-time information:
-
-Usage: Add "search web" in the requirement prompt to perform search, "don't search web" to avoid search. If not specified, the large model will decide autonomously.
-
-## 📚 Codebase Retrieval System
-
-AGI Agent is equipped with real-time codebase vectorization and retrieval functionality. After each round of tool calls, it searches for newly modified files, performs dynamic incremental indexing, and supports the large model's fuzzy semantic retrieval capability. Additionally, the large model can call commands like grep to observe the workspace situation.
-
-## 🛠️ Tool Library
-
-AGI Agent has a comprehensive tool library:
-
-### File System Tools
-- **File Operations**: Create, read, update, delete files and directories
-- **Directory Management**: Navigate and organize project structure
-- **File Search**: Find files by name, content, or pattern
-
-### Code Analysis Tools
-- **Syntax Analysis**: Parse and understand code structure
-- **Dependency Analysis**: Map code relationships and imports
-- **Code Quality**: Identify issues and suggest improvements
-
-### Network and Web Tools
-- **Web Search**: Real-time information retrieval
-- **API Testing**: Test and validate API endpoints
-- **Documentation Retrieval**: Retrieve technical documentation
-
-### Terminal and Execution Tools
-- **Command Execution**: Run system commands and scripts
-- **Process Management**: Monitor and control running processes
-- **Environment Setup**: Configure development environments
-
-### Development Tools
-- **Code Generation**: Create boilerplate and template code
-- **Testing Tools**: Generate and run test cases
-- **Build Tools**: Compile and package applications
-
-## 🖥️ Web GUI Interface
-
-AGI Agent provides a modern, intuitive web interface to enhance user experience:
-
-### Main Features
-- **Real-time Execution Monitoring**: Real-time observation of task execution and detailed logs
-- **Interactive Task Management**: Start, stop, and monitor tasks through the web interface
-- **File Management**: Upload, download, and manage project files directly in the browser
-- **Directory Operations**: Create, rename, and organize project directories
-- **Multi-language Support**: Includes Chinese and English interfaces, configure language in config/config.txt
-
-### Launch GUI
-```bash
-cd GUI
-python app.py
-
-# Access through browser at http://localhost:5001
-```
-Web GUI displays file lists. Folders with workspace subdirectories are listed by default, otherwise they won't be shown. The root directory location can be configured in config/config.txt.
-Note: Web GUI is currently experimental, providing only a single-user development version (not suitable for industrial deployment).
-
-## 🤖 Model Selection
-
-AGI Agent supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets.
-
-**🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
-
-### Quick Recommendations
-
-- **🏆 Quality First**: Claude Sonnet 4 - Best intelligence and code quality
-- **⚡ Balanced Performance**: GPT-4 Turbo - Perfect balance of speed and quality  
-- **💰 Cost-Effective**: DeepSeek V3 - Excellent cost-effectiveness ratio
-- **🤖 Agent Optimized**: Kimi K2 - Excellent Agent and coding performance
-- **🆓 Free Trial**: Qwen2.5-7B - Zero cost learning and simple tasks
-
-> 💡 **Tip**: For detailed model comparisons, configuration methods, and performance optimization suggestions, please refer to [MODELS.md](md/MODELS.md)
-
-## ⚙️ Configuration Files
-
-AGI Agent uses `config/config.txt` and `config/config_memory.txt` files for system configuration.
-
-### Quick Configuration
-After installation, please configure the following basic options:
-
-```ini
-# Required configuration: API key and model
-api_key=your_api_key
-api_base=https://api.openai.com/v1
-model=gpt-4
-
-# Language setting
-LANG=en
-```
-
-> 💡 **Tip**: For detailed configuration options, usage suggestions, and troubleshooting, please refer to [CONFIG.md](md/CONFIG.md)
-
-## 🔧 Environment Requirements and Installation
-
-### System Requirements
-- **Python 3.6+**
-- **Network Connection**: For API calls and network search functionality
-
-### Installation Steps
-
-```bash
-# Install from source
-pip install -r requirements.txt
-
-# Install web scraping tools (if web scraping is needed)
-playwright install-deps
-playwright install chromium
-```
-
-After installation, don't forget to configure api key, api base, model, and language setting LANG=en in config/config.txt. 

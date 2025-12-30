@@ -8502,8 +8502,9 @@
          */
         function renderDisconnectedWorkspaceMessage() {
             if (!directoryList) return;
+            const message = I18N.please_connect || '请先连接服务器';
             directoryList.innerHTML = `
-                <div class="directory-placeholder">请先连接</div>
+                <div class="directory-placeholder">${message}</div>
             `;
         }
 
