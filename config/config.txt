@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-#LANG=en
-LANG=zh
+LANG=en
+#LANG=zh
 
 # Model configuration section
 # Please fill in each config in 5 lines, i.e.
@@ -13,18 +13,17 @@ api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.7
 max_tokens=16384
 
-
 # Anthropic models
-#api_key=your key
-#api_base=https://api.openai-proxy.org/anthropic
-#model=claude-sonnet-4-0
-#max_tokens=32768
+# api_key=your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
+# max_tokens=32768
 
 # Openrouter
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=xiaomi/mimo-v2-flash:free
-# max_tokens=32768
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=qwen/qwen3-32b
+max_tokens=16384
 
 # DeepSeek API configuration
 # api_key=your key
@@ -43,10 +42,10 @@ max_tokens=16384
 # max_tokens=8192
 
 # SiliconFlow API configuration 
-# api_key=your key
-# api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-30B-A3B
-# max_tokens=4096
+api_key=your key
+api_base=https://api.siliconflow.cn/v1
+model=Qwen/Qwen3-8B
+max_tokens=8192
 
 # Ollama (local serve)
 # api_key=your key
@@ -54,16 +53,13 @@ max_tokens=16384
 # model=qwen3:8b
 # max_tokens=4096
 
-
 # Note: only the last configuration is valid.
-
 
 # Zhipu AI Web Search API configuration
 # If configured, will use Zhipu web search API as default search engine
 # If not configured or empty, falls back to original search engine (Playwright-based)
-#zhipu_search_api_key=your key
-#zhipu_search_engine=search_std
-
+zhipu_search_api_key=your key
+zhipu_search_engine=search_std
 
 # Long-term memory configuration
 enable_long_term_memory=False
@@ -85,7 +81,6 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # vision_api_key=your key
 # vision_api_base=https://api.openai.com/v1
 # vision_max_tokens=4096
-
 
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True

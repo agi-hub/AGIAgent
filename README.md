@@ -18,6 +18,7 @@
 
 [![Watch Demo Video](./md/images/AGIAgent_GUI.png)](https://www.youtube.com/watch?v=dsRfuH3s9Kk)
 
+Click to watch the Video on Youtube
 
 **AGI Agent** follows a Plan based ReAct model for complicated task execution. It employs a multi-round iterative working mechanism where the large model can make tool calls and receive feedback results in each round. It is used to update files in the workspace or change the external environment through tools according to user needs. AGIAgent can autonomously call a wide range of MCP tools and operating system tools, featuring multi-agent collaboration, multi-level long-term memory, and embodied intelligence perception. It emphasizes the generality and autonomous decision-making capabilities of the agent. AGIAgent's extensive operating system support, large model support, and multiple operation modes make it suitable for building human-like general intelligence systems to achieve complex report research and generation, project-level code writing, automatic computer operation, multi-agent research (such as competition, debate, collaboration) and other applications.
 
@@ -39,58 +40,6 @@
 
 2025/7/21 GUI is available, with markdown/PDF/sourcecode preview, with svg image edit and mermaid edit capability, visit [GUI/README_GUI_en.md](GUI/README_GUI_en.md) for more information, and the same GUI is deployed on <https://agiagentonline.com>.
 
-## ✨ Core Features
-
-### 🤖 Autonomous Multi-Agent Collaboration
-- **Autonomous Agent Creation**: The system can autonomously decide to create new professional agents, configuring unique prompts, model types, and dedicated tool libraries for each agent
-- **Role Specialization**: Build sub-agents with different roles and specialized expertise working efficiently together in a shared workspace
-- **Communication Mechanism**: Agents have point-to-point and broadcast message communication capabilities, integrated with email viewing mechanisms for seamless interconnection
-
-### 🔧 Extensive Tool Calling Capabilities
-- **Built-in Tool Library**: Integrates over 10 common development tools including file retrieval, web browsing, and file modification
-- **MCP Protocol Support**: Supports Model Context Protocol (MCP) for connecting thousands of extended tools such as GitHub and Slack
-- **System Integration**: Full support for terminal commands, Python package management, and operating system software packages
-- **Autonomous Installation**: Agents can automatically install system software, pip packages, and MCP tools according to task requirements
-
-### 🧠 Long-term Memory and Learning
-- **Persistent Memory**: Solves the limitation of traditional agents that only focus on current tasks by storing historical execution summaries to form long-term memory
-- **Intelligent Retrieval**: Extracts valuable historical memory elements for current work through RAG (Retrieval-Augmented Generation)
-- **Context Management**: Integrates long-context summarization mechanisms to ensure memory continuity and relevance
-
-### 👁️ Embodied Intelligence and Multimodal
-- **Multimodal Perception**: Built-in vision, sensors, and other multimodal capabilities, not limited to the text world
-- **Physical World Interaction**: Can handle rich physical world information scenarios
-- **Multi-channel Information Processing**: Achieves parallel information perception and interaction through multi-agent architecture
-
-### 🔗 Flexible Deployment Methods
-- **Independent Operation**: Can run independently as a complete autonomous system
-- **Embedded Integration**: Can be embedded as a Python component into other software processes
-- **Modular Design**: Uses a building-block approach to construct powerful intelligent systems
-- **Lightweight Deployment**: Depends only on a few core libraries, with a compact software package and strong system compatibility
-
-## 🔄 Working Principle
-
-### Input-Output Mechanism
-AGI Agent receives **user prompts** and **working directory** as input, and outputs **processed working directory**. All generated code, documents, and other files are uniformly placed in the workspace folder.
-
-### Multi-round Iterative Process
-1. **Task Analysis Phase**: The system sends user prompts, historical chat records, and previous tool execution results to the large model
-2. **Decision Making Phase**: The large model autonomously decides the tool calling strategy for the next round (file writing, code search, terminal commands, etc.)
-3. **Tool Execution Phase**: The tool execution module parses and executes the large model's instructions (supports tool_call and JSON formats)
-4. **Result Feedback Phase**: Execution results are passed to the large model in the next round, forming a closed-loop feedback
-5. **Task Completion Phase**: The large model issues an end signal when it determines the task is complete, and can optionally generate a task summary
-
-### Intelligent Optimization Features
-- **Context Management**: Automatically triggers historical summarization when chat history exceeds the threshold to maintain efficient operation
-- **Network Search Optimization**: Search results can be selectively summarized to extract key information
-- **Security Boundaries**: All editing operations are limited within the user-defined working directory to ensure system security
-
-## ⚠️ Security Notice
-
-As a general-purpose task agent, AGI Agent has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
-- Carefully review executed commands
-- Recommend running important tasks in a sandbox environment
-- Regularly backup important data
 
 ## 🌐 Platform Compatibility
 
@@ -98,17 +47,6 @@ As a general-purpose task agent, AGI Agent has the capability to call system ter
 - ✅ **Linux** - Full support
 - ✅ **Windows** - Full support  
 - ✅ **MacOS** - Full support
-
-### Large Model Support
-- **Anthropic Claude** - Claude 3.5 Sonnet, Claude 3 Opus, etc.
-- **OpenAI GPT** - GPT-4, GPT-4 Turbo, GPT-3.5, etc.
-- **Google Gemini** - Gemini Pro, Gemini Ultra, etc.
-- **Domestic Models** - Kimi K2, DeepSeek, Volcano Large Model, Qwen3 (8B and above)
-
-### Interfaces and Modes
-- **API Interface**: Supports Anthropic interface and OpenAI-compatible interface
-- **Output Mode**: Supports streaming output and batch output
-- **Calling Mode**: Supports Tool Calling mode and traditional Chat mode (tool calling mode works better)
 
 ### Runtime Interfaces
 - **Terminal Mode**: Pure command-line interface, suitable for servers and automation scenarios
@@ -118,7 +56,6 @@ As a general-purpose task agent, AGI Agent has the capability to call system ter
 ### Interaction Modes
 - **Fully Automatic Mode**: Completely autonomous execution without human intervention
 - **Interactive Mode**: Supports user confirmation and guidance, providing more control
-
 
 <br/>
 
@@ -173,12 +110,9 @@ python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.co
 - **🤝 Interactive Control**: Optional user confirmation mode with step-by-step control
 - **📁 Flexible Output**: Custom output directory with automatic timestamp naming for new projects
 
-
-
 ## 🤖 Model Selection
 
 AGI Agent supports various mainstream AI models including Claude, GPT-4, DeepSeek V3, Kimi K2, etc., meeting different user needs and budgets. With streaming / non-streaming support, tool-call or chat-based tool interface, Anthropic / OpenAI API compatibility.
-
 
 **🎯 [View Detailed Model Selection Guide →](md/MODELS.md)**
 
@@ -206,7 +140,6 @@ model=claude-sonnet-4-0
 # Language setting
 LANG=en
 ```
-
 > 💡 **Tip**: For detailed configuration options, usage suggestions, and troubleshooting, please refer to [CONFIG.md](md/CONFIG.md)
 
 ## 🔧 Environment Requirements and Installation
@@ -229,6 +162,13 @@ playwright install chromium
 ```
 
 After installation, don't forget to configure api key, api base, model, and language setting LANG=en or LANG=zh in config/config.txt. 
+
+## ⚠️ Security Notice
+
+As a general-purpose task agent, AGI Agent has the capability to call system terminal commands. Although it usually does not operate files outside the working directory, the large model may execute software installation commands (such as pip, apt, etc.). Please pay attention when using:
+- Carefully review executed commands
+- Recommend running important tasks in a sandbox environment
+- Regularly backup important data
 
 ## 🔗 Extended Features
 
@@ -254,8 +194,12 @@ Supports Model Context Protocol (MCP) for communication with external tool serve
 
 ## 🚀 Quick Start
 
-**Experience AGI Agent for free in Google Colab with no configuration required!**
+**Experience AGI Agent in Google Colab**
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JttmqQxV8Yktl4zDmls1819BCnM0_zRE)
 
 *Click the badge above to launch AGI Agent directly in your browser and start experiencing autonomous AI programming.*
+
+## Contact Us
+You can submit questions or suggestions by opening an Issue. For further communication, you can email us at bitcursor@2925.com
+
