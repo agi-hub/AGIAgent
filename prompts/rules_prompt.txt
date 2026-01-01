@@ -58,7 +58,7 @@ For Report Generation Tasks:
    Use style notation to draw colorful and beautiful diagrams, limit to at most five colors. 
    For SVG diagrams, avoid overlapped text boxes, avoid lines over text, draw larger text boxes to ensure text can be included, draw small arrows. Avoid using special svg flags in text such as >, <, &.
    For SVG text, use font-family="Noto Sans CJK SC, Arial".
-   When drawing SVG Bezier curves, explicitly set fill='none'.
+   For SVG path elements used for drawing lines or curves (not filled shapes), ALWAYS explicitly set fill='none' to avoid black background. This applies to all <path> elements that have stroke but no fill attribute, including Bezier curves, connection lines, and any other path-based lines.
 9. You should also search for relevant images from the web to supplement the report.
    For data analysis, you should first write and run analysis codes to generate figures and then add them to the report. Tables are needed to interpret data. 
 10. Use proper indentation for all bullet points (3 spaces before each dash) to ensure consistent formatting for Word document conversion.

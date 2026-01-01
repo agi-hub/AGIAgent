@@ -383,9 +383,123 @@
         window.mathJaxAvailable = false;
         window.mathJaxLoadAttempted = false;
 
+        // 保护单独的$符号，避免被误识别为数学公式
+        function protectLoneDollarSigns(htmlContent) {
+            if (!htmlContent) return htmlContent;
+            
+            // 创建一个临时标记来保护已存在的HTML标签和代码块
+            const placeholders = [];
+            let placeholderIndex = 0;
+            
+            // 保护代码块和pre标签中的内容
+            htmlContent = htmlContent.replace(/<pre[^>]*>[\s\S]*?<\/pre>/gi, function(match) {
+                const placeholder = `__CODE_BLOCK_${placeholderIndex}__`;
+                placeholders[placeholderIndex] = match;
+                placeholderIndex++;
+                return placeholder;
+            });
+            
+            // 保护行内代码
+            htmlContent = htmlContent.replace(/<code[^>]*>[\s\S]*?<\/code>/gi, function(match) {
+                const placeholder = `__CODE_INLINE_${placeholderIndex}__`;
+                placeholders[placeholderIndex] = match;
+                placeholderIndex++;
+                return placeholder;
+            });
+            
+            // 保护已存在的数学公式标记（MathJax处理后的）
+            htmlContent = htmlContent.replace(/<span[^>]*class="[^"]*math[^"]*"[^>]*>[\s\S]*?<\/span>/gi, function(match) {
+                const placeholder = `__MATH_SPAN_${placeholderIndex}__`;
+                placeholders[placeholderIndex] = match;
+                placeholderIndex++;
+                return placeholder;
+            });
+            
+            // 保护块级数学公式
+            htmlContent = htmlContent.replace(/<div[^>]*class="[^"]*math[^"]*"[^>]*>[\s\S]*?<\/div>/gi, function(match) {
+                const placeholder = `__MATH_DIV_${placeholderIndex}__`;
+                placeholders[placeholderIndex] = match;
+                placeholderIndex++;
+                return placeholder;
+            });
+            
+            // 先保护货币符号模式：$后面直接跟数字（如 $94,189, $1, $100等）
+            // 使用span包裹并添加tex2jax_ignore类，防止MathJax处理
+            const protectedCurrency = [];
+            let currencyIndex = 0;
+            
+            // 匹配货币符号：$后面跟数字，可能包含逗号、小数点等
+            // 模式：$数字（可能包含逗号、小数点），后面不能是$、数字或字母（避免匹配到公式或变量）
+            // 使用负向前瞻确保后面是空格、标点符号或结束
+            // 注意：要匹配完整的金额，包括可能的小数部分
+            htmlContent = htmlContent.replace(/\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+\.\d+|\d+)(?![$\d\w])/g, function(match, amount) {
+                const placeholder = `__CURRENCY_${currencyIndex}__`;
+                // 使用span包裹并添加tex2jax_ignore类，防止MathJax处理
+                // 在tex2jax_ignore类中，可以直接使用$符号，MathJax不会处理
+                protectedCurrency[currencyIndex] = `<span class="tex2jax_ignore">$` + amount + `</span>`;
+                currencyIndex++;
+                return placeholder;
+            });
+            
+            // 保护块级公式 $$...$$
+            const protectedFormulas = [];
+            let formulaIndex = 0;
+            
+            htmlContent = htmlContent.replace(/\$\$[\s\S]*?\$\$/g, function(match) {
+                const placeholder = `__FORMULA_BLOCK_${formulaIndex}__`;
+                protectedFormulas[formulaIndex] = match;
+                formulaIndex++;
+                return placeholder;
+            });
+            
+            // 保护行内公式 $...$，使用更严格的匹配规则
+            // 要求：$后面不能是空格，公式内容必须在一行内，且包含数学相关字符
+            htmlContent = htmlContent.replace(/\$([^\s$\n][^$\n]{0,200}?)\$/g, function(match, formula) {
+                // 检查是否是有效的数学公式
+                // 必须包含数学符号、希腊字母、或常见的数学表达式模式
+                const mathPattern = /[a-zA-Zα-ωΑ-Ω+\-*/=<>≤≥≠≈∑∏∫∞±√^_()\[\]{}]|\\[a-zA-Z]+|frac|sqrt|sum|prod|int|lim|sin|cos|tan|log|ln|exp/;
+                if (mathPattern.test(formula) && formula.trim().length > 0) {
+                    const placeholder = `__FORMULA_INLINE_${formulaIndex}__`;
+                    protectedFormulas[formulaIndex] = match;
+                    formulaIndex++;
+                    return placeholder;
+                }
+                // 如果不是有效的数学公式，转义两个$符号
+                return '<span class="tex2jax_ignore">&#36;' + formula + '&#36;</span>';
+            });
+            
+            // 转义所有剩余的单独$符号（不在公式中的），并用span包裹防止MathJax处理
+            // 注意：此时货币符号已经被占位符替换，所以不会影响货币符号
+            htmlContent = htmlContent.replace(/\$/g, '<span class="tex2jax_ignore">&#36;</span>');
+            
+            // 恢复被保护的货币符号
+            for (let i = currencyIndex - 1; i >= 0; i--) {
+                htmlContent = htmlContent.replace(`__CURRENCY_${i}__`, protectedCurrency[i]);
+            }
+            
+            // 恢复被保护的公式
+            for (let i = formulaIndex - 1; i >= 0; i--) {
+                htmlContent = htmlContent.replace(`__FORMULA_INLINE_${i}__`, protectedFormulas[i]);
+                htmlContent = htmlContent.replace(`__FORMULA_BLOCK_${i}__`, protectedFormulas[i]);
+            }
+            
+            // 恢复被保护的其他内容
+            for (let i = placeholderIndex - 1; i >= 0; i--) {
+                htmlContent = htmlContent.replace(`__CODE_BLOCK_${i}__`, placeholders[i]);
+                htmlContent = htmlContent.replace(`__CODE_INLINE_${i}__`, placeholders[i]);
+                htmlContent = htmlContent.replace(`__MATH_SPAN_${i}__`, placeholders[i]);
+                htmlContent = htmlContent.replace(`__MATH_DIV_${i}__`, placeholders[i]);
+            }
+            
+            return htmlContent;
+        }
+
         // Fallback: 简单的数学公式文本替换
         function fallbackMathRendering(element) {
             if (!element) return;
+            
+            // 先保护单独的$符号
+            let content = protectLoneDollarSigns(element.innerHTML);
             
             // 简单的LaTeX到文本的转换
             const mathReplacements = {
@@ -416,8 +530,6 @@
                 '\\}': ''
             };
             
-            let content = element.innerHTML;
-            
             // 处理行内数学公式 $...$
             content = content.replace(/\$([^$]+)\$/g, function(match, formula) {
                 let processed = formula;
@@ -441,6 +553,11 @@
 
         // 智能数学渲染函数
         function renderMath(element) {
+            if (!element) return Promise.resolve();
+            
+            // 在MathJax处理前，先保护单独的$符号
+            element.innerHTML = protectLoneDollarSigns(element.innerHTML);
+            
             if (window.mathJaxAvailable && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
                 // 使用MathJax渲染
                 return MathJax.typesetPromise([element]).catch(function (err) {
