@@ -133,6 +133,17 @@ class SensorDataCollector:
         if para is None:
             para = {}
         
+        # Handle case where para is passed as a JSON string instead of a dict
+        if isinstance(para, str):
+            try:
+                para = json.loads(para)
+            except json.JSONDecodeError as e:
+                return self._create_error_result(f"Invalid JSON format for para parameter: {str(e)}")
+        
+        # Ensure para is a dictionary
+        if not isinstance(para, dict):
+            return self._create_error_result(f"para parameter must be a dict or JSON string, got {type(para).__name__}")
+        
         try:
             print_current(f"🔍 Acquiring sensor data: type={type}, source={source}")
             

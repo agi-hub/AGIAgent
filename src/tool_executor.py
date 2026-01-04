@@ -356,6 +356,7 @@ class ToolExecutor:
             "talk_to_user": self.tools.talk_to_user,
             "idle": self.tools.idle,
             "get_sensor_data": self.tools.get_sensor_data,
+            "read_img": self.tools.read_img,
             "merge_file": self.tools.merge_file,
             "parse_doc_to_md": self.tools.parse_doc_to_md,
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,

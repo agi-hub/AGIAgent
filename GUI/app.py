@@ -56,7 +56,7 @@ static_dir = os.path.join(app_dir, 'static')
 
 # Add parent directory to path to import config_loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.config_loader import get_language, get_gui_default_data_directory
+from src.config_loader import get_language, get_gui_default_data_directory, load_config
 from auth_manager import AuthenticationManager
 
 # Import Mermaid processor
@@ -735,6 +735,9 @@ I18N_TEXTS = {
         'error_during_conversion': '转换过程中发生错误',
         'generation_error': '生成错误',
         'error_during_generation': '生成过程中发生错误',
+        
+        # Virtual terminal
+        'virtual_terminal_disabled': '该版本的虚拟终端已禁用，请下载自部署版本，并在config.txt中配置GUI_virtual_terminal=True',
     },
     'en': {
         # Page title and basic info
@@ -1110,6 +1113,9 @@ I18N_TEXTS = {
         'error_during_conversion': 'Error occurred during conversion',
         'generation_error': 'Generation error',
         'error_during_generation': 'Error occurred during generation',
+        
+        # Virtual terminal
+        'virtual_terminal_disabled': 'Configuration disabled. Please download the standalone version and set GUI_virtual_terminal=True in config.txt',
     }
 }
 
@@ -1892,7 +1898,6 @@ class AGIAgentGUI:
                         'name': item,
                         'path': item_path,
                         'size': self.format_size(size),
-                        'modified_time': datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                         'files': self.get_directory_structure(item_path),
                         'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
                         'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
@@ -1975,7 +1980,7 @@ class AGIAgentGUI:
             directory_path: 目录路径
             
         Returns:
-            str: 任务描述，如果没有找到则返回i18n翻译后的"未布置任务"
+            str: 任务描述（最后一个user_requirement），如果没有找到则返回i18n翻译后的"未布置任务"
         """
         # 获取i18n文本
         i18n = get_i18n_texts()
@@ -1992,7 +1997,7 @@ class AGIAgentGUI:
             with open(manager_out_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
             
-            # 从后往前查找"Received user requirement:"行
+            # 从后往前查找"Received user requirement:"行（获取最后一个，即最新的用户需求）
             task_description = None
             for line in reversed(lines):
                 if "Received user requirement:" in line:
@@ -2024,23 +2029,29 @@ class UserSession:
         self.conversation_history = []  # Store conversation history for this user
         self.queue_reader_stop_flag = None  # 用于停止queue_reader_thread的标志
         self.queue_reader_thread = None  # 当前运行的queue_reader_thread引用
+        self.terminal_cwd = None  # 终端当前工作目录，用于维护cd命令的状态
         
         # Determine user directory based on user info
-        if user_info and user_info.get("is_guest", False):
-            # Guest user gets a special directory
-            self.user_dir_name = "guest"
-        elif user_info and user_info.get("name"):
-            # Use username as directory name, sanitize for filesystem safety
-            import re
+        # Priority: name (if exists and not "guest") > is_guest > api_key hash > default
+        if user_info and user_info.get("name"):
             username = user_info.get("name")
-            # Remove or replace characters that are not safe for directory names
-            safe_username = re.sub(r'[<>:"/\\|?*]', '_', username)
-            # Remove leading/trailing spaces and dots
-            safe_username = safe_username.strip(' .')
-            # Ensure it's not empty after sanitization
-            if not safe_username:
-                safe_username = "user"
-            self.user_dir_name = safe_username
+            # Only use "guest" directory if name is explicitly "guest" AND is_guest is True
+            if username.lower() == "guest" and user_info.get("is_guest", False):
+                self.user_dir_name = "guest"
+            else:
+                # Use username as directory name, sanitize for filesystem safety
+                import re
+                # Remove or replace characters that are not safe for directory names
+                safe_username = re.sub(r'[<>:"/\\|?*]', '_', username)
+                # Remove leading/trailing spaces and dots
+                safe_username = safe_username.strip(' .')
+                # Ensure it's not empty after sanitization
+                if not safe_username:
+                    safe_username = "user"
+                self.user_dir_name = safe_username
+        elif user_info and user_info.get("is_guest", False):
+            # Guest user without name gets a special directory
+            self.user_dir_name = "guest"
         elif api_key:
             # Fallback: Use API key hash as directory name for security
             import hashlib
@@ -2048,10 +2059,62 @@ class UserSession:
             self.user_dir_name = f"user_{api_key_hash}"
         else:
             self.user_dir_name = "userdata"
+        
     
     def get_user_directory(self, base_dir):
         """Get the user's base directory path"""
         return os.path.join(base_dir, self.user_dir_name)
+    
+    def get_terminal_cwd(self, base_dir, force_recalculate=False):
+        """Get terminal current working directory, initialize if not set"""
+        if self.terminal_cwd is None or force_recalculate:
+            # 确定要使用的工作目录（按优先级）
+            target_dir = None
+            
+            # 优先级1: selected_output_dir (用户选择的工作目录)
+            if self.selected_output_dir:
+                target_dir = self.selected_output_dir
+            # 优先级2: current_output_dir (当前执行的任务目录)
+            elif self.current_output_dir:
+                target_dir = self.current_output_dir
+            # 优先级3: last_output_dir (最后使用的目录)
+            elif self.last_output_dir:
+                target_dir = self.last_output_dir
+            
+            if target_dir:
+                # 使用工作目录的workspace子目录
+                user_dir = self.get_user_directory(base_dir)
+                workspace_dir = os.path.join(user_dir, target_dir, 'workspace')
+                if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+                    self.terminal_cwd = workspace_dir
+                else:
+                    # workspace不存在，使用工作目录本身
+                    output_dir = os.path.join(user_dir, target_dir)
+                    if os.path.exists(output_dir) and os.path.isdir(output_dir):
+                        self.terminal_cwd = output_dir
+                    else:
+                        # 工作目录不存在，使用用户目录
+                        self.terminal_cwd = self.get_user_directory(base_dir)
+                        os.makedirs(self.terminal_cwd, exist_ok=True)
+            else:
+                # 没有可用的工作目录，使用用户目录
+                self.terminal_cwd = self.get_user_directory(base_dir)
+                os.makedirs(self.terminal_cwd, exist_ok=True)
+            
+            # 确保返回绝对路径
+            if self.terminal_cwd:
+                self.terminal_cwd = os.path.abspath(self.terminal_cwd)
+        return self.terminal_cwd
+    
+    def set_terminal_cwd(self, new_cwd):
+        """Set terminal current working directory"""
+        if new_cwd:
+            # 确保是绝对路径
+            new_cwd = os.path.abspath(new_cwd)
+            if os.path.exists(new_cwd) and os.path.isdir(new_cwd):
+                self.terminal_cwd = new_cwd
+                return True
+        return False
     
     def add_to_conversation_history(self, user_input, result_summary=None):
         """Add a conversation turn to history"""
@@ -2349,7 +2412,24 @@ def index():
         i18n = I18N_TEXTS.get(lang_param, I18N_TEXTS['en'])
     
     mcp_servers = get_mcp_servers_config()
-    return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers)
+    
+    # Load GUI virtual terminal configuration
+    config = load_config()
+    gui_virtual_terminal = config.get('GUI_virtual_terminal', 'False').lower() == 'true'
+    
+    return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers, gui_virtual_terminal=gui_virtual_terminal)
+
+@app.route('/terminal')
+def terminal():
+    """Terminal page"""
+    i18n = get_i18n_texts()
+    current_lang = get_language()
+    
+    # Load GUI virtual terminal configuration
+    config = load_config()
+    gui_virtual_terminal = config.get('GUI_virtual_terminal', 'False').lower() == 'true'
+    
+    return render_template('terminal.html', i18n=i18n, lang=current_lang, gui_virtual_terminal=gui_virtual_terminal)
 
 @app.route('/register')
 def register():
@@ -3670,13 +3750,11 @@ def handle_connect(auth):
     client_session_id = None
     if auth:
         api_key = auth.get('api_key')
+        # Convert empty string to None for guest access
+        if api_key == "":
+            api_key = None
         client_session_id = auth.get('client_session_id')
     
-    # 日志中同时显示socket_session_id和client_session_id
-    if client_session_id:
-        print(f"[{datetime.datetime.now().isoformat()}] ✅ New connection: socket_sid={session_id}, client_sid={client_session_id}")
-    else:
-        print(f"[{datetime.datetime.now().isoformat()}] ✅ New connection: socket_sid={session_id}")
     
     # 检查是否有待恢复的会话（使用client_session_id匹配）
     recovered_session = None
@@ -3930,10 +4008,16 @@ def handle_heartbeat(data):
     session_id = request.sid
     client_timestamp = data.get('timestamp', 0)
     
-    # 更新会话的最后访问时间，防止会话超时
+    # 🔧 增强：记录心跳接收情况，用于调试连接问题
+    import datetime
     if session_id in gui_instance.user_sessions:
         # 验证并更新会话，这会更新last_accessed时间
         gui_instance.auth_manager.validate_session(session_id)
+        # 可选：记录心跳日志（仅在调试模式下）
+        # print(f"[{datetime.datetime.now().isoformat()}] 💓 Heartbeat received: session_id={session_id}")
+    else:
+        # 如果会话不存在，记录警告
+        print(f"[{datetime.datetime.now().isoformat()}] ⚠️ Heartbeat from unknown session: session_id={session_id}")
     
     # 发送心跳响应，确认连接正常
     emit('heartbeat_ack', {'timestamp': client_timestamp, 'server_time': time.time()}, room=session_id)
@@ -4076,6 +4160,669 @@ def handle_execute_task(data):
     
     # Store current task for conversation history
     user_session._current_task_requirement = user_requirement
+
+@socketio.on('terminal_connect')
+def handle_terminal_connect():
+    """Handle terminal connection - send initial working directory"""
+    session_id = request.sid
+    
+    if session_id not in gui_instance.user_sessions:
+        emit('terminal_error', {'error': 'User session not found'}, room=session_id)
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    
+    # 重置terminal_cwd，强制重新计算工作目录，确保使用最新的选择状态
+    user_session.terminal_cwd = None
+    cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir, force_recalculate=True)
+    
+    # 发送工作目录信息
+    emit('terminal_init', {'working_directory': cwd}, room=session_id)
+
+@socketio.on('terminal_input')
+def handle_terminal_input(data):
+    """Handle terminal command input from browser terminal"""
+    import subprocess
+    import platform
+    import re
+    import os
+    session_id = request.sid
+    
+    if session_id not in gui_instance.user_sessions:
+        emit('terminal_error', {'error': 'User session not found'}, room=session_id)
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    command = data.get('command', '').strip()
+    
+    if not command:
+        emit('command_complete', {}, room=session_id)
+        return
+    
+    # 检查退出命令
+    if command.lower() in ('exit', 'quit'):
+        emit('terminal_output', {'output': '\r\n'}, room=session_id)
+        emit('command_complete', {}, room=session_id)
+        return
+    
+    try:
+        # 获取当前工作目录（维护cd命令的状态）
+        cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+        
+        # 确保cwd是绝对路径
+        if cwd:
+            cwd = os.path.abspath(cwd)
+        
+        # 根据操作系统选择shell
+        cmd_lower = command.strip().lower()
+        
+        if platform.system() == 'Windows':
+            shell = True
+            executable = None  # 使用cmd.exe（Windows默认）
+            # Windows上先设置UTF-8编码，然后执行命令
+            # 使用chcp 65001设置UTF-8编码
+            # 如果命令是cd命令，需要特殊处理以正确切换目录和更新提示符
+            if cmd_lower.startswith('cd'):
+                # cd命令处理：提取目录路径并更新terminal_cwd
+                cd_match = re.match(r'cd\s+(?:/d\s+)?["\']?([^"\']+)["\']?(?:\s+&&\s+prompt\s+\$P\$G)?', command, re.IGNORECASE)
+                if cd_match:
+                    target_dir = cd_match.group(1)
+                    # 解析相对路径或绝对路径
+                    if os.path.isabs(target_dir):
+                        new_cwd = target_dir
+                    else:
+                        new_cwd = os.path.join(cwd, target_dir)
+                    new_cwd = os.path.normpath(os.path.abspath(new_cwd))
+                    
+                    # 更新terminal_cwd状态
+                    if user_session.set_terminal_cwd(new_cwd):
+                        # 切换成功，使用cd /d切换目录和盘符
+                        # 移除echo %CD%以避免重复输出路径
+                        full_command = f'cd /d "{new_cwd}"'
+                        cwd = new_cwd  # 更新当前cwd用于subprocess
+                    else:
+                        # 目录不存在，显示错误
+                        full_command = f'echo Error: Directory not found: {target_dir}'
+                else:
+                    # 如果无法解析，尝试执行原命令
+                    full_command = command
+            else:
+                # 对于其他命令，使用系统默认编码（Windows通常是GBK/CP936）
+                # 如果是python命令，添加-u参数以禁用缓冲，确保输出实时显示
+                cmd_lower_check = command.strip().lower()
+                if cmd_lower_check.startswith('python') and '-u' not in cmd_lower_check:
+                    # 在python命令中添加-u参数
+                    python_match = re.match(r'(python\s+)(.*)', command, re.IGNORECASE)
+                    if python_match:
+                        # Python命令不使用chcp，直接执行，使用系统默认编码
+                        full_command = f'{python_match.group(1)}-u {python_match.group(2)}'
+                    else:
+                        full_command = command
+                else:
+                    full_command = command
+            # Windows使用系统默认编码（通常是GBK/CP936），而不是UTF-8
+            import locale
+            encoding = locale.getpreferredencoding() or 'gbk'
+        else:
+            # Linux/Mac处理
+            shell = True
+            executable = '/bin/bash'
+            
+            # Linux下也需要处理cd命令
+            # 支持: cd dir, cd "dir", cd 'dir', cd ~, cd -, cd .., cd dir/
+            # 也支持: cd "dir" && command (组合命令)
+            if cmd_lower.startswith('cd'):
+                # 检查是否是组合命令 (cd ... && command)
+                and_pos = command.find(' && ')
+                if and_pos != -1:
+                    # 是组合命令，提取cd部分
+                    cd_part = command[:and_pos].strip()
+                    rest_command = command[and_pos + 4:].strip()
+                    
+                    # 解析cd命令
+                    cd_match = re.match(r'cd\s+(?:"([^"]+)"|\'([^\']+)\'|([^\s]+))', cd_part)
+                    if cd_match:
+                        target_dir = cd_match.group(1) or cd_match.group(2) or cd_match.group(3)
+                        target_dir = target_dir.rstrip('/')
+                        
+                        # 处理特殊目录
+                        if target_dir == '-':
+                            new_cwd = os.path.dirname(cwd) if cwd != os.path.sep else cwd
+                        elif target_dir.startswith('~'):
+                            new_cwd = os.path.expanduser(target_dir)
+                        else:
+                            if os.path.isabs(target_dir):
+                                new_cwd = target_dir
+                            else:
+                                # 处理相对路径
+                                # 检查当前工作目录是否已经是workspace目录
+                                # 如果target_dir包含output_xxx/workspace这样的路径，且当前cwd已经是workspace，需要去掉output_xxx/workspace前缀
+                                cwd_basename = os.path.basename(cwd)
+                                if cwd_basename == 'workspace':
+                                    # 当前目录已经是workspace，检查target_dir是否包含output_xxx/workspace模式
+                                    # 例如：target_dir = "output_20260104_102756/workspace" 或 "output_20260104_102756/workspace/subdir"
+                                    parts = target_dir.split('/')
+                                    workspace_idx = -1
+                                    for i, part in enumerate(parts):
+                                        if part == 'workspace':
+                                            workspace_idx = i
+                                            break
+                                    
+                                    if workspace_idx != -1:
+                                        # 找到workspace，使用workspace之后的部分
+                                        if workspace_idx + 1 < len(parts):
+                                            # workspace后面还有路径
+                                            target_dir = '/'.join(parts[workspace_idx + 1:])
+                                        else:
+                                            # workspace后面没有路径，说明就是workspace本身
+                                            target_dir = '.'
+                                
+                                # 如果target_dir以用户目录名开头，去掉它（因为cwd已经是用户目录了）
+                                user_dir_name = user_session.user_dir_name
+                                if target_dir.startswith(user_dir_name + '/'):
+                                    # 去掉用户目录名前缀
+                                    target_dir = target_dir[len(user_dir_name) + 1:]
+                                elif target_dir.startswith(user_dir_name + '\\'):
+                                    # Windows路径分隔符
+                                    target_dir = target_dir[len(user_dir_name) + 1:]
+                                
+                                new_cwd = os.path.join(cwd, target_dir)
+                        new_cwd = os.path.abspath(os.path.normpath(new_cwd))
+                        
+                        # 更新terminal_cwd状态
+                        if user_session.set_terminal_cwd(new_cwd):
+                            # 切换成功，执行组合命令，使用新的cwd作为subprocess的工作目录
+                            full_command = command  # 保持原命令不变
+                            cwd = new_cwd  # 更新当前cwd用于subprocess
+                        else:
+                            # 目录不存在，显示错误
+                            full_command = f'echo "Error: Directory not found: {target_dir}"'
+                    else:
+                        # 无法解析cd部分，执行原命令
+                        full_command = command
+                else:
+                    # 单独的cd命令
+                    cd_match = re.match(r'cd\s+(?:"([^"]+)"|\'([^\']+)\'|([^\s]+))', command)
+                    if cd_match:
+                        # 获取匹配的目录路径（三个组中只有一个会有值）
+                        target_dir = cd_match.group(1) or cd_match.group(2) or cd_match.group(3)
+                        target_dir = target_dir.rstrip('/')  # 移除末尾的斜杠
+                        
+                        # 处理特殊目录
+                        if target_dir == '-':
+                            # cd - 回到上一个目录（这里简化处理，使用父目录）
+                            new_cwd = os.path.dirname(cwd) if cwd != os.path.sep else cwd
+                        elif target_dir.startswith('~'):
+                            # 处理 ~ 和 ~user
+                            new_cwd = os.path.expanduser(target_dir)
+                        else:
+                            # 解析相对路径或绝对路径
+                            if os.path.isabs(target_dir):
+                                new_cwd = target_dir
+                            else:
+                                # 处理相对路径
+                                # 如果target_dir以用户目录名开头，去掉它（因为cwd已经是用户目录了）
+                                user_dir_name = user_session.user_dir_name
+                                if target_dir.startswith(user_dir_name + '/'):
+                                    # 去掉用户目录名前缀
+                                    target_dir = target_dir[len(user_dir_name) + 1:]
+                                elif target_dir.startswith(user_dir_name + '\\'):
+                                    # Windows路径分隔符
+                                    target_dir = target_dir[len(user_dir_name) + 1:]
+                                
+                                new_cwd = os.path.join(cwd, target_dir)
+                        new_cwd = os.path.abspath(os.path.normpath(new_cwd))
+                        
+                        # 更新terminal_cwd状态
+                        if user_session.set_terminal_cwd(new_cwd):
+                            # 切换成功，执行cd命令（不输出pwd，避免重复）
+                            # 注意：在Linux下，cd命令在子shell中执行，不会影响父进程的工作目录
+                            # 但是我们已经更新了terminal_cwd状态，后续命令会使用新的cwd
+                            full_command = f'cd "{new_cwd}"'
+                            cwd = new_cwd  # 更新当前cwd用于subprocess
+                        else:
+                            # 目录不存在，显示错误
+                            full_command = f'echo "Error: Directory not found: {target_dir}"'
+                    else:
+                        # 如果无法解析，尝试执行原命令
+                        full_command = command
+            else:
+                # 非cd命令，直接执行
+                # 确保cwd是workspace目录（如果terminal_cwd已设置）
+                full_command = command
+            encoding = 'utf-8'
+        
+        # 准备环境变量（确保pip等命令使用无缓冲输出）
+        import os
+        env = os.environ.copy()
+        # 为pip命令设置环境变量以确保实时输出
+        cmd_lower_for_env = command.strip().lower()
+        if 'pip' in cmd_lower_for_env:
+            env['PYTHONUNBUFFERED'] = '1'
+            env['PIP_PROGRESS_BAR'] = 'on'
+            # 确保pip输出不被缓冲
+            if 'install' in cmd_lower_for_env:
+                env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'
+        
+        # 执行命令
+        # 对于Windows，使用二进制模式读取以更好地处理格式
+        if platform.system() == 'Windows':
+            process = subprocess.Popen(
+                full_command,
+                shell=shell,
+                executable=executable,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
+                text=False,  # 使用二进制模式
+                bufsize=0,  # 无缓冲
+                cwd=cwd,
+                env=env  # 传递环境变量
+            )
+        else:
+            # Linux/Mac: 使用二进制模式读取，以正确处理\r字符（用于ls等多列格式化）
+            process = subprocess.Popen(
+                full_command,
+                shell=shell,
+                executable=executable,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
+                text=False,  # 使用二进制模式，以便正确处理\r
+                bufsize=0,  # 无缓冲
+                cwd=cwd,
+                env=env  # 传递环境变量
+            )
+        
+        # 读取输出并实时发送
+        def read_output():
+            # 使用应用上下文，因为这是在后台线程中运行
+            with app.app_context():
+                try:
+                    import io
+                    import time
+                    import select
+                    # 对于Windows，使用二进制模式读取，然后手动解码，以更好地处理格式
+                    if platform.system() == 'Windows':
+                        # 使用二进制模式读取，更频繁地读取以支持进度条
+                        buffer = b''
+                        last_flush_time = time.time()
+                        flush_interval = 0.1  # 每100ms刷新一次缓冲区
+                        
+                        while True:
+                            # 尝试读取可用数据（非阻塞方式）
+                            chunk = None
+                            try:
+                                # 使用read1()如果可用，它会读取至少1字节但不等待完整缓冲区
+                                if hasattr(process.stdout, 'read1'):
+                                    chunk = process.stdout.read1(8192)
+                                else:
+                                    # 回退到read(1)以获取更及时的响应
+                                    chunk = process.stdout.read(1)
+                            except:
+                                pass
+                            
+                            if chunk:
+                                buffer += chunk
+                                last_flush_time = time.time()
+                            
+                            # 处理缓冲区中的完整行和进度条
+                            processed = False
+                            while buffer:
+                                # 找到第一个换行符或回车符
+                                nl_pos = buffer.find(b'\n')
+                                cr_pos = buffer.find(b'\r')
+                                
+                                if nl_pos != -1 and (cr_pos == -1 or nl_pos <= cr_pos):
+                                    # 发送到换行符（包含换行符）
+                                    to_send = buffer[:nl_pos + 1]
+                                    buffer = buffer[nl_pos + 1:]
+                                    try:
+                                        decoded = to_send.decode(encoding, errors='replace')
+                                        socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                    except:
+                                        pass
+                                    processed = True
+                                elif cr_pos != -1:
+                                    # 检查是否是\r\n组合
+                                    if cr_pos + 1 < len(buffer) and buffer[cr_pos + 1] == ord(b'\n'):
+                                        # \r\n组合，发送到\n
+                                        to_send = buffer[:cr_pos + 2]
+                                        buffer = buffer[cr_pos + 2:]
+                                        try:
+                                            decoded = to_send.decode(encoding, errors='replace')
+                                            socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                        except:
+                                            pass
+                                        processed = True
+                                    else:
+                                        # 单独的\r，需要特殊处理
+                                        # 对于ls等命令，\r用于格式化多列输出，需要正确处理
+                                        # 找到\r后面的内容直到下一个\r或\n
+                                        next_cr = buffer.find(b'\r', cr_pos + 1)
+                                        next_nl = buffer.find(b'\n', cr_pos + 1)
+                                        
+                                        # 确定发送的结束位置
+                                        if next_nl != -1 and (next_cr == -1 or next_nl <= next_cr):
+                                            # 有换行符，发送到换行符（包含\r和\n）
+                                            to_send = buffer[:next_nl + 1]
+                                            buffer = buffer[next_nl + 1:]
+                                        elif next_cr != -1:
+                                            # 有下一个\r，发送从当前\r到下一个\r之前的内容（包含当前\r）
+                                            to_send = buffer[:next_cr]
+                                            buffer = buffer[next_cr:]
+                                        else:
+                                            # 没有找到下一个\r或\n
+                                            # 检查是否应该等待更多数据
+                                            # 如果缓冲区中\r后面的内容足够长（超过200字节），可能是完整的格式化行
+                                            # 否则等待更多数据或刷新间隔
+                                            content_after_cr = len(buffer) - cr_pos - 1
+                                            current_time = time.time()
+                                            if content_after_cr > 200 or (current_time - last_flush_time >= flush_interval):
+                                                # 发送当前\r和后面的所有内容
+                                                to_send = buffer
+                                                buffer = b''
+                                                last_flush_time = current_time
+                                            else:
+                                                # 缓冲区不够长且未到刷新时间，等待更多数据
+                                                break
+                                        
+                                        if to_send:
+                                            try:
+                                                decoded = to_send.decode(encoding, errors='replace')
+                                                # 保持原始格式，让xterm.js正确处理\r（用于ls等多列格式化）
+                                                socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                            except:
+                                                pass
+                                            processed = True
+                                else:
+                                    # 没有找到换行符或回车符
+                                    # 如果缓冲区有内容且超过刷新间隔，发送部分内容（用于实时输出）
+                                    current_time = time.time()
+                                    if buffer and (current_time - last_flush_time >= flush_interval):
+                                        # 发送缓冲区内容（不等待换行）
+                                        to_send = buffer
+                                        buffer = b''
+                                        try:
+                                            decoded = to_send.decode(encoding, errors='replace')
+                                            socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                        except:
+                                            pass
+                                        last_flush_time = current_time
+                                    break
+                            
+                            # 检查进程是否已结束
+                            if process.poll() is not None:
+                                # 进程已结束，发送剩余缓冲区内容
+                                if buffer:
+                                    try:
+                                        decoded = buffer.decode(encoding, errors='replace')
+                                        socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                    except:
+                                        pass
+                                break
+                            
+                            # 如果没有数据且未处理任何内容，短暂休眠避免CPU占用过高
+                            if not chunk and not processed:
+                                time.sleep(0.01)
+                    else:
+                        # Linux/Mac使用二进制模式读取，以正确处理\r字符（用于ls等多列格式化）
+                        import select
+                        buffer = b''
+                        last_flush_time = time.time()
+                        flush_interval = 0.1
+                        
+                        while True:
+                            # 检查进程是否已结束
+                            process_ended = (process.poll() is not None)
+                            
+                            # 尝试读取可用数据（非阻塞方式）
+                            chunk = None
+                            try:
+                                # 在二进制模式下，直接读取bytes
+                                if hasattr(process.stdout, 'read1'):
+                                    chunk = process.stdout.read1(8192)
+                                else:
+                                    # 回退到read()以获取更及时的响应
+                                    if hasattr(select, 'select'):
+                                        try:
+                                            ready, _, _ = select.select([process.stdout], [], [], 0.1)
+                                            if ready:
+                                                chunk = process.stdout.read(8192)
+                                        except:
+                                            pass
+                                    if not chunk:
+                                        # 尝试直接读取
+                                        try:
+                                            chunk = process.stdout.read(8192)
+                                        except:
+                                            pass
+                            except:
+                                pass
+                            
+                            if chunk:
+                                # 确保chunk是bytes类型
+                                if isinstance(chunk, str):
+                                    chunk = chunk.encode(encoding)
+                                buffer += chunk
+                                last_flush_time = time.time()
+                            
+                            # 处理缓冲区中的完整行和进度条
+                            processed = False
+                            while buffer:
+                                # 找到第一个换行符或回车符
+                                nl_pos = buffer.find(b'\n')
+                                cr_pos = buffer.find(b'\r')
+                                
+                                if nl_pos != -1 and (cr_pos == -1 or nl_pos <= cr_pos):
+                                    # 发送到换行符（包含换行符）
+                                    to_send = buffer[:nl_pos + 1]
+                                    buffer = buffer[nl_pos + 1:]
+                                    try:
+                                        decoded = to_send.decode(encoding, errors='replace')
+                                        socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                    except:
+                                        pass
+                                    processed = True
+                                elif cr_pos != -1:
+                                    # 检查是否是\r\n组合
+                                    if cr_pos + 1 < len(buffer) and buffer[cr_pos + 1] == ord(b'\n'):
+                                        # \r\n组合，发送到\n
+                                        to_send = buffer[:cr_pos + 2]
+                                        buffer = buffer[cr_pos + 2:]
+                                        try:
+                                            decoded = to_send.decode(encoding, errors='replace')
+                                            socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                        except:
+                                            pass
+                                        processed = True
+                                    else:
+                                        # 单独的\r，需要特殊处理
+                                        # 对于ls等命令，\r用于格式化多列输出，需要正确处理
+                                        # 找到\r后面的内容直到下一个\r或\n
+                                        next_cr = buffer.find(b'\r', cr_pos + 1)
+                                        next_nl = buffer.find(b'\n', cr_pos + 1)
+                                        
+                                        # 确定发送的结束位置
+                                        if next_nl != -1 and (next_cr == -1 or next_nl <= next_cr):
+                                            # 有换行符，发送从开头到换行符（包含\r和\n）
+                                            to_send = buffer[:next_nl + 1]
+                                            buffer = buffer[next_nl + 1:]
+                                        elif next_cr != -1:
+                                            # 有下一个\r，发送从当前\r到下一个\r之前的内容（包含当前\r）
+                                            to_send = buffer[:next_cr]
+                                            buffer = buffer[next_cr:]
+                                        else:
+                                            # 没有找到下一个\r或\n
+                                            # 对于ls等多列输出，\r用于回到行首，需要立即发送
+                                            # 检查\r后面是否有内容
+                                            content_after_cr = len(buffer) - cr_pos - 1
+                                            current_time = time.time()
+                                            
+                                            # 如果\r后面有内容，发送从开头到\r及后面的内容（最多到缓冲区末尾或刷新间隔）
+                                            # 这样可以确保\r字符能够立即被xterm.js处理
+                                            if content_after_cr > 0:
+                                                # 有内容，发送从开头到当前缓冲区末尾（包含\r和后面的内容）
+                                                # 降低阈值，确保\r能够及时发送
+                                                if content_after_cr > 100 or (current_time - last_flush_time >= flush_interval):
+                                                    to_send = buffer
+                                                    buffer = b''
+                                                    last_flush_time = current_time
+                                                else:
+                                                    # 内容较少，等待更多数据或刷新间隔
+                                                    break
+                                            else:
+                                                # \r后面没有内容，立即发送\r字符
+                                                to_send = buffer[:cr_pos + 1]
+                                                buffer = buffer[cr_pos + 1:]
+                                        
+                                        if to_send:
+                                            try:
+                                                decoded = to_send.decode(encoding, errors='replace')
+                                                # 保持原始格式，让xterm.js正确处理\r（用于ls等多列格式化）
+                                                socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                            except:
+                                                pass
+                                            processed = True
+                                else:
+                                    # 没有找到换行符或回车符
+                                    # 如果缓冲区有内容且超过刷新间隔，发送部分内容（用于实时输出）
+                                    current_time = time.time()
+                                    if buffer and (current_time - last_flush_time >= flush_interval):
+                                        # 发送缓冲区内容（不等待换行）
+                                        to_send = buffer
+                                        buffer = b''
+                                        try:
+                                            decoded = to_send.decode(encoding, errors='replace')
+                                            socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                        except:
+                                            pass
+                                        last_flush_time = current_time
+                                    break
+                            
+                            # 检查进程是否已结束
+                            if process_ended:
+                                # 进程已结束，发送剩余缓冲区内容
+                                if buffer:
+                                    try:
+                                        decoded = buffer.decode(encoding, errors='replace')
+                                        socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                                    except:
+                                        pass
+                                break
+                            
+                            # 如果没有数据且未处理任何内容，短暂休眠避免CPU占用过高
+                            if not chunk and not processed:
+                                time.sleep(0.01)
+                        
+                        # 确保发送所有剩余的缓冲区内容
+                        if buffer:
+                            try:
+                                decoded = buffer.decode(encoding, errors='replace')
+                                socketio.emit('terminal_output', {'output': decoded}, room=session_id)
+                            except:
+                                pass
+                    
+                    process.stdout.close()
+                    return_code = process.wait()
+                    
+                    # 如果是cd命令（包括组合命令中的cd）且成功执行，发送更新后的提示符
+                    if ('cd' in cmd_lower and (' && ' in command or cmd_lower.startswith('cd'))) and return_code == 0:
+                        # 获取当前目录并发送更新后的提示符
+                        current_dir = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+                        # 发送提示符更新事件
+                        socketio.emit('terminal_prompt_update', {'directory': current_dir}, room=session_id)
+                    
+                    socketio.emit('command_complete', {}, room=session_id)
+                except Exception as e:
+                    socketio.emit('terminal_error', {'error': str(e)}, room=session_id)
+        
+        # 在后台线程中读取输出
+        output_thread = threading.Thread(target=read_output, daemon=True)
+        output_thread.start()
+        
+    except Exception as e:
+        emit('terminal_error', {'error': f'Command execution failed: {str(e)}'}, room=session_id)
+        emit('command_complete', {}, room=session_id)
+
+@socketio.on('terminal_autocomplete')
+def handle_terminal_autocomplete(data):
+    """Handle terminal autocomplete request"""
+    import os
+    import glob
+    session_id = request.sid
+    
+    if session_id not in gui_instance.user_sessions:
+        return
+    
+    user_session = gui_instance.user_sessions[session_id]
+    line = data.get('line', '')
+    cursor = data.get('cursor', len(line))
+    working_dir = data.get('working_dir', '')
+    
+    # 获取当前工作目录
+    cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+    if working_dir:
+        cwd = working_dir
+    
+    # 提取要补全的部分（从行开始到光标位置）
+    text_before_cursor = line[:cursor] if cursor <= len(line) else line
+    parts = text_before_cursor.split()
+    
+    if not parts:
+        # 没有输入，返回空
+        emit('terminal_autocomplete_result', {'completions': []}, room=session_id)
+        return
+    
+    last_part = parts[-1]
+    
+    # 如果是路径补全（包含路径分隔符）
+    if '/' in last_part or '\\' in last_part:
+        # 路径补全
+        dir_part = os.path.dirname(last_part) or '.'
+        file_part = os.path.basename(last_part)
+        
+        if not os.path.isabs(dir_part):
+            dir_part = os.path.join(cwd, dir_part)
+        
+        dir_part = os.path.normpath(dir_part)
+        
+        if os.path.isdir(dir_part):
+            try:
+                pattern = os.path.join(dir_part, file_part + '*')
+                matches = glob.glob(pattern)
+                completions = []
+                for m in matches:
+                    name = os.path.basename(m)
+                    if os.path.isdir(m):
+                        completions.append(name + os.sep)
+                    else:
+                        completions.append(name)
+                completions.sort()
+            except Exception:
+                completions = []
+        else:
+            completions = []
+    else:
+        # 命令/文件名补全 - 查找当前目录下的文件和目录
+        try:
+            pattern = os.path.join(cwd, last_part + '*')
+            matches = glob.glob(pattern)
+            completions = []
+            for m in matches:
+                name = os.path.basename(m)
+                if os.path.isdir(m):
+                    completions.append(name + os.sep)
+                else:
+                    completions.append(name)
+            completions.sort()
+        except Exception:
+            completions = []
+    
+    # 限制补全结果数量
+    completions = completions[:20]
+    
+    emit('terminal_autocomplete_result', {'completions': completions}, room=session_id)
 
 @socketio.on('user_input_response')
 def handle_user_input_response(data):
@@ -4360,7 +5107,8 @@ def handle_stop_task(data=None):
 
         emit('task_stopped', {'message': i18n['task_stopped'], 'type': 'error'}, room=session_id)
     else:
-        emit('output', {'message': i18n['no_task_running'], 'type': 'info'}, room=session_id)
+        # 当没有运行中的任务时，直接返回，不显示消息
+        pass
 
 @socketio.on('create_new_directory')
 def handle_create_new_directory(data=None):
@@ -4988,9 +5736,18 @@ def upload_files(dir_name):
                 file.save(file_path)
                 uploaded_files.append(safe_filename)
         
+        # 构造上传成功消息，只显示文件名，不显示文件数量
+        files_str = ', '.join(uploaded_files)
+        # 通过检查i18n字典中的upload_success键来判断语言
+        upload_success_text = i18n.get('upload_success', '')
+        if '成功上传' in upload_success_text or upload_success_text.startswith('成功上传'):
+            message = f'成功上传文件: {files_str}'
+        else:
+            message = f'Successfully uploaded files: {files_str}'
+        
         return jsonify({
             'success': True,
-            'message': i18n['upload_success'].format(len(uploaded_files)),
+            'message': message,
             'files': uploaded_files
         })
         
@@ -5153,18 +5910,27 @@ def delete_directory(dir_name):
         
         # Delete directory and all its contents
         shutil.rmtree(target_dir)
-        
-        # Clean user session related states
-        if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == dir_name:
-            user_session.last_output_dir = None
-        if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == dir_name:
-            user_session.selected_output_dir = None
-        
-        
-        return jsonify({
-            'success': True, 
-            'message': f'Directory "{dir_name}" has been successfully deleted'
-        })
+
+        # Check if deletion was successful with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            if not os.path.exists(target_dir):
+                # Directory successfully deleted
+                # Clean user session related states
+                if hasattr(user_session, 'last_output_dir') and user_session.last_output_dir == dir_name:
+                    user_session.last_output_dir = None
+                if hasattr(user_session, 'selected_output_dir') and user_session.selected_output_dir == dir_name:
+                    user_session.selected_output_dir = None
+
+                return jsonify({'success': True})
+            else:
+                # Directory still exists, wait 1 second before retry (except on last attempt)
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1)
+
+        # If we reach here, deletion failed after all retries
+        return jsonify({'success': False, 'error': f'Directory deletion failed after {max_retries} attempts'})
         
     except PermissionError as e:
         return jsonify({'success': False, 'error': f'Permission denied: {str(e)}'})

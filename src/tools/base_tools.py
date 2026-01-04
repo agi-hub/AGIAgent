@@ -440,3 +440,29 @@ class BaseTools:
         
         return result
 
+    def read_img(self, query: str, image_path: str) -> Dict[str, Any]:
+        """
+        Read and analyze an image using the vision model, returning text description.
+        
+        This tool uses the configured vision_model to analyze images and return
+        text descriptions instead of base64-encoded image data.
+        
+        Args:
+            query: Query or instruction for what to analyze in the image
+            image_path: Path to the image file (supports relative and absolute paths)
+            
+        Returns:
+            Dictionary containing:
+            - status: 'success' or 'failed'
+            - text: Text description of the image (if successful)
+            - error: Error message (if failed)
+            - image_path: Path to the analyzed image
+        """
+        from .read_img import ImageReader
+        
+        # Initialize image reader with workspace root
+        image_reader = ImageReader(workspace_root=self.workspace_root)
+        
+        # Delegate to ImageReader
+        return image_reader.read_img(query, image_path)
+

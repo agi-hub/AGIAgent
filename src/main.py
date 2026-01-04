@@ -39,7 +39,7 @@ import sys
 import argparse
 import json
 import atexit
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from src.multi_round_executor import MultiRoundTaskExecutor
 from src.config_loader import get_api_key, get_api_base, get_model, get_truncation_length
 from src.routine_utils import append_routine_to_requirement
@@ -965,7 +965,7 @@ class AGIAgentClient:
             - details: dict - Additional execution details
         """
         import time
-        from datetime import datetime
+        from datetime import datetime, timezone, timedelta
         
         start_time = time.time()
         
@@ -999,7 +999,7 @@ class AGIAgentClient:
         
         # Generate output directory if not provided
         if dir is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M%S')
             dir = f"agia_output_{timestamp}"
         
         try:
@@ -1213,7 +1213,7 @@ Usage Examples:
     
     parser.add_argument(
         "--dir", "-d",
-        default=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        default=f"output_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d_%H%M%S')}",
         help="Output directory for storing logs (default: output_timestamp)"
     )
     

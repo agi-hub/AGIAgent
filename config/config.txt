@@ -1,6 +1,6 @@
 # Language setting: en for English, zh for Chinese
-LANG=en
-#LANG=zh
+#LANG=en
+LANG=zh
 
 # Model configuration section
 # Please fill in each config in 5 lines, i.e.
@@ -77,10 +77,10 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # Vision model configuration (for image recognition with get_sensor_data)
 # If not configured, will use the main model (model, api_key, api_base) for vision tasks
 # It's recommended to configure a vision-capable model here (e.g., GPT-4 Vision, Claude 3, Gemini)
-# vision_model=gpt-4o
-# vision_api_key=your key
-# vision_api_base=https://api.openai.com/v1
-# vision_max_tokens=4096
+vision_api_key=your key
+vision_api_base=https://open.bigmodel.cn/api/coding/paas/v4 
+vision_model=glm-4.5v
+vision_max_tokens=16384
 
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
@@ -263,4 +263,13 @@ auto_convert_to_latex=False
 # Default: False (execute tools but don't complete task)
 # Recommended: True (allows task completion after tool execution when LLM explicitly signals completion)
 admit_task_completed_with_tools=True
+
+# GUI Virtual Terminal Configuration
+# Controls whether to enable virtual terminal features in GUI
+# When enabled (True), users can use one-click run buttons for executable files (.py, .sh, .cmd, etc.)
+# and the terminal open button in the GUI
+# When disabled (False), these features are hidden and clicking them will show a configuration disabled message
+# Default: False (disabled)
+# Set to True to enable virtual terminal features
+GUI_virtual_terminal=False
 

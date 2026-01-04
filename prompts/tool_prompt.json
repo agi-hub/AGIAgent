@@ -204,6 +204,23 @@
       "required": ["type", "source"]
     }
   },
+  "read_img": {
+    "description": "Read and analyze an image using the configured vision model, returning a text description of the image content. This tool uses the vision_model configuration to analyze images and returns text instead of base64-encoded image data. Use this tool when you need to understand what's in an image, extract text from images, or analyze visual content.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Query or instruction for what to analyze in the image. For example: 'What text is in this image?', 'Describe what you see in this image', 'What objects are visible?', 'Extract all text content', etc."
+        },
+        "image_path": {
+          "type": "string",
+          "description": "Path to the image file. Supports absolute paths, paths relative to workspace root, or paths relative to current directory. Common formats: jpg, jpeg, png, gif, webp"
+        }
+      },
+      "required": ["query", "image_path"]
+    }
+  },
   "merge_file": {
     "description": "Merge multiple files into a single output file using the system cat command. If the output file is a Markdown file (.md), it will automatically be converted to Word and PDF formats.",
     "parameters": {
@@ -252,7 +269,7 @@
     }
   },
   "idle": {
-    "description": "Idle tool that represents doing nothing in this round, primarily used for multi-agent synchronization. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+    "description": "Idle tool that represents doing nothing in this round, only used for multi-agent synchronization. DO NOT use this for sending TASK_COMPLETED signal. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
     "parameters": {
       "type": "object",
       "properties": {

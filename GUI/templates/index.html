@@ -1061,7 +1061,9 @@
         }
 
         .load-history-btn,
-        .agent-view-btn {
+        .agent-view-btn,
+        .terminal-btn,
+        .clear-chat-btn {
             width: 28px;
             height: 28px;
             min-width: 28px;
@@ -1076,13 +1078,11 @@
             align-items: center;
             justify-content: center;
             transition: background 0.3s, opacity 0.3s;
-            margin-right: 8px;
         }
         
         .agent-select-wrapper {
             display: flex;
             align-items: center;
-            margin-right: 8px;
         }
         
         .agent-select-dropdown {
@@ -1107,13 +1107,17 @@
         }
 
         .load-history-btn:hover,
-        .agent-view-btn:hover {
+        .agent-view-btn:hover,
+        .terminal-btn:hover,
+        .clear-chat-btn:hover:not(:disabled) {
             opacity: 0.9;
             background: var(--color-accent);
         }
 
         .load-history-btn i,
-        .agent-view-btn i {
+        .agent-view-btn i,
+        .terminal-btn i,
+        .clear-chat-btn i {
             color: white;
         }
         
@@ -1667,16 +1671,6 @@
             background-color: #d32f2f !important;
         }
 
-        #clearChatButton {
-            width: 28px;
-            height: 28px;
-            min-width: 28px;
-        }
-
-        #clearChatButton:hover:not(:disabled) {
-            background: var(--color-accent);
-            color: white;
-        }
 
         .sidebar-header {
             display: flex;
@@ -1926,6 +1920,7 @@
             transition: all 0.3s ease;
             position: relative; /* 为绝对定位的按钮提供定位上下文 */
             word-break: break-word; /* 允许长文件名换行 */
+            overflow: hidden; /* 防止内容溢出 */
         }
 
         .file-item:hover {
@@ -1983,8 +1978,10 @@
             opacity: 0;
             transition: opacity 0.2s ease;
             background: var(--bg-file-tree); /* 使用文件树背景色遮挡文字 */
-            padding: 0 2px;
+            padding: 2px 4px;
             border-radius: 3px;
+            z-index: 10; /* 确保按钮在文字上方 */
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.2); /* 添加阴影使按钮更明显 */
         }
 
         .file-item-container:hover .file-item-buttons,
@@ -1995,16 +1992,24 @@
         /* 当文件项悬停时，给按钮组添加更明显的背景 */
         .file-item-container:hover .file-item-buttons {
             background: var(--bg-directory-item-hover);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.3); /* hover时增强阴影 */
         }
 
         .file-item.directory:hover .file-item-buttons {
             background: var(--bg-directory-item-hover);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.3); /* hover时增强阴影 */
+        }
+        
+        /* 确保文件内容在按钮下方时可以被遮挡 */
+        .file-content {
+            position: relative;
+            z-index: 1;
         }
 
         /* 下载文件按钮样式 */
         .download-file-btn {
-            background: none;
-            border: none;
+            background: transparent !important;
+            border: none !important;
             color: #888;
             cursor: pointer;
             padding: 2px 4px; /* 缩小padding */
@@ -2018,7 +2023,7 @@
         }
 
         .download-file-btn:hover {
-            background: rgba(76, 175, 80, 0.1);
+            background: rgba(76, 175, 80, 0.1) !important;
             color: #4caf50;
         }
 
@@ -2028,8 +2033,8 @@
 
         /* 删除文件按钮样式 */
         .delete-file-btn {
-            background: none;
-            border: none;
+            background: transparent !important;
+            border: none !important;
             color: #888;
             cursor: pointer;
             padding: 2px 4px; /* 缩小padding */
@@ -2043,11 +2048,39 @@
         }
 
         .delete-file-btn:hover {
-            background: rgba(255, 107, 107, 0.1);
+            background: rgba(255, 107, 107, 0.1) !important;
             color: #ff6b6b;
         }
 
         .delete-file-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 运行文件按钮样式（包括Python、Shell、CMD等） */
+        .run-python-btn,
+        .run-file-btn {
+            background: transparent !important;
+            border: none !important;
+            color: #888;
+            cursor: pointer;
+            padding: 2px 4px; /* 缩小padding */
+            border-radius: 3px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .run-python-btn:hover,
+        .run-file-btn:hover {
+            background: rgba(100, 181, 246, 0.1) !important;
+            color: #64b5f6;
+        }
+
+        .run-python-btn:active,
+        .run-file-btn:active {
             transform: scale(0.95);
         }
 
@@ -3808,7 +3841,7 @@
                 <span id="userIdentity" style="margin-left: 10px;"></span>
             </div>
             <div class="action-buttons-group">
-                <a href="/register" class="register-link" title="{{ '注册账号' if lang == 'zh' else 'Register' }}">
+                <a id="registerLink" class="register-link" title="{{ '注册账号' if lang == 'zh' else 'Register' }}">
                     <i class="fas fa-user-plus"></i>
                     <span>{{ '注册' if lang == 'zh' else 'Register' }}</span>
                 </a>
@@ -3850,6 +3883,12 @@
                             </button>
                             <button class="agent-view-btn" id="agentViewBtn" title="{{ i18n.get('agent_view', '智能体视图' if lang == 'zh' else 'Agent View') }}">
                                 <i class="fas fa-cube"></i>
+                            </button>
+                            <button class="terminal-btn" id="terminalBtn" title="{{ i18n.get('terminal', '终端' if lang == 'zh' else 'Terminal') }}">
+                                <i class="fas fa-terminal"></i>
+                            </button>
+                            <button class="clear-chat-btn" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
+                                <i class="fas fa-paint-brush"></i>
                             </button>
                         </div>
                     </div>
@@ -3936,6 +3975,7 @@
                                 <i class="fas fa-lightbulb"></i>
                             </button>
                             <input type="file" id="quickFileInput" multiple style="display: none;">
+                            <input type="file" id="directoryFileInput" multiple style="display: none;">
                             <div class="button-row">
                                 <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
                                     <i class="fas fa-arrow-up"></i>
@@ -3945,9 +3985,6 @@
                                 </button>
                                 <button class="send-button" id="appendTaskButton" style="display: none;" title="{{ i18n.get('append_task', '追加任务' if lang == 'zh' else 'Append Task') }}">
                                     <i class="fas fa-plus-circle"></i>
-                                </button>
-                                <button class="send-button" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
-                                    <i class="fas fa-paint-brush"></i>
                                 </button>
                             </div>
                         </div>
@@ -4397,6 +4434,9 @@
                 transports: ['websocket', 'polling'],
                 upgrade: true,                  // 允许传输升级
                 rememberUpgrade: true,          // 记住升级状态
+                // 🔧 修复：显式设置ping超时和ping间隔，匹配服务器配置
+                pingTimeout: 600000,            // 10分钟，匹配服务器ping_timeout=600秒
+                pingInterval: 55000,            // 55秒，略小于服务器ping_interval=60秒，确保客户端先发送心跳
                 // 🔧 添加WebSocket特定配置
                 transportOptions: {
                     websocket: {
@@ -4694,11 +4734,21 @@
         
         function sendHeartbeat() {
             if (socket && socket.connected) {
-                // 发送心跳消息，服务器会响应以保持连接活跃
-                const ts = Date.now();
-                socket.emit('heartbeat', {
-                    timestamp: ts
-                });
+                try {
+                    // 发送心跳消息，服务器会响应以保持连接活跃
+                    const ts = Date.now();
+                    socket.emit('heartbeat', {
+                        timestamp: ts
+                    });
+                    // 🔧 增强：记录心跳发送失败的情况
+                } catch (error) {
+                    console.error(`[${new Date().toISOString()}] ❌ 心跳发送失败:`, error);
+                    // 如果心跳发送失败，可能是连接已断开，尝试重连
+                    if (socket && !socket.connected) {
+                        console.log(`[${new Date().toISOString()}] 🔄 检测到连接断开，尝试重连...`);
+                        socket.connect();
+                    }
+                }
             } else {
                 console.log(`[${new Date().toISOString()}] ⚠️ 心跳跳过: socket=${!!socket}, connected=${socket?.connected}`);
             }
@@ -7222,7 +7272,8 @@
                     // 延迟一点时间确保DOM完全加载
                     setTimeout(() => {
                         console.log('🚀 Auto-filling API key from registration...');
-                        // 不自动连接，只填入，让用户手动点击连接
+                        // 自动连接到服务器
+                        connectUser();
                     }, 100);
                     
                     return true; // 返回true表示找到了注册的API key
@@ -7490,6 +7541,24 @@
                 disconnectUser();
             } else {
                 connectUser();
+            }
+        });
+
+        // 注册链接点击事件
+        const registerLink = document.getElementById('registerLink');
+        registerLink.addEventListener('click', function(e) {
+            e.preventDefault(); // 阻止默认的链接跳转
+
+            if (isConnected) {
+                // 如果当前处于连接状态，先断开连接
+                disconnectUser();
+                // 等待断开连接完成后再跳转到注册页面
+                setTimeout(() => {
+                    window.location.href = '/register';
+                }, 1000); // 给1秒时间让断开连接操作完成
+            } else {
+                // 如果没有连接，直接跳转到注册页面
+                window.location.href = '/register';
             }
         });
 
@@ -7930,11 +7999,15 @@
                     
                     return;
                 } else {
-                    console.log('[DEBUG] ⚠️ 不在等待用户输入状态，忽略回车');
+                    console.log('[DEBUG] ⚠️ 不在等待用户输入状态，检查是否可以发起任务');
+                    // 如果处于非运行状态，则在需求框回车可以直接发起任务
+                    if (!isTaskRunning && socket && isConnected && userInput.value.trim()) {
+                        console.log('[DEBUG] ✅ 检测到非运行状态且有输入内容，自动发起任务');
+                        sendMessage(null); // 使用null让函数自动读取executionModeSelect的值
+                    } else {
+                        console.log('[DEBUG] ⚠️ 无法发起任务：isTaskRunning=', isTaskRunning, 'socket=', !!socket, 'isConnected=', isConnected, 'hasContent=', !!userInput.value.trim());
+                    }
                 }
-                
-                // 移除自动执行，用户需要点击按钮来执行任务
-                // sendMessage(false); // Default to direct execution mode
             }
         });
 
@@ -8589,7 +8662,7 @@
                                 <button class="action-btn" onclick="return toggleDirectory('${dir.name}', event)" title="${I18N.expand_collapse}">
                                     <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
                                 </button>
-                                <button class="action-btn" onclick="event.stopPropagation(); showUploadModal('${dir.name}')" title="${I18N.upload_to_workspace}">
+                                <button class="action-btn" onclick="event.stopPropagation(); quickUploadToDirectory('${dir.name}')" title="${I18N.upload_to_workspace}">
                                     <i class="fas fa-upload"></i>
                                 </button>
                                 <button class="action-btn" onclick="event.stopPropagation(); downloadDirectory('${dir.name}')" title="${I18N.download_as_zip}">
@@ -8602,9 +8675,6 @@
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
-                        </div>
-                        <div class="directory-info">
-                            <div><i class="fas fa-clock"></i> ${dir.modified_time}</div>
                         </div>
                         <div class="file-tree ${isExpanded ? 'show' : ''}" id="tree-${dir.name}">
                             ${renderFileTree(dir.files, dir.name)}
@@ -8696,11 +8766,11 @@
                     if (shouldNotAutoExpand) {
                         // 对于不应该自动展开的目录，显示展开按钮和删除按钮，但默认收起
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 80px;" 
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; position: relative;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 0; overflow: hidden;" 
                                      data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)">
                                     <i class="${icon}"></i>
-                                    ${file.name}
+                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                                 </div>
                                 <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
                                     <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
@@ -8722,10 +8792,10 @@
                     } else if (shouldAutoExpand) {
                         // workspace目录：自动展开显示内容，但不展开子文件夹
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 80px;">
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; position: relative;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 0; overflow: hidden;">
                                     <i class="${icon}"></i>
-                                    ${file.name}
+                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                                 </div>
                                 <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
                                     <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
@@ -8752,11 +8822,11 @@
                     } else {
                         // 其他子文件夹：带展开/收起功能
                         html = `
-                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 80px;" 
+                            <div class="file-item directory" style="margin-left: ${indent * 12}px; display: flex; align-items: center; position: relative;">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; padding-right: 0; overflow: hidden;" 
                                      data-subdir-id="${uniqueSubDirId}" onclick="toggleSubDirectoryById('${uniqueSubDirId}', event)">
                                     <i class="${icon}"></i>
-                                    ${file.name}
+                                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                                 </div>
                                 <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
                                     <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
@@ -8779,10 +8849,10 @@
                 } else if (file.type === 'directory') {
                     // 空文件夹
                     html = `
-                        <div class="${className}" style="margin-left: ${indent * 12}px; display: flex; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 60px;">
+                        <div class="${className}" style="margin-left: ${indent * 12}px; display: flex; align-items: center; position: relative;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; padding-right: 0; overflow: hidden;">
                                 <i class="${icon}"></i>
-                                ${file.name}
+                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                             </div>
                             <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
                                 <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', true); event.stopPropagation();" title="下载文件夹 | Download folder">
@@ -8796,17 +8866,32 @@
                     `;
                 } else {
                     // 文件
+                    // 检查是否是可执行文件（Python, Shell, CMD, Batch等）
+                    const fileName = file.name.toLowerCase();
+                    const executableExtensions = ['.py', '.sh', '.bash', '.zsh', '.fish', '.cmd', '.bat', '.ps1'];
+                    const isExecutableFile = executableExtensions.some(ext => fileName.endsWith(ext));
+                    
+                    // 获取GUI虚拟终端配置（从模板变量传递）
+                    const guiVirtualTerminalEnabled = {{ 'true' if gui_virtual_terminal else 'false' }};
+                    
+                    const runButtonHtml = (isExecutableFile && guiVirtualTerminalEnabled) ? `
+                                <button class="run-file-btn" onclick="runExecutableFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="运行文件 | Run file">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                            ` : '';
+                    
                     html = `
                         <div class="${className}${previewClass}${grayedClass} file-item-container" style="margin-left: ${indent * 12}px; display: flex; align-items: center;"
                              draggable="true" 
                              ondragstart="handleFileDragStart(event, '${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', '${dirName.replace(/'/g, "\\'")}')"
                              ondragend="handleFileDragEnd(event)">
-                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px; cursor: default; padding-right: 60px;" 
+                            <div class="file-content" style="flex: 1; display: flex; align-items: center; gap: 6px; cursor: default; padding-right: 0; overflow: hidden;" 
                                  ${isPreviewable ? `onclick="previewFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')"` : ''}>
                                 <i class="${icon}"></i>
-                                ${file.name}
+                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${file.name}</span>
                             </div>
-                            <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px;">
+                            <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px; background: transparent; border: none;">
+                                ${runButtonHtml}
                                 <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', false); event.stopPropagation();" title="下载文件 | Download file">
                                     <i class="fas fa-download"></i>
                                 </button>
@@ -9013,6 +9098,111 @@
             document.body.removeChild(link);
         }
 
+        // 获取GUI虚拟终端配置状态
+        function getGuiVirtualTerminalEnabled() {
+            // 从模板变量获取配置（在页面加载时设置）
+            return typeof window.guiVirtualTerminalEnabled !== 'undefined' ? window.guiVirtualTerminalEnabled : false;
+        }
+
+        function runExecutableFile(relativePath, fileName) {
+            // 检查配置是否启用
+            if (!getGuiVirtualTerminalEnabled()) {
+                const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
+                const message = lang === 'zh' 
+                    ? '{{ i18n.get("virtual_terminal_disabled", "配置已禁用，请下载独立版本并在config.txt中配置GUI_virtual_terminal=True") }}'
+                    : '{{ i18n.get("virtual_terminal_disabled", "Configuration disabled. Please download the standalone version and set GUI_virtual_terminal=True in config.txt") }}';
+                alert(message);
+                return;
+            }
+            
+            // 构建要执行的命令
+            // 使用相对路径（相对于工作目录），确保路径使用正确的分隔符
+            // 将Windows路径分隔符转换为Unix风格（终端会处理）
+            const normalizedPath = relativePath.replace(/\\/g, '/');
+            const fileNameLower = fileName.toLowerCase();
+            
+            // 提取脚本所在目录和文件名
+            const pathParts = normalizedPath.split('/');
+            let scriptDir = pathParts.slice(0, -1).join('/');
+            const scriptName = pathParts[pathParts.length - 1];
+            
+            // 检查路径中是否包含workspace子目录
+            // 如果终端当前工作目录已经是workspace，需要去掉workspace之前的部分
+            const workspaceIndex = pathParts.indexOf('workspace');
+            if (workspaceIndex !== -1) {
+                // 找到workspace目录，提取workspace之后的部分
+                // 例如：output_20260104_102756/workspace/subdir/file.py -> subdir/file.py
+                const afterWorkspace = pathParts.slice(workspaceIndex + 1);
+                if (afterWorkspace.length > 1) {
+                    // 文件在workspace的子目录中
+                    scriptDir = afterWorkspace.slice(0, -1).join('/');
+                } else {
+                    // 文件直接在workspace目录中
+                    scriptDir = '';
+                }
+            }
+            
+            let command;
+            let scriptCommand;
+            
+            // 根据文件扩展名选择相应的命令
+            if (fileNameLower.endsWith('.py')) {
+                scriptCommand = `python "${scriptName}"`;
+            } else if (fileNameLower.endsWith('.sh') || fileNameLower.endsWith('.bash') || fileNameLower.endsWith('.zsh') || fileNameLower.endsWith('.fish')) {
+                // Unix/Linux shell脚本
+                scriptCommand = `bash "${scriptName}"`;
+            } else if (fileNameLower.endsWith('.cmd') || fileNameLower.endsWith('.bat')) {
+                // Windows批处理文件
+                scriptCommand = `"${scriptName}"`;
+            } else if (fileNameLower.endsWith('.ps1')) {
+                // PowerShell脚本
+                scriptCommand = `powershell -ExecutionPolicy Bypass -File "${scriptName}"`;
+            } else {
+                // 默认尝试直接执行
+                scriptCommand = `"${scriptName}"`;
+            }
+            
+            // 如果脚本在子目录中，先切换到该目录，然后执行脚本
+            // 注意：scriptDir是相对路径，后端会基于当前工作目录解析
+            if (scriptDir && scriptDir !== '.' && scriptDir !== '') {
+                // 使用 && 连接cd和脚本执行命令（Windows和Linux都支持）
+                // 后端会解析cd命令并更新工作目录
+                command = `cd "${scriptDir}" && ${scriptCommand}`;
+            } else {
+                // 脚本在当前目录，直接执行
+                command = scriptCommand;
+            }
+            
+            // 将命令保存到localStorage，终端窗口会读取并执行
+            localStorage.setItem('terminal_auto_command', command);
+            localStorage.setItem('terminal_auto_command_timestamp', Date.now().toString());
+            
+            // 打开终端窗口（使用固定名称，如果已打开则聚焦）
+            const terminalWindow = window.open('/terminal', 'agia_terminal', 'width=800,height=600');
+            
+            // 如果窗口已经存在，尝试发送命令
+            if (terminalWindow) {
+                // 窗口打开后，等待一下再发送命令
+                setTimeout(() => {
+                    // 通过postMessage发送命令（如果窗口支持）
+                    try {
+                        terminalWindow.postMessage({
+                            type: 'execute_command',
+                            command: command
+                        }, '*');
+                    } catch (e) {
+                        // 如果postMessage失败，终端会从localStorage读取命令
+                        console.log('使用localStorage传递命令');
+                    }
+                }, 500);
+            }
+        }
+        
+        // 保留runPythonFile函数以保持向后兼容
+        function runPythonFile(relativePath, fileName) {
+            runExecutableFile(relativePath, fileName);
+        }
+
         function downloadFile(relativePath, fileName, isFolder) {
             // 构建下载URL
             let downloadUrl;
@@ -9128,8 +9318,8 @@
                         // Update agent view button state
                         updateAgentViewButtonState();
                     }
-                    
-                    alert(`目录 "${dirName}" 已成功删除`);
+
+                    // 删除成功，不显示任何消息
                 } else {
                     console.error('❌ Delete failed:', data.error);
                     alert(`删除失败: ${data.error}`);
@@ -9391,7 +9581,7 @@
                 <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 18px; color: #666;">
                     ${I18N.file_size || 'File Size'}: ${fileSize} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'}
                 </div>
-                <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
+                <div style="text-align: center; padding: 20px;">
                     <div class="preview-button-group" style="margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                         <button onclick="navigateToPreviousImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="prevImageBtn">
                             <i class="fas fa-chevron-left"></i> 上一张
@@ -9409,7 +9599,7 @@
                     </div>
                     <img src="${imageUrl}" 
                          alt="${fileName}" 
-                         style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                         style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px; display: block; margin: 0 auto;"
                          onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
                 </div>
             `;
@@ -10057,7 +10247,7 @@
                     <div style="background: #f8f8f8; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 18px; color: #666;">
                         ${I18N.file_size || 'File Size'}: ${size} | ${I18N.type_label || 'Type'}: ${I18N.image || 'Image'} (${format}) | ${I18N.dimensions || 'Dimensions'}: ${width} × ${height}                                                                                          
                     </div>
-                    <div style="text-align: center; padding: 20px; max-height: calc(90vh - 160px); overflow: auto;">
+                    <div style="text-align: center; padding: 20px;">
                         <div class="preview-button-group" style="margin-bottom: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                             <button onclick="navigateToPreviousImage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 18px; cursor: pointer;" id="prevImageBtn">
                                 <i class="fas fa-chevron-left"></i> 上一张
@@ -10074,7 +10264,7 @@
                         </div>
                         <img src="${imageData}" 
                              alt="${fileName}" 
-                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px;"
+                             style="max-width: 100%; max-height: calc(90vh - 200px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); background: white; padding: 10px; display: block; margin: 0 auto;"
                              onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=&quot;color: red; padding: 40px;&quot;><i class=&quot;fas fa-exclamation-triangle&quot;></i><br/>图片加载失败</div>';" />
                     </div>
                 `;
@@ -14647,6 +14837,26 @@
             initThemeToggle();
             initFolderIconHint();
             
+            // Terminal按钮点击事件
+            const terminalBtn = document.getElementById('terminalBtn');
+            if (terminalBtn) {
+                terminalBtn.addEventListener('click', function() {
+                    // 检查配置是否启用
+                    if (!getGuiVirtualTerminalEnabled()) {
+                        const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
+                        const message = lang === 'zh' 
+                            ? '{{ i18n.get("virtual_terminal_disabled", "配置已禁用，请下载单机版并在config.txt中配置GUI_virtual_terminal=True") }}'
+                            : '{{ i18n.get("virtual_terminal_disabled", "Configuration disabled. Please download the standalone version and set GUI_virtual_terminal=True in config.txt") }}';
+                        alert(message);
+                        return;
+                    }
+                    window.open('/terminal', '_blank', 'width=800,height=600');
+                });
+            }
+            
+            // 初始化GUI虚拟终端配置状态（从模板变量传递）
+            window.guiVirtualTerminalEnabled = {{ 'true' if gui_virtual_terminal else 'false' }};
+            
             // 动态调整容器高度（稍微延迟确保DOM完全渲染）
             setTimeout(function() {
                 adjustContainerHeight();
@@ -16436,6 +16646,23 @@
             });
         }
 
+        // 工作目录文件输入处理
+        const directoryFileInput = document.getElementById('directoryFileInput');
+        if (directoryFileInput) {
+            directoryFileInput.addEventListener('change', function(e) {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) {
+                    return;
+                }
+
+                // 直接上传到当前设置的目录
+                quickUploadFiles(files, currentUploadDir);
+
+                // 清空文件输入
+                directoryFileInput.value = '';
+            });
+        }
+
         // 快速上传文件函数（不显示模态框，直接在聊天中显示消息）
         function quickUploadFiles(files, dirName) {
             if (!dirName) {
@@ -16473,8 +16700,9 @@
                     const response = JSON.parse(xhr.responseText);
                     if (response.success) {
                         // 显示上传成功消息
-                        const successMsg = I18N.upload_success || (CURRENT_LANG === 'zh' ? '上传成功' : 'Upload successful');
-                        addMessage(`${successMsg}: ${response.files.join(', ')}`, 'success');
+                        const filesStr = response.files.join(', ');
+                        const successMsg = CURRENT_LANG === 'zh' ? `成功上传文件: ${filesStr}` : `Successfully uploaded files: ${filesStr}`;
+                        addMessage(successMsg, 'success');
                         // 清空文件输入
                         quickFileInput.value = '';
                         // 刷新目录
@@ -16630,6 +16858,22 @@
 
             xhr.open('POST', `/api/upload/${currentUploadDir}`);
             xhr.send(formData);
+        }
+
+        // 工作目录快速上传功能（直接弹出文件选择框，不显示模态框）
+        function quickUploadToDirectory(dirName) {
+            // 检查guest用户权限
+            if (isGuest) {
+                addMessage(I18N.guest_cannot_upload || 'Guest用户无法上传文件', 'error');
+                return;
+            }
+
+            // 设置当前上传目录
+            currentUploadDir = dirName;
+
+            // 触发文件选择框
+            const directoryFileInput = document.getElementById('directoryFileInput');
+            directoryFileInput.click();
         }
 
         // 删除文件功能
