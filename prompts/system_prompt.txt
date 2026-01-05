@@ -86,4 +86,4 @@ You can add the agent ID in the graph. If multi-agent is not enabled, all the ta
 
 ## Continuation Tasks
 When you receive a continuation task (where the previous task has ended or exited), 
-the working directory will contain a `manager.out` file that contains historical conversation records.
+the working directory will contain a `log/manager.out` file that contains historical conversation records. Please read it first, then continue the task.

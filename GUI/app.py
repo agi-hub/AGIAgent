@@ -383,7 +383,7 @@ I18N_TEXTS = {
         'clear_chat': '清扫',
         
         # Button tooltips
-        'direct_tooltip': '直接执行 - 不进行任务分解',
+        'direct_tooltip': '发起任务',
         'plan_tooltip': '计划模式 - 先分解任务再执行',
         'new_tooltip': '新建目录 - 创建新的工作目录',
         'refresh_tooltip': '刷新目录列表',
@@ -2131,18 +2131,81 @@ class UserSession:
             self.conversation_history = self.conversation_history[-10:]
     
     def get_summarized_requirements(self):
-        """Summarize conversation history into a comprehensive requirement"""
-        if not self.conversation_history:
+        """从manager.out文件中提取历史user requirements并汇总
+
+        从用户的各个output目录中读取manager.out文件，提取所有历史user requirements，
+        按时间排序并返回最近的几个需求。
+
+        Returns:
+            str: 汇总的历史需求，如果没有找到则返回None
+        """
+        # 获取用户的所有output目录
+        user_output_dirs = []
+        try:
+            user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+            if os.path.exists(user_base_dir):
+                # 遍历用户目录下的所有子目录
+                for item in os.listdir(user_base_dir):
+                    item_path = os.path.join(user_base_dir, item)
+                    if os.path.isdir(item_path):
+                        # 检查是否包含workspace子目录（表示是有效的output目录）
+                        workspace_path = os.path.join(item_path, 'workspace')
+                        if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
+                            user_output_dirs.append(item_path)
+        except (OSError, PermissionError):
+            pass
+
+        if not user_output_dirs:
             return None
-        
-        # Create a summary of all previous requests
+
+        # 从每个目录的manager.out文件中提取历史需求
+        all_requirements = []
+        for output_dir in user_output_dirs:
+            manager_out_path = os.path.join(output_dir, 'logs', 'manager.out')
+            if os.path.exists(manager_out_path):
+                try:
+                    with open(manager_out_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+
+                    # 查找所有"Received user requirement:"行
+                    lines = content.split('\n')
+                    for line in lines:
+                        if "Received user requirement:" in line:
+                            # 提取冒号后面的内容
+                            parts = line.split("Received user requirement:", 1)
+                            if len(parts) > 1:
+                                requirement = parts[1].strip()
+                                if requirement:  # 确保不为空
+                                    # 获取目录的修改时间作为时间戳
+                                    try:
+                                        dir_mtime = os.path.getmtime(output_dir)
+                                        timestamp = datetime.datetime.fromtimestamp(dir_mtime).isoformat()
+                                    except:
+                                        timestamp = datetime.datetime.now().isoformat()
+
+                                    all_requirements.append({
+                                        'requirement': requirement,
+                                        'timestamp': timestamp,
+                                        'output_dir': os.path.basename(output_dir)
+                                    })
+                except (IOError, OSError, UnicodeDecodeError):
+                    continue
+
+        if not all_requirements:
+            return None
+
+        # 按时间戳排序（最新的在前）
+        all_requirements.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # 取最近的5个需求
+        recent_requirements = all_requirements[:5]
+
+        # 生成汇总文本
         history_summary = []
-        for entry in self.conversation_history:
-            history_summary.append(f"User requested: {entry['user_input']}")
-        
-        # Combine into a comprehensive requirement
-        summarized_req = "\n".join(history_summary[-5:])  # Last 5 entries
-        return summarized_req
+        for req in recent_requirements:
+            history_summary.append(f"User requested: {req['requirement']}")
+
+        return "\n".join(history_summary)
 
 gui_instance = AGIAgentGUI()
 
