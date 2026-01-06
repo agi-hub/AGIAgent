@@ -2762,6 +2762,21 @@ def get_file_content(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            # 提供更详细的错误信息用于调试
+            import traceback
+            debug_info = {
+                'api_key_provided': bool(api_key),
+                'api_key_length': len(api_key) if api_key else 0,
+                'temp_session_id': temp_session_id,
+                'remote_addr': request.remote_addr
+            }
+            print(f"❌ SVG预览认证失败: {debug_info}")
+            return jsonify({
+                'success': False, 
+                'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.',
+                'debug': debug_info if os.environ.get('FLASK_DEBUG') == '1' else None
+            })
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3131,6 +3146,8 @@ def serve_static_file(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3217,6 +3234,8 @@ def serve_html_preview(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3680,6 +3699,8 @@ def convert_mermaid_to_images():
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         if not file_path:
@@ -6218,6 +6239,8 @@ def save_file():
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
@@ -6265,6 +6288,8 @@ def save_markdown():
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
@@ -6627,6 +6652,8 @@ def optimize_svg():
         # Validate file path and permissions
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
 
         full_path = os.path.join(user_base_dir, file_path)

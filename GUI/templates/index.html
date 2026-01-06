@@ -4178,6 +4178,10 @@
         </div>
     </div>
 
+    <!-- Hidden file inputs for different upload scenarios -->
+    <input type="file" id="quickFileInput" multiple style="display: none;">
+    <input type="file" id="directoryFileInput" multiple style="display: none;">
+
     <!-- File upload modal -->
     <div id="uploadModal" class="modal">
         <div class="modal-content">
@@ -5822,8 +5826,59 @@
             container.appendChild(content);
             
             // 添加点击事件来切换折叠状态
-            header.addEventListener('click', () => {
+            header.addEventListener('click', (e) => {
+                e.stopPropagation(); // 防止事件冒泡到container
                 container.classList.toggle('collapsed');
+            });
+            
+            // 添加点击事件：点击绿框内容区域时，将内容显示到工具详细调用框
+            content.addEventListener('click', (e) => {
+                e.stopPropagation(); // 防止事件冒泡
+                
+                // 获取绿框中的内容
+                const contentText = content.textContent || content.innerText || '';
+                
+                // 获取工具详细调用框
+                const detailInfoMessages = document.getElementById('detailInfoMessages');
+                if (detailInfoMessages) {
+                    // 先清空工具详细调用框的内容
+                    detailInfoMessages.innerHTML = '';
+                    
+                    // 将绿框的内容显示到工具详细调用框
+                    if (contentText.trim()) {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'detail-info-message';
+                        messageDiv.textContent = contentText;
+                        detailInfoMessages.appendChild(messageDiv);
+                        
+                        // 滚动到底部
+                        detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+                    }
+                }
+            });
+            
+            // 在container上添加点击事件，用于点击绿框其他区域时也显示内容
+            container.addEventListener('click', (e) => {
+                // 如果点击的是header，不处理（header有自己的折叠/展开功能）
+                if (e.target.closest('.json-collapsible-header')) {
+                    return;
+                }
+                // 如果点击的是content，不处理（content有自己的点击事件）
+                if (e.target.closest('.json-collapsible-content')) {
+                    return;
+                }
+                
+                // 点击绿框的其他区域（如边框），也显示内容到工具详细调用框
+                const contentText = content.textContent || content.innerText || '';
+                const detailInfoMessages = document.getElementById('detailInfoMessages');
+                if (detailInfoMessages && contentText.trim()) {
+                    detailInfoMessages.innerHTML = '';
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'detail-info-message';
+                    messageDiv.textContent = contentText;
+                    detailInfoMessages.appendChild(messageDiv);
+                    detailInfoMessages.scrollTop = detailInfoMessages.scrollHeight;
+                }
             });
             
             return container;
@@ -10995,22 +11050,49 @@
             }
             
             // 构建加载URL，包含API key
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+            // 优先使用 currentUser（已连接的会话），如果没有则从输入框获取
+            let apiKey = '';
+            if (typeof currentUser !== 'undefined' && currentUser && currentUser !== 'default') {
+                apiKey = currentUser;
+            } else {
+                const apiKeyInput = document.getElementById('apiKeyInput');
+                apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+            }
+            
             const loadUrl = apiKey ? `/api/file/${filePath}?api_key=${encodeURIComponent(apiKey)}` : `/api/file/${filePath}`;
             
             console.log('🔍 SVG加载调试信息:');
             console.log('  文件路径:', filePath);
             console.log('  API Key:', apiKey ? '***存在***' : '空');
+            console.log('  currentUser:', typeof currentUser !== 'undefined' ? currentUser : '未定义');
             console.log('  加载URL:', loadUrl);
             
             // 加载SVG内容
+            const headers = {};
+            if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+            }
+            
             fetch(loadUrl, {
-                headers: {
-                    ...(apiKey && {'X-API-Key': apiKey})
-                }
+                headers: headers
             })
-                .then(response => response.text())
+                .then(response => {
+                    // 检查响应状态
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            try {
+                                const jsonData = JSON.parse(text);
+                                throw new Error(jsonData.error || '加载SVG文件失败');
+                            } catch (e) {
+                                if (e instanceof Error && e.message !== '加载SVG文件失败') {
+                                    throw e;
+                                }
+                                throw new Error('加载SVG文件失败: ' + response.statusText);
+                            }
+                        });
+                    }
+                    return response.text();
+                })
                 .then(rawContent => {
                     let svgContent;
                     try {
@@ -11025,10 +11107,18 @@
                                 // 如果直接是SVG内容
                                 svgContent = jsonData.data;
                             }
+                        } else if (!jsonData.success) {
+                            // API返回了错误响应
+                            const errorMsg = jsonData.error || '无效的API响应';
+                            throw new Error(errorMsg);
                         } else {
                             throw new Error('无效的API响应');
                         }
                     } catch (e) {
+                        // 如果错误已经是我们抛出的，直接抛出
+                        if (e instanceof Error && (e.message.includes('无效的API响应') || e.message.includes('加载SVG文件失败') || e.message.includes('Authentication failed'))) {
+                            throw e;
+                        }
                         // 如果不是JSON，假设是直接的SVG内容
                         svgContent = rawContent;
                     }
@@ -11044,7 +11134,11 @@
                 })
                 .catch(error => {
                     console.error('加载SVG文件失败:', error);
-                    alert('加载SVG文件失败: ' + error.message);
+                    const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+                    const errorMsg = I18N?.lang === 'zh' 
+                        ? `加载SVG文件失败: ${error.message}` 
+                        : `Failed to load SVG file: ${error.message}`;
+                    alert(errorMsg);
                 });
             
             // 绑定事件处理程序
@@ -12647,17 +12741,28 @@
             const svgContent = svgClone.outerHTML;
             
             // 构建请求URL，包含API key
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+            // 优先使用 currentUser（已连接的会话），如果没有则从输入框获取
+            let apiKey = '';
+            if (typeof currentUser !== 'undefined' && currentUser && currentUser !== 'default') {
+                apiKey = currentUser;
+            } else {
+                const apiKeyInput = document.getElementById('apiKeyInput');
+                apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+            }
+            
             const url = apiKey ? `/api/save-file?api_key=${encodeURIComponent(apiKey)}` : '/api/save-file';
             
             // 发送保存请求
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+            }
+            
             fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey && {'X-API-Key': apiKey})
-                },
+                headers: headers,
                 body: JSON.stringify({
                     file_path: window.currentSvgPath,
                     content: svgContent
