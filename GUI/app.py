@@ -5742,8 +5742,16 @@ def agent_status_files(path):
         if not output_dir:
             return jsonify({'error': 'Output directory not set'}), 404
         
+        # URL decode the path to handle encoded characters
+        import urllib.parse
+        decoded_path = urllib.parse.unquote(path)
+        
+        # Convert URL path (forward slashes) to OS-specific path separators
+        # This handles Windows paths correctly
+        normalized_path = decoded_path.replace('/', os.sep)
+        
         # Construct full path
-        file_path = os.path.join(output_dir, path)
+        file_path = os.path.join(output_dir, normalized_path)
         
         # Security check: ensure path is within OUTPUT_DIR
         real_output_dir = os.path.realpath(output_dir)
@@ -5754,9 +5762,32 @@ def agent_status_files(path):
         if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
         
-        return send_from_directory(output_dir, path)
+        # Determine MIME type based on file extension
+        _, ext = os.path.splitext(file_path.lower())
+        mime_types = {
+            '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        mimetype = mime_types.get(ext, 'application/octet-stream')
+        
+        # Use decoded_path (with forward slashes) for send_from_directory
+        # send_from_directory uses safe_join internally, which expects forward slashes
+        # even on Windows, because it's designed for URL paths
+        # The path should be relative to output_dir
+        try:
+            # Use decoded_path (forward slashes) - safe_join will handle it correctly
+            # Explicitly set mimetype for SVG files
+            return send_from_directory(output_dir, decoded_path, mimetype=mimetype)
+        except Exception as send_error:
+            # If send_from_directory fails, use send_file directly as fallback
+            from flask import send_file
+            return send_file(file_path, mimetype=mimetype)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 @app.route('/api/upload/<path:dir_name>', methods=['POST'])
 def upload_files(dir_name):

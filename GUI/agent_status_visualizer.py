@@ -366,6 +366,8 @@ def find_mermaid_figures_from_plan(output_dir):
                     if os.path.exists(abs_image_path):
                         # Use relative path from output_dir for serving
                         rel_path = os.path.relpath(abs_image_path, output_dir)
+                        # Convert Windows backslashes to forward slashes for URL compatibility
+                        rel_path = rel_path.replace('\\', '/')
                         figures.append({
                             'figure_number': figure_num,
                             'path': rel_path,
@@ -378,7 +380,7 @@ def find_mermaid_figures_from_plan(output_dir):
                 mermaid_pattern = re.compile(r'```mermaid\s*\n(.*?)\n```', re.DOTALL)
                 mermaid_blocks = list(mermaid_pattern.finditer(content))
                 
-                if mermaid_blocks and MERMAID_PROCESSOR_AVAILABLE:
+                if mermaid_blocks:
                     # Create images directory if it doesn't exist
                     images_dir = os.path.join(workspace_dir, 'images')
                     os.makedirs(images_dir, exist_ok=True)
@@ -399,34 +401,64 @@ def find_mermaid_figures_from_plan(output_dir):
                         svg_path = os.path.join(images_dir, f"{filename_base}.svg")
                         png_path = os.path.join(images_dir, f"{filename_base}.png")
                         
-                        # Generate images using mermaid processor
-                        try:
-                            svg_success, png_success = mermaid_processor._generate_mermaid_image(
-                                mermaid_code,
-                                Path(svg_path),
-                                Path(png_path)
-                            )
-                            
-                            # Prefer SVG, fallback to PNG
-                            if svg_success and os.path.exists(svg_path):
-                                rel_path = os.path.relpath(svg_path, output_dir)
-                                figures.append({
-                                    'figure_number': str(idx),
-                                    'path': rel_path,
-                                    'absolute_path': svg_path,
-                                    'filename': os.path.basename(svg_path)
-                                })
-                            elif png_success and os.path.exists(png_path):
-                                rel_path = os.path.relpath(png_path, output_dir)
-                                figures.append({
-                                    'figure_number': str(idx),
-                                    'path': rel_path,
-                                    'absolute_path': png_path,
-                                    'filename': os.path.basename(png_path)
-                                })
-                        except Exception as e:
-                            print(f"Error generating mermaid image {idx}: {e}")
-                            continue
+                        # First, check if images already exist (they might have been generated previously)
+                        if os.path.exists(svg_path):
+                            # Use existing SVG
+                            rel_path = os.path.relpath(svg_path, output_dir)
+                            # Convert Windows backslashes to forward slashes for URL compatibility
+                            rel_path = rel_path.replace('\\', '/')
+                            figures.append({
+                                'figure_number': str(idx),
+                                'path': rel_path,
+                                'absolute_path': svg_path,
+                                'filename': os.path.basename(svg_path)
+                            })
+                        elif os.path.exists(png_path):
+                            # Use existing PNG
+                            rel_path = os.path.relpath(png_path, output_dir)
+                            # Convert Windows backslashes to forward slashes for URL compatibility
+                            rel_path = rel_path.replace('\\', '/')
+                            figures.append({
+                                'figure_number': str(idx),
+                                'path': rel_path,
+                                'absolute_path': png_path,
+                                'filename': os.path.basename(png_path)
+                            })
+                        elif MERMAID_PROCESSOR_AVAILABLE:
+                            # Images don't exist, generate them using mermaid processor
+                            try:
+                                svg_success, png_success = mermaid_processor._generate_mermaid_image(
+                                    mermaid_code,
+                                    Path(svg_path),
+                                    Path(png_path)
+                                )
+                                
+                                # Prefer SVG, fallback to PNG
+                                if svg_success and os.path.exists(svg_path):
+                                    rel_path = os.path.relpath(svg_path, output_dir)
+                                    # Convert Windows backslashes to forward slashes for URL compatibility
+                                    rel_path = rel_path.replace('\\', '/')
+                                    figures.append({
+                                        'figure_number': str(idx),
+                                        'path': rel_path,
+                                        'absolute_path': svg_path,
+                                        'filename': os.path.basename(svg_path)
+                                    })
+                                elif png_success and os.path.exists(png_path):
+                                    rel_path = os.path.relpath(png_path, output_dir)
+                                    # Convert Windows backslashes to forward slashes for URL compatibility
+                                    rel_path = rel_path.replace('\\', '/')
+                                    figures.append({
+                                        'figure_number': str(idx),
+                                        'path': rel_path,
+                                        'absolute_path': png_path,
+                                        'filename': os.path.basename(png_path)
+                                    })
+                            except Exception as e:
+                                print(f"Error generating mermaid image {idx}: {e}")
+                                continue
+                        else:
+                            print(f"⚠️ Mermaid code block {idx} found but mermaid processor is not available, and images don't exist")
                 elif mermaid_blocks and not MERMAID_PROCESSOR_AVAILABLE:
                     print("⚠️ Mermaid code blocks found in plan.md but mermaid processor is not available")
                     
@@ -562,15 +594,12 @@ def get_status():
         
         # Load tool calls from log files
         tool_calls = find_tool_calls_from_logs(output_dir)
-        print(f"Found {len(tool_calls)} tool calls from log files")
         
         # Load mermaid figures from plan.md
         mermaid_figures = find_mermaid_figures_from_plan(output_dir)
-        print(f"Found {len(mermaid_figures)} mermaid figures from plan.md")
         
         # Load status updates from status files
         status_updates = find_status_updates(output_dir)
-        print(f"Found {len(status_updates)} status updates")
         
         # Get all unique agent IDs
         agent_ids = set(agent_statuses.keys())
@@ -629,17 +658,44 @@ def serve_output_file(path):
     if not OUTPUT_DIR:
         return jsonify({'error': 'Output directory not set'}), 404
     
+    # Convert URL path (forward slashes) to OS-specific path separators for file system operations
+    # This handles Windows paths correctly
+    normalized_path = path.replace('/', os.sep)
+    
     # Construct full path
-    file_path = os.path.join(OUTPUT_DIR, path)
+    file_path = os.path.join(OUTPUT_DIR, normalized_path)
     
     # Security check: ensure path is within OUTPUT_DIR
-    if not os.path.abspath(file_path).startswith(os.path.abspath(OUTPUT_DIR)):
+    real_output_dir = os.path.abspath(OUTPUT_DIR)
+    real_file_path = os.path.abspath(file_path)
+    if not real_file_path.startswith(real_output_dir):
         return jsonify({'error': 'Invalid path'}), 403
     
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
     
-    return send_from_directory(OUTPUT_DIR, path)
+    # Determine MIME type based on file extension
+    _, ext = os.path.splitext(file_path.lower())
+    mime_types = {
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp'
+    }
+    mimetype = mime_types.get(ext, 'application/octet-stream')
+    
+    # Use original path (with forward slashes) for send_from_directory
+    # send_from_directory uses safe_join internally, which expects forward slashes
+    # even on Windows, because it's designed for URL paths
+    try:
+        # Explicitly set mimetype for SVG files
+        return send_from_directory(OUTPUT_DIR, path, mimetype=mimetype)
+    except Exception as send_error:
+        # If send_from_directory fails, use send_file directly as fallback
+        from flask import send_file
+        return send_file(file_path, mimetype=mimetype)
 
 
 def find_latest_output_dir(search_dir=None):

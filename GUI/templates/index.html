@@ -3506,6 +3506,14 @@
             height: auto !important;
         }
         
+        /* plan.md中的mermaid图表不设置高度限制 */
+        #markdownPreview.plan-md svg,
+        #markdownPreview.plan-md .mermaid svg {
+            max-height: none !important;
+            width: auto !important;
+            height: auto !important;
+        }
+        
         /* Mermaid SVG高度限制 */
         #mermaid-chart-container svg {
             max-height: 1000px !important;
@@ -10040,6 +10048,28 @@
                         try {
                             mermaid.initialize({ startOnLoad: false, theme: 'default' });
                             mermaid.run({ querySelector: '.mermaid' });
+                            
+                            // 检查是否为plan.md，如果是则不设置高度限制
+                            const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath || '';
+                            const isPlanMd = originalFilePath && (originalFilePath.endsWith('plan.md') || originalFilePath.endsWith('/plan.md'));
+                            
+                            if (isPlanMd) {
+                                // 为markdownPreview添加plan-md类
+                                const previewDiv = document.getElementById('markdownPreview');
+                                if (previewDiv) {
+                                    previewDiv.classList.add('plan-md');
+                                }
+                                
+                                // 等待mermaid渲染完成后，移除高度限制
+                                setTimeout(() => {
+                                    const mermaidSvgs = previewDiv.querySelectorAll('.mermaid svg, svg');
+                                    mermaidSvgs.forEach(svg => {
+                                        svg.style.maxHeight = 'none';
+                                        svg.style.width = 'auto';
+                                        svg.style.height = 'auto';
+                                    });
+                                }, 200);
+                            }
                         } catch (e) {
                             console.warn('Mermaid rendering failed:', e);
                         }
@@ -13783,6 +13813,27 @@
                             try {
                                 mermaid.initialize({ startOnLoad: false, theme: 'default' });
                                 mermaid.run({ querySelector: '.mermaid' });
+                                
+                                // 检查是否为plan.md，如果是则不设置高度限制
+                                const originalFilePath = window.currentOriginalFilePath || currentFilePath || '';
+                                const isPlanMd = originalFilePath && (originalFilePath.endsWith('plan.md') || originalFilePath.endsWith('/plan.md'));
+                                
+                                if (isPlanMd) {
+                                    // 为markdownPreview添加plan-md类
+                                    if (previewDiv) {
+                                        previewDiv.classList.add('plan-md');
+                                    }
+                                    
+                                    // 等待mermaid渲染完成后，移除高度限制
+                                    setTimeout(() => {
+                                        const mermaidSvgs = previewDiv.querySelectorAll('.mermaid svg, svg');
+                                        mermaidSvgs.forEach(svg => {
+                                            svg.style.maxHeight = 'none';
+                                            svg.style.width = 'auto';
+                                            svg.style.height = 'auto';
+                                        });
+                                    }, 200);
+                                }
                             } catch (e) {
                                 console.warn('Mermaid rendering failed:', e);
                             }

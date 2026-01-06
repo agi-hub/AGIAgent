@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Status Visualizer</title>
+    <title>Multi-agent Viewer</title>
     <!-- Load Mermaid with error handling -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" 
             crossorigin="anonymous"
@@ -18,7 +18,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f3f3f3;
             min-height: 100vh;
             padding: 20px;
         }
@@ -28,14 +28,14 @@
             margin: 0 auto;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             padding: 30px;
         }
 
         h1 {
             color: #333;
             margin-bottom: 10px;
-            font-size: 2em;
+            font-size: 1.5em;
         }
 
         .header-info {
@@ -79,7 +79,7 @@
             background: #f5f5f5;
             border-radius: 4px;
             display: inline-block;
-            border-left: 3px solid #667eea;
+            border-left: 3px solid #0366d6;
         }
 
         .output-dir strong {
@@ -89,7 +89,7 @@
 
         #outputDirPath {
             font-family: 'Courier New', monospace;
-            color: #667eea;
+            color: #0366d6;
             font-weight: 500;
         }
 
@@ -102,17 +102,18 @@
 
         button {
             padding: 8px 16px;
-            background: #667eea;
+            background: #0366d6;
             color: white;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.9em;
             transition: background 0.3s;
+            font-weight: 500;
         }
 
         button:hover {
-            background: #5568d3;
+            background: #005cc5;
         }
 
         button:disabled {
@@ -140,6 +141,12 @@
             padding: 20px;
             overflow: auto;
             border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        
+        #diagram-container .mermaid {
+            display: inline-block;
+            margin: 0 auto;
         }
 
         /* Style Mermaid notes to have slightly smaller font */
@@ -200,7 +207,7 @@
             background: #f5f5f5;
             padding: 15px;
             border-radius: 8px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #0366d6;
         }
 
         .agent-card h3 {
@@ -255,6 +262,7 @@
             color: #333;
             margin-bottom: 15px;
             font-size: 1.3em;
+            text-align: center;
         }
 
         .mermaid-figure {
@@ -263,10 +271,11 @@
             background: white;
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
         }
 
         .mermaid-figure h3 {
-            color: #667eea;
+            color: #0366d6;
             margin-bottom: 10px;
             font-size: 1.1em;
         }
@@ -276,6 +285,8 @@
             height: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
+            display: block;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -302,10 +313,10 @@
     <div class="container">
         <div class="header-info">
             <div>
-                <h1>🤖 Agent Status Visualizer</h1>
+                <h1>Multi-agent Viewer</h1>
                 <div class="last-update" id="lastUpdate">Loading...</div>
                 <div class="output-dir" id="outputDir">
-                    <strong>📁 监控目录:</strong> <span id="outputDirPath">加载中...</span>
+                    <strong>📁 Directory </strong> <span id="outputDirPath">loading...</span>
                 </div>
             </div>
             <div class="status-indicator">
@@ -917,7 +928,9 @@
                 // Use the /api/files or /api/agent-status-files route to serve images from output directory
                 // Build URL with path and query parameters
                 // Note: Flask's <path:path> can handle paths with slashes, but we need to encode them properly
-                const pathParts = figure.path.split('/');
+                // Convert Windows backslashes to forward slashes for URL compatibility
+                const normalizedPath = figure.path.replace(/\\/g, '/');
+                const pathParts = normalizedPath.split('/');
                 const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
                 // Use 'api/files/' as base - apiUrl() will map it correctly based on access method
                 let imageUrl = apiUrl(`api/files/${encodedPath}`);
