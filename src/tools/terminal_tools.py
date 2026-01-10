@@ -1056,7 +1056,12 @@ class TerminalTools:
                     env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'  # Reduce noise
                 
                 # Special handling for Python programs - ensure output is visible
-                is_python_program = command.lower().startswith('python ') or command.lower().startswith('python3 ') or 'python' in command.lower()
+                # Only detect python commands at the start or after whitespace/operators, not in paths
+                import re
+                # Match python/python3 as a command (at start or after operators), not in paths
+                # This ensures paths like /home/agibot/python-altium are not matched
+                python_command_pattern = r'(^|\s|&|;|\||\(|`)(python3?)(\s|$)'
+                is_python_program = re.search(python_command_pattern, command, re.IGNORECASE) is not None
                 
                 if is_python_program:
                     print_current(f"🐍 Detected Python program, ensuring unbuffered output")
@@ -1064,11 +1069,12 @@ class TerminalTools:
                     # This ensures immediate output even for interactive programs
                     if '-u' not in command and '--unbuffered' not in command:
                         # Insert -u flag after python/python3
-                        import re
-                        # Match python or python3 at the start or after whitespace
-                        pattern = r'(\bpython3?\b)'
+                        # Match python or python3 at the start or after whitespace/operators, but not in paths
+                        # The pattern ensures it's a command word, not part of a path like python-altium
+                        pattern = r'(^|\s|&|;|\||\(|`)(python3?)(\s+)'
                         if re.search(pattern, command, re.IGNORECASE):
-                            command = re.sub(pattern, r'\1 -u', command, count=1, flags=re.IGNORECASE)
+                            # Replace only the python command, preserving the context
+                            command = re.sub(pattern, r'\1\2 -u\3', command, count=1, flags=re.IGNORECASE)
                             print_current(f"🔧 Added -u flag for unbuffered output")
                     # Use shorter timeout for Python programs as they should produce output
                     if timeout_inactive > 60:

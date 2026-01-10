@@ -13,17 +13,48 @@ api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.7
 max_tokens=16384
 
+# GLM coding-plan API configuration
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.5-air
+max_tokens=16384
+
 # Anthropic models
 # api_key=your key
 # api_base=https://api.openai-proxy.org/anthropic
 # model=claude-sonnet-4-0
 # max_tokens=32768
 
-# Openrouter
+# Openrouter Qwen3-30b
 api_key=your key
 api_base=https://openrouter.ai/api/v1
-model=qwen/qwen3-32b
+model=qwen/qwen3-coder-30b-a3b-instruct
 max_tokens=16384
+
+# Openrouter Minimax M2.1
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=minimax/fp8
+max_tokens=16384
+
+# Openrouter Grok Code
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=x-ai/grok-code-fast-1
+max_tokens=16384
+
+# Openrouter Xiaomi
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=xiaomi/mimo-v2-flash:free
+max_tokens=16384
+
+# Openrouter Nvidia nemotron 3 nano
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=nvidia/nemotron-3-nano-30b-a3b:free
+max_tokens=16384
+
 
 # DeepSeek API configuration
 # api_key=your key
@@ -42,10 +73,10 @@ max_tokens=16384
 # max_tokens=8192
 
 # SiliconFlow API configuration 
-api_key=your key
-api_base=https://api.siliconflow.cn/v1
-model=Qwen/Qwen3-8B
-max_tokens=8192
+# api_key=your key
+# api_base=https://api.siliconflow.cn/v1
+# model=Qwen/Qwen3-30B-A3B
+# max_tokens=4096
 
 # Ollama (local serve)
 # api_key=your key
@@ -53,16 +84,19 @@ max_tokens=8192
 # model=qwen3:8b
 # max_tokens=4096
 
+# Minimax Coding plan
+api_key=your key
+api_base=https://api.minimaxi.com/anthropic
+model=minimax-m2.1
+max_tokens=16384
+
 # Note: only the last configuration is valid.
 
-# Zhipu AI Web Search API configuration
-# If configured, will use Zhipu web search API as default search engine
-# If not configured or empty, falls back to original search engine (Playwright-based)
-zhipu_search_api_key=your key
-zhipu_search_engine=search_std
+# Streaming output configuration: True for streaming, False for batch output
+streaming=True
 
 # Long-term memory configuration
-enable_long_term_memory=False
+enable_long_term_memory=True
 
 # Long-term memory model configuration (default to the same as model and api_base)
 mem_model=gpt-4.1
@@ -77,13 +111,10 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # Vision model configuration (for image recognition with get_sensor_data)
 # If not configured, will use the main model (model, api_key, api_base) for vision tasks
 # It's recommended to configure a vision-capable model here (e.g., GPT-4 Vision, Claude 3, Gemini)
-vision_api_key=your key
-vision_api_base=https://open.bigmodel.cn/api/coding/paas/v4 
-vision_model=glm-4.5v
-vision_max_tokens=16384
-
-# Streaming output configuration: True for streaming, False for batch output
-streaming=True
+# vision_model=gpt-4o
+# vision_api_key=your key
+# vision_api_base=https://api.openai.com/v1
+# vision_max_tokens=4096
 
 # Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
 # When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
@@ -273,3 +304,29 @@ admit_task_completed_with_tools=True
 # Set to True to enable virtual terminal features
 GUI_virtual_terminal=False
 
+# GUI Button Display Configuration
+# Controls whether to display specific buttons in the GUI interface
+
+# Infinite Execute Mode Button Display Configuration
+# Controls whether to show the infinite execute mode button (loops=-1) in GUI
+# When enabled (True), the infinite execute button is visible in the GUI
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the infinite execute mode button
+GUI_show_infinite_execute_button=True
+
+# Multi-Agent Button Display Configuration
+# Controls whether to show the multi-agent toggle button in GUI
+# When enabled (True), the multi-agent button is visible in the GUI
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the multi-agent button
+GUI_show_multi_agent_button=True
+
+# Agent View Button Display Configuration
+# Controls whether to show the agent view button in GUI
+# When enabled (True), the agent view button is visible in the GUI header
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the agent view button
+GUI_show_agent_view_button=True

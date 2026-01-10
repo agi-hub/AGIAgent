@@ -204,5 +204,66 @@
       },
       "required": ["agent_id", "round_number", "task_completed", "llm_response_preview", "tool_calls_summary"]
     }
+  },
+  "idle": {
+    "description": "Idle tool that represents doing nothing in this round, only used for multi-agent synchronization. DO NOT use this for sending TASK_COMPLETED signal. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'no_action_needed')"
+        },
+        "sleep": {
+          "type": "number",
+          "description": "Sleep time in seconds (default: 10). Set to 0 to skip sleep. Set to -1 for infinite sleep mode (only wakes up when user sends a message) - ONLY use this when manager has completed all tasks and there are no other active agents."
+        }
+      },
+      "required": []
+    }
+  },
+  "recall_memories": {
+    "description": "Search and recall relevant memories from long-term memory based on semantic similarity. This tool implements RAG-like functionality to retrieve past experiences and knowledge.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The query to search for relevant memories. Can be a question, topic, or description of what you're looking for."
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of most relevant memories to retrieve. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "recall_memories_by_time": {
+    "description": "Search and recall memories from a specific time period. Useful for finding what happened 'yesterday', 'last week', or on a specific date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "time_query": {
+          "type": "string",
+          "description": "Time-based query such as 'yesterday', 'last week', 'this month', or specific dates like '2024-01-01'"
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of memories to retrieve from that time period. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["time_query"]
+    }
+  },
+  "get_memory_summary": {
+    "description": "Get a summary of the long-term memory system status, including total number of memories, storage information, and system health.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
   }
 } 

@@ -566,24 +566,83 @@
                 const parts = textBeforeCursor.split(/\s+/);
                 const lastPart = parts[parts.length - 1] || '';
                 
+                // 检查是否是目录子项补全（从后端返回的标志）
+                const isDirCompletion = data.is_dir_completion || false;
+                
                 if (data.completions.length === 1) {
                     // 只有一个补全结果，直接替换
                     const completion = data.completions[0];
-                    const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
-                    const suffix = currentLine.substring(cursorPosition);
-                    const newLine = prefix + completion + suffix;
-                    const addedChars = completion.length - lastPart.length;
                     
-                    // 更新当前行和光标位置
-                    currentLine = newLine;
-                    cursorPosition += addedChars;
-                    
-                    // 重新显示当前行
-                    term.write('\r' + currentWorkingDir + '> ' + currentLine);
-                    // 移动光标到正确位置
-                    const remaining = currentLine.length - cursorPosition;
-                    if (remaining > 0) {
-                        term.write('\b'.repeat(remaining));
+                    if (isDirCompletion) {
+                        // 目录子项补全：追加补全结果（需要添加路径分隔符）
+                        // 如果lastPart不以分隔符结尾，需要添加分隔符
+                        let newLastPart = lastPart;
+                        if (!newLastPart.endsWith('/') && !newLastPart.endsWith('\\')) {
+                            // 根据系统确定使用哪个分隔符
+                            const separator = lastPart.includes('\\') ? '\\' : '/';
+                            newLastPart = newLastPart + separator;
+                        }
+                        newLastPart = newLastPart + completion;
+                        
+                        const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                        const suffix = currentLine.substring(cursorPosition);
+                        const newLine = prefix + newLastPart + suffix;
+                        const addedChars = newLastPart.length - lastPart.length;
+                        
+                        currentLine = newLine;
+                        cursorPosition += addedChars;
+                        
+                        term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                        const remaining = currentLine.length - cursorPosition;
+                        if (remaining > 0) {
+                            term.write('\b'.repeat(remaining));
+                        }
+                    } else {
+                        // 检查lastPart是否包含路径分隔符
+                        const hasPathSeparator = lastPart.includes('/') || lastPart.includes('\\');
+                        
+                        if (hasPathSeparator) {
+                            // 路径段补全：只替换最后一个路径段
+                            // 例如：/usr/l -> /usr/lib，只替换 'l' 部分
+                            const lastSeparatorIndex = Math.max(
+                                lastPart.lastIndexOf('/'),
+                                lastPart.lastIndexOf('\\')
+                            );
+                            
+                            if (lastSeparatorIndex >= 0) {
+                                const pathPrefix = lastPart.substring(0, lastSeparatorIndex + 1);
+                                const newLastPart = pathPrefix + completion;
+                                const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                                const suffix = currentLine.substring(cursorPosition);
+                                const newLine = prefix + newLastPart + suffix;
+                                const addedChars = newLastPart.length - lastPart.length;
+                                
+                                currentLine = newLine;
+                                cursorPosition += addedChars;
+                                
+                                term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                                const remaining = currentLine.length - cursorPosition;
+                                if (remaining > 0) {
+                                    term.write('\b'.repeat(remaining));
+                                }
+                                return;
+                            }
+                        }
+                        
+                        // 非路径补全：替换整个lastPart
+                        const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                        const suffix = currentLine.substring(cursorPosition);
+                        const newLine = prefix + completion + suffix;
+                        const addedChars = completion.length - lastPart.length;
+                        
+                        currentLine = newLine;
+                        cursorPosition += addedChars;
+                        
+                        term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                        const remaining = currentLine.length - cursorPosition;
+                        if (remaining > 0) {
+                            term.write('\b'.repeat(remaining));
+                        }
                     }
                 } else {
                     // 多个补全结果，显示列表

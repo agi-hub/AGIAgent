@@ -1,0 +1,208 @@
+{
+  "tool_help": {
+    "description": "Get detailed help information for a specific tool, including its parameters and usage examples.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "description": "The name of the tool to get help for"
+        }
+      },
+      "required": ["tool_name"]
+    }
+  },
+  "get_background_update_status": {
+    "description": "Get the status information and statistics of the background incremental update thread for code repository monitoring to track automatic code indexing updates.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  "file_search": {
+    "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Fuzzy filename to search for"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "delete_file": {
+    "description": "Deletes a file at the specified path. The operation will fail gracefully if the file doesn't exist.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "target_file": {
+          "type": "string",
+          "description": "The path of the file to delete, relative to the workspace root."
+        }
+      },
+      "required": ["target_file"]
+    }
+  },
+  "get_sensor_data": {
+    "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "integer",
+          "description": "Data type to acquire: 1=image, 2=video (5 seconds), 3=audio, 4=sensor data",
+          "enum": [1, 2, 3, 4]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source identifier: file path for existing files, or device number for cameras/microphones/sensors (e.g. '0' for camera 0)"
+        },
+        "para": {
+          "type": "object",
+          "description": "Parameters in JSON format. For images/cameras: {\"resolution\": \"640x320\"}. For videos: {\"resolution\": \"640x320\", \"duration\": 5}. For audio: {\"sampling_rate\": 16000, \"duration\": 5}. For sensors: varies by sensor type.",
+          "properties": {
+            "resolution": {
+              "type": "string",
+              "description": "Resolution for image/video capture (e.g., '640x320', '1920x1080')"
+            },
+            "duration": {
+              "type": "integer",
+              "description": "Duration in seconds for video/audio capture"
+            },
+            "sampling_rate": {
+              "type": "integer",
+              "description": "Sampling rate for audio capture (default: 16000 Hz)"
+            }
+          }
+        }
+      },
+      "required": ["type", "source"]
+    }
+  },
+  "read_img": {
+    "description": "Read and analyze an image using the configured vision model, returning a text description of the image content. This tool uses the vision_model configuration to analyze images and returns text instead of base64-encoded image data. Use this tool when you need to understand what's in an image, extract text from images, or analyze visual content.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Query or instruction for what to analyze in the image. For example: 'What text is in this image?', 'Describe what you see in this image', 'What objects are visible?', 'Extract all text content', etc."
+        },
+        "image_path": {
+          "type": "string",
+          "description": "Path to the image file. Supports absolute paths, paths relative to workspace root, or paths relative to current directory. Common formats: jpg, jpeg, png, gif, webp"
+        }
+      },
+      "required": ["query", "image_path"]
+    }
+  },
+  "run_claude": {
+    "description": "Run claude command using claude_shell.py as a separate process. This tool executes claude in a separate process and passes the working directory to claude_shell.py.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The prompt to send to claude"
+        },
+        "work_dir": {
+          "type": "string",
+          "description": "Optional working directory path for claude_shell.py execution. If not specified, uses the workspace root directory."
+        }
+      },
+      "required": ["prompt"]
+    }
+  },
+  "mouse_control": {
+    "description": "Control mouse operations, including moving the mouse to a specified coordinate, single clicking the left mouse button, double clicking, right mouse button clicking, and scrolling the mouse wheel. This is a cross-platform mouse control tool that prioritizes using the PyAutoGUI or PyNput libraries, and falls back to system commands if those are not available.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Type of operation. Possible values: 'move' (move mouse), 'click' (single click), 'double_click' (double click), 'right_click' (right-button click), 'scroll' (scroll wheel).",
+          "enum": ["move", "click", "double_click", "right_click", "scroll"]
+        },
+        "x": {
+          "type": "integer",
+          "description": "X coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "button": {
+          "type": "string",
+          "description": "Mouse button type, only used when action='click'. Possible values: 'left', 'right'. Defaults to 'left'.",
+          "enum": ["left", "right"]
+        },
+        "clicks": {
+          "type": "integer",
+          "description": "Number of clicks, only used when action='click'. Defaults to 1."
+        },
+        "scroll_delta": {
+          "type": "integer",
+          "description": "Amount to scroll by, only used when action='scroll'. Positive for scroll up, negative for scroll down. Larger absolute values scroll more."
+        }
+      },
+      "required": ["action"]
+    }
+  },
+  "read_received_messages": {
+    "description": "Fetch messages from your own mailbox, including broadcast messages and P2P messages. Messages are automatically marked as read after retrieval.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "include_read": {
+          "type": "boolean",
+          "description": "Include already read messages (default: false)"
+        }
+      },
+      "required": []
+    }
+  },
+  "send_status_update_to_manager": {
+    "description": "Send a status update from an agent to the manager about task progress.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "ID of the agent sending the update. ALWAYS use 'current_agent' to auto-detect the correct agent ID.",
+          "default": "current_agent"
+        },
+        "round_number": {
+          "type": "integer",
+          "description": "Current execution round number"
+        },
+        "task_completed": {
+          "type": "boolean",
+          "description": "Whether the task is completed"
+        },
+        "llm_response_preview": {
+          "type": "string",
+          "description": "Preview of LLM response (first 200 characters)"
+        },
+        "tool_calls_summary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tool names called in this round"
+        },
+        "current_task_description": {
+          "type": "string",
+          "description": "Description of current task being worked on"
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Error message if any error occurred"
+        }
+      },
+      "required": ["agent_id", "round_number", "task_completed", "llm_response_preview", "tool_calls_summary"]
+    }
+  }
+} 

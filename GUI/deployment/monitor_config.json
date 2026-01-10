@@ -1,0 +1,32 @@
+{
+  "apps": [
+    {
+      "name": "patent",
+      "port": 5003,
+      "app_name": "patent",
+      "description": "专利应用"
+    },
+    {
+      "name": "colordoc",
+      "port": 5004,
+      "app_name": "colordoc",
+      "description": "彩色文档应用"
+    },
+    {
+      "name": "bit",
+      "port": 5005,
+      "app_name": "bit",
+      "description": "Bit应用"
+    },
+    {
+      "name": "bjou",
+      "port": 5006,
+      "app_name": "bjou",
+      "description": "Bjou应用"
+    }
+  ],
+  "check_interval": 1,
+  "max_startup_attempts": 3,
+  "startup_retry_delay": 60
+}
+

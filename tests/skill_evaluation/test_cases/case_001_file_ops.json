@@ -1,0 +1,35 @@
+{
+  "task_id": "case_001",
+  "task_description": "创建一个Python脚本，读取input.txt文件（如果不存在则创建并写入示例内容），统计文件中每个单词的出现次数，将结果按出现次数降序排列，并写入output.txt文件。要求代码包含错误处理。",
+  "output_requirements": {
+    "files": ["output.txt"],
+    "content_check": {
+      "output.txt": {
+        "must_contain": ["单词", "出现次数"],
+        "format": "文本文件",
+        "should_be_sorted": true
+      }
+    },
+    "code_files": ["*.py"]
+  },
+  "evaluation_criteria": {
+    "completion": {
+      "file_exists": true,
+      "content_valid": true,
+      "code_executable": true
+    },
+    "quality": {
+      "code_style": "良好",
+      "error_handling": "有异常处理",
+      "code_readability": "代码清晰易读"
+    },
+    "efficiency": {
+      "max_rounds": 5,
+      "max_tool_calls": 12
+    }
+  },
+  "category": "file_operations",
+  "difficulty": "simple"
+}
+
+

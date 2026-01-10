@@ -1,5 +1,5 @@
 #!/bin/bash
-# AGI Agent GUI 监控程序后台运行脚本
+# AGI Agent GUI 多应用监控程序后台运行脚本
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,14 +35,28 @@ if [[ ! -f "monitor.py" ]]; then
     exit 1
 fi
 
+if [[ ! -f "monitor_config.json" ]]; then
+    echo "错误: 未找到 monitor_config.json 配置文件"
+    exit 1
+fi
+
 if [[ ! -f "../app.py" ]]; then
     echo "错误: 未找到 GUI/app.py 文件"
     exit 1
 fi
 
-echo "启动 AGI Agent GUI 监控程序 (后台模式)..."
+echo "启动 AGI Agent GUI 多应用监控程序 (后台模式)..."
 echo "日志文件: $DAEMON_LOG"
 echo "PID文件: $PID_FILE"
+echo "配置文件: monitor_config.json"
+
+# 显示将要监控的应用
+if command -v python3 &> /dev/null && [[ -f "monitor_config.json" ]]; then
+    echo ""
+    echo "将监控以下应用:"
+    python3 -c "import json; config = json.load(open('monitor_config.json')); [print(f'  - {app[\"name\"]}: 端口 {app[\"port\"]} ({app.get(\"description\", \"\")})') for app in config.get('apps', [])]"
+    echo ""
+fi
 
 # 后台启动监控程序
 nohup python3 monitor.py > "$DAEMON_LOG" 2>&1 &

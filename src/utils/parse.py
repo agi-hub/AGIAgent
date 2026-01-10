@@ -728,6 +728,20 @@ def convert_xml_parameter_value(value: str) -> Any:
     if value_stripped.startswith('-') and value_stripped[1:].isdigit():
         return int(value_stripped)
     
+    # Handle floating point numbers (positive and negative)
+    # This includes numbers like "0.8", "1.0", "-0.5", "3.14", etc.
+    try:
+        float_value = float(value_stripped)
+        # Check if it's actually a float (contains decimal point or scientific notation)
+        # If it's a pure integer string like "1", we already handled it above
+        # But for cases like "0.8", we need to return float
+        if '.' in value_stripped or 'e' in value_stripped.lower() or 'E' in value_stripped:
+            return float_value
+        # For pure integer strings that weren't caught above (shouldn't happen, but safe)
+        # Return as int for backward compatibility
+    except (ValueError, TypeError):
+        pass
+    
     # Handle JSON arrays/objects
     if (value_stripped.startswith('[') and value_stripped.endswith(']')) or (value_stripped.startswith('{') and value_stripped.endswith('}')):
         try:

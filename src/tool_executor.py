@@ -389,6 +389,44 @@ class ToolExecutor:
                 "get_memory_summary": _memory_disabled_error,
             })
         
+        # Initialize skill tools if long-term memory is enabled
+        self.skill_tools = None
+        if self.long_term_memory:
+            try:
+                from src.skill_evolve.skill_tools import SkillTools
+                self.skill_tools = SkillTools(
+                    workspace_root=self.workspace_dir,
+                    user_id=self.user_id
+                )
+                # Register skill tools
+                self.tool_map.update({
+                    "query_skill": self.skill_tools.query_skill,
+                    "rate_skill": self.skill_tools.rate_skill,
+                    "edit_skill": self.skill_tools.edit_skill,
+                    "delete_skill": self.skill_tools.delete_skill,
+                    "copy_skill_files": self.skill_tools.copy_skill_files,
+                })
+                print_system("🎯 Skill tools registered")
+            except ImportError as e:
+                print_current(f"⚠️ Skill tools module import failed: {e}")
+                self.skill_tools = None
+            except Exception as e:
+                print_current(f"⚠️ Skill tools initialization failed: {e}")
+                self.skill_tools = None
+        
+        # Add error handlers for disabled skill tools
+        if not self.skill_tools:
+            def _skill_disabled_error(*args, **kwargs):
+                return {"status": "error", "message": "Skill tools are only available when long-term memory is enabled"}
+            
+            self.tool_map.update({
+                "query_skill": _skill_disabled_error,
+                "rate_skill": _skill_disabled_error,
+                "edit_skill": _skill_disabled_error,
+                "delete_skill": _skill_disabled_error,
+                "copy_skill_files": _skill_disabled_error,
+            })
+        
         # Add multi-agent tools if enabled, otherwise add error handlers
         if self.multi_agent_tools:
             self.tool_map.update({
@@ -411,6 +449,27 @@ class ToolExecutor:
                 "get_agent_session_info": _multi_agent_disabled_error,
                 "terminate_agent": _multi_agent_disabled_error,
             })
+        
+        # Initialize custom tool
+        try:
+            from tools.custom_tool import CustomTool
+            self.custom_tool = CustomTool(workspace_root=self.workspace_dir)
+            # Register custom command tool
+            self.tool_map["custom_command"] = self.custom_tool.execute_command
+            print_system("🎮 Custom tool registered")
+        except ImportError as e:
+            print_current(f"⚠️ Custom tool module import failed: {e}")
+            self.custom_tool = None
+            # Add error handler for disabled custom tool
+            def _custom_tool_disabled_error(*args, **kwargs):
+                return {"status": "error", "message": "Custom tool not available"}
+            self.tool_map["custom_command"] = _custom_tool_disabled_error
+        except Exception as e:
+            print_current(f"⚠️ Custom tool initialization failed: {e}")
+            self.custom_tool = None
+            def _custom_tool_disabled_error(*args, **kwargs):
+                return {"status": "error", "message": f"Custom tool initialization failed: {str(e)}"}
+            self.tool_map["custom_command"] = _custom_tool_disabled_error
         
 
         # Initialize MCP clients
@@ -951,6 +1010,26 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
 - Each iteration should build upon previous work and make meaningful progress"""
                 
                 system_prompt = system_prompt.replace(task_completion_section, infinite_loop_section)
+            
+            # Add skill query feature if long-term memory is enabled
+            if self.skill_tools:
+                skill_query_section = """
+## Skill Query Feature
+For complex tasks, you can use the `query_skill` tool to search for relevant historical experiences and skills that might help you complete the task more efficiently. This is especially useful when you encounter similar problems or need to follow established patterns.
+
+When you use skills from `query_skill`, make sure to:
+1. Keep the skill_id in your conversation history for reference
+2. Explicitly document which skills you referenced in plan.md
+3. After task completion, use `rate_skill` to update the quality index of skills you used
+
+The skill system helps you learn from past experiences and improve over time. Use it proactively for complex tasks!
+"""
+                # Insert skill query section before "Task Execution Approach" or at the end
+                if "## Task Execution Approach" in system_prompt:
+                    task_exec_pos = system_prompt.find("## Task Execution Approach")
+                    system_prompt = system_prompt[:task_exec_pos] + skill_query_section + "\n" + system_prompt[task_exec_pos:]
+                else:
+                    system_prompt = system_prompt + skill_query_section
             
             return system_prompt
                 

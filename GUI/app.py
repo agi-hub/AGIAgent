@@ -24,7 +24,7 @@ try:
 except ImportError:
     ASYNC_MODE = 'threading'
 
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request, abort, Response
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, after_this_request, abort, Response, redirect
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sys
@@ -41,6 +41,7 @@ import json
 import psutil
 from collections import defaultdict
 from threading import Lock, Semaphore
+from typing import Optional
 import argparse
 
 # Note: We use the default multiprocessing start method
@@ -116,10 +117,11 @@ else:
 # Add parent directory to path to import main.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Application name macro definition
+# Application name macro definition (will be updated by AppManager)
 APP_NAME = "AGI Agent"
 
 from src.main import AGIAgentMain
+from app_manager import AppManager
 
 
 
@@ -506,7 +508,7 @@ I18N_TEXTS = {
         'convert_to_images_short': '转换为图像',
         'loading': '加载中...',
         'system_message': '系统消息',
-        'welcome_message': f'欢迎使用 {APP_NAME}！请在下方输入您的需求，系统将自动为您处理任务。',
+        'welcome_message': f'我已经就绪，请在下方输入您的需求',
         'workspace_title': '工作目录',
         'file_preview': '文件预览',
         'data_directory_info': '数据目录',
@@ -738,6 +740,9 @@ I18N_TEXTS = {
         
         # Virtual terminal
         'virtual_terminal_disabled': '该版本的虚拟终端已禁用，请下载自部署版本，并在config.txt中配置GUI_virtual_terminal=True',
+        
+        # Platform selection
+        'default_platform': '主平台',
     },
     'en': {
         # Page title and basic info
@@ -884,7 +889,7 @@ I18N_TEXTS = {
         'convert_to_images_short': 'Convert to Images',
         'loading': 'Loading...',
         'system_message': 'System Message',
-        'welcome_message': f'Welcome to {APP_NAME}! Please enter your requirements below, and the system will automatically process tasks for you.',
+        'welcome_message': f'I am ready. Please enter your requirements below, and I will automatically process tasks for you.',
         'workspace_title': 'Workspace',
         'file_preview': 'File Preview',
         'data_directory_info': 'Data Directory',
@@ -1116,6 +1121,9 @@ I18N_TEXTS = {
         
         # Virtual terminal
         'virtual_terminal_disabled': 'Configuration disabled. Please download the standalone version and set GUI_virtual_terminal=True in config.txt',
+        
+        # Platform selection
+        'default_platform': 'Default Platform',
     }
 }
 
@@ -1124,12 +1132,16 @@ def get_i18n_texts():
     current_lang = get_language()
     return I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
 
-def execute_agia_task_process_target(user_requirement, output_queue, input_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None, attached_files=None):
+def execute_agia_task_process_target(user_requirement, output_queue, input_queue, out_dir=None, continue_mode=False, plan_mode=False, gui_config=None, session_id=None, detailed_requirement=None, user_id=None, attached_files=None, app_name=None, user_dir=None):
     """
     This function runs in a separate process.
     It cannot use the `socketio` object directly.
     It communicates back to the main process via the queue.
     User input is received via input_queue in GUI mode.
+    
+    Args:
+        app_name: Application name (e.g., 'patent') for app-specific configuration
+        user_dir: User directory path for checking shared directory
     """
     # Store input_queue in a way that talk_to_user can access it
     import sys
@@ -1137,7 +1149,13 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
     __main__._agia_gui_input_queue = input_queue
     
     try:
-
+        # Initialize AppManager in this process
+        # Determine base_dir (project root)
+        current_file = os.path.abspath(__file__)
+        gui_dir = os.path.dirname(current_file)
+        base_dir = os.path.dirname(gui_dir)
+        app_manager = AppManager(app_name=app_name, base_dir=base_dir)
+        
         # Get i18n texts for this process (after sending initial message)
         i18n = get_i18n_texts()
         
@@ -1173,28 +1191,68 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         # Execution rounds configuration from GUI
         execution_rounds = gui_config.get('execution_rounds', 50)  # Default to 50 if not provided
         
-        # Routine file configuration from GUI
-        routine_file = gui_config.get('routine_file')
-        if routine_file:
-            # 检查是否是workspace文件（以routine_开头）
-            if routine_file.startswith('routine_'):
-                # 直接使用workspace根目录下的文件
-                routine_file = os.path.join(os.getcwd(), routine_file)
-            else:
-                # 根据语言配置选择routine文件夹
-                # 优先使用前端传递的语言参数，如果没有则使用服务器端配置
-                current_lang = gui_config.get('language')
-                # 确保语言参数有效（'zh' 或 'en'），否则使用服务器端配置
-                if not current_lang or current_lang not in ('zh', 'en'):
-                    current_lang = get_language()
-                if current_lang == 'zh':
-                    routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
-                else:
-                    routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+        # Get prompts folder and routine path from AppManager
+        prompts_folder = None
+        routine_file = None
+        
+        # Set app-specific config file if available
+        if app_manager.is_app_mode():
+            config_path = app_manager.get_config_path(user_dir=user_dir)
+            if config_path:
+                os.environ['AGIA_CONFIG_FILE'] = config_path
+        
+        if app_manager.is_app_mode():
+            # Use app-specific paths
+            prompts_folder = app_manager.get_prompts_folder(user_dir=user_dir)
+            routine_path = app_manager.get_routine_path(user_dir=user_dir)
             
-            if not os.path.exists(routine_file):
-                output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
-                routine_file = None
+            # If routine_path is a directory, check for routine_file from GUI config
+            routine_file_from_gui = gui_config.get('routine_file')
+            if routine_file_from_gui:
+                if routine_path and os.path.isdir(routine_path):
+                    # routine_path is a directory, append the routine file name
+                    routine_file = os.path.join(routine_path, routine_file_from_gui)
+                    if not os.path.exists(routine_file):
+                        output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
+                        routine_file = None
+                elif routine_file_from_gui.startswith('routine_'):
+                    # 直接使用workspace根目录下的文件
+                    routine_file = os.path.join(os.getcwd(), routine_file_from_gui)
+                else:
+                    # Fallback to default routine directory logic
+                    current_lang = gui_config.get('language')
+                    if not current_lang or current_lang not in ('zh', 'en'):
+                        current_lang = get_language()
+                    if current_lang == 'zh':
+                        routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file_from_gui)
+                    else:
+                        routine_file = os.path.join(os.getcwd(), 'routine', routine_file_from_gui)
+                    if not os.path.exists(routine_file):
+                        output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
+                        routine_file = None
+        else:
+            # Use default routine file logic
+            routine_file = gui_config.get('routine_file')
+            if routine_file:
+                # 检查是否是workspace文件（以routine_开头）
+                if routine_file.startswith('routine_'):
+                    # 直接使用workspace根目录下的文件
+                    routine_file = os.path.join(os.getcwd(), routine_file)
+                else:
+                    # 根据语言配置选择routine文件夹
+                    # 优先使用前端传递的语言参数，如果没有则使用服务器端配置
+                    current_lang = gui_config.get('language')
+                    # 确保语言参数有效（'zh' 或 'en'），否则使用服务器端配置
+                    if not current_lang or current_lang not in ('zh', 'en'):
+                        current_lang = get_language()
+                    if current_lang == 'zh':
+                        routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
+                    else:
+                        routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+                
+                if not os.path.exists(routine_file):
+                    output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
+                    routine_file = None
 
         # Model configuration from GUI
         selected_model = gui_config.get('selected_model')
@@ -1228,7 +1286,14 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             
             # 如果还是没有找到，使用GUI API配置作为fallback
             if not model_api_key or not model_api_base:
-                gui_config_from_server = get_gui_config()
+                # Use app-specific config file if available
+                config_file = "config/config.txt"
+                if app_manager.is_app_mode():
+                    app_config_path = app_manager.get_config_path(user_dir=user_dir)
+                    if app_config_path:
+                        config_file = app_config_path
+                
+                gui_config_from_server = get_gui_config(config_file)
                 
                 # 如果服务器端有配置，就使用它
                 if gui_config_from_server.get('api_key') and gui_config_from_server.get('api_base'):
@@ -1325,6 +1390,7 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             interactive_mode=False,  # Disable interactive mode
             continue_mode=False,  # Always use False for GUI mode to avoid shared .agia_last_output.json
             MCP_config_file=mcp_config_file,  # Set based on GUI MCP option
+            prompts_folder=prompts_folder,  # Use app-specific prompts folder if available
             user_id=user_id,  # Pass user ID for MCP knowledge base tools
             routine_file=routine_file,  # Pass routine file to main application
             plan_mode=plan_mode,  # Pass plan_mode to AGIAgentMain
@@ -1743,12 +1809,23 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         output_queue.put({'event': 'STOP'})
 
 class AGIAgentGUI:
-    def __init__(self):
+    def __init__(self, app_name: Optional[str] = None):
         # User session management
         self.user_sessions = {}  # session_id -> UserSession
         
         # Initialize authentication manager
         self.auth_manager = AuthenticationManager()
+        
+        # Save initial app_name for resetting to default platform
+        self.initial_app_name = app_name
+        
+        # Initialize app manager
+        self.app_manager = AppManager(app_name=app_name)
+        
+        # Update global APP_NAME if app is configured
+        global APP_NAME
+        if self.app_manager.is_app_mode():
+            APP_NAME = self.app_manager.get_app_name()
         
         # Initialize concurrency manager with reference to this GUI instance
         self.concurrency_manager = ConcurrencyManager(
@@ -1776,6 +1853,30 @@ class AGIAgentGUI:
         # Set timeout handling callback
         self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
         
+    def switch_app(self, app_name: Optional[str]):
+        """
+        动态切换应用平台
+        
+        Args:
+            app_name: 应用名称（如 'patent'），如果为None则重置为默认模式
+        """
+        # 重新创建 AppManager 实例
+        self.app_manager = AppManager(app_name=app_name)
+        
+        # 更新全局 APP_NAME
+        global APP_NAME
+        if self.app_manager.is_app_mode():
+            APP_NAME = self.app_manager.get_app_name()
+        else:
+            APP_NAME = "AGI Agent"
+        
+        # 更新环境变量 AGIA_APP_NAME（保持向后兼容）
+        if app_name:
+            os.environ['AGIA_APP_NAME'] = app_name
+        else:
+            # 如果设置为None，清除环境变量
+            if 'AGIA_APP_NAME' in os.environ:
+                del os.environ['AGIA_APP_NAME']
 
     
     def get_user_session(self, session_id, api_key=None):
@@ -2207,7 +2308,10 @@ class UserSession:
 
         return "\n".join(history_summary)
 
-gui_instance = AGIAgentGUI()
+# Initialize GUI instance - app_name will be set from environment variable or command line
+# This allows --app parameter to work even though gui_instance is created at module level
+_app_name_from_env = os.environ.get('AGIA_APP_NAME', None)
+gui_instance = AGIAgentGUI(app_name=_app_name_from_env)
 
 def create_temp_session_id(request, api_key=None):
     """Create a temporary session ID for API calls with user isolation"""
@@ -2459,9 +2563,11 @@ def queue_reader_thread(session_id):
         user_session.last_output_dir = user_session.current_output_dir
     user_session.current_output_dir = None  # Clear current directory mark
 
-@app.route('/')
-def index():
-    """Main page"""
+# Reserved paths that should not be treated as app names
+RESERVED_PATHS = ['terminal', 'register', 'agent-status-visualizer', 'api', 'static']
+
+def render_index_page(app_name_param=None):
+    """Helper function to render index page with specified app"""
     # Support language switching via URL parameter
     lang_param = request.args.get('lang')
     if lang_param and lang_param in ('zh', 'en'):
@@ -2477,10 +2583,77 @@ def index():
     mcp_servers = get_mcp_servers_config()
     
     # Load GUI virtual terminal configuration
-    config = load_config()
+    # Use app-specific config file if available
+    config_file = "config/config.txt"
+    if gui_instance.app_manager.is_app_mode():
+        app_config_path = gui_instance.app_manager.get_config_path()
+        if app_config_path:
+            config_file = app_config_path
+    
+    config = load_config(config_file)
     gui_virtual_terminal = config.get('GUI_virtual_terminal', 'False').lower() == 'true'
     
-    return render_template('index.html', i18n=i18n, lang=current_lang, mcp_servers=mcp_servers, gui_virtual_terminal=gui_virtual_terminal)
+    # Load GUI button display configurations
+    gui_show_infinite_execute_button = config.get('GUI_show_infinite_execute_button', 'True').lower() == 'true'
+    gui_show_multi_agent_button = config.get('GUI_show_multi_agent_button', 'True').lower() == 'true'
+    gui_show_agent_view_button = config.get('GUI_show_agent_view_button', 'True').lower() == 'true'
+    
+    # Get app information for initial render (to avoid double display)
+    app_name = gui_instance.app_manager.get_app_name()
+    app_logo_path = gui_instance.app_manager.get_logo_path()
+    app_logo_url = None
+    if app_logo_path:
+        project_root = gui_instance.app_manager.base_dir
+        apps_dir = os.path.join(project_root, 'apps')
+        if app_logo_path.startswith(apps_dir):
+            rel_path = os.path.relpath(app_logo_path, apps_dir)
+            rel_path = rel_path.replace('\\', '/')
+            app_logo_url = f'/api/app-logo/{rel_path}'
+        elif app_logo_path.startswith(project_root):
+            rel_path = os.path.relpath(app_logo_path, project_root)
+            rel_path = rel_path.replace('\\', '/')
+            app_logo_url = f'/static/{rel_path}'
+    
+    is_app_mode = gui_instance.app_manager.is_app_mode()
+    
+    return render_template('index.html', 
+                         i18n=i18n, 
+                         lang=current_lang, 
+                         mcp_servers=mcp_servers, 
+                         gui_virtual_terminal=gui_virtual_terminal,
+                         gui_show_infinite_execute_button=gui_show_infinite_execute_button,
+                         gui_show_multi_agent_button=gui_show_multi_agent_button,
+                         gui_show_agent_view_button=gui_show_agent_view_button,
+                         app_name=app_name,
+                         app_logo_url=app_logo_url,
+                         is_app_mode=is_app_mode)
+
+@app.route('/')
+def index():
+    """Main page - resets to initial platform specified at startup"""
+    # Reset to initial platform when accessing root path
+    if gui_instance.app_manager.app_name != gui_instance.initial_app_name:
+        gui_instance.switch_app(gui_instance.initial_app_name)
+    return render_index_page()
+
+@app.route('/<app_name>')
+def index_with_app(app_name):
+    """Main page with app specified via path, e.g., /patent, /colordoc"""
+    # Exclude reserved paths
+    if app_name in RESERVED_PATHS:
+        abort(404)
+    
+    # Validate app_name against available apps
+    available_apps = gui_instance.app_manager.list_available_apps()
+    app_names = [app['name'] for app in available_apps]
+    
+    if app_name in app_names:
+        # Switch to the specified platform
+        gui_instance.switch_app(app_name)
+        return render_index_page(app_name)
+    else:
+        # Invalid app name, redirect to root
+        return redirect('/')
 
 @app.route('/terminal')
 def terminal():
@@ -2489,7 +2662,14 @@ def terminal():
     current_lang = get_language()
     
     # Load GUI virtual terminal configuration
-    config = load_config()
+    # Use app-specific config file if available
+    config_file = "config/config.txt"
+    if gui_instance.app_manager.is_app_mode():
+        app_config_path = gui_instance.app_manager.get_config_path()
+        if app_config_path:
+            config_file = app_config_path
+    
+    config = load_config(config_file)
     gui_virtual_terminal = config.get('GUI_virtual_terminal', 'False').lower() == 'true'
     
     return render_template('terminal.html', i18n=i18n, lang=current_lang, gui_virtual_terminal=gui_virtual_terminal)
@@ -2519,6 +2699,31 @@ def api_register():
         result = gui_instance.auth_manager.register_user(username, phone_number)
 
         if result['success']:
+            # 创建用户目录和shared目录，并拷贝应用配置
+            user_info = result['user_info']
+            if user_info and not user_info.get('existing_user', False):
+                # 只有新用户才创建shared目录
+                try:
+                    # 确定用户目录名称（与UserSession逻辑一致）
+                    username = user_info.get("name", "")
+                    if username.lower() == "guest" and user_info.get("is_guest", False):
+                        user_dir_name = "guest"
+                    else:
+                        import re
+                        safe_username = re.sub(r'[<>:"/\\|?*]', '_', username)
+                        safe_username = safe_username.strip(' .')
+                        user_dir_name = safe_username if safe_username else "user"
+                    
+                    user_dir = os.path.join(gui_instance.base_data_dir, user_dir_name)
+                    os.makedirs(user_dir, exist_ok=True)
+                    
+                    # 如果当前有激活的应用，拷贝应用配置到shared目录
+                    if gui_instance.app_manager.is_app_mode():
+                        gui_instance.app_manager.copy_app_to_shared(user_dir)
+                except Exception as e:
+                    # 如果创建shared目录失败，不影响注册流程
+                    print(f"⚠️ Warning: Failed to create shared directory for user {username}: {e}")
+            
             return jsonify({
                 'success': True,
                 'api_key': result['api_key'],
@@ -2855,7 +3060,7 @@ def get_file_content(file_path):
                      '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.java', '.go', '.rs', '.php', '.rb', 
                      '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.xml', '.sql', '.r', 
                      '.scala', '.kt', '.swift', '.dart', '.lua', '.perl', '.pl', '.vim', '.dockerfile', 
-                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml', '.mmd', '.out']:
+                     '.makefile', '.cmake', '.gradle', '.properties', '.ini', '.cfg', '.conf', '.toml', '.mmd', '.out', '.v']:
             with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
@@ -2907,7 +3112,8 @@ def get_file_content(file_path):
                 '.txt': 'text',
                 '.log': 'text',
                 '.mmd': 'mermaid',
-                '.out': 'text'
+                '.out': 'text',
+                '.v': 'verilog'
             }
             
             language = language_map.get(ext, ext[1:])  # Default to remove dot
@@ -3854,7 +4060,7 @@ def handle_connect(auth):
                 # 也从旧的 user_sessions 中移除
                 if old_sid in gui_instance.user_sessions:
                     del gui_instance.user_sessions[old_sid]
-                print(f"[{datetime.datetime.now().isoformat()}] 🔄 Restoring session by client_sid: old_socket_sid={old_sid}, new_socket_sid={session_id}, client_sid={client_session_id}")
+                print(f"[{datetime.datetime.now().isoformat()}] Restoring session by client_sid: old_socket_sid={old_sid}, new_socket_sid={session_id}, client_sid={client_session_id}")
                 break
     
     # 如果没有通过client_session_id恢复，尝试通过api_key恢复（兼容旧版本）
@@ -3983,7 +4189,7 @@ def handle_disconnect():
     session_id = request.sid
     import datetime
     disconnect_reason = getattr(request, 'disconnect_reason', 'unknown')
-    print(f"[{datetime.datetime.now().isoformat()}] ❌ Server detected connection disconnect: session_id={session_id}, reason={disconnect_reason}")
+    print(f"[{datetime.datetime.now().isoformat()}] Server detected connection disconnect: session_id={session_id}, reason={disconnect_reason}")
 
     # Remove connection from concurrency manager
     gui_instance.concurrency_manager.remove_connection()
@@ -3997,12 +4203,7 @@ def handle_disconnect():
         has_running_task = user_session.current_process and user_session.current_process.is_alive()
         grace_period = RECONNECT_GRACE_PERIOD if has_running_task else 30  # 空闲时等待30秒
         
-        # 日志中显示client_session_id
-        if client_session_id:
-            print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: socket_sid={session_id}, client_sid={client_session_id}, has_task={has_running_task}")
-        else:
-            print(f"[{datetime.datetime.now().isoformat()}] ⏳ Connection disconnected, waiting {grace_period} seconds for reconnection: socket_sid={session_id}, has_task={has_running_task}")
-        
+
         # 保存到待清理列表
         _pending_cleanup_sessions[session_id] = {
             'user_session': user_session,
@@ -4214,9 +4415,14 @@ def handle_execute_task(data):
     
     try:
         # 🚀 Create and start process with highest priority (minimize delay)
+        # Get app_name and user_dir for app-specific configuration
+        # Use gui_instance.app_manager.app_name instead of environment variable for dynamic switching
+        app_name = gui_instance.app_manager.app_name
+        user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
         user_session.current_process = multiprocessing.Process(
             target=execute_agia_task_process_target,
-            args=(user_requirement, user_session.output_queue, user_session.input_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id, attached_files)
+            args=(user_requirement, user_session.output_queue, user_session.input_queue, out_dir, continue_mode, plan_mode, gui_config, session_id, detailed_requirement, user_id, attached_files, app_name, user_dir)
         )
         user_session.current_process.daemon = True
         user_session.current_process.start()
@@ -4860,21 +5066,24 @@ def handle_terminal_autocomplete(data):
     
     last_part = parts[-1]
     
+    # 标识是否是目录子项补全（需要追加而不是替换）
+    is_dir_completion = False
+    
     # 如果是路径补全（包含路径分隔符）
     if '/' in last_part or '\\' in last_part:
         # 路径补全
-        dir_part = os.path.dirname(last_part) or '.'
-        file_part = os.path.basename(last_part)
+        # 首先检查输入的路径本身是否是一个完整的目录（类似Linux的tab补全行为）
+        test_path = last_part.rstrip('/\\')  # 移除末尾的分隔符
+        if not os.path.isabs(test_path):
+            test_path = os.path.join(cwd, test_path)
+        test_path = os.path.normpath(test_path)
         
-        if not os.path.isabs(dir_part):
-            dir_part = os.path.join(cwd, dir_part)
-        
-        dir_part = os.path.normpath(dir_part)
-        
-        if os.path.isdir(dir_part):
+        # 如果输入路径本身是一个目录，补全其子项
+        if os.path.isdir(test_path):
+            # 输入路径是完整目录，补全其子项
+            is_dir_completion = True
             try:
-                pattern = os.path.join(dir_part, file_part + '*')
-                matches = glob.glob(pattern)
+                matches = glob.glob(os.path.join(test_path, '*'))
                 completions = []
                 for m in matches:
                     name = os.path.basename(m)
@@ -4886,7 +5095,31 @@ def handle_terminal_autocomplete(data):
             except Exception:
                 completions = []
         else:
-            completions = []
+            # 正常路径补全：提取目录部分和文件名部分
+            dir_part = os.path.dirname(last_part) or '.'
+            file_part = os.path.basename(last_part)
+            
+            if not os.path.isabs(dir_part):
+                dir_part = os.path.join(cwd, dir_part)
+            
+            dir_part = os.path.normpath(dir_part)
+            
+            if os.path.isdir(dir_part):
+                try:
+                    pattern = os.path.join(dir_part, file_part + '*')
+                    matches = glob.glob(pattern)
+                    completions = []
+                    for m in matches:
+                        name = os.path.basename(m)
+                        if os.path.isdir(m):
+                            completions.append(name + os.sep)
+                        else:
+                            completions.append(name)
+                    completions.sort()
+                except Exception:
+                    completions = []
+            else:
+                completions = []
     else:
         # 命令/文件名补全 - 查找当前目录下的文件和目录
         try:
@@ -4906,7 +5139,7 @@ def handle_terminal_autocomplete(data):
     # 限制补全结果数量
     completions = completions[:20]
     
-    emit('terminal_autocomplete_result', {'completions': completions}, room=session_id)
+    emit('terminal_autocomplete_result', {'completions': completions, 'is_dir_completion': is_dir_completion}, room=session_id)
 
 @socketio.on('user_input_response')
 def handle_user_input_response(data):
@@ -6107,47 +6340,242 @@ def delete_file():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/routine-files', methods=['GET'])
+def get_routine_files_route():
+    """API endpoint for getting routine files list"""
+    return get_routine_files()
+
+@app.route('/api/app-list', methods=['GET'])
+def get_app_list():
+    """Get list of available applications"""
+    try:
+        apps = gui_instance.app_manager.list_available_apps()
+        current_app = gui_instance.app_manager.app_name
+        current_path = request.path if hasattr(request, 'path') else '/'
+        return jsonify({
+            'success': True,
+            'apps': apps,
+            'current_app': current_app,
+            'current_path': current_path
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'apps': [],
+            'current_app': None,
+            'error': str(e)
+        })
+
+@app.route('/api/switch-app', methods=['POST'])
+def api_switch_app():
+    """Switch application platform"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid request data'}), 400
+        
+        app_name = data.get('app_name')
+        # If app_name is empty string or None, reset to default
+        if app_name == '':
+            app_name = None
+        
+        # Validate app_name if provided
+        if app_name:
+            available_apps = gui_instance.app_manager.list_available_apps()
+            app_names = [app['name'] for app in available_apps]
+            if app_name not in app_names:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid app name: {app_name}'
+                }), 400
+        
+        # Switch platform
+        gui_instance.switch_app(app_name)
+        
+        # Determine redirect URL
+        if app_name:
+            redirect_url = f'/{app_name}'
+        else:
+            redirect_url = '/'
+        
+        return jsonify({
+            'success': True,
+            'redirect': redirect_url,
+            'app_name': gui_instance.app_manager.get_app_name()
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/app-info')
+def get_app_info():
+    """Get current application information (name and logo)"""
+    try:
+        app_name = gui_instance.app_manager.get_app_name()
+        # Get logo path (no user_dir needed for logo display on main page)
+        logo_path = gui_instance.app_manager.get_logo_path()
+        
+        # Convert logo path to URL if it exists
+        logo_url = None
+        if logo_path:
+            # Get relative path from project root
+            project_root = gui_instance.app_manager.base_dir
+            # If logo is in apps directory, serve it via a special route
+            apps_dir = os.path.join(project_root, 'apps')
+            if logo_path.startswith(apps_dir):
+                rel_path = os.path.relpath(logo_path, apps_dir)
+                # Normalize path separators for URL
+                rel_path = rel_path.replace('\\', '/')
+                logo_url = f'/api/app-logo/{rel_path}'
+            elif logo_path.startswith(project_root):
+                # If logo is elsewhere in project, try static route
+                rel_path = os.path.relpath(logo_path, project_root)
+                rel_path = rel_path.replace('\\', '/')
+                logo_url = f'/static/{rel_path}'
+        
+        return jsonify({
+            'success': True,
+            'app_name': app_name,
+            'logo_url': logo_url,
+            'is_app_mode': gui_instance.app_manager.is_app_mode()
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'app_name': 'AGI Agent',
+            'logo_url': None,
+            'is_app_mode': False,
+            'error': str(e)
+        })
+
+@app.route('/api/app-logo/<path:logo_path>')
+def get_app_logo(logo_path):
+    """Serve app logo file"""
+    try:
+        project_root = gui_instance.app_manager.base_dir
+        apps_dir = os.path.join(project_root, 'apps')
+        # Normalize the path to handle any path traversal attempts
+        logo_path = os.path.normpath(logo_path)
+        # Remove any leading slashes or dots
+        logo_path = logo_path.lstrip('/').lstrip('.')
+        if '..' in logo_path:
+            abort(403)
+        
+        full_path = os.path.join(apps_dir, logo_path)
+        
+        # Security check: ensure path is within apps directory
+        real_apps_dir = os.path.realpath(apps_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_apps_dir):
+            abort(403)
+        
+        if not os.path.exists(full_path):
+            abort(404)
+        
+        # Determine mimetype based on file extension
+        mimetype = None
+        if logo_path.lower().endswith('.png'):
+            mimetype = 'image/png'
+        elif logo_path.lower().endswith('.jpg') or logo_path.lower().endswith('.jpeg'):
+            mimetype = 'image/jpeg'
+        elif logo_path.lower().endswith('.svg'):
+            mimetype = 'image/svg+xml'
+        elif logo_path.lower().endswith('.gif'):
+            mimetype = 'image/gif'
+        
+        return send_file(full_path, mimetype=mimetype)
+    except Exception as e:
+        print(f"Error serving app logo {logo_path}: {e}")
+        abort(404)
+
 def get_routine_files():
     """Get list of routine files from routine directory and workspace files starting with 'routine_'"""
     try:
         routine_files = []
         workspace_dir = os.getcwd()
         
-        # 根据URL参数或语言配置选择routine文件夹
-        lang_param = request.args.get('lang')
-        if lang_param and lang_param in ('zh', 'en'):
-            current_lang = lang_param
-        else:
-            current_lang = get_language()
+        # 检查是否处于应用模式
+        app_routine_dir = None
+        is_app_mode = False
+        try:
+            is_app_mode = gui_instance.app_manager.is_app_mode()
+            if is_app_mode:
+                app_routine_dir = gui_instance.app_manager.get_routine_path()
+                print(f"DEBUG: App mode detected, routine_path: {app_routine_dir}")
+        except Exception as e:
+            print(f"Warning: Error checking app mode: {e}")
         
-        if current_lang == 'zh':
-            routine_dir = os.path.join(workspace_dir, 'routine_zh')
-        else:
-            routine_dir = os.path.join(workspace_dir, 'routine')
+        # 如果处于应用模式且找到了应用的routine目录，优先使用应用的routine目录
+        app_files_loaded = False
+        if is_app_mode and app_routine_dir and os.path.exists(app_routine_dir) and os.path.isdir(app_routine_dir):
+            # 从应用的routine目录加载文件
+            try:
+                for filename in os.listdir(app_routine_dir):
+                    file_path = os.path.join(app_routine_dir, filename)
+                    if os.path.isfile(file_path):
+                        # Remove file extension
+                        name_without_ext = os.path.splitext(filename)[0]
+                        routine_files.append({
+                            'name': name_without_ext,
+                            'filename': filename,
+                            'type': 'routine_folder'
+                        })
+                        app_files_loaded = True
+                print(f"DEBUG: Loaded {len(routine_files)} files from app routine directory")
+            except Exception as e:
+                print(f"Warning: Error reading app routine directory {app_routine_dir}: {e}")
         
-        # 1. 添加routine文件夹下的文件
-        if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
-            for filename in os.listdir(routine_dir):
-                if os.path.isfile(os.path.join(routine_dir, filename)):
-                    # Remove file extension
+        # 如果应用模式下没有加载到文件，或者非应用模式，使用默认routine目录
+        if not app_files_loaded:
+            # 非应用模式：根据URL参数或语言配置选择routine文件夹
+            lang_param = request.args.get('lang')
+            if lang_param and lang_param in ('zh', 'en'):
+                current_lang = lang_param
+            else:
+                current_lang = get_language()
+            
+            if current_lang == 'zh':
+                routine_dir = os.path.join(workspace_dir, 'routine_zh')
+            else:
+                routine_dir = os.path.join(workspace_dir, 'routine')
+            
+            # 1. 添加routine文件夹下的文件
+            if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
+                try:
+                    for filename in os.listdir(routine_dir):
+                        file_path = os.path.join(routine_dir, filename)
+                        if os.path.isfile(file_path):
+                            # Remove file extension
+                            name_without_ext = os.path.splitext(filename)[0]
+                            routine_files.append({
+                                'name': name_without_ext,
+                                'filename': filename,
+                                'type': 'routine_folder'
+                            })
+                except Exception as e:
+                    print(f"Warning: Error reading routine directory {routine_dir}: {e}")
+        
+        # 2. 添加当前workspace下routine_开头的文件（应用模式和非应用模式都支持）
+        try:
+            for filename in os.listdir(workspace_dir):
+                if filename.startswith('routine_') and os.path.isfile(os.path.join(workspace_dir, filename)):
+                    # Remove file extension and 'routine_' prefix
                     name_without_ext = os.path.splitext(filename)[0]
+                    display_name = name_without_ext[8:] if name_without_ext.startswith('routine_') else name_without_ext
                     routine_files.append({
-                        'name': name_without_ext,
+                        'name': display_name,
                         'filename': filename,
-                        'type': 'routine_folder'
+                        'type': 'workspace_file'
                     })
-        
-        # 2. 添加当前workspace下routine_开头的文件
-        for filename in os.listdir(workspace_dir):
-            if filename.startswith('routine_') and os.path.isfile(os.path.join(workspace_dir, filename)):
-                # Remove file extension and 'routine_' prefix
-                name_without_ext = os.path.splitext(filename)[0]
-                display_name = name_without_ext[8:] if name_without_ext.startswith('routine_') else name_without_ext
-                routine_files.append({
-                    'name': display_name,
-                    'filename': filename,
-                    'type': 'workspace_file'
-                })
+        except Exception as e:
+            print(f"Warning: Error reading workspace directory {workspace_dir}: {e}")
         
         # 按名称排序（反向排序，推荐类文件在上边）
         routine_files.sort(key=lambda x: x['name'], reverse=True)
@@ -6158,6 +6586,9 @@ def get_routine_files():
         })
         
     except Exception as e:
+        import traceback
+        error_msg = f"Error in get_routine_files: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
         return jsonify({
             'success': False,
             'error': str(e),
@@ -6194,7 +6625,14 @@ def validate_config():
         
         # 如果是内置配置（不是 'custom'），从服务器端读取并验证
         if config_value and config_value != 'custom':
-            gui_config = get_gui_config()
+            # Use app-specific config file if available
+            config_file = "config/config.txt"
+            if gui_instance.app_manager.is_app_mode():
+                app_config_path = gui_instance.app_manager.get_config_path()
+                if app_config_path:
+                    config_file = app_config_path
+            
+            gui_config = get_gui_config(config_file)
             config_model = gui_config.get('model', 'glm-4.5')
             
             # 验证模型名称是否存在
@@ -6455,7 +6893,14 @@ def get_gui_configs():
         all_configs = get_all_model_configs()
         
         # 读取当前激活的GUI配置（用于确定默认选择）
-        gui_config = get_gui_config()
+        # Use app-specific config file if available
+        config_file = "config/config.txt"
+        if gui_instance.app_manager.is_app_mode():
+            app_config_path = gui_instance.app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        
+        gui_config = get_gui_config(config_file)
         current_model = gui_config.get('model', '')
         current_api_base = gui_config.get('api_base', '')
         
@@ -6859,16 +7304,84 @@ def generate_custom_mcp_config(selected_servers, out_dir):
         return None
 
 
+@app.route('/api/contact-us', methods=['POST'])
+def api_contact_us():
+    """处理联系我们留言提交"""
+    try:
+        data = request.get_json() or {}
+        session_id = data.get('session_id', 'Unknown')
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'Message cannot be empty'
+            })
+        
+        # 获取gui_default_data_directory配置的目录
+        gui_data_dir = get_gui_default_data_directory()
+        if not gui_data_dir or not os.path.exists(gui_data_dir):
+            # 如果配置的目录不存在，使用当前工作目录
+            gui_data_dir = os.getcwd()
+        
+        # 在gui_default_data_directory下创建contact_messages目录（如果不存在）
+        contact_dir = os.path.join(gui_data_dir, 'contact_messages')
+        os.makedirs(contact_dir, exist_ok=True)
+        
+        # 保存留言到文件
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'contact_{timestamp}_{session_id[:8]}.txt'
+        filepath = os.path.join(contact_dir, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f'Session ID: {session_id}\n')
+            f.write(f'Timestamp: {datetime.datetime.now().isoformat()}\n')
+            f.write(f'Message:\n{message}\n')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Message received successfully'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
 if __name__ == '__main__':
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='AGIAgent GUI Server')
     parser.add_argument('--port', '-p', type=int, default=5002, 
                        help='Port specified to use')
+    parser.add_argument('--app', '-a', type=str, default=None,
+                       help='Application name (e.g., patent, national_project)')
     args = parser.parse_args()
     
     # 优先使用命令行参数，其次使用环境变量，最后使用默认值
     port = args.port if args.port else int(os.environ.get('PORT', 5002))
+    app_name = args.app if args.app else os.environ.get('AGIA_APP_NAME', None)
+    
+    # 如果通过命令行指定了app_name，更新环境变量并重新创建gui_instance
+    if app_name:
+        os.environ['AGIA_APP_NAME'] = app_name
+        # 重新创建gui_instance以应用app_name
+        import __main__
+        if hasattr(__main__, 'gui_instance'):
+            __main__.gui_instance = AGIAgentGUI(app_name=app_name)
+        # Also update the module-level gui_instance
+        import sys
+        current_module = sys.modules[__name__]
+        current_module.gui_instance = AGIAgentGUI(app_name=app_name)
+    else:
+        # 如果没有指定app_name，确保initial_app_name为None（默认平台）
+        gui_instance.initial_app_name = None
     
     print(f"🚀 Starting AGIAgent GUI Server on port {port}")
+    if app_name:
+        print(f"📱 Application mode: {app_name} ({gui_instance.app_manager.get_app_name()})")
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True) 
     print(f"🚀 Wait for 5 seconds and open the browser with url 127.0.0.1:{port}")

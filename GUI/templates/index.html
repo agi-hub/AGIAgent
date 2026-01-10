@@ -23,7 +23,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ i18n.app_title.replace(' GUI', '') }}</title>
+    <title>{% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</title>
     <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
     <!-- Prism.js for syntax highlighting -->
     <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
@@ -608,6 +608,7 @@
             flex-direction: column;
             margin: 0;
             padding: 0;
+            padding-bottom: 50px; /* 为底部邮箱留出空间 */
         }
 
         /* User authentication area styles */
@@ -3809,11 +3810,20 @@
     <div class="user-auth-area">
         <div class="user-auth-left">
             <div class="logo-group">
-                <img src="{{ url_for('static', filename='logo.png') }}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
-                <span class="logo-title">{{ i18n.app_title.replace(' GUI', '') }}</span>
+                <img src="{% if is_app_mode and app_logo_url %}{{ app_logo_url }}{% else %}{{ url_for('static', filename='logo.png') }}{% endif %}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
+                <span class="logo-title">{% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</span>
             </div>
         </div>
         <div class="user-auth-right">
+            <div class="api-key-group">
+                <label for="appSelect">
+                    <i class="fas fa-th"></i>
+                    {{ '平台' if lang == 'zh' else 'Platform' }}
+                </label>
+                <select id="appSelect" class="api-key-input" title="{{ '选择平台' if lang == 'zh' else 'Select Platform' }}" style="width: 180px;">
+                    <option value="">{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
+                </select>
+            </div>
             <div class="api-key-group">
                 <label for="modelSelect">
                     <i class="fas fa-brain"></i>
@@ -3862,6 +3872,9 @@
                 <button id="configToggleBtn" class="theme-toggle-btn" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
                     <i class="fas fa-cog" id="configToggleIcon"></i>
                 </button>
+                <button id="contactUsBtn" class="theme-toggle-btn" title="{{ '联系我们' if lang == 'zh' else 'Contact Us' }}">
+                    <i class="fas fa-envelope"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -3869,7 +3882,7 @@
     <div class="container">
         <div class="main-content">
             <div class="header" style="display: none;">
-                <h1><img src="{{ url_for('static', filename='logo.png') }}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {{ i18n.app_title.replace(' GUI', '') }}</h1>
+                <h1><img src="{% if is_app_mode and app_logo_url %}{{ app_logo_url }}{% else %}{{ url_for('static', filename='logo.png') }}{% endif %}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -3889,12 +3902,16 @@
                             <button class="load-history-btn" id="loadHistoryBtn" title="{{ i18n.get('load_history', '加载历史' if lang == 'zh' else 'Load History') }}">
                                 <i class="fas fa-history"></i>
                             </button>
+                            {% if gui_show_agent_view_button %}
                             <button class="agent-view-btn" id="agentViewBtn" title="{{ i18n.get('agent_view', '智能体视图' if lang == 'zh' else 'Agent View') }}">
                                 <i class="fas fa-cube"></i>
                             </button>
+                            {% endif %}
+                            {% if gui_virtual_terminal %}
                             <button class="terminal-btn" id="terminalBtn" title="{{ i18n.get('terminal', '终端' if lang == 'zh' else 'Terminal') }}">
                                 <i class="fas fa-terminal"></i>
                             </button>
+                            {% endif %}
                             <button class="clear-chat-btn" id="clearChatButton" title="{{ i18n.clear_chat_tooltip }}">
                                 <i class="fas fa-paint-brush"></i>
                             </button>
@@ -3967,15 +3984,19 @@
                                 <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
                                 <option value="plan">{{ i18n.get('plan_mode', 'Plan模式' if lang == 'zh' else 'Plan Mode') }}</option>
                             </select>
+                            {% if gui_show_multi_agent_button %}
                             <button class="send-button" id="multiAgentButton" title="{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
                                 <i class="fas fa-users"></i>
                             </button>
+                            {% endif %}
                             <button class="send-button" id="webSearchButton" title="{{ i18n.get('enable_web_search', '搜索网络' if lang == 'zh' else 'Web Search') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: var(--color-accent); border: 1px solid var(--color-accent); color: white;">
                                 <i class="fas fa-search"></i>
                             </button>
+                            {% if gui_show_infinite_execute_button %}
                             <button class="send-button" id="infiniteExecuteButton" title="{{ i18n.get('infinite_execute_tooltip', '无限执行模式（loops=-1）' if lang == 'zh' else 'Infinite Execute Mode (loops=-1)') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
                                 <i class="fas fa-infinity"></i>
                             </button>
+                            {% endif %}
                             <button class="send-button" id="quickUploadButton" title="{{ i18n.get('quick_upload_tooltip', '上传文件到当前工作目录' if lang == 'zh' else 'Upload files to current workspace') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0;">
                                 <i class="fas fa-upload"></i>
                             </button>
@@ -4366,6 +4387,40 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Contact Us Modal -->
+    <div id="contactUsModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 600px; height: auto;">
+            <div class="modal-header">
+                <h3><i class="fas fa-envelope"></i> {{ '联系我们' if lang == 'zh' else 'Contact Us' }}</h3>
+                <span class="close" id="contactUsClose">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 15px; padding: 10px; background: var(--bg-secondary); border-radius: 4px;">
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">Session ID:</label>
+                    <div id="contactSessionId" style="color: var(--text-primary); font-family: monospace; font-size: 0.9em; word-break: break-all;"></div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ '留言内容' if lang == 'zh' else 'Message' }}:</label>
+                    <textarea id="contactMessage" placeholder="{{ '请输入您的留言...' if lang == 'zh' else 'Please enter your message...' }}" 
+                              style="width: 100%; min-height: 200px; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="contactCancel" class="action-btn" style="background: #6c757d; color: white; padding: 10px 20px;">
+                        <i class="fas fa-times"></i> {{ i18n.cancel }}
+                    </button>
+                    <button id="contactSubmit" class="action-btn" style="background: #007acc; color: white; padding: 10px 20px;">
+                        <i class="fas fa-paper-plane"></i> {{ '提交' if lang == 'zh' else 'Submit' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer with email -->
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); border-top: 1px solid var(--border-primary); padding: 10px 20px; text-align: center; z-index: 1000; color: var(--text-primary); font-size: 0.9em;">
+        <span>{{ '联系我们' if lang == 'zh' else 'Contact Us' }}: bitcursor@2925.com</span>
     </div>
 
     <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
@@ -9006,7 +9061,7 @@
                     'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl',
                     'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg',
                     'conf', 'toml', 'mmd', 'out', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
-                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico', 'tex'].includes(ext);
+                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico', 'tex', 'v'].includes(ext);
         }
 
         function toggleDirectory(dirName, event) {
@@ -9186,24 +9241,13 @@
             
             // 提取脚本所在目录和文件名
             const pathParts = normalizedPath.split('/');
-            let scriptDir = pathParts.slice(0, -1).join('/');
             const scriptName = pathParts[pathParts.length - 1];
             
-            // 检查路径中是否包含workspace子目录
-            // 如果终端当前工作目录已经是workspace，需要去掉workspace之前的部分
+            // 检查路径中是否包含output_xxx和workspace
+            // relativePath可能是完整路径：output_20260104_102756/workspace/subdir/file.py
+            // 或者只是workspace之后的部分：subdir/file.py（如果终端已经在workspace）
+            const outputDirIndex = pathParts.findIndex(part => part.startsWith('output_'));
             const workspaceIndex = pathParts.indexOf('workspace');
-            if (workspaceIndex !== -1) {
-                // 找到workspace目录，提取workspace之后的部分
-                // 例如：output_20260104_102756/workspace/subdir/file.py -> subdir/file.py
-                const afterWorkspace = pathParts.slice(workspaceIndex + 1);
-                if (afterWorkspace.length > 1) {
-                    // 文件在workspace的子目录中
-                    scriptDir = afterWorkspace.slice(0, -1).join('/');
-                } else {
-                    // 文件直接在workspace目录中
-                    scriptDir = '';
-                }
-            }
             
             let command;
             let scriptCommand;
@@ -9225,15 +9269,40 @@
                 scriptCommand = `"${scriptName}"`;
             }
             
-            // 如果脚本在子目录中，先切换到该目录，然后执行脚本
-            // 注意：scriptDir是相对路径，后端会基于当前工作目录解析
-            if (scriptDir && scriptDir !== '.' && scriptDir !== '') {
-                // 使用 && 连接cd和脚本执行命令（Windows和Linux都支持）
-                // 后端会解析cd命令并更新工作目录
-                command = `cd "${scriptDir}" && ${scriptCommand}`;
+            // 构建cd命令链
+            // 如果路径包含output_xxx/workspace，需要先cd到output_xxx/workspace
+            // 然后再cd到子目录（如果有）
+            if (outputDirIndex !== -1 && workspaceIndex !== -1 && workspaceIndex > outputDirIndex) {
+                // 完整路径：output_xxx/workspace/subdir/file.py
+                const outputDir = pathParts[outputDirIndex];
+                const afterWorkspace = pathParts.slice(workspaceIndex + 1);
+                
+                if (afterWorkspace.length > 1) {
+                    // 文件在workspace的子目录中：需要cd到output_xxx/workspace，然后cd到子目录
+                    const subDir = afterWorkspace.slice(0, -1).join('/');
+                    command = `cd "${outputDir}/workspace" && cd "${subDir}" && ${scriptCommand}`;
+                } else {
+                    // 文件直接在workspace目录中：只需要cd到output_xxx/workspace
+                    command = `cd "${outputDir}/workspace" && ${scriptCommand}`;
+                }
+            } else if (workspaceIndex !== -1) {
+                // 只有workspace，没有output_xxx（终端可能已经在用户目录）
+                // 这种情况应该不会发生，但为了安全还是处理一下
+                const afterWorkspace = pathParts.slice(workspaceIndex + 1);
+                if (afterWorkspace.length > 1) {
+                    const subDir = afterWorkspace.slice(0, -1).join('/');
+                    command = `cd "workspace/${subDir}" && ${scriptCommand}`;
+                } else {
+                    command = `cd "workspace" && ${scriptCommand}`;
+                }
             } else {
-                // 脚本在当前目录，直接执行
-                command = scriptCommand;
+                // 没有workspace，可能是相对路径（终端已经在workspace）
+                const scriptDir = pathParts.slice(0, -1).join('/');
+                if (scriptDir && scriptDir !== '.' && scriptDir !== '') {
+                    command = `cd "${scriptDir}" && ${scriptCommand}`;
+                } else {
+                    command = scriptCommand;
+                }
             }
             
             // 将命令保存到localStorage，终端窗口会读取并执行
@@ -14962,6 +15031,51 @@
          * - 滚动到聊天窗口底部
          */
         document.addEventListener('DOMContentLoaded', function() {
+            // 加载应用信息（支持动态路径切换）
+            // 注意：服务器端已经渲染了正确的应用信息，这里主要用于动态更新场景
+            function updateAppInfo() {
+                fetch('/api/app-info')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // 更新页面标题
+                            if (data.app_name) {
+                                document.title = data.app_name;
+                            }
+                            
+                            // 更新logo标题
+                            const logoTitle = document.querySelector('.logo-title');
+                            if (logoTitle && data.app_name) {
+                                logoTitle.textContent = data.app_name;
+                            }
+                            
+                            // 更新header中的标题
+                            const headerH1 = document.querySelector('.header h1');
+                            if (headerH1) {
+                                const defaultLogoUrl = '{{ url_for("static", filename="logo.png") }}';
+                                const logoUrl = data.logo_url || defaultLogoUrl;
+                                headerH1.innerHTML = '<img src="' + logoUrl + '" style="height: 1.8em; vertical-align: middle;" alt="Logo"> ' + (data.app_name || 'AGI Agent');
+                            }
+                            
+                            // 更新logo图片（只在URL不同时更新）
+                            if (data.logo_url) {
+                                const logoImages = document.querySelectorAll('img[alt="Logo"]');
+                                logoImages.forEach(img => {
+                                    if (img.src !== window.location.origin + data.logo_url) {
+                                        img.src = data.logo_url;
+                                    }
+                                });
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Failed to load app info:', error);
+                    });
+            }
+            
+            // 初始加载应用信息
+            updateAppInfo();
+            
             // 初始化用户状态
             updateUserStatus('disconnected', I18N.user_disconnected);
             enableUI(false);
@@ -14991,7 +15105,9 @@
             initFloatingRestoreTags();
             initLangToggle();
             initThemeToggle();
+            initAppSelector();
             initFolderIconHint();
+            initContactUs();
             
             // Terminal按钮点击事件
             const terminalBtn = document.getElementById('terminalBtn');
@@ -15141,7 +15257,7 @@
             fetch(apiUrl)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
+                    if (data.success && data.files && Array.isArray(data.files)) {
                         const routineSelect = document.getElementById('routineSelect');
                         // 清除现有选项（除了"无"选项）
                         routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
@@ -15159,11 +15275,21 @@
                             routineSelect.appendChild(option);
                         });
                     } else {
-                        console.error('Failed to load routine files:', data.error);
+                        console.error('Failed to load routine files:', data.error || 'Invalid response format');
+                        // 确保下拉列表至少有一个选项
+                        const routineSelect = document.getElementById('routineSelect');
+                        if (routineSelect) {
+                            routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
+                        }
                     }
                 })
                 .catch(error => {
                     console.error('Error loading routine files:', error);
+                    // 确保下拉列表至少有一个选项
+                    const routineSelect = document.getElementById('routineSelect');
+                    if (routineSelect) {
+                        routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
+                    }
                 });
         }
 
@@ -16304,6 +16430,138 @@
         }
 
         /**
+         * 初始化联系我们功能
+         */
+        function initContactUs() {
+            const contactUsBtn = document.getElementById('contactUsBtn');
+            const contactUsModal = document.getElementById('contactUsModal');
+            const contactUsClose = document.getElementById('contactUsClose');
+            const contactCancel = document.getElementById('contactCancel');
+            const contactSubmit = document.getElementById('contactSubmit');
+            const contactMessage = document.getElementById('contactMessage');
+            const contactSessionId = document.getElementById('contactSessionId');
+            
+            if (!contactUsBtn || !contactUsModal) return;
+
+            // 生成格式化的session_id：日期时间戳+用户名+随机数字
+            function getCurrentSessionId() {
+                // 生成日期时间戳 (YYYYMMDDHHmmss格式)
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const timestamp = `${year}${month}${day}${hours}${minutes}${seconds}`;
+                
+                // 获取用户名（优先使用currentUser，如果没有则使用currentUserName，都没有则使用'guest'）
+                let username = 'guest';
+                if (typeof currentUser !== 'undefined' && currentUser && currentUser !== 'default') {
+                    username = currentUser;
+                } else if (typeof currentUserName !== 'undefined' && currentUserName) {
+                    username = currentUserName;
+                }
+                
+                // 生成4位随机数字
+                const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                
+                // 组合：日期时间戳+用户名+随机数字
+                return `${timestamp}_${username}_${randomNum}`;
+            }
+
+            // 打开留言框
+            function openContactModal() {
+                // 更新session_id显示
+                if (contactSessionId) {
+                    contactSessionId.textContent = getCurrentSessionId();
+                }
+                // 清空留言内容
+                if (contactMessage) {
+                    contactMessage.value = '';
+                }
+                contactUsModal.style.display = 'block';
+            }
+
+            // 关闭留言框
+            function closeContactModal() {
+                contactUsModal.style.display = 'none';
+            }
+
+            // 提交留言
+            function submitContactMessage() {
+                const message = contactMessage ? contactMessage.value.trim() : '';
+                if (!message) {
+                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
+                    const alertMsg = lang === 'zh' ? '请输入留言内容' : 'Please enter your message';
+                    alert(alertMsg);
+                    return;
+                }
+
+                const sessionId = getCurrentSessionId();
+                
+                // 发送留言到服务器
+                fetch('/api/contact-us', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        message: message
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
+                    if (data.success) {
+                        const successMsg = lang === 'zh' ? '留言已提交，感谢您的反馈！' : 'Message submitted, thank you for your feedback! / 留言已提交，感谢您的反馈！';
+                        alert(successMsg);
+                        closeContactModal();
+                    } else {
+                        const errorMsg = lang === 'zh' ? '提交失败：' + (data.error || '未知错误') : 'Submission failed: ' + (data.error || 'Unknown error');
+                        alert(errorMsg);
+                    }
+                })
+                .catch(error => {
+                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
+                    const errorMsg = lang === 'zh' ? '网络错误，请稍后重试' : 'Network error, please try again later';
+                    alert(errorMsg);
+                    console.error('Contact us error:', error);
+                });
+            }
+
+            // 绑定事件
+            contactUsBtn.addEventListener('click', openContactModal);
+            
+            if (contactUsClose) {
+                contactUsClose.addEventListener('click', closeContactModal);
+            }
+            
+            if (contactCancel) {
+                contactCancel.addEventListener('click', closeContactModal);
+            }
+            
+            if (contactSubmit) {
+                contactSubmit.addEventListener('click', submitContactMessage);
+            }
+
+            // 点击模态框外部关闭
+            contactUsModal.addEventListener('click', function(e) {
+                if (e.target === contactUsModal) {
+                    closeContactModal();
+                }
+            });
+
+            // ESC键关闭
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && contactUsModal.style.display === 'block') {
+                    closeContactModal();
+                }
+            });
+        }
+
+        /**
          * 初始化语言切换功能
          */
         function initLangToggle() {
@@ -16414,6 +16672,84 @@
                 
                 // 保存到localStorage
                 localStorage.setItem('theme', newTheme);
+            });
+        }
+
+        /**
+         * 从路径中提取当前平台名称
+         * @returns {string|null} 平台名称，如果是根路径则返回null
+         */
+        function getCurrentAppFromPath() {
+            const path = window.location.pathname;
+            // 移除首尾斜杠
+            const cleanPath = path.replace(/^\/|\/$/g, '');
+            // 如果路径为空，返回null（默认平台）
+            if (!cleanPath) return null;
+            // 排除保留路径
+            const reservedPaths = ['terminal', 'register', 'agent-status-visualizer', 'api', 'static'];
+            if (reservedPaths.includes(cleanPath)) return null;
+            // 返回路径作为app_name
+            return cleanPath;
+        }
+
+        /**
+         * 初始化平台选择器
+         */
+        function initAppSelector() {
+            const appSelect = document.getElementById('appSelect');
+            if (!appSelect) return;
+
+            // 加载可用平台列表
+            fetch('/api/app-list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.apps) {
+                        // 清空现有选项（保留加载中选项）
+                        appSelect.innerHTML = '';
+                        
+                        // 添加默认平台选项
+                        const defaultOption = document.createElement('option');
+                        defaultOption.value = '';
+                        const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+                        defaultOption.textContent = (typeof I18N !== 'undefined' && I18N.default_platform) ? I18N.default_platform : 'Default Platform';
+                        appSelect.appendChild(defaultOption);
+                        
+                        // 添加可用平台选项
+                        data.apps.forEach(app => {
+                            const option = document.createElement('option');
+                            option.value = app.name;
+                            option.textContent = app.display_name || app.name;
+                            appSelect.appendChild(option);
+                        });
+                        
+                        // 根据当前路径设置选中项
+                        const currentApp = getCurrentAppFromPath();
+                        if (currentApp) {
+                            appSelect.value = currentApp;
+                        } else {
+                            appSelect.value = '';
+                        }
+                    } else {
+                        console.error('Failed to load app list:', data.error || 'Unknown error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading app list:', error);
+                });
+
+            // 监听选择器变化
+            appSelect.addEventListener('change', function() {
+                const selectedApp = this.value;
+                let targetPath = '/';
+                
+                if (selectedApp) {
+                    targetPath = `/${selectedApp}`;
+                }
+                
+                // 保持查询参数（如lang参数）
+                const url = new URL(window.location.href);
+                url.pathname = targetPath;
+                window.location.href = url.toString();
             });
         }
 

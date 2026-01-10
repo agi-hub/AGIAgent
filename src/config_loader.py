@@ -44,6 +44,10 @@ def load_config(config_file: str = "config/config.txt", verbose: bool = False) -
     """
     global _config_cache, _config_file_mtime
     
+    # Check environment variable for app-specific config file
+    if config_file == "config/config.txt" and os.environ.get('AGIA_CONFIG_FILE'):
+        config_file = os.environ.get('AGIA_CONFIG_FILE')
+    
     # Check if file exists
     if not os.path.exists(config_file):
         if verbose:

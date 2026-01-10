@@ -1,5 +1,5 @@
 #!/bin/bash
-# AGI Agent GUI 监控程序停止脚本
+# AGI Agent GUI 多应用监控程序停止脚本
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,7 +46,8 @@ if ! ps -p $PID > /dev/null 2>&1; then
     exit 0
 fi
 
-echo "正在停止监控程序 (PID: $PID)..."
+echo "正在停止多应用监控程序 (PID: $PID)..."
+echo "这将停止所有被监控的应用实例"
 
 # 发送TERM信号
 kill -TERM $PID
@@ -75,9 +76,13 @@ else
     rm -f "$PID_FILE"
 fi
 
-# 清理可能的子进程
-echo "清理相关进程..."
-pkill -f "python.*GUI/app.py" 2>/dev/null || true
+# 清理可能的子进程（所有通过monitor启动的app.py进程）
+echo "清理相关应用进程..."
+# 查找所有通过monitor启动的app.py进程（包含--port和--app参数）
+pkill -f "python.*app.py.*--port.*--app" 2>/dev/null || true
+
+# 等待一下让进程完全退出
+sleep 2
 
 echo "监控程序已完全停止"
 

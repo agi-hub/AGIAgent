@@ -268,21 +268,26 @@
       "required": []
     }
   },
-  "idle": {
-    "description": "Idle tool that represents doing nothing in this round, only used for multi-agent synchronization. DO NOT use this for sending TASK_COMPLETED signal. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+  "custom_command": {
+    "description": "Execute custom commands through a general command execution tool. Select the tool type: 'game' for the 12x12 board game, or any other value (or omit) for echo tool that simply returns the input string.",
     "parameters": {
       "type": "object",
       "properties": {
-        "reason": {
+        "type": {
           "type": "string",
-          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'no_action_needed')"
+          "description": "Tool type selector: 'game' for the board game tool, or any other value (or omit) for echo tool that returns the input string as output.",
+          "enum": ["game"]
         },
-        "sleep": {
-          "type": "number",
-          "description": "Sleep time in seconds (default: 10). Set to 0 to skip sleep. Set to -1 for infinite sleep mode (only wakes up when user sends a message) - ONLY use this when manager has completed all tasks and there are no other active agents."
+        "command": {
+          "type": "string",
+          "description": "Command string to execute. "
+        },
+        "arg": {
+          "type": "string",
+          "description": "Optional argument string for the command."
         }
       },
-      "required": []
+      "required": ["command"]
     }
   }
 } 
