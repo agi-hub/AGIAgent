@@ -508,7 +508,7 @@ I18N_TEXTS = {
         'convert_to_images_short': '转换为图像',
         'loading': '加载中...',
         'system_message': '系统消息',
-        'welcome_message': f'我已经就绪，请在下方输入您的需求',
+        'welcome_message': f'你好呀，我是一个聪明能干的智能体。很高兴见到你～',
         'workspace_title': '工作目录',
         'file_preview': '文件预览',
         'data_directory_info': '数据目录',
@@ -743,6 +743,20 @@ I18N_TEXTS = {
         
         # Platform selection
         'default_platform': '主平台',
+        
+        # Contact us
+        'contact_us': '联系我们',
+        'contact_message_label': '留言内容',
+        'contact_message_placeholder': '请输入您的留言...',
+        'contact_current_dir_label': '当前工作目录',
+        'contact_contact_info_label': '您的联系方式（邮箱或电话，选填）',
+        'contact_contact_info_placeholder': '请输入您的邮箱或电话（选填）',
+        'contact_submit_success': '留言已提交，感谢您的反馈！',
+        'contact_submit_error': '提交失败',
+        'contact_message_empty': '请输入留言内容',
+        
+        # Help
+        'help': '帮助',
     },
     'en': {
         # Page title and basic info
@@ -1124,6 +1138,20 @@ I18N_TEXTS = {
         
         # Platform selection
         'default_platform': 'Default Platform',
+        
+        # Contact us
+        'contact_us': 'Contact Us',
+        'contact_message_label': 'Message',
+        'contact_message_placeholder': 'Please enter your message...',
+        'contact_current_dir_label': 'Current Workspace Directory',
+        'contact_contact_info_label': 'Your Contact Information (Email or Phone, Optional)',
+        'contact_contact_info_placeholder': 'Please enter your email or phone (optional)',
+        'contact_submit_success': 'Message submitted, thank you for your feedback!',
+        'contact_submit_error': 'Submission failed',
+        'contact_message_empty': 'Please enter your message',
+        
+        # Help
+        'help': 'Help',
     }
 }
 
@@ -1853,30 +1881,56 @@ class AGIAgentGUI:
         # Set timeout handling callback
         self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
         
-    def switch_app(self, app_name: Optional[str]):
+    def switch_app(self, app_name: Optional[str], session_id: Optional[str] = None):
         """
         动态切换应用平台
         
         Args:
             app_name: 应用名称（如 'patent'），如果为None则重置为默认模式
+            session_id: 会话ID，如果提供则切换指定用户的app，否则切换全局默认app（向后兼容）
         """
-        # 重新创建 AppManager 实例
-        self.app_manager = AppManager(app_name=app_name)
-        
-        # 更新全局 APP_NAME
-        global APP_NAME
-        if self.app_manager.is_app_mode():
-            APP_NAME = self.app_manager.get_app_name()
+        if session_id:
+            # 会话级切换：只影响指定用户
+            if session_id in self.user_sessions:
+                self.user_sessions[session_id].current_app_name = app_name
         else:
-            APP_NAME = "AGI Agent"
+            # 全局切换（向后兼容，用于初始化或默认模式）
+            # 重新创建 AppManager 实例
+            self.app_manager = AppManager(app_name=app_name)
+            
+            # 更新全局 APP_NAME
+            global APP_NAME
+            if self.app_manager.is_app_mode():
+                APP_NAME = self.app_manager.get_app_name()
+            else:
+                APP_NAME = "AGI Agent"
+            
+            # 更新环境变量 AGIA_APP_NAME（保持向后兼容）
+            if app_name:
+                os.environ['AGIA_APP_NAME'] = app_name
+            else:
+                # 如果设置为None，清除环境变量
+                if 'AGIA_APP_NAME' in os.environ:
+                    del os.environ['AGIA_APP_NAME']
+    
+    def get_user_app_manager(self, session_id: Optional[str] = None) -> AppManager:
+        """
+        根据session_id获取用户专属的AppManager实例
         
-        # 更新环境变量 AGIA_APP_NAME（保持向后兼容）
-        if app_name:
-            os.environ['AGIA_APP_NAME'] = app_name
-        else:
-            # 如果设置为None，清除环境变量
-            if 'AGIA_APP_NAME' in os.environ:
-                del os.environ['AGIA_APP_NAME']
+        Args:
+            session_id: 会话ID，如果为None则返回全局默认AppManager
+        
+        Returns:
+            AppManager实例
+        """
+        if session_id and session_id in self.user_sessions:
+            user_session = self.user_sessions[session_id]
+            # 如果用户有指定的app，使用用户的app
+            if user_session.current_app_name is not None:
+                return AppManager(app_name=user_session.current_app_name)
+        
+        # 返回全局默认AppManager（向后兼容）
+        return self.app_manager
 
     
     def get_user_session(self, session_id, api_key=None):
@@ -2131,6 +2185,7 @@ class UserSession:
         self.queue_reader_stop_flag = None  # 用于停止queue_reader_thread的标志
         self.queue_reader_thread = None  # 当前运行的queue_reader_thread引用
         self.terminal_cwd = None  # 终端当前工作目录，用于维护cd命令的状态
+        self.current_app_name = None  # 用户当前选择的app名称（如'patent'），None表示使用默认模式
         
         # Determine user directory based on user info
         # Priority: name (if exists and not "guest") > is_guest > api_key hash > default
@@ -2319,6 +2374,40 @@ def create_temp_session_id(request, api_key=None):
     api_key_hash = hashlib.sha256((api_key or "default").encode()).hexdigest()[:8]
     # Use consistent session ID based on IP and API key, not request ID
     return f"api_{request.remote_addr}_{api_key_hash}"
+
+def get_session_id_from_request(request, api_key=None):
+    """
+    从请求中获取session_id
+    
+    优先级：
+    1. WebSocket连接：使用request.sid（如果可用）
+    2. Cookie中的session_id（如果存在）
+    3. Header中的X-Session-ID（如果存在）
+    4. 基于API key创建临时session_id（向后兼容）
+    
+    Returns:
+        session_id字符串，如果无法获取则返回None
+    """
+    # 尝试从WebSocket获取（如果是在SocketIO上下文中）
+    try:
+        if hasattr(request, 'sid') and request.sid:
+            return request.sid
+    except:
+        pass
+    
+    # 尝试从Cookie获取
+    session_id = request.cookies.get('session_id')
+    if session_id:
+        return session_id
+    
+    # 尝试从Header获取
+    session_id = request.headers.get('X-Session-ID')
+    if session_id:
+        return session_id
+    
+    # 向后兼容：如果没有session_id，基于API key创建临时session_id
+    # 但返回None，让调用者决定是否创建临时session
+    return None
 
 def stop_queue_reader_thread(user_session):
     """安全地停止queue_reader_thread"""
@@ -2566,7 +2655,7 @@ def queue_reader_thread(session_id):
 # Reserved paths that should not be treated as app names
 RESERVED_PATHS = ['terminal', 'register', 'agent-status-visualizer', 'api', 'static']
 
-def render_index_page(app_name_param=None):
+def render_index_page(app_name_param=None, session_id=None):
     """Helper function to render index page with specified app"""
     # Support language switching via URL parameter
     lang_param = request.args.get('lang')
@@ -2582,11 +2671,15 @@ def render_index_page(app_name_param=None):
     
     mcp_servers = get_mcp_servers_config()
     
+    # Get user-specific AppManager if session_id is provided
+    # Otherwise use global AppManager (backward compatibility)
+    user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+    
     # Load GUI virtual terminal configuration
     # Use app-specific config file if available
     config_file = "config/config.txt"
-    if gui_instance.app_manager.is_app_mode():
-        app_config_path = gui_instance.app_manager.get_config_path()
+    if user_app_manager.is_app_mode():
+        app_config_path = user_app_manager.get_config_path()
         if app_config_path:
             config_file = app_config_path
     
@@ -2599,11 +2692,11 @@ def render_index_page(app_name_param=None):
     gui_show_agent_view_button = config.get('GUI_show_agent_view_button', 'True').lower() == 'true'
     
     # Get app information for initial render (to avoid double display)
-    app_name = gui_instance.app_manager.get_app_name()
-    app_logo_path = gui_instance.app_manager.get_logo_path()
+    app_name = user_app_manager.get_app_name()
+    app_logo_path = user_app_manager.get_logo_path()
     app_logo_url = None
     if app_logo_path:
-        project_root = gui_instance.app_manager.base_dir
+        project_root = user_app_manager.base_dir
         apps_dir = os.path.join(project_root, 'apps')
         if app_logo_path.startswith(apps_dir):
             rel_path = os.path.relpath(app_logo_path, apps_dir)
@@ -2614,7 +2707,7 @@ def render_index_page(app_name_param=None):
             rel_path = rel_path.replace('\\', '/')
             app_logo_url = f'/static/{rel_path}'
     
-    is_app_mode = gui_instance.app_manager.is_app_mode()
+    is_app_mode = user_app_manager.is_app_mode()
     
     return render_template('index.html', 
                          i18n=i18n, 
@@ -2631,10 +2724,21 @@ def render_index_page(app_name_param=None):
 @app.route('/')
 def index():
     """Main page - resets to initial platform specified at startup"""
-    # Reset to initial platform when accessing root path
-    if gui_instance.app_manager.app_name != gui_instance.initial_app_name:
-        gui_instance.switch_app(gui_instance.initial_app_name)
-    return render_index_page()
+    # Try to get session_id from request
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+    session_id = get_session_id_from_request(request, api_key)
+    
+    # If we have a session_id, reset user's app to initial platform
+    if session_id and session_id in gui_instance.user_sessions:
+        user_session = gui_instance.user_sessions[session_id]
+        # Reset user's app to initial platform (or None for default)
+        gui_instance.switch_app(gui_instance.initial_app_name, session_id=session_id)
+    else:
+        # No session, reset global app (backward compatibility)
+        if gui_instance.app_manager.app_name != gui_instance.initial_app_name:
+            gui_instance.switch_app(gui_instance.initial_app_name)
+    
+    return render_index_page(session_id=session_id)
 
 @app.route('/<app_name>')
 def index_with_app(app_name):
@@ -2643,14 +2747,29 @@ def index_with_app(app_name):
     if app_name in RESERVED_PATHS:
         abort(404)
     
-    # Validate app_name against available apps
+    # Try to get session_id from request
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+    session_id = get_session_id_from_request(request, api_key)
+    
+    # If no session_id but we have api_key, create/get user session
+    if not session_id and api_key:
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if user_session:
+            session_id = temp_session_id
+    
+    # Validate app_name against available apps (use global app_manager for listing)
     available_apps = gui_instance.app_manager.list_available_apps()
     app_names = [app['name'] for app in available_apps]
     
     if app_name in app_names:
-        # Switch to the specified platform
-        gui_instance.switch_app(app_name)
-        return render_index_page(app_name)
+        # Switch to the specified platform for this user (if session_id exists)
+        if session_id:
+            gui_instance.switch_app(app_name, session_id=session_id)
+        else:
+            # No session, switch global app (backward compatibility)
+            gui_instance.switch_app(app_name)
+        return render_index_page(app_name_param=app_name, session_id=session_id)
     else:
         # Invalid app name, redirect to root
         return redirect('/')
@@ -2661,11 +2780,25 @@ def terminal():
     i18n = get_i18n_texts()
     current_lang = get_language()
     
+    # Try to get session_id from request
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+    session_id = get_session_id_from_request(request, api_key)
+    
+    # If no session_id but we have api_key, create/get user session
+    if not session_id and api_key:
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if user_session:
+            session_id = temp_session_id
+    
+    # Get user-specific AppManager if session_id exists
+    user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+    
     # Load GUI virtual terminal configuration
     # Use app-specific config file if available
     config_file = "config/config.txt"
-    if gui_instance.app_manager.is_app_mode():
-        app_config_path = gui_instance.app_manager.get_config_path()
+    if user_app_manager.is_app_mode():
+        app_config_path = user_app_manager.get_config_path()
         if app_config_path:
             config_file = app_config_path
     
@@ -4416,8 +4549,8 @@ def handle_execute_task(data):
     try:
         # 🚀 Create and start process with highest priority (minimize delay)
         # Get app_name and user_dir for app-specific configuration
-        # Use gui_instance.app_manager.app_name instead of environment variable for dynamic switching
-        app_name = gui_instance.app_manager.app_name
+        # Use user_session.current_app_name instead of global app_manager for user isolation
+        app_name = user_session.current_app_name if user_session.current_app_name else gui_instance.app_manager.app_name
         user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         user_session.current_process = multiprocessing.Process(
@@ -6348,8 +6481,22 @@ def get_routine_files_route():
 def get_app_list():
     """Get list of available applications"""
     try:
-        apps = gui_instance.app_manager.list_available_apps()
-        current_app = gui_instance.app_manager.app_name
+        # Try to get session_id from request
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        session_id = get_session_id_from_request(request, api_key)
+        
+        # If no session_id but we have api_key, create/get user session
+        if not session_id and api_key:
+            temp_session_id = create_temp_session_id(request, api_key)
+            user_session = gui_instance.get_user_session(temp_session_id, api_key)
+            if user_session:
+                session_id = temp_session_id
+        
+        # Get user-specific AppManager if session_id exists
+        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+        
+        apps = gui_instance.app_manager.list_available_apps()  # Use global for listing all apps
+        current_app = user_app_manager.app_name
         current_path = request.path if hasattr(request, 'path') else '/'
         return jsonify({
             'success': True,
@@ -6369,7 +6516,7 @@ def get_app_list():
 
 @app.route('/api/switch-app', methods=['POST'])
 def api_switch_app():
-    """Switch application platform"""
+    """Switch application platform for the current user"""
     try:
         data = request.get_json()
         if not data:
@@ -6380,7 +6527,18 @@ def api_switch_app():
         if app_name == '':
             app_name = None
         
-        # Validate app_name if provided
+        # Try to get session_id from request
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or (data.get('api_key') if isinstance(data, dict) else None)
+        session_id = get_session_id_from_request(request, api_key)
+        
+        # If no session_id but we have api_key, create/get user session
+        if not session_id and api_key:
+            temp_session_id = create_temp_session_id(request, api_key)
+            user_session = gui_instance.get_user_session(temp_session_id, api_key)
+            if user_session:
+                session_id = temp_session_id
+        
+        # Validate app_name if provided (use global app_manager for listing)
         if app_name:
             available_apps = gui_instance.app_manager.list_available_apps()
             app_names = [app['name'] for app in available_apps]
@@ -6390,8 +6548,16 @@ def api_switch_app():
                     'error': f'Invalid app name: {app_name}'
                 }), 400
         
-        # Switch platform
-        gui_instance.switch_app(app_name)
+        # Switch platform for this user (if session_id exists)
+        if session_id:
+            gui_instance.switch_app(app_name, session_id=session_id)
+            # Get user-specific AppManager to return correct app name
+            user_app_manager = gui_instance.get_user_app_manager(session_id)
+            current_app_name = user_app_manager.get_app_name()
+        else:
+            # No session, switch global app (backward compatibility)
+            gui_instance.switch_app(app_name)
+            current_app_name = gui_instance.app_manager.get_app_name()
         
         # Determine redirect URL
         if app_name:
@@ -6402,7 +6568,7 @@ def api_switch_app():
         return jsonify({
             'success': True,
             'redirect': redirect_url,
-            'app_name': gui_instance.app_manager.get_app_name()
+            'app_name': current_app_name
         })
     except Exception as e:
         import traceback
@@ -6414,17 +6580,31 @@ def api_switch_app():
 
 @app.route('/api/app-info')
 def get_app_info():
-    """Get current application information (name and logo)"""
+    """Get current application information (name and logo) for the current user"""
     try:
-        app_name = gui_instance.app_manager.get_app_name()
+        # Try to get session_id from request
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        session_id = get_session_id_from_request(request, api_key)
+        
+        # If no session_id but we have api_key, create/get user session
+        if not session_id and api_key:
+            temp_session_id = create_temp_session_id(request, api_key)
+            user_session = gui_instance.get_user_session(temp_session_id, api_key)
+            if user_session:
+                session_id = temp_session_id
+        
+        # Get user-specific AppManager if session_id exists
+        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+        
+        app_name = user_app_manager.get_app_name()
         # Get logo path (no user_dir needed for logo display on main page)
-        logo_path = gui_instance.app_manager.get_logo_path()
+        logo_path = user_app_manager.get_logo_path()
         
         # Convert logo path to URL if it exists
         logo_url = None
         if logo_path:
             # Get relative path from project root
-            project_root = gui_instance.app_manager.base_dir
+            project_root = user_app_manager.base_dir
             # If logo is in apps directory, serve it via a special route
             apps_dir = os.path.join(project_root, 'apps')
             if logo_path.startswith(apps_dir):
@@ -6442,7 +6622,7 @@ def get_app_info():
             'success': True,
             'app_name': app_name,
             'logo_url': logo_url,
-            'is_app_mode': gui_instance.app_manager.is_app_mode()
+            'is_app_mode': user_app_manager.is_app_mode()
         })
     except Exception as e:
         import traceback
@@ -6495,20 +6675,31 @@ def get_app_logo(logo_path):
         print(f"Error serving app logo {logo_path}: {e}")
         abort(404)
 
-def get_routine_files():
-    """Get list of routine files from routine directory and workspace files starting with 'routine_'"""
+def get_routine_files(session_id=None):
+    """Get list of routine files from routine directory and workspace files starting with 'routine_'
+    
+    Args:
+        session_id: Optional session ID to get user-specific app configuration
+    """
     try:
         routine_files = []
         workspace_dir = os.getcwd()
+        
+        # Get user-specific AppManager if session_id is provided
+        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
         
         # 检查是否处于应用模式
         app_routine_dir = None
         is_app_mode = False
         try:
-            is_app_mode = gui_instance.app_manager.is_app_mode()
+            is_app_mode = user_app_manager.is_app_mode()
             if is_app_mode:
-                app_routine_dir = gui_instance.app_manager.get_routine_path()
-                print(f"DEBUG: App mode detected, routine_path: {app_routine_dir}")
+                # Get user_dir if session_id exists for user-specific routine path
+                user_dir = None
+                if session_id and session_id in gui_instance.user_sessions:
+                    user_session = gui_instance.user_sessions[session_id]
+                    user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+                app_routine_dir = user_app_manager.get_routine_path(user_dir=user_dir)
         except Exception as e:
             print(f"Warning: Error checking app mode: {e}")
         
@@ -6528,7 +6719,7 @@ def get_routine_files():
                             'type': 'routine_folder'
                         })
                         app_files_loaded = True
-                print(f"DEBUG: Loaded {len(routine_files)} files from app routine directory")
+                #print(f"DEBUG: Loaded {len(routine_files)} files from app routine directory")
             except Exception as e:
                 print(f"Warning: Error reading app routine directory {app_routine_dir}: {e}")
         
@@ -6625,10 +6816,21 @@ def validate_config():
         
         # 如果是内置配置（不是 'custom'），从服务器端读取并验证
         if config_value and config_value != 'custom':
+            # Try to get session_id from request for user-specific config
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+            session_id = get_session_id_from_request(request, api_key)
+            if not session_id and api_key:
+                temp_session_id = create_temp_session_id(request, api_key)
+                user_session = gui_instance.get_user_session(temp_session_id, api_key)
+                if user_session:
+                    session_id = temp_session_id
+            
+            user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+            
             # Use app-specific config file if available
             config_file = "config/config.txt"
-            if gui_instance.app_manager.is_app_mode():
-                app_config_path = gui_instance.app_manager.get_config_path()
+            if user_app_manager.is_app_mode():
+                app_config_path = user_app_manager.get_config_path()
                 if app_config_path:
                     config_file = app_config_path
             
@@ -6893,10 +7095,21 @@ def get_gui_configs():
         all_configs = get_all_model_configs()
         
         # 读取当前激活的GUI配置（用于确定默认选择）
+        # Try to get session_id from request for user-specific config
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        session_id = get_session_id_from_request(request, api_key)
+        if not session_id and api_key:
+            temp_session_id = create_temp_session_id(request, api_key)
+            user_session = gui_instance.get_user_session(temp_session_id, api_key)
+            if user_session:
+                session_id = temp_session_id
+        
+        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+        
         # Use app-specific config file if available
         config_file = "config/config.txt"
-        if gui_instance.app_manager.is_app_mode():
-            app_config_path = gui_instance.app_manager.get_config_path()
+        if user_app_manager.is_app_mode():
+            app_config_path = user_app_manager.get_config_path()
             if app_config_path:
                 config_file = app_config_path
         
@@ -7311,6 +7524,8 @@ def api_contact_us():
         data = request.get_json() or {}
         session_id = data.get('session_id', 'Unknown')
         message = data.get('message', '').strip()
+        current_dir = data.get('current_dir', '').strip()
+        contact_info = data.get('contact_info', '').strip()
         
         if not message:
             return jsonify({
@@ -7336,6 +7551,10 @@ def api_contact_us():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(f'Session ID: {session_id}\n')
             f.write(f'Timestamp: {datetime.datetime.now().isoformat()}\n')
+            if current_dir:
+                f.write(f'Current Directory: {current_dir}\n')
+            if contact_info:
+                f.write(f'Contact Information: {contact_info}\n')
             f.write(f'Message:\n{message}\n')
         
         return jsonify({

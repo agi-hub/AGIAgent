@@ -37,7 +37,7 @@ try:
 except ImportError:
     SKLEARN_AVAILABLE = False
 
-from src.tools.print_system import print_current, print_error
+from src.tools.print_system import print_current, print_error, print_debug
 from src.config_loader import get_gui_default_data_directory
 
 

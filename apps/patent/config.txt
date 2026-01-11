@@ -314,7 +314,7 @@ GUI_virtual_terminal=False
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the infinite execute mode button
-GUI_show_infinite_execute_button=True
+GUI_show_infinite_execute_button=False
 
 # Multi-Agent Button Display Configuration
 # Controls whether to show the multi-agent toggle button in GUI
@@ -322,7 +322,7 @@ GUI_show_infinite_execute_button=True
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the multi-agent button
-GUI_show_multi_agent_button=True
+GUI_show_multi_agent_button=False
 
 # Agent View Button Display Configuration
 # Controls whether to show the agent view button in GUI
@@ -330,4 +330,4 @@ GUI_show_multi_agent_button=True
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the agent view button
-GUI_show_agent_view_button=True
+GUI_show_agent_view_button=False

@@ -608,7 +608,6 @@
             flex-direction: column;
             margin: 0;
             padding: 0;
-            padding-bottom: 50px; /* 为底部邮箱留出空间 */
         }
 
         /* User authentication area styles */
@@ -4393,17 +4392,27 @@
     <div id="contactUsModal" class="modal">
         <div class="modal-content" style="width: 80%; max-width: 600px; height: auto;">
             <div class="modal-header">
-                <h3><i class="fas fa-envelope"></i> {{ '联系我们' if lang == 'zh' else 'Contact Us' }}</h3>
+                <h3><i class="fas fa-envelope"></i> {{ i18n.get('contact_us', '联系我们' if lang == 'zh' else 'Contact Us') }}</h3>
                 <span class="close" id="contactUsClose">&times;</span>
             </div>
             <div class="modal-body" style="padding: 20px;">
                 <div style="margin-bottom: 15px; padding: 10px; background: var(--bg-secondary); border-radius: 4px;">
-                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">Session ID:</label>
-                    <div id="contactSessionId" style="color: var(--text-primary); font-family: monospace; font-size: 0.9em; word-break: break-all;"></div>
+                    <div style="color: var(--text-primary); font-size: 0.95em; line-height: 1.6;">
+                        {{ '如果您对此软件有什么反馈意见，请在此留言，或发邮件到 bitcursor@2925.com' if lang == 'zh' else 'If you have any feedback about this software, please leave a message here or send an email to bitcursor@2925.com' }}
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_current_dir_label', '当前工作目录' if lang == 'zh' else 'Current Workspace Directory') }}:</label>
+                    <div id="contactCurrentDir" style="padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-secondary); font-family: monospace; font-size: 0.9em; word-break: break-all;">-</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_contact_info_label', '您的联系方式（邮箱或电话，选填）' if lang == 'zh' else 'Your Contact Information (Email or Phone, Optional)') }}:</label>
+                    <input type="text" id="contactInfo" placeholder="{{ i18n.get('contact_contact_info_placeholder', '请输入您的邮箱或电话（选填）' if lang == 'zh' else 'Please enter your email or phone (optional)') }}" 
+                           style="width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: inherit;">
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ '留言内容' if lang == 'zh' else 'Message' }}:</label>
-                    <textarea id="contactMessage" placeholder="{{ '请输入您的留言...' if lang == 'zh' else 'Please enter your message...' }}" 
+                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_message_label', '留言内容' if lang == 'zh' else 'Message') }}:</label>
+                    <textarea id="contactMessage" placeholder="{{ i18n.get('contact_message_placeholder', '请输入您的留言...' if lang == 'zh' else 'Please enter your message...') }}" 
                               style="width: 100%; min-height: 200px; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
@@ -4411,17 +4420,13 @@
                         <i class="fas fa-times"></i> {{ i18n.cancel }}
                     </button>
                     <button id="contactSubmit" class="action-btn" style="background: #007acc; color: white; padding: 10px 20px;">
-                        <i class="fas fa-paper-plane"></i> {{ '提交' if lang == 'zh' else 'Submit' }}
+                        <i class="fas fa-paper-plane"></i> {{ i18n.get('submit', '提交' if lang == 'zh' else 'Submit') }}
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Footer with email -->
-    <div style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-secondary); border-top: 1px solid var(--border-primary); padding: 10px 20px; text-align: center; z-index: 1000; color: var(--text-primary); font-size: 0.9em;">
-        <span>{{ '联系我们' if lang == 'zh' else 'Contact Us' }}: bitcursor@2925.com</span>
-    </div>
 
     <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
@@ -16439,11 +16444,18 @@
             const contactCancel = document.getElementById('contactCancel');
             const contactSubmit = document.getElementById('contactSubmit');
             const contactMessage = document.getElementById('contactMessage');
-            const contactSessionId = document.getElementById('contactSessionId');
+            const contactCurrentDir = document.getElementById('contactCurrentDir');
+            const contactInfo = document.getElementById('contactInfo');
             
             if (!contactUsBtn || !contactUsModal) return;
 
-            // 生成格式化的session_id：日期时间戳+用户名+随机数字
+            // 获取I18N对象
+            const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
+            // 从HTML元素的lang属性获取语言，或从I18N对象获取，默认为'en'
+            const htmlLang = document.documentElement.lang || '';
+            const lang = htmlLang.startsWith('zh') ? 'zh' : (I18N.lang || 'en');
+
+            // 生成格式化的session_id：日期时间戳+用户名+随机数字（用于后台记录）
             function getCurrentSessionId() {
                 // 生成日期时间戳 (YYYYMMDDHHmmss格式)
                 const now = new Date();
@@ -16472,14 +16484,20 @@
 
             // 打开留言框
             function openContactModal() {
-                // 更新session_id显示
-                if (contactSessionId) {
-                    contactSessionId.textContent = getCurrentSessionId();
-                }
-                // 清空留言内容
+                // 清空留言内容和联系方式
                 if (contactMessage) {
                     contactMessage.value = '';
                 }
+                if (contactInfo) {
+                    contactInfo.value = '';
+                }
+                
+                // 显示当前选中的目录
+                if (contactCurrentDir) {
+                    const currentDir = typeof selectedDirectory !== 'undefined' && selectedDirectory ? selectedDirectory : '-';
+                    contactCurrentDir.textContent = currentDir;
+                }
+                
                 contactUsModal.style.display = 'block';
             }
 
@@ -16492,13 +16510,14 @@
             function submitContactMessage() {
                 const message = contactMessage ? contactMessage.value.trim() : '';
                 if (!message) {
-                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
-                    const alertMsg = lang === 'zh' ? '请输入留言内容' : 'Please enter your message';
+                    const alertMsg = I18N.contact_message_empty || (lang === 'zh' ? '请输入留言内容' : 'Please enter your message');
                     alert(alertMsg);
                     return;
                 }
 
                 const sessionId = getCurrentSessionId();
+                const currentDir = typeof selectedDirectory !== 'undefined' && selectedDirectory ? selectedDirectory : '';
+                const contactInfoValue = contactInfo ? contactInfo.value.trim() : '';
                 
                 // 发送留言到服务器
                 fetch('/api/contact-us', {
@@ -16508,23 +16527,23 @@
                     },
                     body: JSON.stringify({
                         session_id: sessionId,
-                        message: message
+                        message: message,
+                        current_dir: currentDir,
+                        contact_info: contactInfoValue
                     })
                 })
                 .then(response => response.json())
                 .then(data => {
-                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
                     if (data.success) {
-                        const successMsg = lang === 'zh' ? '留言已提交，感谢您的反馈！' : 'Message submitted, thank you for your feedback! / 留言已提交，感谢您的反馈！';
+                        const successMsg = I18N.contact_submit_success || (lang === 'zh' ? '留言已提交，感谢您的反馈！' : 'Message submitted, thank you for your feedback!');
                         alert(successMsg);
                         closeContactModal();
                     } else {
-                        const errorMsg = lang === 'zh' ? '提交失败：' + (data.error || '未知错误') : 'Submission failed: ' + (data.error || 'Unknown error');
+                        const errorMsg = (I18N.contact_submit_error || (lang === 'zh' ? '提交失败：' : 'Submission failed: ')) + (data.error || (lang === 'zh' ? '未知错误' : 'Unknown error'));
                         alert(errorMsg);
                     }
                 })
                 .catch(error => {
-                    const lang = typeof I18N !== 'undefined' && I18N.lang === 'zh' ? 'zh' : 'en';
                     const errorMsg = lang === 'zh' ? '网络错误，请稍后重试' : 'Network error, please try again later';
                     alert(errorMsg);
                     console.error('Contact us error:', error);
@@ -16560,6 +16579,7 @@
                 }
             });
         }
+
 
         /**
          * 初始化语言切换功能

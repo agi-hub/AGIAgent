@@ -3,6 +3,6 @@
   "prompts_path": "prompts",
   "routine_path": "routine",
   "logo_path": "logo.png",
-  "config_path": "configs.txt"
+  "config_path": "config.txt"
 }
 
