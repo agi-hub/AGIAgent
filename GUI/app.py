@@ -508,7 +508,7 @@ I18N_TEXTS = {
         'convert_to_images_short': '转换为图像',
         'loading': '加载中...',
         'system_message': '系统消息',
-        'welcome_message': f'你好呀，我是一个聪明能干的智能体。很高兴见到你～',
+        'welcome_message': f'你好呀，我是一个聪明能干的智能体。很高兴见到你～请选择一个技能，执行效果更好哦',
         'workspace_title': '工作目录',
         'file_preview': '文件预览',
         'data_directory_info': '数据目录',
@@ -645,7 +645,6 @@ I18N_TEXTS = {
         'config_missing': '模型配置信息缺失',
         'config_incomplete': '配置信息不完整：缺少 API Key、API Base 或模型名称',
         'custom_label': '自定义',
-        'task_emitted': '✅ 任务已发起',
         'task_starting': '🚀 任务开始执行...',
         
         # Directory status messages
@@ -1040,7 +1039,6 @@ I18N_TEXTS = {
         'config_missing': 'Model configuration information missing',
         'config_incomplete': 'Incomplete configuration: missing API Key, API Base, or model name',
         'custom_label': 'Custom',
-        'task_emitted': '✅ Task Emitted',
         'task_starting': '🚀 Task starting...',
         
         # Directory status messages
@@ -1228,59 +1226,62 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             config_path = app_manager.get_config_path(user_dir=user_dir)
             if config_path:
                 os.environ['AGIA_CONFIG_FILE'] = config_path
+
+        # 简化设计：根据app_name直接查找routine文件
+        # 前端必须传递app_name和routine_file，后端直接根据app查找
+        routine_file_from_gui = gui_config.get('routine_file')
         
-        if app_manager.is_app_mode():
-            # Use app-specific paths
-            prompts_folder = app_manager.get_prompts_folder(user_dir=user_dir)
-            routine_path = app_manager.get_routine_path(user_dir=user_dir)
-            
-            # If routine_path is a directory, check for routine_file from GUI config
-            routine_file_from_gui = gui_config.get('routine_file')
-            if routine_file_from_gui:
-                if routine_path and os.path.isdir(routine_path):
-                    # routine_path is a directory, append the routine file name
-                    routine_file = os.path.join(routine_path, routine_file_from_gui)
-                    if not os.path.exists(routine_file):
-                        output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
-                        routine_file = None
-                elif routine_file_from_gui.startswith('routine_'):
-                    # 直接使用workspace根目录下的文件
-                    routine_file = os.path.join(os.getcwd(), routine_file_from_gui)
+        if routine_file_from_gui:
+            # 检查是否是workspace文件（以routine_开头）
+            if routine_file_from_gui.startswith('routine_'):
+                # 直接使用workspace根目录下的文件
+                routine_file = os.path.join(os.getcwd(), routine_file_from_gui)
+            elif app_name and app_manager.is_app_mode():
+                # 如果有app_name且app模式已启用，直接根据app查找routine文件
+                if app_manager.app_config and app_manager.app_dir:
+                    routine_path_config = app_manager.app_config.get('routine_path', 'routine')
+                    app_routine_dir = os.path.join(app_manager.app_dir, routine_path_config)
+                    app_routine_dir = os.path.abspath(app_routine_dir)
+                    
+                    # 优先检查用户shared目录
+                    if user_dir:
+                        shared_routine_dir = os.path.join(user_dir, 'shared', routine_path_config)
+                        if os.path.exists(shared_routine_dir) and os.path.isdir(shared_routine_dir):
+                            shared_routine_file = os.path.join(shared_routine_dir, routine_file_from_gui)
+                            if os.path.exists(shared_routine_file):
+                                routine_file = shared_routine_file
+                    
+                    # 如果shared目录没有，使用app目录
+                    if not routine_file and os.path.exists(app_routine_dir) and os.path.isdir(app_routine_dir):
+                        app_routine_file = os.path.join(app_routine_dir, routine_file_from_gui)
+                        if os.path.exists(app_routine_file):
+                            routine_file = app_routine_file
+                    
+                    # 如果找不到，显示警告（使用app目录路径）
+                    if not routine_file:
+                        warning_path = os.path.join(app_routine_dir, routine_file_from_gui)
+                        output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {warning_path}", 'type': 'warning'}})
                 else:
-                    # Fallback to default routine directory logic
-                    current_lang = gui_config.get('language')
-                    if not current_lang or current_lang not in ('zh', 'en'):
-                        current_lang = get_language()
-                    if current_lang == 'zh':
-                        routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file_from_gui)
-                    else:
-                        routine_file = os.path.join(os.getcwd(), 'routine', routine_file_from_gui)
-                    if not os.path.exists(routine_file):
-                        output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
-                        routine_file = None
-        else:
-            # Use default routine file logic
-            routine_file = gui_config.get('routine_file')
-            if routine_file:
-                # 检查是否是workspace文件（以routine_开头）
-                if routine_file.startswith('routine_'):
-                    # 直接使用workspace根目录下的文件
-                    routine_file = os.path.join(os.getcwd(), routine_file)
+                    # app配置加载失败
+                    output_queue.put({'event': 'output', 'data': {'message': f"Warning: App config not found for app: {app_name}", 'type': 'warning'}})
+            else:
+                # 没有app_name或不在app模式，使用默认routine目录（向后兼容）
+                prompts_folder = app_manager.get_prompts_folder(user_dir=user_dir)
+                current_lang = gui_config.get('language')
+                if not current_lang or current_lang not in ('zh', 'en'):
+                    current_lang = get_language()
+                if current_lang == 'zh':
+                    routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file_from_gui)
                 else:
-                    # 根据语言配置选择routine文件夹
-                    # 优先使用前端传递的语言参数，如果没有则使用服务器端配置
-                    current_lang = gui_config.get('language')
-                    # 确保语言参数有效（'zh' 或 'en'），否则使用服务器端配置
-                    if not current_lang or current_lang not in ('zh', 'en'):
-                        current_lang = get_language()
-                    if current_lang == 'zh':
-                        routine_file = os.path.join(os.getcwd(), 'routine_zh', routine_file)
-                    else:
-                        routine_file = os.path.join(os.getcwd(), 'routine', routine_file)
+                    routine_file = os.path.join(os.getcwd(), 'routine', routine_file_from_gui)
                 
                 if not os.path.exists(routine_file):
                     output_queue.put({'event': 'output', 'data': {'message': f"Warning: Routine file not found: {routine_file}", 'type': 'warning'}})
                     routine_file = None
+        
+        # 获取prompts文件夹（如果还没有获取）
+        if prompts_folder is None:
+            prompts_folder = app_manager.get_prompts_folder(user_dir=user_dir)
 
         # Model configuration from GUI
         selected_model = gui_config.get('selected_model')
@@ -1406,9 +1407,6 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         
         # Set environment variable for GUI mode detection
         os.environ['AGIA_GUI_MODE'] = 'true'
-        
-        # Print task initiation message before starting AGIAgent
-        output_queue.put({'event': 'output', 'data': {'message': i18n['task_emitted'], 'type': 'info'}})
         
         agia = AGIAgentMain(
             out_dir=out_dir,
@@ -1890,9 +1888,12 @@ class AGIAgentGUI:
             session_id: 会话ID，如果提供则切换指定用户的app，否则切换全局默认app（向后兼容）
         """
         if session_id:
-            # 会话级切换：只影响指定用户
+            # 会话级切换：直接更新用户的 AppManager 实例
             if session_id in self.user_sessions:
-                self.user_sessions[session_id].current_app_name = app_name
+                user_session = self.user_sessions[session_id]
+                # 直接创建并更新 AppManager 实例，简单高效
+                user_session.app_manager = AppManager(app_name=app_name)
+                user_session.current_app_name = app_name  # 保留用于日志和调试
         else:
             # 全局切换（向后兼容，用于初始化或默认模式）
             # 重新创建 AppManager 实例
@@ -1924,10 +1925,9 @@ class AGIAgentGUI:
             AppManager实例
         """
         if session_id and session_id in self.user_sessions:
-            user_session = self.user_sessions[session_id]
-            # 如果用户有指定的app，使用用户的app
-            if user_session.current_app_name is not None:
-                return AppManager(app_name=user_session.current_app_name)
+            # 直接返回用户 session 中存储的 AppManager 实例
+            # 简单高效，避免重复创建对象
+            return self.user_sessions[session_id].app_manager
         
         # 返回全局默认AppManager（向后兼容）
         return self.app_manager
@@ -2117,6 +2117,9 @@ class AGIAgentGUI:
                         'children': children
                     })
                 else:
+                    # 过滤掉以tmp开头的PDF文件（临时文件）
+                    if item.lower().startswith('tmp') and item.lower().endswith('.pdf'):
+                        continue
                     items.append({
                         'name': item,
                         'type': 'file',
@@ -2135,7 +2138,7 @@ class AGIAgentGUI:
             directory_path: 目录路径
             
         Returns:
-            str: 任务描述（最后一个user_requirement），如果没有找到则返回i18n翻译后的"未布置任务"
+            str: 任务描述（第一个user_requirement），如果没有找到则返回i18n翻译后的"未布置任务"
         """
         # 获取i18n文本
         i18n = get_i18n_texts()
@@ -2152,9 +2155,9 @@ class AGIAgentGUI:
             with open(manager_out_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
             
-            # 从后往前查找"Received user requirement:"行（获取最后一个，即最新的用户需求）
+            # 从前往后查找"Received user requirement:"行（获取第一个，即最老的用户需求）
             task_description = None
-            for line in reversed(lines):
+            for line in lines:
                 if "Received user requirement:" in line:
                     # 提取冒号后面的内容
                     parts = line.split("Received user requirement:", 1)
@@ -2185,7 +2188,11 @@ class UserSession:
         self.queue_reader_stop_flag = None  # 用于停止queue_reader_thread的标志
         self.queue_reader_thread = None  # 当前运行的queue_reader_thread引用
         self.terminal_cwd = None  # 终端当前工作目录，用于维护cd命令的状态
-        self.current_app_name = None  # 用户当前选择的app名称（如'patent'），None表示使用默认模式
+        self.current_app_name = None  # 用户当前选择的app名称（如'patent'），None表示使用默认模式（保留用于日志和调试）
+        
+        # 直接存储 AppManager 实例，简化逻辑并提升性能
+        # 默认使用 None（默认模式），在 switch_app 时会更新
+        self.app_manager = AppManager(app_name=None)
         
         # Determine user directory based on user info
         # Priority: name (if exists and not "guest") > is_guest > api_key hash > default
@@ -2286,37 +2293,47 @@ class UserSession:
         if len(self.conversation_history) > 10:
             self.conversation_history = self.conversation_history[-10:]
     
-    def get_summarized_requirements(self):
+    def get_summarized_requirements(self, output_dir=None):
         """从manager.out文件中提取历史user requirements并汇总
 
-        从用户的各个output目录中读取manager.out文件，提取所有历史user requirements，
+        从指定的output目录（或当前工作目录）中读取manager.out文件，提取历史user requirements，
         按时间排序并返回最近的几个需求。
+
+        Args:
+            output_dir: 可选，指定的output目录路径。如果为None，则从当前工作目录读取。
 
         Returns:
             str: 汇总的历史需求，如果没有找到则返回None
         """
-        # 获取用户的所有output目录
-        user_output_dirs = []
-        try:
-            user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
-            if os.path.exists(user_base_dir):
-                # 遍历用户目录下的所有子目录
-                for item in os.listdir(user_base_dir):
-                    item_path = os.path.join(user_base_dir, item)
-                    if os.path.isdir(item_path):
-                        # 检查是否包含workspace子目录（表示是有效的output目录）
-                        workspace_path = os.path.join(item_path, 'workspace')
-                        if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
-                            user_output_dirs.append(item_path)
-        except (OSError, PermissionError):
-            pass
+        # 确定要读取的目录
+        target_dirs = []
+        
+        if output_dir:
+            # 如果指定了目录，只从该目录读取
+            if os.path.exists(output_dir):
+                target_dirs = [output_dir]
+        else:
+            # 如果没有指定目录，尝试使用当前工作目录
+            current_dir = None
+            if self.current_output_dir:
+                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                current_dir = os.path.join(user_base_dir, self.current_output_dir)
+            elif self.selected_output_dir:
+                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                current_dir = os.path.join(user_base_dir, self.selected_output_dir)
+            elif self.last_output_dir:
+                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                current_dir = os.path.join(user_base_dir, self.last_output_dir)
+            
+            if current_dir and os.path.exists(current_dir):
+                target_dirs = [current_dir]
 
-        if not user_output_dirs:
+        if not target_dirs:
             return None
 
-        # 从每个目录的manager.out文件中提取历史需求
+        # 从指定目录的manager.out文件中提取历史需求
         all_requirements = []
-        for output_dir in user_output_dirs:
+        for output_dir in target_dirs:
             manager_out_path = os.path.join(output_dir, 'logs', 'manager.out')
             if os.path.exists(manager_out_path):
                 try:
@@ -2332,10 +2349,10 @@ class UserSession:
                             if len(parts) > 1:
                                 requirement = parts[1].strip()
                                 if requirement:  # 确保不为空
-                                    # 获取目录的修改时间作为时间戳
+                                    # 获取文件的修改时间作为时间戳（更准确）
                                     try:
-                                        dir_mtime = os.path.getmtime(output_dir)
-                                        timestamp = datetime.datetime.fromtimestamp(dir_mtime).isoformat()
+                                        file_mtime = os.path.getmtime(manager_out_path)
+                                        timestamp = datetime.datetime.fromtimestamp(file_mtime).isoformat()
                                     except:
                                         timestamp = datetime.datetime.now().isoformat()
 
@@ -2358,8 +2375,16 @@ class UserSession:
 
         # 生成汇总文本
         history_summary = []
-        for req in recent_requirements:
-            history_summary.append(f"User requested: {req['requirement']}")
+        total_count = len(recent_requirements)
+        for idx, req in enumerate(recent_requirements):
+            # 索引0是最新的，最后一个是最老的
+            if idx == 0:
+                label = "1. (最新)"
+            elif idx == total_count - 1:
+                label = f"{idx + 1}. (最老)"
+            else:
+                label = f"{idx + 1}."
+            history_summary.append(f"{label} {req['requirement']}")
 
         return "\n".join(history_summary)
 
@@ -2655,6 +2680,58 @@ def queue_reader_thread(session_id):
 # Reserved paths that should not be treated as app names
 RESERVED_PATHS = ['terminal', 'register', 'agent-status-visualizer', 'api', 'static']
 
+def get_app_name_from_url(request):
+    """
+    从请求的 URL 路径中提取 app_name
+    
+    优先级：
+    1. Referer header 中的路径（如果用户从 /colordoc 访问 API）
+    2. 当前请求路径（如果是直接访问 /api/xxx）
+    
+    Args:
+        request: Flask request 对象
+    
+    Returns:
+        app_name 字符串，如果不是 app 路径则返回 None
+    """
+    app_name = None
+    
+    # 首先尝试从 Referer header 获取（用户从 /colordoc 页面访问 API）
+    referer = request.headers.get('Referer') or request.headers.get('Referrer')
+    if referer:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            path_parts = [p for p in parsed.path.split('/') if p]
+            if path_parts:
+                potential_app_name = path_parts[0]
+                # 验证是否是有效的 app（不是保留路径）
+                if potential_app_name not in RESERVED_PATHS:
+                    # 验证 app 是否存在
+                    available_apps = gui_instance.app_manager.list_available_apps()
+                    app_names = [app['name'] for app in available_apps]
+                    if potential_app_name in app_names:
+                        app_name = potential_app_name
+        except Exception:
+            pass
+    
+    # 如果从 Referer 没找到，尝试从当前路径获取
+    if not app_name:
+        try:
+            current_path = request.path if hasattr(request, 'path') else '/'
+            path_parts = [p for p in current_path.split('/') if p]
+            if path_parts:
+                potential_app_name = path_parts[0]
+                if potential_app_name not in RESERVED_PATHS:
+                    available_apps = gui_instance.app_manager.list_available_apps()
+                    app_names = [app['name'] for app in available_apps]
+                    if potential_app_name in app_names:
+                        app_name = potential_app_name
+        except Exception:
+            pass
+    
+    return app_name
+
 def render_index_page(app_name_param=None, session_id=None):
     """Helper function to render index page with specified app"""
     # Support language switching via URL parameter
@@ -2662,14 +2739,30 @@ def render_index_page(app_name_param=None, session_id=None):
     if lang_param and lang_param in ('zh', 'en'):
         current_lang = lang_param
     else:
-        current_lang = get_language()
+        # 尝试从浏览器Accept-Language头检测语言
+        accept_language = request.headers.get('Accept-Language', '')
+        if accept_language:
+            # 检查是否包含中文
+            if 'zh' in accept_language.lower():
+                current_lang = 'zh'
+            else:
+                current_lang = get_language()
+        else:
+            current_lang = get_language()
     
-    i18n = get_i18n_texts()
-    # Override i18n if language is specified via URL
-    if lang_param and lang_param in ('zh', 'en'):
-        i18n = I18N_TEXTS.get(lang_param, I18N_TEXTS['en'])
+    # 确保i18n与current_lang保持一致
+    # 如果current_lang是通过URL参数或浏览器Accept-Language设置的，应该使用对应的i18n文本
+    i18n = I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
     
     mcp_servers = get_mcp_servers_config()
+    
+    # If app_name_param is provided and session_id exists, ensure user_session.app_manager is set
+    if app_name_param and session_id and session_id in gui_instance.user_sessions:
+        user_session = gui_instance.user_sessions[session_id]
+        # 检查 app_manager.app_name 而不是 current_app_name，保持一致性
+        if user_session.app_manager.app_name != app_name_param:
+            # Switch app for this user session
+            gui_instance.switch_app(app_name_param, session_id=session_id)
     
     # Get user-specific AppManager if session_id is provided
     # Otherwise use global AppManager (backward compatibility)
@@ -2763,11 +2856,22 @@ def index_with_app(app_name):
     app_names = [app['name'] for app in available_apps]
     
     if app_name in app_names:
-        # Switch to the specified platform for this user (if session_id exists)
+        # Switch to the specified platform for this user
+        # IMPORTANT: Even if session_id doesn't exist yet (no WebSocket connection),
+        # we should create/get a user session and set current_app_name so it's ready
+        # when the WebSocket connection is established
+        if not session_id:
+            # Create/get user session even without WebSocket connection
+            temp_session_id = create_temp_session_id(request, api_key)
+            user_session = gui_instance.get_user_session(temp_session_id, api_key)
+            if user_session:
+                session_id = temp_session_id
+        
+        # Now switch app for this user session (if session_id exists)
         if session_id:
             gui_instance.switch_app(app_name, session_id=session_id)
         else:
-            # No session, switch global app (backward compatibility)
+            # No session could be created, switch global app (backward compatibility)
             gui_instance.switch_app(app_name)
         return render_index_page(app_name_param=app_name, session_id=session_id)
     else:
@@ -2812,7 +2916,9 @@ def register():
     """User registration page"""
     i18n = get_i18n_texts()
     current_lang = get_language()
-    return render_template('register.html', i18n=i18n, lang=current_lang)
+    # 获取来源页面参数，用于返回时跳转到正确的页面
+    from_page = request.args.get('from', '/')
+    return render_template('register.html', i18n=i18n, lang=current_lang, from_page=from_page)
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
@@ -3008,6 +3114,9 @@ def list_directory():
         for name in os.listdir(full_path):
             item_path = os.path.join(full_path, name)
             if os.path.isfile(item_path):
+                # 过滤掉以tmp开头的PDF文件（临时文件）
+                if name.lower().startswith('tmp') and name.lower().endswith('.pdf'):
+                    continue
                 try:
                     size = os.path.getsize(item_path)
                 except Exception:
@@ -4171,12 +4280,14 @@ def handle_connect(auth):
     # Get user authentication info and client session ID
     api_key = None
     client_session_id = None
+    app_name_from_client = None  # 从客户端获取的 app_name（从 URL 路径）
     if auth:
         api_key = auth.get('api_key')
         # Convert empty string to None for guest access
         if api_key == "":
             api_key = None
         client_session_id = auth.get('client_session_id')
+        app_name_from_client = auth.get('app_name')  # 前端传递的 app_name（从 URL 路径获取）
     
     
     # 检查是否有待恢复的会话（使用client_session_id匹配）
@@ -4193,7 +4304,6 @@ def handle_connect(auth):
                 # 也从旧的 user_sessions 中移除
                 if old_sid in gui_instance.user_sessions:
                     del gui_instance.user_sessions[old_sid]
-                print(f"[{datetime.datetime.now().isoformat()}] Restoring session by client_sid: old_socket_sid={old_sid}, new_socket_sid={session_id}, client_sid={client_session_id}")
                 break
     
     # 如果没有通过client_session_id恢复，尝试通过api_key恢复（兼容旧版本）
@@ -4226,6 +4336,10 @@ def handle_connect(auth):
         # 保存client_session_id
         if client_session_id:
             user_session.client_session_id = client_session_id
+        # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
+        if app_name_from_client:
+            user_session.app_manager = AppManager(app_name=app_name_from_client)
+            user_session.current_app_name = app_name_from_client
         gui_instance.user_sessions[session_id] = user_session
         # 重新创建认证会话 - 使用保存的api_key
         gui_instance.auth_manager.create_session(user_session.api_key, session_id)
@@ -4234,6 +4348,10 @@ def handle_connect(auth):
         # 保存client_session_id
         if user_session and client_session_id:
             user_session.client_session_id = client_session_id
+        # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
+        if user_session and app_name_from_client:
+            user_session.app_manager = AppManager(app_name=app_name_from_client)
+            user_session.current_app_name = app_name_from_client
     
     if not user_session:
         # Authentication failed
@@ -4322,7 +4440,6 @@ def handle_disconnect():
     session_id = request.sid
     import datetime
     disconnect_reason = getattr(request, 'disconnect_reason', 'unknown')
-    print(f"[{datetime.datetime.now().isoformat()}] Server detected connection disconnect: session_id={session_id}, reason={disconnect_reason}")
 
     # Remove connection from concurrency manager
     gui_instance.concurrency_manager.remove_connection()
@@ -4357,7 +4474,6 @@ def handle_disconnect():
         def delayed_cleanup(sid, wait_time):
             time.sleep(wait_time)
             if sid in _pending_cleanup_sessions:
-                print(f"[{datetime.datetime.now().isoformat()}] ⏰ Reconnection timeout, cleaning up session: session_id={sid}")
                 _cleanup_disconnected_session(sid)
         
         cleanup_thread = threading.Thread(target=delayed_cleanup, args=(session_id, grace_period), daemon=True)
@@ -4414,11 +4530,6 @@ def _cleanup_disconnected_session(session_id):
     except Exception:
         pass
 
-    # 日志中显示client_session_id
-    if client_session_id:
-        print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: socket_sid={session_id}, client_sid={client_session_id}")
-    else:
-        print(f"[{datetime.datetime.now().isoformat()}] 🧹 Session cleaned up: socket_sid={session_id}")
 
 @socketio.on('heartbeat')
 def handle_heartbeat(data):
@@ -4477,20 +4588,10 @@ def handle_execute_task(data):
     gui_config = data.get('gui_config', {})  # GUI configuration options
     attached_files = data.get('attached_files', [])  # Attached file information
     
-    # Generate detailed requirement with conversation history for continuing tasks
-    detailed_requirement = None
-    if task_type in ['continue', 'selected'] and user_session.conversation_history:
-        # For continue/selected tasks, include conversation context
-        history_context = user_session.get_summarized_requirements()
-        if history_context:
-            # 🔧 Fix: adjust prompt order - current first
-            detailed_requirement = f"Current request: {user_requirement}\n\nPrevious conversation context:\n{history_context}"
-    
     # Get user's base directory
     user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
     
-
-    
+    # Determine output directory first (needed for loading history from correct directory)
     if task_type == 'new':
         # New task: create new output directory
         out_dir = None
@@ -4525,6 +4626,16 @@ def handle_execute_task(data):
             emit('error', {'message': i18n['select_directory_first']}, room=session_id)
             return
     
+    # Generate detailed requirement with conversation history for continuing tasks
+    # 🔧 Fix: Only load history from current working directory (out_dir)
+    detailed_requirement = None
+    if task_type in ['continue', 'selected'] and user_session.conversation_history and out_dir:
+        # For continue/selected tasks, include conversation context from current directory only
+        history_context = user_session.get_summarized_requirements(output_dir=out_dir)
+        if history_context:
+            # 🔧 Fix: adjust prompt order - current first
+            detailed_requirement = f"{user_requirement}\n\nPrevious conversation context:\n{history_context}"
+    
     # Check if new tasks can be started
     if not gui_instance.concurrency_manager.can_start_task(session_id):
         emit('task_queued', {
@@ -4549,8 +4660,34 @@ def handle_execute_task(data):
     try:
         # 🚀 Create and start process with highest priority (minimize delay)
         # Get app_name and user_dir for app-specific configuration
-        # Use user_session.current_app_name instead of global app_manager for user isolation
-        app_name = user_session.current_app_name if user_session.current_app_name else gui_instance.app_manager.app_name
+        # 优先从请求数据中获取 app_name（前端传递）
+        app_name = data.get('app_name') or gui_config.get('app_name')
+        
+        # 如果请求数据中没有，尝试从连接的 URL 获取（WebSocket 连接时可能传递了）
+        if not app_name:
+            # 尝试从 request 的 headers 或环境变量中获取
+            # 注意：WebSocket 连接可能没有 Referer header，所以优先使用前端传递的值
+            try:
+                # 检查是否有 origin header，可能包含路径信息
+                origin = request.headers.get('Origin') or request.headers.get('Referer')
+                if origin:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(origin)
+                    path_parts = [p for p in parsed.path.split('/') if p]
+                    if path_parts:
+                        potential_app_name = path_parts[0]
+                        if potential_app_name not in RESERVED_PATHS:
+                            available_apps = gui_instance.app_manager.list_available_apps()
+                            app_names = [app['name'] for app in available_apps]
+                            if potential_app_name in app_names:
+                                app_name = potential_app_name
+            except Exception:
+                pass
+        
+        # 如果还是没有，fallback 到 session（向后兼容）
+        if not app_name:
+            app_name = user_session.app_manager.app_name  # None means default mode (not app mode)
+        
         user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         user_session.current_process = multiprocessing.Process(
@@ -6475,7 +6612,30 @@ def delete_file():
 @app.route('/api/routine-files', methods=['GET'])
 def get_routine_files_route():
     """API endpoint for getting routine files list"""
-    return get_routine_files()
+    # 获取语言参数（优先从URL参数获取）
+    lang_param = request.args.get('lang')
+    
+    # 优先从 URL 路径获取 app_name（如从 /colordoc 页面访问）
+    app_name = get_app_name_from_url(request)
+    
+    # 如果从 URL 获取到了 app_name，直接使用它创建 AppManager
+    # 这样不依赖 session，更简单可靠
+    if app_name:
+        app_manager = AppManager(app_name=app_name)
+        return get_routine_files(app_manager=app_manager, lang_param=lang_param)
+    
+    # 如果没有从 URL 获取到，fallback 到 session（向后兼容）
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+    session_id = get_session_id_from_request(request, api_key)
+    
+    # If no session_id but we have api_key, create/get user session
+    if not session_id and api_key:
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if user_session:
+            session_id = temp_session_id
+    
+    return get_routine_files(session_id=session_id, lang_param=lang_param)
 
 @app.route('/api/app-list', methods=['GET'])
 def get_app_list():
@@ -6582,19 +6742,26 @@ def api_switch_app():
 def get_app_info():
     """Get current application information (name and logo) for the current user"""
     try:
-        # Try to get session_id from request
-        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
-        session_id = get_session_id_from_request(request, api_key)
+        # 优先从 URL 路径获取 app_name（如从 /colordoc 页面访问）
+        app_name = get_app_name_from_url(request)
         
-        # If no session_id but we have api_key, create/get user session
-        if not session_id and api_key:
-            temp_session_id = create_temp_session_id(request, api_key)
-            user_session = gui_instance.get_user_session(temp_session_id, api_key)
-            if user_session:
-                session_id = temp_session_id
-        
-        # Get user-specific AppManager if session_id exists
-        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+        # 如果从 URL 获取到了 app_name，直接使用它创建 AppManager
+        if app_name:
+            user_app_manager = AppManager(app_name=app_name)
+        else:
+            # Fallback 到 session（向后兼容）
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+            session_id = get_session_id_from_request(request, api_key)
+            
+            # If no session_id but we have api_key, create/get user session
+            if not session_id and api_key:
+                temp_session_id = create_temp_session_id(request, api_key)
+                user_session = gui_instance.get_user_session(temp_session_id, api_key)
+                if user_session:
+                    session_id = temp_session_id
+            
+            # Get user-specific AppManager if session_id exists
+            user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
         
         app_name = user_app_manager.get_app_name()
         # Get logo path (no user_dir needed for logo display on main page)
@@ -6675,18 +6842,26 @@ def get_app_logo(logo_path):
         print(f"Error serving app logo {logo_path}: {e}")
         abort(404)
 
-def get_routine_files(session_id=None):
+def get_routine_files(session_id=None, app_manager=None, lang_param=None):
     """Get list of routine files from routine directory and workspace files starting with 'routine_'
     
     Args:
-        session_id: Optional session ID to get user-specific app configuration
+        session_id: Optional session ID to get user-specific app configuration (向后兼容)
+        app_manager: Optional AppManager instance (优先使用，从 URL 路径获取)
+        lang_param: Optional language parameter from request (优先使用)
     """
     try:
         routine_files = []
         workspace_dir = os.getcwd()
         
-        # Get user-specific AppManager if session_id is provided
-        user_app_manager = gui_instance.get_user_app_manager(session_id) if session_id else gui_instance.app_manager
+        # 优先使用传入的 app_manager（从 URL 路径获取）
+        # 如果没有，则从 session 获取（向后兼容）
+        if app_manager:
+            user_app_manager = app_manager
+        elif session_id:
+            user_app_manager = gui_instance.get_user_app_manager(session_id)
+        else:
+            user_app_manager = gui_instance.app_manager
         
         # 检查是否处于应用模式
         app_routine_dir = None
@@ -6726,17 +6901,33 @@ def get_routine_files(session_id=None):
         # 如果应用模式下没有加载到文件，或者非应用模式，使用默认routine目录
         if not app_files_loaded:
             # 非应用模式：根据URL参数或语言配置选择routine文件夹
-            lang_param = request.args.get('lang')
+            # 优先使用传入的lang_param（前端传递的），如果没有则尝试从request获取，然后从session获取，最后才使用配置文件
             if lang_param and lang_param in ('zh', 'en'):
                 current_lang = lang_param
             else:
-                current_lang = get_language()
+                # 尝试从request获取语言参数（向后兼容）
+                request_lang = request.args.get('lang') if hasattr(request, 'args') else None
+                if request_lang and request_lang in ('zh', 'en'):
+                    current_lang = request_lang
+                else:
+                    # 尝试从session获取语言设置
+                    if session_id and session_id in gui_instance.user_sessions:
+                        user_session = gui_instance.user_sessions[session_id]
+                        gui_config = user_session.gui_config if hasattr(user_session, 'gui_config') else {}
+                        session_lang = gui_config.get('language')
+                        if session_lang and session_lang in ('zh', 'en'):
+                            current_lang = session_lang
+                        else:
+                            current_lang = get_language()
+                    else:
+                        current_lang = get_language()
             
             if current_lang == 'zh':
                 routine_dir = os.path.join(workspace_dir, 'routine_zh')
             else:
                 routine_dir = os.path.join(workspace_dir, 'routine')
             
+
             # 1. 添加routine文件夹下的文件
             if os.path.exists(routine_dir) and os.path.isdir(routine_dir):
                 try:
@@ -7091,9 +7282,6 @@ def get_gui_configs():
     try:
         from src.config_loader import get_all_model_configs, get_gui_config
         
-        # 读取所有模型配置（包括注释掉的）
-        all_configs = get_all_model_configs()
-        
         # 读取当前激活的GUI配置（用于确定默认选择）
         # Try to get session_id from request for user-specific config
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
@@ -7113,7 +7301,35 @@ def get_gui_configs():
             if app_config_path:
                 config_file = app_config_path
         
-        gui_config = get_gui_config(config_file)
+        # 检查配置文件是否存在
+        if not os.path.exists(config_file):
+            return jsonify({
+                'success': False,
+                'error': f'Configuration file not found: {config_file}',
+                'configs': []
+            })
+        
+        # 读取所有模型配置（包括注释掉的）
+        try:
+            all_configs = get_all_model_configs(config_file)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': f'Failed to parse model configurations: {str(e)}',
+                'configs': []
+            })
+        
+        # 读取GUI配置
+        try:
+            gui_config = get_gui_config(config_file)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            # GUI配置加载失败不影响模型配置列表的返回
+            gui_config = {}
+        
         current_model = gui_config.get('model', '')
         current_api_base = gui_config.get('api_base', '')
         
@@ -7161,7 +7377,8 @@ def get_gui_configs():
         traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'configs': []
         })
 
 

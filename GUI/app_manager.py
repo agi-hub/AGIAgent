@@ -72,8 +72,13 @@ class AppManager:
     
     def get_app_name(self) -> str:
         """获取应用显示名称"""
-        if self.app_config and 'app_name' in self.app_config:
-            return self.app_config['app_name']
+        if self.app_config:
+            # 如果 app_title 存在（即使是空字符串），优先使用它
+            if 'app_title' in self.app_config:
+                return self.app_config['app_title']
+            # 如果 app_title 不存在，使用 app_name
+            if 'app_name' in self.app_config:
+                return self.app_config['app_name']
         return "AGI Agent"  # 默认名称
     
     def get_prompts_folder(self, user_dir: Optional[str] = None) -> Optional[str]:

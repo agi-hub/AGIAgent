@@ -1137,7 +1137,6 @@ class TerminalTools:
                 process = subprocess.Popen(command, **popen_kwargs)
                 
                 # Add debug info for output capture
-                print_current(f"🔍 Process started with PID: {process.pid}")
                 
                 stdout, stderr, return_code, timed_out = self._read_process_output_with_timeout_and_input(
                     process, timeout_inactive, max_total_time

@@ -1,5 +1,6 @@
 {
-  "app_name": "专业图文撰写平台",
+  "app_name": "专业图文写作",
+  "app_title": "",
   "prompts_path": "prompts",
   "routine_path": "routine",
   "logo_path": "logo.png",

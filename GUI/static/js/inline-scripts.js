@@ -262,13 +262,24 @@ function loadModelConfigs() {
     const I18N = window.I18N || {};
 
     // 从服务器获取模型配置列表
-    fetch('/api/get-model-configs', {
+    // 添加超时控制（30秒）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    fetch('/api/gui-configs', {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        signal: controller.signal
     })
-    .then(response => response.json())
+    .then(response => {
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success && data.configs) {
             allModelConfigs = data.configs;
@@ -341,10 +352,26 @@ function loadModelConfigs() {
         }
     })
     .catch(error => {
+        clearTimeout(timeoutId);
         console.error('Error loading model configurations:', error);
         allModelConfigs = [];
+        
+        // 获取模型选择框
+        const modelSelect = document.getElementById('modelSelect');
+        if (!modelSelect) {
+            return;
+        }
+        
+        // 根据错误类型显示不同的错误信息
+        let errorMessage = I18N && I18N.lang === 'zh' ? '配置加载失败' : 'Failed to load configurations';
+        if (error.name === 'AbortError') {
+            errorMessage = I18N && I18N.lang === 'zh' ? '配置加载超时，请刷新页面重试' : 'Configuration loading timeout, please refresh and try again';
+        } else if (error.message && error.message.includes('HTTP error')) {
+            errorMessage = I18N && I18N.lang === 'zh' ? '配置加载失败，请检查服务器连接' : 'Failed to load configurations, please check server connection';
+        }
+        
         // 显示错误状态
-        modelSelect.innerHTML = '<option value="" disabled selected>' + (I18N && I18N.lang === 'zh' ? '配置加载失败' : 'Failed to load configurations') + '</option>';
+        modelSelect.innerHTML = '<option value="" disabled selected>' + errorMessage + '</option>';
     });
 }
 

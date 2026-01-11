@@ -33,9 +33,9 @@ ColorDoc是一个划时代的富图像文档撰写智能体，它不仅是个全
 12. 私有部署：软件无保留开源，完全免费，支持无互联网环境下的纯私有化部署，支持终端运行、个人网页端运行、小规模云端部署等多种模式，适配GLM-4.5等多种国产大模型及Claude Sonnet 4等国际先进大模型。国产模型成本可控（几十页、几万字文档开销小于1元人民币）。
 
 
-网页体验地址：<https://ColorDoconline.com>，进入网页后可**直接连接**进入预览账号查看已有案例。
+网页体验地址：<https://agiagentonline.com/colordoc>，进入网页后可**直接连接**进入预览账号查看已有案例。
 
-Windows安装包：<https://github.com/agi-hub/ColorDoc/releases>
+
 
 更多介绍：
 1. 案例展示： <https://shorturl.at/B9Skw>

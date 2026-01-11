@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from tool_executor import ToolExecutor
-from config_loader import get_enable_round_sync, get_sync_round, get_summary_trigger_length
+from config_loader import get_enable_round_sync, get_sync_round, get_summary_trigger_length, get_language
 from src.tools.print_system import print_current, print_current, print_current, print_debug
 from src.tools.agent_context import get_current_agent_id
 from src.tools.debug_system import track_operation, finish_operation
@@ -639,6 +639,13 @@ class MultiRoundTaskExecutor:
                 print_debug("📝 Manager status file created/initialized")
             except Exception as e:
                 print_debug(f"⚠️ Failed to create manager status file: {e}")
+        
+        # 初始化完成，开始执行第一轮任务之前打印
+        lang = get_language()
+        if lang == 'zh':
+            print_current("初始化完成，我正在分析需求中...\n")
+        else:
+            print_current("Initialization completed, I am analyzing requirements...\n")
         
         while (infinite_loop or task_round <= max_rounds) and not task_completed:
             if infinite_loop:

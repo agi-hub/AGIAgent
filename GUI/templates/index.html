@@ -23,7 +23,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</title>
+    <title>{% if is_app_mode %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</title>
     <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
     <!-- Prism.js for syntax highlighting -->
     <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
@@ -3810,7 +3810,7 @@
         <div class="user-auth-left">
             <div class="logo-group">
                 <img src="{% if is_app_mode and app_logo_url %}{{ app_logo_url }}{% else %}{{ url_for('static', filename='logo.png') }}{% endif %}" style="height: 2.2em; margin-right: 10px;" alt="Logo">
-                <span class="logo-title">{% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</span>
+                <span class="logo-title">{% if is_app_mode %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</span>
             </div>
         </div>
         <div class="user-auth-right">
@@ -3881,7 +3881,7 @@
     <div class="container">
         <div class="main-content">
             <div class="header" style="display: none;">
-                <h1><img src="{% if is_app_mode and app_logo_url %}{{ app_logo_url }}{% else %}{{ url_for('static', filename='logo.png') }}{% endif %}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {% if is_app_mode and app_name %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</h1>
+                <h1><img src="{% if is_app_mode and app_logo_url %}{{ app_logo_url }}{% else %}{{ url_for('static', filename='logo.png') }}{% endif %}" style="height: 1.8em; vertical-align: middle;" alt="Logo"> {% if is_app_mode %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</h1>
                 <p>{{ i18n.app_subtitle }}</p>
             </div>
 
@@ -7188,6 +7188,8 @@
                     enable_jieba: document.getElementById('enableJieba').checked,
                     enable_thinking: thinkingMode,
                     routine_file: document.getElementById('routineSelect').value,
+                    // Add app_name from current path (简化设计：每次前端发起routine都携带app信息)
+                    app_name: getCurrentAppFromPath(),
                     // Add model configuration
                     selected_model: modelConfig.model,
                     // 对于内置配置，不发送 api_key 和 api_base（后端会从服务器端读取）
@@ -7489,6 +7491,8 @@
                     enable_jieba: document.getElementById('enableJieba').checked,
                     enable_thinking: thinkingMode,
                     routine_file: document.getElementById('routineSelect').value,
+                    // Add app_name from current path (简化设计：每次前端发起routine都携带app信息)
+                    app_name: getCurrentAppFromPath(),
                     // Add model configuration
                     selected_model: modelConfig.model,
                     // 对于内置配置，不发送 api_key 和 api_base（后端会从服务器端读取）
@@ -7672,16 +7676,20 @@
         registerLink.addEventListener('click', function(e) {
             e.preventDefault(); // 阻止默认的链接跳转
 
+            // 获取当前路径作为来源页面标记
+            const currentPath = window.location.pathname;
+            const registerUrl = currentPath === '/' ? '/register' : `/register?from=${encodeURIComponent(currentPath)}`;
+
             if (isConnected) {
                 // 如果当前处于连接状态，先断开连接
                 disconnectUser();
                 // 等待断开连接完成后再跳转到注册页面
                 setTimeout(() => {
-                    window.location.href = '/register';
+                    window.location.href = registerUrl;
                 }, 1000); // 给1秒时间让断开连接操作完成
             } else {
                 // 如果没有连接，直接跳转到注册页面
-                window.location.href = '/register';
+                window.location.href = registerUrl;
             }
         });
 
@@ -8464,22 +8472,26 @@
             const currentExpanded = new Set(expandedDirectories);
             
             // 从DOM中读取所有当前展开的目录（通过检查tree元素是否有'show'类）
-            const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
-            allDirectoryItems.forEach(item => {
-                const dirName = item.getAttribute('data-dir');
-                if (dirName) {
-                    const treeElement = document.getElementById(`tree-${dirName}`);
-                    if (treeElement && treeElement.classList.contains('show')) {
-                        // 如果DOM中显示为展开，添加到展开集合中
-                        currentExpanded.add(dirName);
-                        // 同时更新expandedDirectories Set，确保状态同步
-                        expandedDirectories.add(dirName);
+            // 🔧 修复：确保在读取DOM状态时，directoryList存在且包含有效的目录项
+            if (directoryList && directoryList.children.length > 0) {
+                const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
+                allDirectoryItems.forEach(item => {
+                    const dirName = item.getAttribute('data-dir');
+                    if (dirName) {
+                        const treeElement = document.getElementById(`tree-${dirName}`);
+                        // 🔧 修复：同时检查'show'类和'expanded'类，确保状态读取完整
+                        if (treeElement && (treeElement.classList.contains('show') || item.classList.contains('expanded'))) {
+                            // 如果DOM中显示为展开，添加到展开集合中
+                            currentExpanded.add(dirName);
+                            // 同时更新expandedDirectories Set，确保状态同步
+                            expandedDirectories.add(dirName);
+                        }
                     }
-                }
-            });
+                });
+            }
 
             // 保存当前滚动位置
-            const currentScrollTop = directoryList.scrollTop;
+            const currentScrollTop = directoryList ? directoryList.scrollTop : 0;
 
             // 保存所有展开目录的文件树滚动位置
             const fileTreeScrollPositions = {};
@@ -8551,41 +8563,48 @@
                         renderDirectories(data.directories);
 
                         // 恢复滚动位置和展开状态
-                        setTimeout(() => {
-                            directoryList.scrollTop = currentScrollTop;
-
-                            // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
-                            validExpanded.forEach(dirName => {
-                                const treeElement = document.getElementById(`tree-${dirName}`);
-                                if (treeElement) {
-                                    // 确保展开状态正确应用
-                                    if (!treeElement.classList.contains('show')) {
-                                        treeElement.classList.add('show');
-                                    }
-                                    const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
-                                    if (directoryItem && !directoryItem.classList.contains('expanded')) {
-                                        directoryItem.classList.add('expanded');
-                                    }
-                                    // 恢复滚动位置
-                                    if (fileTreeScrollPositions[dirName] !== undefined) {
-                                        treeElement.scrollTop = fileTreeScrollPositions[dirName];
-                                    }
-                                    // 更新按钮图标
-                                    const button = directoryItem ? directoryItem.querySelector('.directory-actions button:first-child') : null;
-                                    const icon = button ? button.querySelector('i') : null;
-                                    if (icon) {
-                                        icon.className = 'fas fa-chevron-up';
-                                    }
+                        // 🔧 修复：使用requestAnimationFrame确保DOM完全渲染后再恢复状态
+                        requestAnimationFrame(() => {
+                            setTimeout(() => {
+                                if (directoryList) {
+                                    directoryList.scrollTop = currentScrollTop;
                                 }
-                            });
-                            
-                            // 如果是重连后且没有已选择的目录，自动选择第一个目录
-                            if (autoSelectFirst && !selectedDirectory && data.directories && data.directories.length > 0) {
-                                const firstDirectory = data.directories[0].name;
-                                console.log(`🔄 Auto-selecting first directory after reconnect: ${firstDirectory}`);
-                                selectDirectory(firstDirectory);
-                            }
-                        }, 0);
+
+                                // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
+                                validExpanded.forEach(dirName => {
+                                    const treeElement = document.getElementById(`tree-${dirName}`);
+                                    if (treeElement) {
+                                        // 确保展开状态正确应用
+                                        if (!treeElement.classList.contains('show')) {
+                                            treeElement.classList.add('show');
+                                        }
+                                        const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
+                                        if (directoryItem) {
+                                            if (!directoryItem.classList.contains('expanded')) {
+                                                directoryItem.classList.add('expanded');
+                                            }
+                                            // 恢复滚动位置
+                                            if (fileTreeScrollPositions[dirName] !== undefined) {
+                                                treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                            }
+                                            // 更新按钮图标
+                                            const button = directoryItem.querySelector('.directory-actions button:first-child');
+                                            const icon = button ? button.querySelector('i') : null;
+                                            if (icon) {
+                                                icon.className = 'fas fa-chevron-up';
+                                            }
+                                        }
+                                    }
+                                });
+                                
+                                // 如果是重连后且没有已选择的目录，自动选择第一个目录
+                                if (autoSelectFirst && !selectedDirectory && data.directories && data.directories.length > 0) {
+                                    const firstDirectory = data.directories[0].name;
+                                    console.log(`🔄 Auto-selecting first directory after reconnect: ${firstDirectory}`);
+                                    selectDirectory(firstDirectory);
+                                }
+                            }, 0);
+                        });
                     } else {
                         directoryList.innerHTML = `
                             <div class="message error">
@@ -15044,14 +15063,20 @@
                     .then(data => {
                         if (data.success) {
                             // 更新页面标题
-                            if (data.app_name) {
+                            if (data.is_app_mode && 'app_name' in data) {
                                 document.title = data.app_name;
+                            } else if (!data.is_app_mode) {
+                                document.title = I18N?.app_title?.replace(' GUI', '') || 'AGI Agent';
                             }
                             
                             // 更新logo标题
                             const logoTitle = document.querySelector('.logo-title');
-                            if (logoTitle && data.app_name) {
-                                logoTitle.textContent = data.app_name;
+                            if (logoTitle) {
+                                if (data.is_app_mode && 'app_name' in data) {
+                                    logoTitle.textContent = data.app_name;
+                                } else if (!data.is_app_mode) {
+                                    logoTitle.textContent = I18N?.app_title?.replace(' GUI', '') || 'AGI Agent';
+                                }
                             }
                             
                             // 更新header中的标题
@@ -15059,7 +15084,13 @@
                             if (headerH1) {
                                 const defaultLogoUrl = '{{ url_for("static", filename="logo.png") }}';
                                 const logoUrl = data.logo_url || defaultLogoUrl;
-                                headerH1.innerHTML = '<img src="' + logoUrl + '" style="height: 1.8em; vertical-align: middle;" alt="Logo"> ' + (data.app_name || 'AGI Agent');
+                                let titleText = 'AGI Agent';
+                                if (data.is_app_mode && 'app_name' in data) {
+                                    titleText = data.app_name;
+                                } else if (!data.is_app_mode) {
+                                    titleText = I18N?.app_title?.replace(' GUI', '') || 'AGI Agent';
+                                }
+                                headerH1.innerHTML = '<img src="' + logoUrl + '" style="height: 1.8em; vertical-align: middle;" alt="Logo"> ' + titleText;
                             }
                             
                             // 更新logo图片（只在URL不同时更新）
@@ -15243,21 +15274,35 @@
          * 加载routine文件列表
          */
         function loadRoutineFiles() {
-            // 获取当前语言（从URL参数或localStorage）
-            const urlParams = new URLSearchParams(window.location.search);
-            let currentLang = urlParams.get('lang');
+            // 获取当前语言（优先从HTML lang属性获取，然后从URL参数或localStorage）
+            const htmlLang = document.documentElement.getAttribute('lang');
+            let currentLang = null;
             
+            // 优先使用HTML lang属性（这是后端渲染时设置的真实语言）
+            if (htmlLang && htmlLang.startsWith('zh')) {
+                currentLang = 'zh';
+            } else if (htmlLang) {
+                currentLang = 'en';
+            }
+            
+            // 如果HTML lang属性没有设置，从URL参数获取
+            if (!currentLang) {
+                const urlParams = new URLSearchParams(window.location.search);
+                currentLang = urlParams.get('lang');
+            }
+            
+            // 如果URL参数也没有，从localStorage获取
             if (!currentLang) {
                 currentLang = localStorage.getItem('preferred_lang');
             }
             
-            if (!currentLang) {
-                const htmlLang = document.documentElement.getAttribute('lang');
-                currentLang = (htmlLang && htmlLang.startsWith('zh')) ? 'zh' : 'en';
+            // 确保 currentLang 有值，默认为 'en'
+            if (!currentLang || (currentLang !== 'zh' && currentLang !== 'en')) {
+                currentLang = 'en';
             }
             
             // 构建API URL，包含语言参数
-            const apiUrl = '/api/routine-files' + (currentLang ? '?lang=' + currentLang : '');
+            const apiUrl = '/api/routine-files?lang=' + currentLang;
             
             fetch(apiUrl)
                 .then(response => response.json())
@@ -16788,22 +16833,26 @@
             const currentExpanded = new Set(expandedDirectories);
             
             // 从DOM中读取所有当前展开的目录（通过检查tree元素是否有'show'类）
-            const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
-            allDirectoryItems.forEach(item => {
-                const dirName = item.getAttribute('data-dir');
-                if (dirName) {
-                    const treeElement = document.getElementById(`tree-${dirName}`);
-                    if (treeElement && treeElement.classList.contains('show')) {
-                        // 如果DOM中显示为展开，添加到展开集合中
-                        currentExpanded.add(dirName);
-                        // 同时更新expandedDirectories Set，确保状态同步
-                        expandedDirectories.add(dirName);
+            // 🔧 修复：确保在读取DOM状态时，directoryList存在且包含有效的目录项
+            if (directoryList && directoryList.children.length > 0) {
+                const allDirectoryItems = directoryList.querySelectorAll('[data-dir]');
+                allDirectoryItems.forEach(item => {
+                    const dirName = item.getAttribute('data-dir');
+                    if (dirName) {
+                        const treeElement = document.getElementById(`tree-${dirName}`);
+                        // 🔧 修复：同时检查'show'类和'expanded'类，确保状态读取完整
+                        if (treeElement && (treeElement.classList.contains('show') || item.classList.contains('expanded'))) {
+                            // 如果DOM中显示为展开，添加到展开集合中
+                            currentExpanded.add(dirName);
+                            // 同时更新expandedDirectories Set，确保状态同步
+                            expandedDirectories.add(dirName);
+                        }
                     }
-                }
-            });
+                });
+            }
 
             // 保存当前滚动位置
-            const currentScrollTop = directoryList.scrollTop;
+            const currentScrollTop = directoryList ? directoryList.scrollTop : 0;
 
             // 保存所有展开目录的文件树滚动位置
             const fileTreeScrollPositions = {};
@@ -16840,38 +16889,46 @@
                             validExpanded.add(dirName);
                         }
                     });
+                    // 🔧 修复：确保在调用renderDirectories之前，expandedDirectories已经更新
                     expandedDirectories = validExpanded;
                     renderDirectories(data.directories);
 
                     // 恢复滚动位置和展开状态
-                    setTimeout(() => {
-                        directoryList.scrollTop = currentScrollTop;
-
-                        // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
-                        validExpanded.forEach(dirName => {
-                            const treeElement = document.getElementById(`tree-${dirName}`);
-                            if (treeElement) {
-                                // 确保展开状态正确应用
-                                if (!treeElement.classList.contains('show')) {
-                                    treeElement.classList.add('show');
-                                }
-                                const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
-                                if (directoryItem && !directoryItem.classList.contains('expanded')) {
-                                    directoryItem.classList.add('expanded');
-                                }
-                                // 恢复滚动位置
-                                if (fileTreeScrollPositions[dirName] !== undefined) {
-                                    treeElement.scrollTop = fileTreeScrollPositions[dirName];
-                                }
-                                // 更新按钮图标
-                                const button = directoryItem ? directoryItem.querySelector('.directory-actions button:first-child') : null;
-                                const icon = button ? button.querySelector('i') : null;
-                                if (icon) {
-                                    icon.className = 'fas fa-chevron-up';
-                                }
+                    // 🔧 修复：使用requestAnimationFrame确保DOM完全渲染后再恢复状态
+                    requestAnimationFrame(() => {
+                        setTimeout(() => {
+                            if (directoryList) {
+                                directoryList.scrollTop = currentScrollTop;
                             }
-                        });
-                    }, 0);
+
+                            // 恢复每个展开目录的文件树滚动位置，并确保展开状态正确应用
+                            validExpanded.forEach(dirName => {
+                                const treeElement = document.getElementById(`tree-${dirName}`);
+                                if (treeElement) {
+                                    // 确保展开状态正确应用
+                                    if (!treeElement.classList.contains('show')) {
+                                        treeElement.classList.add('show');
+                                    }
+                                    const directoryItem = document.querySelector(`[data-dir="${dirName}"]`);
+                                    if (directoryItem) {
+                                        if (!directoryItem.classList.contains('expanded')) {
+                                            directoryItem.classList.add('expanded');
+                                        }
+                                        // 恢复滚动位置
+                                        if (fileTreeScrollPositions[dirName] !== undefined) {
+                                            treeElement.scrollTop = fileTreeScrollPositions[dirName];
+                                        }
+                                        // 更新按钮图标
+                                        const button = directoryItem.querySelector('.directory-actions button:first-child');
+                                        const icon = button ? button.querySelector('i') : null;
+                                        if (icon) {
+                                            icon.className = 'fas fa-chevron-up';
+                                        }
+                                    }
+                                }
+                            });
+                        }, 0);
+                    });
 
                     // 显示成功消息（更简洁）
                     console.log('Directory refreshed');
@@ -17679,8 +17736,20 @@
                 return;
             }
 
-            fetch('/api/gui-configs')
-                .then(response => response.json())
+            // 添加超时控制（30秒）
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+            fetch('/api/gui-configs', {
+                signal: controller.signal
+            })
+                .then(response => {
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success && data.configs && data.configs.length > 0) {
                         // 保存所有配置信息到全局变量
@@ -17741,10 +17810,20 @@
                     }
                 })
                 .catch(error => {
+                    clearTimeout(timeoutId);
                     console.error('Error loading model configurations:', error);
                     allModelConfigs = [];
+                    
+                    // 根据错误类型显示不同的错误信息
+                    let errorMessage = I18N && I18N.lang === 'zh' ? '配置加载失败' : 'Failed to load configurations';
+                    if (error.name === 'AbortError') {
+                        errorMessage = I18N && I18N.lang === 'zh' ? '配置加载超时，请刷新页面重试' : 'Configuration loading timeout, please refresh and try again';
+                    } else if (error.message && error.message.includes('HTTP error')) {
+                        errorMessage = I18N && I18N.lang === 'zh' ? '配置加载失败，请检查服务器连接' : 'Failed to load configurations, please check server connection';
+                    }
+                    
                     // 显示错误状态
-                    modelSelect.innerHTML = '<option value="" disabled selected>' + (I18N && I18N.lang === 'zh' ? '配置加载失败' : 'Failed to load configurations') + '</option>';
+                    modelSelect.innerHTML = '<option value="" disabled selected>' + errorMessage + '</option>';
                 });
         }
 
