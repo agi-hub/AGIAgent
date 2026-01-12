@@ -2707,10 +2707,11 @@ def get_app_name_from_url(request):
                 potential_app_name = path_parts[0]
                 # 验证是否是有效的 app（不是保留路径）
                 if potential_app_name not in RESERVED_PATHS:
-                    # 验证 app 是否存在
-                    available_apps = gui_instance.app_manager.list_available_apps()
-                    app_names = [app['name'] for app in available_apps]
-                    if potential_app_name in app_names:
+                    # 验证 app 是否存在（包括隐藏应用，通过检查文件系统）
+                    apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
+                    app_path = os.path.join(apps_dir, potential_app_name)
+                    app_json = os.path.join(app_path, 'app.json')
+                    if os.path.isdir(app_path) and os.path.exists(app_json):
                         app_name = potential_app_name
         except Exception:
             pass
@@ -2723,9 +2724,11 @@ def get_app_name_from_url(request):
             if path_parts:
                 potential_app_name = path_parts[0]
                 if potential_app_name not in RESERVED_PATHS:
-                    available_apps = gui_instance.app_manager.list_available_apps()
-                    app_names = [app['name'] for app in available_apps]
-                    if potential_app_name in app_names:
+                    # 验证 app 是否存在（包括隐藏应用，通过检查文件系统）
+                    apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
+                    app_path = os.path.join(apps_dir, potential_app_name)
+                    app_json = os.path.join(app_path, 'app.json')
+                    if os.path.isdir(app_path) and os.path.exists(app_json):
                         app_name = potential_app_name
         except Exception:
             pass
@@ -2772,7 +2775,12 @@ def render_index_page(app_name_param=None, session_id=None):
     # Use app-specific config file if available
     config_file = "config/config.txt"
     if user_app_manager.is_app_mode():
-        app_config_path = user_app_manager.get_config_path()
+        # Get user_dir if session_id exists for user-specific config path
+        user_dir = None
+        if session_id and session_id in gui_instance.user_sessions:
+            user_session = gui_instance.user_sessions[session_id]
+            user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        app_config_path = user_app_manager.get_config_path(user_dir=user_dir)
         if app_config_path:
             config_file = app_config_path
     
@@ -2801,6 +2809,7 @@ def render_index_page(app_name_param=None, session_id=None):
             app_logo_url = f'/static/{rel_path}'
     
     is_app_mode = user_app_manager.is_app_mode()
+    is_hidden = user_app_manager.is_hidden() if is_app_mode else False
     
     return render_template('index.html', 
                          i18n=i18n, 
@@ -2812,7 +2821,8 @@ def render_index_page(app_name_param=None, session_id=None):
                          gui_show_agent_view_button=gui_show_agent_view_button,
                          app_name=app_name,
                          app_logo_url=app_logo_url,
-                         is_app_mode=is_app_mode)
+                         is_app_mode=is_app_mode,
+                         is_hidden=is_hidden)
 
 @app.route('/')
 def index():
@@ -2851,11 +2861,15 @@ def index_with_app(app_name):
         if user_session:
             session_id = temp_session_id
     
-    # Validate app_name against available apps (use global app_manager for listing)
-    available_apps = gui_instance.app_manager.list_available_apps()
-    app_names = [app['name'] for app in available_apps]
+    # Check if app exists (including hidden apps that can be accessed via URL)
+    apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
+    app_path = os.path.join(apps_dir, app_name)
+    app_json = os.path.join(app_path, 'app.json')
     
-    if app_name in app_names:
+    # Validate app exists by checking directory and app.json file
+    app_exists = os.path.isdir(app_path) and os.path.exists(app_json)
+    
+    if app_exists:
         # Switch to the specified platform for this user
         # IMPORTANT: Even if session_id doesn't exist yet (no WebSocket connection),
         # we should create/get a user session and set current_app_name so it's ready
@@ -6698,11 +6712,15 @@ def api_switch_app():
             if user_session:
                 session_id = temp_session_id
         
-        # Validate app_name if provided (use global app_manager for listing)
+        # Validate app_name if provided (check file system, not just visible apps)
         if app_name:
-            available_apps = gui_instance.app_manager.list_available_apps()
-            app_names = [app['name'] for app in available_apps]
-            if app_name not in app_names:
+            # Check if app exists by checking directory and app.json file (including hidden apps)
+            apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
+            app_path = os.path.join(apps_dir, app_name)
+            app_json = os.path.join(app_path, 'app.json')
+            app_exists = os.path.isdir(app_path) and os.path.exists(app_json)
+            
+            if not app_exists:
                 return jsonify({
                     'success': False,
                     'error': f'Invalid app name: {app_name}'

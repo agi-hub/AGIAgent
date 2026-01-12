@@ -255,7 +255,7 @@ class AppManager:
     
     def list_available_apps(self) -> List[Dict[str, str]]:
         """
-        列出所有可用的应用
+        列出所有可用的应用（排除隐藏的应用）
         
         Returns:
             应用列表，每个应用包含 name 和 display_name
@@ -275,12 +275,17 @@ class AppManager:
                         try:
                             with open(app_json, 'r', encoding='utf-8') as f:
                                 config = json.load(f)
+                            
+                            # 检查 hidden 字段，如果为 true 则跳过
+                            if config.get('hidden', False):
+                                continue
+                            
                             apps.append({
                                 'name': item,
                                 'display_name': config.get('app_name', item)
                             })
                         except Exception:
-                            # 如果JSON解析失败，仍然列出应用
+                            # 如果JSON解析失败，仍然列出应用（向后兼容）
                             apps.append({
                                 'name': item,
                                 'display_name': item
@@ -293,4 +298,10 @@ class AppManager:
     def is_app_mode(self) -> bool:
         """检查是否处于应用模式"""
         return self.app_config is not None
+    
+    def is_hidden(self) -> bool:
+        """检查当前应用是否是隐藏应用"""
+        if not self.app_config:
+            return False
+        return self.app_config.get('hidden', False)
 

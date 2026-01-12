@@ -3814,6 +3814,7 @@
             </div>
         </div>
         <div class="user-auth-right">
+            {% if not is_hidden %}
             <div class="api-key-group">
                 <label for="appSelect">
                     <i class="fas fa-th"></i>
@@ -3823,6 +3824,7 @@
                     <option value="">{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
                 </select>
             </div>
+            {% endif %}
             <div class="api-key-group">
                 <label for="modelSelect">
                     <i class="fas fa-brain"></i>
@@ -4517,7 +4519,8 @@
                 },
                 auth: {
                     api_key: apiKey || null,
-                    client_session_id: clientSessionId  // 发送客户端会话ID
+                    client_session_id: clientSessionId,  // 发送客户端会话ID
+                    app_name: getCurrentAppFromPath()  // 发送当前应用名称（从URL路径获取）
                 }
             });
         }
@@ -16790,7 +16793,15 @@
                         // 根据当前路径设置选中项
                         const currentApp = getCurrentAppFromPath();
                         if (currentApp) {
-                            appSelect.value = currentApp;
+                            // 检查当前应用是否在列表中
+                            const appExists = Array.from(appSelect.options).some(option => option.value === currentApp);
+                            if (appExists) {
+                                appSelect.value = currentApp;
+                            } else {
+                                // 如果当前应用不在列表中，设置为默认平台
+                                // 注意：隐藏应用不会显示平台选择器，所以这里不会执行
+                                appSelect.value = '';
+                            }
                         } else {
                             appSelect.value = '';
                         }
