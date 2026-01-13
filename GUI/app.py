@@ -4343,20 +4343,42 @@ def handle_connect(auth):
     
     # Create or get user session with authentication
     if recovered_session:
-        # 使用恢复的会话
-        user_session = recovered_session
-        # 更新session_id到新的socket session_id
-        user_session.session_id = session_id
-        # 保存client_session_id
-        if client_session_id:
+        # 🔧 修复：检查新的 API key 是否与旧的 API key 不同
+        # 如果不同，说明用户切换了账户（例如从访客切换到注册账户），应该销毁旧会话并创建新会话
+        old_api_key = recovered_session.api_key
+        # 统一处理：将空字符串转换为 None 以便比较
+        old_api_key_normalized = None if (old_api_key == "" or old_api_key is None) else old_api_key
+        new_api_key_normalized = None if (api_key == "" or api_key is None) else api_key
+        
+        if old_api_key_normalized != new_api_key_normalized:
+            # API key 不同，销毁旧会话并创建新会话
+            # 销毁旧的认证会话
+            gui_instance.auth_manager.destroy_session(old_socket_sid)
+            # 不恢复旧会话，而是创建新会话
+            user_session = gui_instance.get_user_session(session_id, api_key)
+        else:
+            # API key 相同，使用恢复的会话
+            user_session = recovered_session
+            # 更新session_id到新的socket session_id
+            user_session.session_id = session_id
+            # 保存client_session_id
+            if client_session_id:
+                user_session.client_session_id = client_session_id
+            # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
+            if app_name_from_client:
+                user_session.app_manager = AppManager(app_name=app_name_from_client)
+                user_session.current_app_name = app_name_from_client
+            gui_instance.user_sessions[session_id] = user_session
+            # 重新创建认证会话 - 使用保存的api_key
+            gui_instance.auth_manager.create_session(user_session.api_key, session_id)
+        
+        # 保存client_session_id（无论是否恢复会话）
+        if user_session and client_session_id:
             user_session.client_session_id = client_session_id
         # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
-        if app_name_from_client:
+        if user_session and app_name_from_client:
             user_session.app_manager = AppManager(app_name=app_name_from_client)
             user_session.current_app_name = app_name_from_client
-        gui_instance.user_sessions[session_id] = user_session
-        # 重新创建认证会话 - 使用保存的api_key
-        gui_instance.auth_manager.create_session(user_session.api_key, session_id)
     else:
         user_session = gui_instance.get_user_session(session_id, api_key)
         # 保存client_session_id

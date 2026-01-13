@@ -7391,18 +7391,40 @@
                 if (registeredApiKey) {
                     console.log('🔑 Found registered API key in sessionStorage');
                     
+                    // 🔧 修复：清除localStorage中可能存在的旧访客API key（空字符串）
+                    // 确保使用新的注册API key而不是旧的访客状态
+                    try {
+                        const oldApiKey = localStorage.getItem('agia_api_key');
+                        if (oldApiKey === '' || oldApiKey === null) {
+                            console.log('🧹 Clearing old guest API key from localStorage');
+                            localStorage.removeItem('agia_api_key');
+                        }
+                    } catch (e) {
+                        // 静默处理错误
+                    }
+                    
+                    // 先断开旧的连接（如果存在），确保清除旧的访客状态
+                    if (socket && socket.connected) {
+                        console.log('🔌 Disconnecting old session before connecting with new API key');
+                        socket.removeAllListeners();
+                        socket.disconnect();
+                        socket = null;
+                        // 重置连接状态
+                        resetAfterDisconnect(false); // false表示不删除localStorage，因为我们马上要保存新的
+                    }
+                    
                     // 填入API Key输入框
                     apiKeyInput.value = registeredApiKey;
                     
                     // 清除sessionStorage中的API key（一次性使用）
                     sessionStorage.removeItem('registered_api_key');
                     
-                    // 延迟一点时间确保DOM完全加载
+                    // 延迟一点时间确保DOM完全加载和旧连接完全断开
                     setTimeout(() => {
                         console.log('🚀 Auto-filling API key from registration...');
                         // 自动连接到服务器
                         connectUser();
-                    }, 100);
+                    }, 200); // 增加延迟时间，确保旧连接完全断开
                     
                     return true; // 返回true表示找到了注册的API key
                 }
