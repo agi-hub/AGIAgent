@@ -1955,18 +1955,58 @@ class AGIAgentGUI:
             session_id: 会话ID（可选）
         """
         app_name = get_app_name_from_url(request)
-        if session_id:
-            self.switch_app(app_name, session_id=session_id)
-        else:
-            # 如果没有 session_id，先创建临时 session
-            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
-            if api_key:
-                temp_session_id = create_temp_session_id(request, api_key)
-                user_session = self.get_user_session(temp_session_id, api_key)
-                if user_session:
-                    self.switch_app(app_name, session_id=temp_session_id)
+        
+        # 获取当前应该使用的 base_data_dir
+        temp_app_manager = AppManager(app_name=app_name)
+        config_file = "config/config.txt"  # default
+        if temp_app_manager.is_app_mode():
+            app_config_path = temp_app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        
+        expected_data_dir = get_gui_default_data_directory(config_file)
+        if not expected_data_dir:
+            expected_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 如果当前 base_data_dir 不正确，则切换
+        if self.base_data_dir != expected_data_dir:
+            if session_id:
+                self.switch_app(app_name, session_id=session_id)
             else:
-                self.switch_app(app_name)
+                # 如果没有 session_id，先创建临时 session
+                api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+                if api_key:
+                    temp_session_id = create_temp_session_id(request, api_key)
+                    user_session = self.get_user_session(temp_session_id, api_key)
+                    if user_session:
+                        self.switch_app(app_name, session_id=temp_session_id)
+                else:
+                    self.switch_app(app_name)
+    
+    def get_base_data_dir_for_request(self, request):
+        """
+        根据请求的 URL 获取正确的 base_data_dir（不修改全局变量）
+        这个方法用于在需要时获取正确的数据目录，而不影响全局状态
+        
+        Args:
+            request: Flask request 对象
+        
+        Returns:
+            正确的 base_data_dir 路径
+        """
+        app_name = get_app_name_from_url(request)
+        temp_app_manager = AppManager(app_name=app_name)
+        config_file = "config/config.txt"  # default
+        if temp_app_manager.is_app_mode():
+            app_config_path = temp_app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        
+        data_dir = get_gui_default_data_directory(config_file)
+        if not data_dir:
+            data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        return data_dir
     
     def get_user_app_manager(self, session_id: Optional[str] = None) -> AppManager:
         """
@@ -3103,7 +3143,9 @@ def download_directory(dir_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Security check: normalize path and prevent path traversal
         # Don't use secure_filename as it destroys Chinese characters
@@ -3196,7 +3238,9 @@ def list_directory():
         # 如果从 /colordoc 等访问（app_name 不为 None），切换到对应 app
         gui_instance.switch_app(app_name, session_id=temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
         real_output_dir = os.path.realpath(user_base_dir)
@@ -3249,7 +3293,9 @@ def get_office_file(file_path):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -3324,7 +3370,13 @@ def get_file_content(file_path):
                 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.',
                 'debug': debug_info if os.environ.get('FLASK_DEBUG') == '1' else None
             })
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -3643,7 +3695,9 @@ def serve_pdf(file_path):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -3908,7 +3962,9 @@ def download_file(file_path):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -4089,7 +4145,9 @@ def convert_markdown():
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         if not file_path:
             return jsonify({'success': False, 'error': 'File path cannot be empty'})
@@ -5961,7 +6019,9 @@ def get_file_count(dir_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Security check: normalize path and prevent path traversal
         # Don't use secure_filename as it destroys Chinese characters
@@ -6021,7 +6081,9 @@ def get_out_files(dir_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Security check: normalize path and prevent path traversal
         normalized_dir_name = os.path.normpath(dir_name)
@@ -6452,7 +6514,9 @@ def upload_files(dir_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         if 'files' not in request.files:
             return jsonify({'success': False, 'error': i18n['no_files_selected']})
@@ -6566,7 +6630,9 @@ def rename_directory(old_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         data = request.get_json()
         new_name = data.get('new_name', '').strip()
@@ -6651,7 +6717,9 @@ def delete_directory(dir_name):
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Security check: normalize path and prevent path traversal
         # Don't use secure_filename as it destroys Chinese characters
@@ -6734,7 +6802,9 @@ def delete_file():
         # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
         gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Construct full file path
         full_file_path = os.path.join(user_base_dir, file_path)
