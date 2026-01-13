@@ -541,7 +541,7 @@ I18N_TEXTS = {
         'upload_to': '上传文件到',
         'workspace': '/workspace',
         'select_directory_error': '请先选择目录',
-        'please_connect': '请先连接服务器',
+        'please_connect': '当前没有登陆，请先注册并使用API Key连接。您也可以使用空API Key连接后参观已有案例',
         'uploading_files': '正在上传 {0} 个文件',
         'upload_progress': '上传进度: {0}%',
         'upload_completed': '上传文档已完成',
@@ -754,6 +754,10 @@ I18N_TEXTS = {
         'contact_submit_error': '提交失败',
         'contact_message_empty': '请输入留言内容',
         
+        # History labels
+        'oldest': '最老',
+        'newest': '最新',
+        
         # Help
         'help': '帮助',
     },
@@ -928,7 +932,7 @@ I18N_TEXTS = {
         'rename_failed': 'Rename failed',
         'rename_error': 'Rename error',
         'refresh_failed': 'Refresh failed',
-        'please_connect': 'Please connect to server first',
+        'please_connect': 'Currently not logged in. Please register and connect with API Key, or connect without API Key to view existing cases',
         'attempt': 'attempt',
         'create_directory_failed': 'Failed to create directory',
         'preview': 'Preview',
@@ -1147,6 +1151,10 @@ I18N_TEXTS = {
         'contact_submit_success': 'Message submitted, thank you for your feedback!',
         'contact_submit_error': 'Submission failed',
         'contact_message_empty': 'Please enter your message',
+        
+        # History labels
+        'oldest': 'Oldest',
+        'newest': 'Newest',
         
         # Help
         'help': 'Help',
@@ -2293,7 +2301,7 @@ class UserSession:
         if len(self.conversation_history) > 10:
             self.conversation_history = self.conversation_history[-10:]
     
-    def get_summarized_requirements(self, output_dir=None):
+    def get_summarized_requirements(self, output_dir=None, language=None):
         """从manager.out文件中提取历史user requirements并汇总
 
         从指定的output目录（或当前工作目录）中读取manager.out文件，提取历史user requirements，
@@ -2301,6 +2309,7 @@ class UserSession:
 
         Args:
             output_dir: 可选，指定的output目录路径。如果为None，则从当前工作目录读取。
+            language: 可选，语言代码（'zh' 或 'en'）。如果为None，则使用配置文件中的语言。
 
         Returns:
             str: 汇总的历史需求，如果没有找到则返回None
@@ -2367,21 +2376,26 @@ class UserSession:
         if not all_requirements:
             return None
 
-        # 按时间戳排序（最新的在前）
-        all_requirements.sort(key=lambda x: x['timestamp'], reverse=True)
+        # 按时间戳排序（最老的在前）
+        all_requirements.sort(key=lambda x: x['timestamp'], reverse=False)
 
         # 取最近的5个需求
         recent_requirements = all_requirements[:5]
 
         # 生成汇总文本
+        # 获取i18n文本，使用传入的语言参数或默认语言
+        if language and language in ('zh', 'en'):
+            i18n = I18N_TEXTS.get(language, I18N_TEXTS['en'])
+        else:
+            i18n = get_i18n_texts()
         history_summary = []
         total_count = len(recent_requirements)
         for idx, req in enumerate(recent_requirements):
-            # 索引0是最新的，最后一个是最老的
+            # 索引0是最老的，最后一个是最新的
             if idx == 0:
-                label = "1. (最新)"
+                label = f"1. ({i18n.get('oldest', '最老')})"
             elif idx == total_count - 1:
-                label = f"{idx + 1}. (最老)"
+                label = f"{idx + 1}. ({i18n.get('newest', '最新')})"
             else:
                 label = f"{idx + 1}."
             history_summary.append(f"{label} {req['requirement']}")
@@ -4664,10 +4678,13 @@ def handle_execute_task(data):
     
     # Generate detailed requirement with conversation history for continuing tasks
     # 🔧 Fix: Only load history from current working directory (out_dir)
+    # 🔧 Fix: Remove conversation_history check - first round should also load history from manager.out
     detailed_requirement = None
-    if task_type in ['continue', 'selected'] and user_session.conversation_history and out_dir:
+    if task_type in ['continue', 'selected'] and out_dir:
         # For continue/selected tasks, include conversation context from current directory only
-        history_context = user_session.get_summarized_requirements(output_dir=out_dir)
+        # This will read from manager.out file if it exists, even for first round after reconnection
+        # 🔧 Fix: Pass user language to get_summarized_requirements for correct i18n
+        history_context = user_session.get_summarized_requirements(output_dir=out_dir, language=user_lang)
         if history_context:
             # 🔧 Fix: adjust prompt order - current first
             detailed_requirement = f"{user_requirement}\n\nPrevious conversation context:\n{history_context}"
