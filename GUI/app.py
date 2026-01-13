@@ -1869,7 +1869,13 @@ class AGIAgentGUI:
         )
         
         # Get GUI default data directory from config, fallback to current directory
-        config_data_dir = get_gui_default_data_directory()
+        # If in app mode, use app-specific config file
+        config_file = "config/config.txt"  # default
+        if self.app_manager.is_app_mode():
+            app_config_path = self.app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        config_data_dir = get_gui_default_data_directory(config_file)
         if config_data_dir:
             self.base_data_dir = config_data_dir
         else:
@@ -1895,17 +1901,34 @@ class AGIAgentGUI:
             app_name: 应用名称（如 'patent'），如果为None则重置为默认模式
             session_id: 会话ID，如果提供则切换指定用户的app，否则切换全局默认app（向后兼容）
         """
+        # 创建临时 AppManager 来获取配置路径（用于更新 base_data_dir）
+        temp_app_manager = AppManager(app_name=app_name)
+        
+        # 更新 base_data_dir 以使用新的 app 配置（无论是否有 session_id，都需要更新全局 base_data_dir）
+        config_file = "config/config.txt"  # default
+        if temp_app_manager.is_app_mode():
+            app_config_path = temp_app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        config_data_dir = get_gui_default_data_directory(config_file)
+        if config_data_dir:
+            self.base_data_dir = config_data_dir
+        else:
+            self.base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Ensure base directory exists
+        os.makedirs(self.base_data_dir, exist_ok=True)
+        
         if session_id:
             # 会话级切换：直接更新用户的 AppManager 实例
             if session_id in self.user_sessions:
                 user_session = self.user_sessions[session_id]
                 # 直接创建并更新 AppManager 实例，简单高效
-                user_session.app_manager = AppManager(app_name=app_name)
+                user_session.app_manager = temp_app_manager
                 user_session.current_app_name = app_name  # 保留用于日志和调试
         else:
             # 全局切换（向后兼容，用于初始化或默认模式）
-            # 重新创建 AppManager 实例
-            self.app_manager = AppManager(app_name=app_name)
+            # 使用已创建的 AppManager 实例
+            self.app_manager = temp_app_manager
             
             # 更新全局 APP_NAME
             global APP_NAME
@@ -2845,15 +2868,20 @@ def index():
     api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
     session_id = get_session_id_from_request(request, api_key)
     
-    # If we have a session_id, reset user's app to initial platform
-    if session_id and session_id in gui_instance.user_sessions:
-        user_session = gui_instance.user_sessions[session_id]
-        # Reset user's app to initial platform (or None for default)
+    # If no session_id but we have api_key, create/get user session
+    if not session_id and api_key:
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        if user_session:
+            session_id = temp_session_id
+    
+    # Always reset to initial platform (or None for default) when accessing root path
+    # This ensures base_data_dir is correctly updated
+    if session_id:
         gui_instance.switch_app(gui_instance.initial_app_name, session_id=session_id)
     else:
         # No session, reset global app (backward compatibility)
-        if gui_instance.app_manager.app_name != gui_instance.initial_app_name:
-            gui_instance.switch_app(gui_instance.initial_app_name)
+        gui_instance.switch_app(gui_instance.initial_app_name)
     
     return render_index_page(session_id=session_id)
 
@@ -3027,6 +3055,12 @@ def get_output_dirs():
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed'}), 401
         
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        # 如果从 / 访问（app_name 为 None），也需要切换以重置到默认配置
+        # 如果从 /colordoc 等访问（app_name 不为 None），切换到对应 app
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         dirs = gui_instance.get_output_directories(user_session)
         return jsonify({'success': True, 'directories': dirs})
     except Exception as e:
@@ -3128,6 +3162,13 @@ def list_directory():
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        # 如果从 / 访问（app_name 为 None），也需要切换以重置到默认配置
+        # 如果从 /colordoc 等访问（app_name 不为 None），切换到对应 app
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
