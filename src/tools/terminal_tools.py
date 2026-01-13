@@ -1045,7 +1045,7 @@ class TerminalTools:
                     # Keep max_total_time at default or use a reasonable value
                     if max_total_time < 3000:
                         max_total_time = 3000  # 50 minutes maximum execution time
-                    print_current(f"⏱️  Detected pip install command, using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    # print_current(f"⏱️  Detected pip install command, using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                     
                     # Ensure pip uses unbuffered output for better visibility
                     # Set environment variables for unbuffered Python output
@@ -1064,7 +1064,7 @@ class TerminalTools:
                 is_python_program = re.search(python_command_pattern, command, re.IGNORECASE) is not None
                 
                 if is_python_program:
-                    print_current(f"🐍 Detected Python program, ensuring unbuffered output")
+                    # print_current(f"🐍 Detected Python program, ensuring unbuffered output")
                     # Add -u flag for unbuffered mode if not already present
                     # This ensures immediate output even for interactive programs
                     if '-u' not in command and '--unbuffered' not in command:
@@ -1075,11 +1075,11 @@ class TerminalTools:
                         if re.search(pattern, command, re.IGNORECASE):
                             # Replace only the python command, preserving the context
                             command = re.sub(pattern, r'\1\2 -u\3', command, count=1, flags=re.IGNORECASE)
-                            print_current(f"🔧 Added -u flag for unbuffered output")
+                            # print_current(f"🔧 Added -u flag for unbuffered output")
                     # Use shorter timeout for Python programs as they should produce output
                     if timeout_inactive > 60:
                         timeout_inactive = 60  # 1 minute timeout for Python programs
-                    print_current(f"⏱️  Using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
+                    # print_current(f"⏱️  Using timeout: {timeout_inactive}s no output timeout, {max_total_time}s maximum execution time")
                 
                 long_running_indicators = [
                     'git clone', 'git fetch', 'git pull', 'git push',

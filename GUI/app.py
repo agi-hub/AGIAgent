@@ -4621,7 +4621,6 @@ def handle_execute_task(data):
     user_session = gui_instance.user_sessions[session_id]
     
     if user_session.current_process and user_session.current_process.is_alive():
-        emit('error', {'message': i18n['error_task_running']}, room=session_id)
         return
 
     user_requirement = data.get('requirement', '')

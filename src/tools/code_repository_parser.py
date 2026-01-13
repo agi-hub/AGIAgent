@@ -1703,7 +1703,7 @@ class CodeRepositoryParser:
                             if any(count > 0 for count in update_result.values()):
                                 self.save_database(db_path)
                             total_changes = sum(update_result.values())
-                            print_current(f"📊 Updated code index: {total_changes} changes processed")
+                            print_debug(f"📊 Updated code index: {total_changes} changes processed")
                         else:
                             print_debug("✅ Code index is already up-to-date")
                     

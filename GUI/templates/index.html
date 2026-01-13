@@ -4469,6 +4469,7 @@
         let currentUser = null;
         let currentUserName = null;
         let isConnected = false;
+        let isConnecting = false; // 标记是否处于连接中状态
         
         const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
         let isManualDisconnect = false;
@@ -4599,6 +4600,7 @@
                 connectBtn.disabled = false;
                 connectBtn.title = I18N.disconnect_btn || '断开连接';
                 isConnected = true;
+                isConnecting = false;
                 
                 // Enable UI controls
                 enableUI(true);
@@ -4606,6 +4608,9 @@
                 connectBtn.disabled = true;
                 connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                 connectBtn.style.opacity = '0.6';
+                // 处于连接中状态：暂时视为“正在尝试连接”，不显示“请先连接”提示
+                isConnected = false;
+                isConnecting = true;
                 
                 // Disable UI controls
                 enableUI(false);
@@ -4618,10 +4623,15 @@
                 connectBtn.style.opacity = '1';
                 connectBtn.title = I18N.connect_btn || '连接网络';
                 isConnected = false;
+                isConnecting = false;
                 
                 // Disable UI controls
                 enableUI(false);
-                renderDisconnectedWorkspaceMessage();
+                
+                // 仅在最终确定为未连接/出错时显示“请先连接”提示
+                if (status === 'disconnected' || status === 'error') {
+                    renderDisconnectedWorkspaceMessage();
+                }
             }
         }
         
@@ -4700,6 +4710,7 @@
             currentUser = null;
             currentUserName = null;
             isConnected = false;
+            isConnecting = false;
             isGuest = false;
             selectedDirectory = null;
             taskMode = 'new';
@@ -9165,8 +9176,8 @@
                 console.log(`📥 Collapsed: ${dirName}`);
                 console.log(`📥 After collapse - display:`, window.getComputedStyle(tree).display);
             } else {
-                // 展开 - 需要检查连接状态
-                if (!isConnected) {
+                // 展开 - 需要检查连接状态（连接中不再提示“请先连接”）
+                if (!isConnected && !isConnecting) {
                     addMessage(`⚠️ ${I18N.please_connect}`, 'warning');
                     return false;
                 }
@@ -9231,8 +9242,8 @@
                 }
                 console.log(`📥 Collapsed sub-directory: ${uniqueSubDirId}`);
             } else {
-                // 展开子文件夹 - 需要检查连接状态
-                if (!isConnected) {
+                // 展开子文件夹 - 需要检查连接状态（连接中不再提示“请先连接”）
+                if (!isConnected && !isConnecting) {
                     addMessage(`⚠️ ${I18N.please_connect}`, 'warning');
                     return false;
                 }
