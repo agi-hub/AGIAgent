@@ -1945,6 +1945,29 @@ class AGIAgentGUI:
                 if 'AGIA_APP_NAME' in os.environ:
                     del os.environ['AGIA_APP_NAME']
     
+    def ensure_app_switched_for_request(self, request, session_id: Optional[str] = None):
+        """
+        确保当前请求的 base_data_dir 是正确的（根据 URL 自动切换 app）
+        这个方法应该在所有使用 base_data_dir 的 API 路由中调用
+        
+        Args:
+            request: Flask request 对象
+            session_id: 会话ID（可选）
+        """
+        app_name = get_app_name_from_url(request)
+        if session_id:
+            self.switch_app(app_name, session_id=session_id)
+        else:
+            # 如果没有 session_id，先创建临时 session
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+            if api_key:
+                temp_session_id = create_temp_session_id(request, api_key)
+                user_session = self.get_user_session(temp_session_id, api_key)
+                if user_session:
+                    self.switch_app(app_name, session_id=temp_session_id)
+            else:
+                self.switch_app(app_name)
+    
     def get_user_app_manager(self, session_id: Optional[str] = None) -> AppManager:
         """
         根据session_id获取用户专属的AppManager实例
@@ -3077,9 +3100,8 @@ def download_directory(dir_name):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -3224,9 +3246,8 @@ def get_office_file(file_path):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -3619,9 +3640,8 @@ def serve_pdf(file_path):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -3680,11 +3700,6 @@ def serve_static_file(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
-        
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
-        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3890,9 +3905,8 @@ def download_file(file_path):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -4071,6 +4085,10 @@ def convert_markdown():
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         if not file_path:
@@ -5940,9 +5958,8 @@ def get_file_count(dir_name):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -6001,9 +6018,8 @@ def get_out_files(dir_name):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -6432,6 +6448,10 @@ def upload_files(dir_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         if 'files' not in request.files:
@@ -6542,6 +6562,10 @@ def rename_directory(old_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         data = request.get_json()
@@ -6624,9 +6648,8 @@ def delete_directory(dir_name):
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
@@ -6707,6 +6730,10 @@ def delete_file():
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # Construct full file path
