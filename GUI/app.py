@@ -3076,6 +3076,11 @@ def download_directory(dir_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # Security check: normalize path and prevent path traversal
@@ -3218,6 +3223,11 @@ def get_office_file(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3608,6 +3618,11 @@ def serve_pdf(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3665,6 +3680,11 @@ def serve_static_file(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -3869,6 +3889,11 @@ def download_file(file_path):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # URL decode the file path to handle Chinese characters
@@ -5914,6 +5939,11 @@ def get_file_count(dir_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # Security check: normalize path and prevent path traversal
@@ -5970,6 +6000,11 @@ def get_out_files(dir_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # Security check: normalize path and prevent path traversal
@@ -6588,6 +6623,11 @@ def delete_directory(dir_name):
         # Create a temporary session for API calls
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
+        app_name = get_app_name_from_url(request)
+        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        
         user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
         
         # Security check: normalize path and prevent path traversal
