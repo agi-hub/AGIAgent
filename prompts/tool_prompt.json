@@ -109,13 +109,13 @@
     }
   },
   "custom_command": {
-    "description": "Execute custom commands through a general command execution tool.",
+    "description": "Execute custom commands through a general command execution tool. Supports multiple tool types: 'game' for the 12x12 board game (four in a row), 'hanoi' for the Tower of Hanoi game, or omit for echo tool.",
     "parameters": {
       "type": "object",
       "properties": {
         "type": {
           "type": "string",
-          "description": "Tool type selector: 'game' for the board game tool."
+          "description": "Tool type selector: 'game' for the 12x12 board game (four in a row), 'hanoi' for the Tower of Hanoi game. If not specified, uses echo tool."
         },
         "command": {
           "type": "string",

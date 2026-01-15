@@ -351,6 +351,9 @@ class CustomGameTool:
         Returns:
             执行结果字典
         """
+        # 确保 command 是字符串类型
+        if not isinstance(command, str):
+            command = str(command)
         command = command.strip().lower()
         
         # help命令：返回工具使用说明
@@ -488,7 +491,8 @@ class CustomGameTool:
                 }
             
             # 清理参数：去除括号和空格
-            arg_clean = arg.strip().strip('()').replace(' ', '')
+            # 确保 arg 是字符串类型
+            arg_clean = str(arg).strip().strip('()').replace(' ', '')
             
             try:
                 # 解析行号和列号
@@ -814,6 +818,9 @@ class HanoiTool:
         Returns:
             执行结果字典
         """
+        # 确保 command 是字符串类型
+        if not isinstance(command, str):
+            command = str(command)
         command = command.strip().lower()
         
         # help命令：返回工具使用说明
@@ -888,7 +895,9 @@ class HanoiTool:
                 }
             
             try:
-                num_disks = int(arg.strip())
+                # 确保 arg 是字符串类型
+                arg_str = str(arg).strip()
+                num_disks = int(arg_str)
                 self._init_game(num_disks)
                 towers_str = self._format_towers()
                 print_current(f"🎮 汉诺塔游戏已初始化（{num_disks}个盘子）")
@@ -959,7 +968,9 @@ class HanoiTool:
                 }
             
             # 解析移动参数：支持 "A->C" 或 "A-C" 格式
-            arg_clean = arg.strip().replace(' ', '')
+            # 确保 arg 是字符串类型
+            arg_str = str(arg).strip().replace(' ', '')
+            arg_clean = arg_str
             if '->' in arg_clean:
                 parts = arg_clean.split('->')
             elif '-' in arg_clean:
@@ -1070,7 +1081,11 @@ class CustomTool:
         Returns:
             执行结果字典
         """
-        tool_type = type.strip().lower() if type else ""
+        # 确保 type 是字符串类型，如果为 None 或非字符串，则转换为字符串
+        if type is not None:
+            tool_type = str(type).strip().lower()
+        else:
+            tool_type = ""
         
         # 如果选择了 'game'，转给 CustomGameTool
         if tool_type == "game":

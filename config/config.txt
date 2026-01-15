@@ -7,64 +7,17 @@ LANG=zh
 # name (with comment #), key, base, model, max_output_tokens
 # the configuration in comment will not be valid.
 
+# Openrouter
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=openai/gpt-4.1
+max_tokens=16384
+
 # GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.7
 max_tokens=16384
-
-# GLM coding-plan API configuration
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.5-air
-# max_tokens=16384
-
-# Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
-# max_tokens=32768
-
-# Openrouter Nvidia nemotron 3 nano
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=nvidia/nemotron-3-nano-30b-a3b:free
-# max_tokens=16384
-
-
-# DeepSeek API configuration
-# api_key=your key
-# api_base=https://api.deepseek.com/v1
-# model=deepseek-chat
-
-# Volcengine Doubao API configuration
-# api_key=your key
-# api_base=https://ark.cn-beijing.volces.com/api/v3
-# model=doubao-1-5-pro-32k-250115
-
-# Moonshot
-# api_key=your key
-# api_base=https://api.moonshot.cn/anthropic
-# model=kimi-k2-0711-preview
-# max_tokens=8192
-
-# SiliconFlow API configuration 
-# api_key=your key
-# api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-30B-A3B
-# max_tokens=4096
-
-# Ollama (local serve)
-# api_key=your key
-# api_base=http://localhost:11434/v1
-# model=qwen3:8b
-# max_tokens=4096
-
-# Minimax Coding plan
-# api_key=your key
-# api_base=https://api.minimaxi.com/anthropic
-# model=minimax-m2.1
-# max_tokens=16384
 
 # Note: only the last configuration is valid.
 
@@ -204,7 +157,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=../data
+gui_default_data_directory=data
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions
@@ -237,7 +190,7 @@ sync_round=5
 # When disabled, only basic English tokenization is used (recommended for better performance)
 # Default: False (disabled)
 # Set to True to enable jieba Chinese segmentation
-enable_jieba=True
+enable_jieba=False
 
 # Emoji Display Configuration
 # Controls whether to display emoji symbols in print outputs
@@ -254,8 +207,8 @@ emoji_disabled=False
 # When enabled (True), the corresponding format will be automatically generated when a markdown file is edited
 # When disabled (False), the format will not be automatically generated
 # Default: True for Word and PDF (backward compatibility), False for LaTeX
-auto_convert_to_word=True
-auto_convert_to_pdf=True
+auto_convert_to_word=False
+auto_convert_to_pdf=False
 auto_convert_to_latex=False
 
 # TASK_COMPLETED with Tools Configuration
