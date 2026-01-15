@@ -1,0 +1,34 @@
+{
+  "task_id": "case_003",
+  "task_description": "使用 custom_command 工具（type='game'）玩一局游戏，尽你的努力争取赢得胜利。完成一局游戏后退出，无论输赢。",
+  "output_requirements": {
+    "tool_usage": {
+      "custom_command": {
+        "type": "game",
+        "must_use_commands": ["help", "status", "move"],
+        "game_completed": true
+      }
+    }
+  },
+  "evaluation_criteria": {
+    "completion": {
+      "help_called": true,
+      "game_started": true,
+      "at_least_one_move": true,
+      "game_completed": true
+    },
+    "quality": {
+      "tool_usage_correct": "正确使用 custom_command 工具",
+      "command_format_valid": "命令格式正确",
+      "game_understanding": "理解游戏规则"
+    },
+    "efficiency": {
+      "max_rounds": 7,
+      "max_tool_calls": 18
+    }
+  },
+  "category": "game",
+  "difficulty": "medium"
+}
+
+

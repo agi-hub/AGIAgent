@@ -78,6 +78,12 @@ class TaskReflection:
                 project_root = self._find_project_root()
                 self.root_dir = os.path.join(project_root, "data") if project_root else "data"
         
+        # 初始化skill工具（logger需要用到）
+        self.skill_tools = SkillTools(workspace_root=self.root_dir)
+        
+        # 设置日志（需要在LLM客户端初始化之前，因为异常处理会用到logger）
+        self.logger = self._setup_logger()
+        
         # 初始化LLM客户端
         self.api_key = get_api_key(config_file)
         self.api_base = get_api_base(config_file)
@@ -89,21 +95,36 @@ class TaskReflection:
         if self.api_key and self.model:
             if 'claude' in self.model.lower() or 'anthropic' in str(self.api_base).lower():
                 if ANTHROPIC_AVAILABLE:
-                    # 对于minimax和GLM等使用Anthropic兼容API的服务，需要传入base_url
-                    if 'bigmodel.cn' in str(self.api_base).lower() or 'minimaxi.com' in str(self.api_base).lower():
-                        self.llm_client = anthropic.Anthropic(api_key=self.api_key, base_url=self.api_base)
-                    else:
-                        self.llm_client = anthropic.Anthropic(api_key=self.api_key)
-                    self.is_claude = True
+                    try:
+                        # 对于minimax和GLM等使用Anthropic兼容API的服务，需要传入base_url
+                        if 'bigmodel.cn' in str(self.api_base).lower() or 'minimaxi.com' in str(self.api_base).lower():
+                            self.llm_client = anthropic.Anthropic(api_key=self.api_key, base_url=self.api_base)
+                        else:
+                            self.llm_client = anthropic.Anthropic(api_key=self.api_key)
+                        self.is_claude = True
+                    except Exception as e:
+                        self.logger.warning(f"Failed to initialize Anthropic client: {e}")
+                        self.llm_client = None
+                        self.is_claude = False
+                else:
+                    self.logger.warning("Anthropic SDK not available, cannot initialize LLM client")
             else:
                 if OPENAI_AVAILABLE:
-                    self.llm_client = OpenAI(api_key=self.api_key, base_url=self.api_base)
-        
-        # 初始化skill工具
-        self.skill_tools = SkillTools(workspace_root=self.root_dir)
-        
-        # 设置日志
-        self.logger = self._setup_logger()
+                    try:
+                        self.llm_client = OpenAI(api_key=self.api_key, base_url=self.api_base)
+                        self.is_claude = False
+                    except Exception as e:
+                        self.logger.warning(f"Failed to initialize OpenAI-compatible client: {e}")
+                        self.llm_client = None
+                else:
+                    self.logger.warning("OpenAI SDK not available, cannot initialize LLM client")
+        else:
+            missing = []
+            if not self.api_key:
+                missing.append("api_key")
+            if not self.model:
+                missing.append("model")
+            self.logger.warning(f"Missing required configuration: {', '.join(missing)}, cannot initialize LLM client")
     
     def _find_project_root(self) -> Optional[str]:
         """查找项目根目录"""

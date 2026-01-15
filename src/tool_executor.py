@@ -1011,19 +1011,6 @@ You are currently operating in INFINITE AUTONOMOUS LOOP MODE. In this mode:
                 
                 system_prompt = system_prompt.replace(task_completion_section, infinite_loop_section)
             
-            # Add skill query feature if long-term memory is enabled
-            if self.skill_tools:
-                skill_query_section = """
-## Skill Query Feature
-For complex tasks, you can use the `query_skill` tool to search for relevant historical experiences and skills that might help you complete the task more efficiently. This is especially useful when you encounter similar problems or need to follow established patterns.
-
-When you use skills from `query_skill`, make sure to:
-1. Keep the skill_id in your conversation history for reference
-2. Explicitly document which skills you referenced in plan.md
-3. After task completion, use `rate_skill` to update the quality index of skills you used
-
-The skill system helps you learn from past experiences and improve over time. Use it proactively for complex tasks!
-"""
                 # Insert skill query section before "Task Execution Approach" or at the end
                 if "## Task Execution Approach" in system_prompt:
                     task_exec_pos = system_prompt.find("## Task Execution Approach")

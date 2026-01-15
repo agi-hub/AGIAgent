@@ -74,15 +74,39 @@ class SkillTools:
         查找experience目录
         
         查找顺序：
-        1. 从workspace_root向上查找，寻找包含user目录的结构
-        2. 使用gui_default_data_directory配置
-        3. 使用默认的data目录
+        1. 直接在workspace_root下查找user目录结构
+        2. 从workspace_root向上查找，寻找包含user目录的结构
+        3. 使用gui_default_data_directory配置
+        4. 使用默认的data目录
         
         Returns:
             experience目录路径，如果找不到则返回None
         """
+        # 方法0: 直接在workspace_root下查找user目录结构
+        workspace_root_path = Path(self.workspace_root).resolve()
+        if workspace_root_path.exists():
+            # 如果指定了user_id，优先查找对应的user目录
+            if self.user_id:
+                user_dir = workspace_root_path / self.user_id
+                exp_dir = user_dir / "general" / "experience"
+                if exp_dir.exists() or exp_dir.parent.exists():
+                    return str(exp_dir)
+            
+            # 遍历workspace_root下的所有目录，查找user目录结构
+            for item in workspace_root_path.iterdir():
+                if item.is_dir() and not item.name.startswith('.'):
+                    exp_dir = item / "general" / "experience"
+                    if exp_dir.exists() or exp_dir.parent.exists():  # general目录存在
+                        return str(exp_dir)
+            
+            # 如果workspace_root下没有找到，创建默认的experience目录结构
+            # 使用user_id作为目录名，如果没有则使用"default"
+            default_user = self.user_id or "default"
+            default_exp_dir = workspace_root_path / default_user / "general" / "experience"
+            return str(default_exp_dir)
+        
         # 方法1: 从workspace_root向上查找
-        current = Path(self.workspace_root).resolve()
+        current = workspace_root_path
         for _ in range(5):  # 最多向上5层
             # 查找包含output_XXX的目录结构
             parent = current.parent
@@ -309,22 +333,35 @@ class SkillTools:
             # 准备文本用于TF-IDF
             texts = []
             skill_infos = []
+            is_adv_skill = []  # 标记是否为skill_adv_开头的skill
             
             for file_path, skill_data in skill_files:
                 front_matter = skill_data['front_matter']
                 content = skill_data['content']
                 
+                # 检查是否为skill_adv_开头的skill
+                filename = os.path.basename(file_path)
+                is_adv = filename.startswith('skill_adv_')
+                is_adv_skill.append(is_adv)
+                
                 # 组合标题和内容
                 title = front_matter.get('title', '')
                 usage_conditions = front_matter.get('usage_conditions', '')
-                combined_text = f"{title} {usage_conditions} {content}"
+                
+                # 对于skill_adv_的skill，增加关键词权重（重复关键信息）
+                if is_adv:
+                    # 重复标题和usage_conditions，增加权重
+                    combined_text = f"{title} {title} {usage_conditions} {usage_conditions} {content}"
+                else:
+                    combined_text = f"{title} {usage_conditions} {content}"
                 
                 texts.append(combined_text)
                 skill_infos.append({
                     'file_path': file_path,
                     'skill_id': str(front_matter.get('skill_id', '')),
                     'front_matter': front_matter,
-                    'content': content
+                    'content': content,
+                    'is_adv': is_adv
                 })
             
             # TF-IDF向量化
@@ -336,7 +373,15 @@ class SkillTools:
                 # 计算相似度
                 similarities = cosine_similarity(query_vector, tfidf_matrix)[0]
                 
-                # 获取TOP3
+                # 对skill_adv_的skill给予额外的权重加成
+                for i, is_adv in enumerate(is_adv_skill):
+                    if is_adv:
+                        # 增加0.15的权重，让skill_adv_更容易被命中
+                        similarities[i] += 0.15
+                        # 确保相似度不超过1.0
+                        similarities[i] = min(similarities[i], 1.0)
+                
+                # 获取TOP3（按相似度排序）
                 top_indices = similarities.argsort()[-3:][::-1]
                 
                 # 构建结果
@@ -351,6 +396,7 @@ class SkillTools:
                     if i == 1 or similarity_score > 0:
                         skill_info = skill_infos[idx]
                         front_matter = skill_info['front_matter']
+                        is_adv = skill_info.get('is_adv', False)
                     
                         skill_result = {
                             "skill_id": skill_info['skill_id'],
@@ -365,7 +411,8 @@ class SkillTools:
                             "user_preferences": front_matter.get('user_preferences', ''),
                             "created_at": front_matter.get('created_at', ''),
                             "updated_at": front_matter.get('updated_at', ''),
-                            "last_used_at": front_matter.get('last_used_at')
+                            "last_used_at": front_matter.get('last_used_at'),
+                            "is_advanced": is_adv  # 标记是否为高级整合skill
                         }
                         results.append(skill_result)
                         
@@ -375,12 +422,15 @@ class SkillTools:
                         self._save_skill_file(skill_info['file_path'], front_matter, skill_info['content'])
                         
                         # 格式化输出
-                        formatted_output.append(f"Skill {i}:")
+                        adv_marker = " ⭐ [高级整合Skill]" if is_adv else ""
+                        formatted_output.append(f"Skill {i}{adv_marker}:")
                         formatted_output.append(f"  ID: {skill_result['skill_id']}")
                         formatted_output.append(f"  Title: {skill_result['title']}")
                         formatted_output.append(f"  Similarity: {skill_result['similarity_score']:.3f}")
                         formatted_output.append(f"  Usage Conditions: {skill_result['usage_conditions']}")
                         formatted_output.append(f"  Quality Index: {skill_result['quality_index']:.2f}")
+                        if is_adv:
+                            formatted_output.append(f"  Type: 高级整合Skill（综合多个任务经验）")
                         formatted_output.append("")
                 
                 message = "\n".join(formatted_output)
