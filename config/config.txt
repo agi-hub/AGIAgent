@@ -14,10 +14,10 @@ model=glm-4.7
 max_tokens=16384
 
 # GLM coding-plan API configuration
-api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.5-air
-max_tokens=16384
+# api_key=your key
+# api_base=https://open.bigmodel.cn/api/anthropic
+# model=glm-4.5-air
+# max_tokens=16384
 
 # Anthropic models
 # api_key=your key
@@ -25,35 +25,11 @@ max_tokens=16384
 # model=claude-sonnet-4-0
 # max_tokens=32768
 
-# Openrouter Qwen3-30b
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=qwen/qwen3-coder-30b-a3b-instruct
-max_tokens=16384
-
-# Openrouter Minimax M2.1
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=minimax/fp8
-max_tokens=16384
-
-# Openrouter Grok Code
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=x-ai/grok-code-fast-1
-max_tokens=16384
-
-# Openrouter Xiaomi
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=xiaomi/mimo-v2-flash:free
-max_tokens=16384
-
 # Openrouter Nvidia nemotron 3 nano
-api_key=your key
-api_base=https://openrouter.ai/api/v1
-model=nvidia/nemotron-3-nano-30b-a3b:free
-max_tokens=16384
+# api_key=your key
+# api_base=https://openrouter.ai/api/v1
+# model=nvidia/nemotron-3-nano-30b-a3b:free
+# max_tokens=16384
 
 
 # DeepSeek API configuration
@@ -85,10 +61,10 @@ max_tokens=16384
 # max_tokens=4096
 
 # Minimax Coding plan
-api_key=your key
-api_base=https://api.minimaxi.com/anthropic
-model=minimax-m2.1
-max_tokens=16384
+# api_key=your key
+# api_base=https://api.minimaxi.com/anthropic
+# model=minimax-m2.1
+# max_tokens=16384
 
 # Note: only the last configuration is valid.
 
