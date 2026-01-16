@@ -1197,15 +1197,31 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
         
         if not out_dir:
             # Get GUI default data directory from config for new directories
+            # Use app-specific config file if available
             from src.config_loader import get_gui_default_data_directory
-            config_data_dir = get_gui_default_data_directory()
+            config_file = "config/config.txt"  # default
+            if app_manager.is_app_mode():
+                app_config_path = app_manager.get_config_path()
+                if app_config_path:
+                    config_file = app_config_path
+            config_data_dir = get_gui_default_data_directory(config_file)
             if config_data_dir:
-                base_dir = config_data_dir
+                base_data_dir = config_data_dir
             else:
-                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+            # Create output directory in user directory, not directly in base_data_dir
+            # user_dir should be the full path to user's directory (e.g., /mnt/data_colordoc/user1)
+            if user_dir and os.path.exists(user_dir):
+                # Use provided user_dir
+                user_output_base = user_dir
+            else:
+                # Fallback: create in base_data_dir/userdata if user_dir not provided
+                user_output_base = os.path.join(base_data_dir, 'userdata')
+                os.makedirs(user_output_base, exist_ok=True)
             
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_dir = os.path.join(base_dir, f"output_{timestamp}")
+            out_dir = os.path.join(user_output_base, f"output_{timestamp}")
         
         # Process GUI configuration options
         if gui_config is None:
@@ -2027,6 +2043,34 @@ class AGIAgentGUI:
         
         # 返回全局默认AppManager（向后兼容）
         return self.app_manager
+    
+    def get_base_data_dir_for_session(self, session_id: Optional[str] = None) -> str:
+        """
+        根据session_id获取正确的 base_data_dir（用于 socket 事件）
+        
+        Args:
+            session_id: 会话ID，如果为None则返回全局默认 base_data_dir
+        
+        Returns:
+            正确的 base_data_dir 路径
+        """
+        if session_id and session_id in self.user_sessions:
+            user_session = self.user_sessions[session_id]
+            app_manager = user_session.app_manager
+            
+            # 使用用户 session 的 AppManager 来获取配置路径
+            config_file = "config/config.txt"  # default
+            if app_manager.is_app_mode():
+                app_config_path = app_manager.get_config_path()
+                if app_config_path:
+                    config_file = app_config_path
+            
+            data_dir = get_gui_default_data_directory(config_file)
+            if data_dir:
+                return data_dir
+        
+        # Fallback to global base_data_dir
+        return self.base_data_dir
 
     
     def get_user_session(self, session_id, api_key=None):
@@ -2421,15 +2465,17 @@ class UserSession:
                 target_dirs = [output_dir]
         else:
             # 如果没有指定目录，尝试使用当前工作目录
+            # 使用 session 特定的 base_data_dir
+            session_base_data_dir = gui_instance.get_base_data_dir_for_session(self.session_id)
             current_dir = None
             if self.current_output_dir:
-                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                user_base_dir = self.get_user_directory(session_base_data_dir)
                 current_dir = os.path.join(user_base_dir, self.current_output_dir)
             elif self.selected_output_dir:
-                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                user_base_dir = self.get_user_directory(session_base_data_dir)
                 current_dir = os.path.join(user_base_dir, self.selected_output_dir)
             elif self.last_output_dir:
-                user_base_dir = self.get_user_directory(gui_instance.base_data_dir)
+                user_base_dir = self.get_user_directory(session_base_data_dir)
                 current_dir = os.path.join(user_base_dir, self.last_output_dir)
             
             if current_dir and os.path.exists(current_dir):
@@ -2830,6 +2876,10 @@ def get_app_name_from_url(request):
         try:
             from urllib.parse import urlparse
             parsed = urlparse(referer)
+            # 🔧 修复：如果 Referer 是主平台（/），明确返回 None，不使用 session 中的 app_name
+            if parsed.path == '/' or not parsed.path or parsed.path == '':
+                # 主平台访问，明确返回 None
+                return None
             path_parts = [p for p in parsed.path.split('/') if p]
             # 遍历路径的所有部分，找到第一个有效的 app_name
             for part in path_parts:
@@ -2855,8 +2905,19 @@ def get_app_name_from_url(request):
         except Exception:
             pass
     
-    # 如果仍然没找到，尝试从 session 中获取（如果存在）
-    if not app_name:
+    # 🔧 修复：如果当前路径是主平台（/）或API路径（/api/xxx），不应该从session中获取app_name
+    # 这样可以确保访问主平台时使用默认配置，而不是之前访问的app配置
+    is_main_platform = False
+    try:
+        current_path = request.path if hasattr(request, 'path') else '/'
+        # 如果路径是 / 或 /api/xxx，说明是访问主平台或API，不应该从session获取
+        if current_path == '/' or current_path.startswith('/api/'):
+            is_main_platform = True
+    except Exception:
+        pass
+    
+    # 如果仍然没找到，且不是主平台访问，尝试从 session 中获取（如果存在）
+    if not app_name and not is_main_platform:
         try:
             # 尝试从请求中获取 session_id
             api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
@@ -2865,7 +2926,8 @@ def get_app_name_from_url(request):
                 if temp_session_id in gui_instance.user_sessions:
                     user_session = gui_instance.user_sessions[temp_session_id]
                     if hasattr(user_session, 'app_manager') and user_session.app_manager.is_app_mode():
-                        app_name = user_session.app_manager.get_app_name()
+                        # 使用 app_name 属性（目录名），而不是 get_app_name()（显示名称）
+                        app_name = user_session.app_manager.app_name
         except Exception:
             pass
     
@@ -2915,7 +2977,9 @@ def render_index_page(app_name_param=None, session_id=None):
         user_dir = None
         if session_id and session_id in gui_instance.user_sessions:
             user_session = gui_instance.user_sessions[session_id]
-            user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+            # 使用 session 特定的 base_data_dir
+            session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+            user_dir = user_session.get_user_directory(session_base_data_dir)
         app_config_path = user_app_manager.get_config_path(user_dir=user_dir)
         if app_config_path:
             config_file = app_config_path
@@ -3108,7 +3172,9 @@ def api_register():
                         safe_username = safe_username.strip(' .')
                         user_dir_name = safe_username if safe_username else "user"
                     
-                    user_dir = os.path.join(gui_instance.base_data_dir, user_dir_name)
+                    # 使用请求特定的 base_data_dir，避免并发问题
+                    request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+                    user_dir = os.path.join(request_base_data_dir, user_dir_name)
                     os.makedirs(user_dir, exist_ok=True)
                     
                     # 如果当前有激活的应用，拷贝应用配置到shared目录
@@ -3790,7 +3856,13 @@ def serve_static_file(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -3878,7 +3950,13 @@ def serve_html_preview(file_path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed'}), 403
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # URL decode the file path to handle Chinese characters
         import urllib.parse
@@ -4355,7 +4433,13 @@ def convert_mermaid_to_images():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         if not file_path:
             return jsonify({'success': False, 'error': 'File path cannot be empty'})
@@ -4556,10 +4640,11 @@ def handle_connect(auth):
             # 保存client_session_id
             if client_session_id:
                 user_session.client_session_id = client_session_id
-            # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
-            if app_name_from_client:
-                user_session.app_manager = AppManager(app_name=app_name_from_client)
-                user_session.current_app_name = app_name_from_client
+            # 🔧 修复：无论是否有 app_name_from_client，都要根据当前tab的URL路径设置正确的app_manager
+            # 这样可以确保每个tab使用正确的app配置，即使它们共享同一个user_session对象
+            # 如果 app_name_from_client 为 None，表示主平台，应该设置为默认模式
+            user_session.app_manager = AppManager(app_name=app_name_from_client)
+            user_session.current_app_name = app_name_from_client
             gui_instance.user_sessions[session_id] = user_session
             # 重新创建认证会话 - 使用保存的api_key
             gui_instance.auth_manager.create_session(user_session.api_key, session_id)
@@ -4567,8 +4652,9 @@ def handle_connect(auth):
         # 保存client_session_id（无论是否恢复会话）
         if user_session and client_session_id:
             user_session.client_session_id = client_session_id
-        # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
-        if user_session and app_name_from_client:
+        # 🔧 修复：无论是否有 app_name_from_client，都要根据当前tab的URL路径设置正确的app_manager
+        # 这样可以确保每个tab使用正确的app配置，即使它们共享同一个user_session对象
+        if user_session:
             user_session.app_manager = AppManager(app_name=app_name_from_client)
             user_session.current_app_name = app_name_from_client
     else:
@@ -4576,8 +4662,9 @@ def handle_connect(auth):
         # 保存client_session_id
         if user_session and client_session_id:
             user_session.client_session_id = client_session_id
-        # 如果客户端传递了 app_name，更新 app_manager（优先使用 URL 路径）
-        if user_session and app_name_from_client:
+        # 🔧 修复：无论是否有 app_name_from_client，都要根据当前tab的URL路径设置正确的app_manager
+        # 这样可以确保每个tab使用正确的app配置，即使它们共享同一个user_session对象
+        if user_session:
             user_session.app_manager = AppManager(app_name=app_name_from_client)
             user_session.current_app_name = app_name_from_client
     
@@ -4594,7 +4681,9 @@ def handle_connect(auth):
         return False
     
     # Create user directory if not exists
-    user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    # 使用 session 特定的 base_data_dir
+    session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+    user_dir = user_session.get_user_directory(session_base_data_dir)
     os.makedirs(user_dir, exist_ok=True)
     
     # Join user to their own room for isolated communication
@@ -4815,12 +4904,34 @@ def handle_execute_task(data):
     gui_config = data.get('gui_config', {})  # GUI configuration options
     attached_files = data.get('attached_files', [])  # Attached file information
     
-    # Get user's base directory
-    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    # 🔧 修复：对于 WebSocket 请求，优先使用 session 中的 app_manager.app_name
+    # 因为 WebSocket 请求的路径可能是 /socket.io/...，无法从路径识别 app_name
+    # 而 session 中的 app_manager 已经在连接时根据 URL 路径正确设置了
+    session_app_name = user_session.app_manager.app_name if user_session.app_manager else None
+    if session_app_name:
+        # 使用 session 中的 app_name 来获取 base_data_dir
+        temp_app_manager = AppManager(app_name=session_app_name)
+        config_file = "config/config.txt"  # default
+        if temp_app_manager.is_app_mode():
+            app_config_path = temp_app_manager.get_config_path()
+            if app_config_path:
+                config_file = app_config_path
+        request_base_data_dir = get_gui_default_data_directory(config_file)
+        if not request_base_data_dir:
+            request_base_data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    else:
+        # 如果没有 session app_name，尝试从请求 URL 获取（用于 HTTP 请求）
+        gui_instance.ensure_app_switched_for_request(request, session_id)
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+    
+    # Get user's base directory using request-specific base_data_dir
+    user_base_dir = user_session.get_user_directory(request_base_data_dir)
     
     # Determine output directory first (needed for loading history from correct directory)
     if task_type == 'new':
         # New task: create new output directory
+        # For new tasks, we'll create the directory in execute_agia_task_process_target
+        # but we need to pass the correct base_data_dir via app_name
         out_dir = None
         continue_mode = False
     elif task_type == 'selected':
@@ -4890,10 +5001,15 @@ def handle_execute_task(data):
     try:
         # 🚀 Create and start process with highest priority (minimize delay)
         # Get app_name and user_dir for app-specific configuration
-        # 优先从请求数据中获取 app_name（前端传递）
-        app_name = data.get('app_name') or gui_config.get('app_name')
+        # 🔧 修复：优先使用 session 中的 app_manager.app_name，确保与 base_data_dir 一致
+        # 因为 WebSocket 请求无法从路径识别 app_name，而 session 中的 app_manager 已经在连接时正确设置了
+        app_name = user_session.app_manager.app_name if user_session.app_manager else None
         
-        # 如果请求数据中没有，尝试从连接的 URL 获取（WebSocket 连接时可能传递了）
+        # 如果 session 中没有，尝试从请求数据中获取（前端传递）
+        if not app_name:
+            app_name = data.get('app_name') or gui_config.get('app_name')
+        
+        # 如果还是没有，尝试从连接的 URL 获取（WebSocket 连接时可能传递了）
         if not app_name:
             # 尝试从 request 的 headers 或环境变量中获取
             # 注意：WebSocket 连接可能没有 Referer header，所以优先使用前端传递的值
@@ -4914,11 +5030,8 @@ def handle_execute_task(data):
             except Exception:
                 pass
         
-        # 如果还是没有，fallback 到 session（向后兼容）
-        if not app_name:
-            app_name = user_session.app_manager.app_name  # None means default mode (not app mode)
-        
-        user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # Use request-specific base_data_dir for user_dir
+        user_dir = user_session.get_user_directory(request_base_data_dir)
         
         user_session.current_process = multiprocessing.Process(
             target=execute_agia_task_process_target,
@@ -4964,7 +5077,9 @@ def handle_terminal_connect():
     
     # 重置terminal_cwd，强制重新计算工作目录，确保使用最新的选择状态
     user_session.terminal_cwd = None
-    cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir, force_recalculate=True)
+    # 使用 session 特定的 base_data_dir
+    session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+    cwd = user_session.get_terminal_cwd(session_base_data_dir, force_recalculate=True)
     
     # 发送工作目录信息
     emit('terminal_init', {'working_directory': cwd}, room=session_id)
@@ -4997,7 +5112,9 @@ def handle_terminal_input(data):
     
     try:
         # 获取当前工作目录（维护cd命令的状态）
-        cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+        # 使用 session 特定的 base_data_dir
+        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+        cwd = user_session.get_terminal_cwd(session_base_data_dir)
         
         # 确保cwd是绝对路径
         if cwd:
@@ -5519,7 +5636,9 @@ def handle_terminal_input(data):
                     # 如果是cd命令（包括组合命令中的cd）且成功执行，发送更新后的提示符
                     if ('cd' in cmd_lower and (' && ' in command or cmd_lower.startswith('cd'))) and return_code == 0:
                         # 获取当前目录并发送更新后的提示符
-                        current_dir = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+                        # 使用 session 特定的 base_data_dir
+                        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+                        current_dir = user_session.get_terminal_cwd(session_base_data_dir)
                         # 发送提示符更新事件
                         socketio.emit('terminal_prompt_update', {'directory': current_dir}, room=session_id)
                     
@@ -5551,7 +5670,9 @@ def handle_terminal_autocomplete(data):
     working_dir = data.get('working_dir', '')
     
     # 获取当前工作目录
-    cwd = user_session.get_terminal_cwd(gui_instance.base_data_dir)
+    # 使用 session 特定的 base_data_dir
+    session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+    cwd = user_session.get_terminal_cwd(session_base_data_dir)
     if working_dir:
         cwd = working_dir
     
@@ -5675,7 +5796,9 @@ def handle_select_directory(data):
         # 获取logs目录下的所有.out文件列表
         out_files = []
         try:
-            user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+            # 使用 session 特定的 base_data_dir
+            session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+            user_base_dir = user_session.get_user_directory(session_base_data_dir)
             logs_dir = os.path.join(user_base_dir, dir_name, 'logs')
             if os.path.exists(logs_dir):
                 # 查找所有.out文件
@@ -5719,7 +5842,9 @@ def handle_load_history(data):
     # 尝试读取指定的.out文件内容
     out_content = None
     try:
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用 session 特定的 base_data_dir
+        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+        user_base_dir = user_session.get_user_directory(session_base_data_dir)
         out_file_path = os.path.join(user_base_dir, dir_name, 'logs', f'{agent_name}.out')
         
         if os.path.exists(out_file_path):
@@ -5758,7 +5883,9 @@ def handle_append_task(data):
     
     try:
         # Get current output directory
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用 session 特定的 base_data_dir
+        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+        user_base_dir = user_session.get_user_directory(session_base_data_dir)
         output_dir = None
         
         if user_session.current_output_dir:
@@ -5945,7 +6072,9 @@ def handle_create_new_directory(data=None):
             return
         
         user_session = gui_instance.user_sessions[session_id]
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用 session 特定的 base_data_dir
+        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+        user_base_dir = user_session.get_user_directory(session_base_data_dir)
         
         # Get language from data if available, otherwise use default
         user_lang = data.get('language', get_language()) if data else get_language()
@@ -6185,7 +6314,9 @@ def agent_status_visualizer():
     user_session = gui_instance.get_user_session(temp_session_id, api_key)
     if not user_session:
         return "Authentication failed. Please provide a valid API key.", 401
-    user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+    # 使用请求特定的 base_data_dir，避免并发问题
+    request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+    user_base_dir = user_session.get_user_directory(request_base_data_dir)
     
     # Get directory from query parameter (selected directory)
     dir_name = request.args.get('dir')
@@ -6286,7 +6417,9 @@ def agent_status_api():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Get directory from query parameter (selected directory)
         dir_name = request.args.get('dir')
@@ -6398,7 +6531,9 @@ def agent_status_reload():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Get directory from query parameter (selected directory)
         dir_name = request.args.get('dir')
@@ -6456,7 +6591,9 @@ def agent_status_files(path):
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'error': 'Authentication failed. Please provide a valid API key.'}), 401
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # Get directory from query parameter (selected directory)
         dir_name = request.args.get('dir')
@@ -7149,7 +7286,9 @@ def get_routine_files(session_id=None, app_manager=None, lang_param=None):
                 user_dir = None
                 if session_id and session_id in gui_instance.user_sessions:
                     user_session = gui_instance.user_sessions[session_id]
-                    user_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+                    # 使用 session 特定的 base_data_dir
+                    session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+                    user_dir = user_session.get_user_directory(session_base_data_dir)
                 app_routine_dir = user_app_manager.get_routine_path(user_dir=user_dir)
         except Exception as e:
             print(f"Warning: Error checking app mode: {e}")
@@ -7379,7 +7518,9 @@ def save_file():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
         real_output_dir = os.path.realpath(user_base_dir)
@@ -7428,7 +7569,9 @@ def save_markdown():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
 
         full_path = os.path.join(user_base_dir, rel_path)
         real_output_dir = os.path.realpath(user_base_dir)
@@ -7508,7 +7651,9 @@ def reparse_markdown_diagrams():
         api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
         
         # 获取完整路径
         full_path = os.path.join(user_base_dir, rel_path)
@@ -7836,7 +7981,9 @@ def optimize_svg():
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed or session creation failed. Please ensure you are connected with a valid API key.'})
-        user_base_dir = user_session.get_user_directory(gui_instance.base_data_dir)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
 
         full_path = os.path.join(user_base_dir, file_path)
         real_output_dir = os.path.realpath(user_base_dir)
