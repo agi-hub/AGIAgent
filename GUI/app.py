@@ -550,6 +550,7 @@ I18N_TEXTS = {
         # Directory operations
         'directory_created_with_workspace': '已创建新工作目录: {0} (包含workspace子目录)',
         'directory_list_refreshed': '目录列表已刷新',
+        'refreshing_directories': '正在刷新目录',
         'no_files_selected': '没有选择文件',
         'no_valid_files': '没有选择有效文件',
         'target_directory_not_exist': '目标目录不存在',
@@ -948,6 +949,7 @@ I18N_TEXTS = {
         # Directory operations
         'directory_created_with_workspace': 'New workspace directory created: {0} (with workspace subdirectory)',
         'directory_list_refreshed': 'Directory list refreshed',
+        'refreshing_directories': 'Refreshing directories...',
         'no_files_selected': 'No files selected',
         'no_valid_files': 'No valid files selected',
         'target_directory_not_exist': 'Target directory does not exist',
@@ -2118,12 +2120,22 @@ class AGIAgentGUI:
     
 
     
-    def get_output_directories(self, user_session):
-        """Get all directories containing workspace subdirectory for specific user"""
+    def get_output_directories(self, user_session, base_data_dir=None):
+        """
+        Get all directories containing workspace subdirectory for specific user
+        
+        Args:
+            user_session: User session object
+            base_data_dir: Optional base data directory path. If None, uses self.base_data_dir (for backward compatibility)
+        """
         result = []
         
+        # Use provided base_data_dir or fall back to instance variable
+        if base_data_dir is None:
+            base_data_dir = self.base_data_dir
+        
         # Get user's directory
-        user_output_dir = user_session.get_user_directory(self.base_data_dir)
+        user_output_dir = user_session.get_user_directory(base_data_dir)
         os.makedirs(user_output_dir, exist_ok=True)
         
         try:
@@ -2786,7 +2798,8 @@ def get_app_name_from_url(request):
     
     优先级：
     1. Referer header 中的路径（如果用户从 /colordoc 访问 API）
-    2. 当前请求路径（如果是直接访问 /api/xxx）
+    2. 当前请求路径（支持从 /colordoc/api/xxx 或 /api/xxx 中提取）
+    3. 从 session 中获取（如果存在）
     
     Args:
         request: Flask request 对象
@@ -2796,6 +2809,21 @@ def get_app_name_from_url(request):
     """
     app_name = None
     
+    def validate_app_name(potential_app_name):
+        """验证 app_name 是否有效"""
+        if not potential_app_name or potential_app_name in RESERVED_PATHS:
+            return None
+        # 验证 app 是否存在（包括隐藏应用，通过检查文件系统）
+        try:
+            apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
+            app_path = os.path.join(apps_dir, potential_app_name)
+            app_json = os.path.join(app_path, 'app.json')
+            if os.path.isdir(app_path) and os.path.exists(app_json):
+                return potential_app_name
+        except Exception:
+            pass
+        return None
+    
     # 首先尝试从 Referer header 获取（用户从 /colordoc 页面访问 API）
     referer = request.headers.get('Referer') or request.headers.get('Referrer')
     if referer:
@@ -2803,16 +2831,12 @@ def get_app_name_from_url(request):
             from urllib.parse import urlparse
             parsed = urlparse(referer)
             path_parts = [p for p in parsed.path.split('/') if p]
-            if path_parts:
-                potential_app_name = path_parts[0]
-                # 验证是否是有效的 app（不是保留路径）
-                if potential_app_name not in RESERVED_PATHS:
-                    # 验证 app 是否存在（包括隐藏应用，通过检查文件系统）
-                    apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
-                    app_path = os.path.join(apps_dir, potential_app_name)
-                    app_json = os.path.join(app_path, 'app.json')
-                    if os.path.isdir(app_path) and os.path.exists(app_json):
-                        app_name = potential_app_name
+            # 遍历路径的所有部分，找到第一个有效的 app_name
+            for part in path_parts:
+                validated = validate_app_name(part)
+                if validated:
+                    app_name = validated
+                    break
         except Exception:
             pass
     
@@ -2821,15 +2845,27 @@ def get_app_name_from_url(request):
         try:
             current_path = request.path if hasattr(request, 'path') else '/'
             path_parts = [p for p in current_path.split('/') if p]
-            if path_parts:
-                potential_app_name = path_parts[0]
-                if potential_app_name not in RESERVED_PATHS:
-                    # 验证 app 是否存在（包括隐藏应用，通过检查文件系统）
-                    apps_dir = os.path.join(gui_instance.app_manager.base_dir, 'apps')
-                    app_path = os.path.join(apps_dir, potential_app_name)
-                    app_json = os.path.join(app_path, 'app.json')
-                    if os.path.isdir(app_path) and os.path.exists(app_json):
-                        app_name = potential_app_name
+            # 遍历路径的所有部分，找到第一个有效的 app_name
+            # 这样可以支持 /colordoc/api/xxx 这样的路径格式
+            for part in path_parts:
+                validated = validate_app_name(part)
+                if validated:
+                    app_name = validated
+                    break
+        except Exception:
+            pass
+    
+    # 如果仍然没找到，尝试从 session 中获取（如果存在）
+    if not app_name:
+        try:
+            # 尝试从请求中获取 session_id
+            api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+            if api_key:
+                temp_session_id = create_temp_session_id(request, api_key)
+                if temp_session_id in gui_instance.user_sessions:
+                    user_session = gui_instance.user_sessions[temp_session_id]
+                    if hasattr(user_session, 'app_manager') and user_session.app_manager.is_app_mode():
+                        app_name = user_session.app_manager.get_app_name()
         except Exception:
             pass
     
@@ -3118,13 +3154,13 @@ def get_output_dirs():
         if not user_session:
             return jsonify({'success': False, 'error': 'Authentication failed'}), 401
         
-        # 根据 URL 路径自动切换 app（如果从 /colordoc 或 /patent 访问，或从 / 访问需要重置）
-        app_name = get_app_name_from_url(request)
-        # 如果从 / 访问（app_name 为 None），也需要切换以重置到默认配置
-        # 如果从 /colordoc 等访问（app_name 不为 None），切换到对应 app
-        gui_instance.switch_app(app_name, session_id=temp_session_id)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
         
-        dirs = gui_instance.get_output_directories(user_session)
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        
+        dirs = gui_instance.get_output_directories(user_session, base_data_dir=request_base_data_dir)
         return jsonify({'success': True, 'directories': dirs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -5992,8 +6028,14 @@ def refresh_directories():
         temp_session_id = create_temp_session_id(request, api_key)
         user_session = gui_instance.get_user_session(temp_session_id, api_key)
         
-        # Use existing method to get directory list for this user
-        directories = gui_instance.get_output_directories(user_session)
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        
+        # Use existing method to get directory list for this user with request-specific base_data_dir
+        directories = gui_instance.get_output_directories(user_session, base_data_dir=request_base_data_dir)
         return jsonify({
             'success': True,
             'directories': directories,

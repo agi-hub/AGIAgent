@@ -4562,6 +4562,7 @@
         let scrollDirection = 'down'; // 'up' or 'down'
         let lastScrollTop = 0;
         let isGuest = false; // 添加guest状态跟踪
+        let isDirectoryLoading = false; // 标记目录是否正在加载
         let pendingUploadFiles = null; // 用于存储待上传的文件（当需要先创建目录时）
         // let newMessageCount = 0; // New message counter (已禁用)
         let lastMessageTime = 0;
@@ -4604,16 +4605,26 @@
                 
                 // Enable UI controls
                 enableUI(true);
+                
+                // 如果目录正在加载，更新消息显示
+                if (isDirectoryLoading && directoryList) {
+                    renderDisconnectedWorkspaceMessage();
+                }
             } else if (status === 'connecting') {
                 connectBtn.disabled = true;
                 connectBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
                 connectBtn.style.opacity = '0.6';
-                // 处于连接中状态：暂时视为“正在尝试连接”，不显示“请先连接”提示
+                // 处于连接中状态：暂时视为"正在尝试连接"，不显示"请先连接"提示
                 isConnected = false;
                 isConnecting = true;
                 
                 // Disable UI controls
                 enableUI(false);
+                
+                // 如果目录正在加载，更新消息显示
+                if (isDirectoryLoading && directoryList) {
+                    renderDisconnectedWorkspaceMessage();
+                }
             } else {
                 connectBtn.style.background = 'transparent';
                 connectBtn.style.color = 'var(--color-accent)';
@@ -4712,6 +4723,7 @@
             isConnected = false;
             isConnecting = false;
             isGuest = false;
+            isDirectoryLoading = false; // 重置目录加载状态
             selectedDirectory = null;
             taskMode = 'new';
             pendingUserInput = '';
@@ -5366,7 +5378,8 @@
                 selectedDirectory = data.dir_name;
                 if (selectedDirectory) {
                     taskMode = 'selected';
-                    refreshDirectories();
+                    // 不需要刷新整个目录列表，UI状态已经在 selectDirectory 中更新了
+                    // refreshDirectories(); // 移除：避免不必要的网络请求和DOM重渲染
                     // 启动文件监测
                     startFileMonitoring();
                     
@@ -8502,6 +8515,13 @@
          * @param {boolean} autoSelectFirst - 如果为true且没有已选择的目录，则自动选择第一个目录
          */
                         function refreshDirectories(autoSelectFirst = false) {
+            // 设置目录加载状态
+            isDirectoryLoading = true;
+            // 如果正在连接或已连接，显示刷新目录消息
+            if ((isConnecting || isConnected) && directoryList) {
+                renderDisconnectedWorkspaceMessage();
+            }
+            
             // 保存当前展开状态，避免刷新后用户展开的目录被重置
             // 🔧 修复：不仅从expandedDirectories Set中读取，还要从DOM中读取当前真实的展开状态
             // 这样可以确保即使expandedDirectories没有及时更新，也能正确保存展开状态
@@ -8639,6 +8659,9 @@
                                     console.log(`🔄 Auto-selecting first directory after reconnect: ${firstDirectory}`);
                                     selectDirectory(firstDirectory);
                                 }
+                                
+                                // 目录加载完成，清除加载状态
+                                isDirectoryLoading = false;
                             }, 0);
                         });
                     } else {
@@ -8648,6 +8671,8 @@
                                 ${I18N.load_directory_failed}: ${data.error}
                             </div>
                         `;
+                        // 目录加载失败，清除加载状态
+                        isDirectoryLoading = false;
                     }
                 })
                 .catch(error => {
@@ -8657,6 +8682,8 @@
                             ${I18N.network_error}: ${error.message}
                         </div>
                     `;
+                    // 目录加载出错，清除加载状态
+                    isDirectoryLoading = false;
                 });
         }
 
@@ -8867,10 +8894,19 @@
          */
         function renderDisconnectedWorkspaceMessage() {
             if (!directoryList) return;
-            const message = I18N.please_connect || '请先连接服务器';
-            directoryList.innerHTML = `
-                <div class="directory-placeholder">${message}</div>
-            `;
+            // 如果正在连接或已连接但目录正在加载，显示刷新目录消息
+            if ((isConnecting || isConnected) && isDirectoryLoading) {
+                const message = I18N.refreshing_directories || '正在刷新目录';
+                directoryList.innerHTML = `
+                    <div class="directory-placeholder">${message}</div>
+                `;
+            } else if (!isConnected && !isConnecting) {
+                // 只有在未连接且未在连接中时才显示"请先连接"消息
+                const message = I18N.please_connect || '请先连接服务器';
+                directoryList.innerHTML = `
+                    <div class="directory-placeholder">${message}</div>
+                `;
+            }
         }
 
         /**
