@@ -3,16 +3,25 @@
 [**中文**](README_zh.md) | **English**
 
 ## 🚀 Project Introduction
-**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. As an open-source alternative to Cursor and Manus, it offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 20+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs using it like Cursor or Claude Code, with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
+**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. Similar to Claude cowork, AGI Agent serves as a general-purpose local agent system that can autonomously operate your computer and handle complex tasks through natural language interaction. It offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 20+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
 
 ### 🤔 Is This Software Right for You?
 
-- **Looking for a Cursor alternative?** If you need a cloud-deployable solution for online code writing for small teams, AGI Agent might be a great fit.
-- **Need a Manus-like general-purpose tool?** If you're looking for a versatile system that processes Word/PDF inputs and generates analysis code, charts, and reports, give it a try.
+- **Looking for a Claude cowork-like experience?** AGI Agent provides a similar collaborative AI experience, enabling you to work with an intelligent agent that can understand your needs, operate your local environment, and execute complex tasks autonomously.
+- **Need a general-purpose local agent?** If you want an agent system that can handle diverse tasks on your local machine—from code writing to document generation, from data analysis to system operations—AGI Agent is designed for you.
 - **Writing complex professional documents?** If you need to create richly illustrated, complex professional reports such as academic papers, in-depth research, or patents, AGI Agent excels at this.
 - **Seeking a locally deployable agent?** If you want an agent system that supports local deployment and is compatible with various Anthropic/OpenAI interface models, this could be your solution.
 - **Vibe enthusiast?** If you're passionate about the Vibe workflow, you'll love what AGI Agent offers.
 
+### 🆚 Comparison with Claude Cowork
+
+While AGI Agent offers a similar collaborative AI experience to Claude cowork, it provides several key advantages:
+
+- **🏠 Fully Localizable**: AGI Agent can be completely installed and run on your local machine, giving you full control over your data and environment without relying on cloud services.
+- **🔌 Universal Model Support**: Unlike Claude cowork which is limited to Claude models, AGI Agent supports any mainstream large language model including Claude, GPT-4, DeepSeek V3, Kimi K2, GLM, Qwen, and more through standard Anthropic/OpenAI API interfaces.
+- **💻 Cross-Platform Compatibility**: Full support for Windows, Linux, and macOS, allowing you to use AGI Agent on any operating system you prefer.
+- **📖 100% Open Source**: Complete source code available, enabling transparency, customization, and community-driven improvements without vendor lock-in.
+- **⚙️ No Dependency on Claude Code**: Built from the ground up with independent architecture, AGI Agent does not require Claude Code as an underlying dependency, providing more flexibility and control.
 
 ## GUI for Vibe Everything
 
