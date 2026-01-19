@@ -3,7 +3,7 @@
 [**English**](README_en.md)
 
 ## 🚀 项目介绍
-**AGI Agent** 是一个通用的智能体平台，可以实现氛围文档撰写（Vibe Doc）、Vibe Coding和基于自然语言的通用任务执行。
+**AGI Agent** 是一个通用的智能体平台，可以实现氛围文档撰写（Vibe Colorful Doc）、Vibe Coding和基于自然语言的通用任务执行。
 类似于 Claude cowork，AGI Agent 是一个通用化的本地智能体操作系统，能够自主操作您的计算机，通过自然语言交互处理复杂任务。平台包含 20+ 内置工具和许多例程文件（skills），适用于广泛的使用场景。AGI Agent 擅长创建带有丰富图表的专业文档，并可以直接在 GUI 中预览和编辑文档。也可以用它编写程序，支持多轮交互、拖放文件等（@files）。
 提供 GUI 和 CLI 、嵌入式运行等模式，可以部署在云端、笔记本电脑或嵌入式设备（ARM）上。支持Anthropic/OpenAI大模型接口，支持开源/私有化部署。
 
@@ -11,7 +11,7 @@
 
 - **正在寻找开源的 Claude cowork？** AGI Agent 提供类似的协作式 AI 体验，让您能够与智能体协作，智能体可以理解您的需求、操作本地环境并自主执行复杂任务。
 - **需要通用化的本地智能体？** 如果您想要一个能够在本地机器上处理多样化任务的智能体系统——从代码编写到文档生成，从数据分析到系统操作——AGI Agent 正是为您设计的。
-- **编写复杂的专业文档？** 如果您需要创建带有丰富插图、复杂的专业报告，如学术论文、深度研究或专利，AGI Agent 表现的表现会让你满意;
+- **编写复杂的专业文档？** 如果您需要创建带有丰富插图、复杂的专业报告，如学术论文、深度研究或专利，AGI Agent 表现的表现会让你满意（[参考介绍](https://agiagentonline.com/colordocintro)）;
 - **寻求可本地部署的代理？** 如果您想要一个支持本地部署且兼容各种 Anthropic/OpenAI 接口模型的代理系统，这可能是您的解决方案;
 - **Vibe 爱好者？** 如果您热衷于 Vibe 工作流程，您会喜欢 AGI Agent。
 
@@ -25,13 +25,12 @@
 - **📖 100% 开源**：提供完整的源代码，实现透明度、可定制性和社区驱动的改进，无供应商锁定。
 - **⚙️ 无需 Claude Code 作为底层**：从零开始构建的独立架构，AGI Agent 不需要 Claude Code 作为底层依赖，提供更大的灵活性和控制权。
 
-## GUI for Vibe Everything
+## Vibe Demo （鼠标单击打开Youtube视频）
 
 [![观看演示视频](./md/images/AGIAgent_GUI.png)](https://www.youtube.com/watch?v=dsRfuH3s9Kk)
 
-点击在 Youtube 上观看视频
 
-### 📹 功能演示视频
+### 📹 功能演示视频（鼠标单击打开演示视频）
 
 <div align="center">
 
@@ -54,11 +53,25 @@
 
 </div>
 
+### 🖼️ 演示案例（鼠标单击打开页面）
+
+<div align="center">
+
+<a href="https://agiagentonline.com/example-results-records/izhikevich_neuron_visualization.html"><img src="https://agiagentonline.com/example-results-records/python%E7%A8%8B%E5%BA%8F%E7%BB%98%E5%88%B6%E5%9B%BE%E5%83%8F.png" width="300" alt="python程序绘制图像"></a>
+<a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_guide.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="300" alt="写个网页介绍乐山大佛"></a>
+
+<br/>
+
+<a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="300" alt="抽奖转盘"></a>
+<a href="https://agiagentonline.com/example-results-records/maze-game.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E6%89%BE%E5%A6%88%E5%A6%88%E7%9A%84%E5%B0%8F%E6%B8%B8%E6%88%8F.png" width="300" alt="写个找妈妈的小游戏"></a>
+
+</div>
+
 ### 📚 作品展示
 
 以下是使用 AGI Agent 生成的部分作品示例，展示了平台在各类文档生成任务中的能力：
 
-#### 🔬 技术研究报告
+#### 🔬 技术研究报告（鼠标单击下载查看）
 - [大模型及智能体对国内外就业的影响及未来趋势综述](https://agiagentonline.com/colordocintro/assets/examples/大模型及智能体对国内外就业的影响及未来趋势综述.docx)
 - [2026年AI_Agent发展趋势报告](https://agiagentonline.com/colordocintro/assets/examples/2026年AI_Agent发展趋势报告.docx)
 - [大模型推理芯片发展趋势报告](https://agiagentonline.com/colordocintro/assets/examples/大模型推理芯片发展趋势报告.docx)
