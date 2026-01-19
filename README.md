@@ -120,7 +120,7 @@
 
 2025/10/27 AGIAgent 在线注册现已开放！点击 <https://agiagentonline.com> 右侧的注册按钮进行注册并开始使用。
 
-2025/10/12 提供了 AGIAgent 用于生成带丰富图片的文章的介绍，详见 [colourfuldoc/ColourfulDoc.md](colourfuldoc/ColourfulDoc.md) 和 [colourfuldoc/ColourfulDoc_zh.md](colourfuldoc/ColourfulDoc_zh.md)（中文版）。
+2025/10/12 提供了 AGIAgent 用于生成带丰富图片的文章的介绍，详见 [apps/colordoc/md/README.md](apps/colordoc/md/README.md) 和 [apps/colordoc/md/README_zh.md](apps/colordoc/md/README_zh.md)（中文版）。
 
 2025/10/10 Windows 安装包（在线/离线）已就绪！请查看 [发布页面](https://github.com/agi-hub/AGIAgent/releases/)。
 
