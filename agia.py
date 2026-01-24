@@ -361,6 +361,10 @@ Usage Examples:
   
   # Use custom model configuration
   python agia.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
+  
+  # Use app-specific prompts and config (loads from apps/{app_name}/prompts/ and apps/{app_name}/config.txt)
+  python agia.py --app colordoc "Generate a document with images"
+  python agia.py --app patent "Create a patent application"
         """
     )
     
@@ -489,6 +493,13 @@ Usage Examples:
         help="Disable thinking mode. Overrides config.txt setting."
     )
     
+    parser.add_argument(
+        "--app",
+        type=str,
+        default=None,
+        help="App name (subfolder in apps/). When set, loads prompts from apps/{app}/prompts/ and config from apps/{app}/config.txt"
+    )
+    
     args = parser.parse_args()
     
     # Handle requirement argument priority: positional argument takes precedence over --requirement/-r
@@ -547,17 +558,6 @@ Usage Examples:
     id_manager = get_id_manager(args.dir)
     id_manager.reset_counters(agent_counter=1, message_counter=0)
     
-    # Install debug system after setting output directory
-    from src.config_loader import load_config
-    config = load_config()
-    enable_debug_system = config.get('enable_debug_system', 'False').lower() == 'true'
-    if enable_debug_system:
-        install_debug_system(
-            enable_stack_trace=True,
-            enable_memory_monitor=True, 
-            enable_execution_tracker=True
-        )
-    
     # Register cleanup handlers
     atexit.register(global_cleanup)
     # Note: signal handlers are now managed by debug system
@@ -585,6 +585,45 @@ Usage Examples:
     elif args.thinking:
         enable_thinking = True
     
+    # Handle --app parameter: set prompts_folder and config_file
+    prompts_folder = None
+    config_file = None
+    if args.app:
+        app_name = args.app
+        app_prompts_folder = os.path.join("apps", app_name, "prompts")
+        app_config_file = os.path.join("apps", app_name, "config.txt")
+        
+        # Check if app directory exists
+        app_dir = os.path.join("apps", app_name)
+        if not os.path.exists(app_dir):
+            print_current(f"⚠️ Warning: App directory '{app_dir}' does not exist")
+        else:
+            # Check if prompts folder exists
+            if os.path.exists(app_prompts_folder):
+                prompts_folder = app_prompts_folder
+                print_current(f"📁 Using prompts folder: {prompts_folder}")
+            else:
+                print_current(f"⚠️ Warning: Prompts folder '{app_prompts_folder}' does not exist, using default prompts folder")
+            
+            # Check if config file exists
+            if os.path.exists(app_config_file):
+                config_file = app_config_file
+                print_current(f"⚙️ Using config file: {config_file}")
+            else:
+                print_current(f"⚠️ Warning: Config file '{app_config_file}' does not exist, using default config file")
+    
+    # Install debug system after determining config file (for --app support)
+    from src.config_loader import load_config
+    config_file_for_debug = config_file if config_file else "config/config.txt"
+    config = load_config(config_file_for_debug)
+    enable_debug_system = config.get('enable_debug_system', 'False').lower() == 'true'
+    if enable_debug_system:
+        install_debug_system(
+            enable_stack_trace=True,
+            enable_memory_monitor=True, 
+            enable_execution_tracker=True
+        )
+    
     # Create and run main program
     try:
         main_app = AGIAgentMain(
@@ -600,7 +639,9 @@ Usage Examples:
             link_dir=args.link_dir,
             routine_file=args.routine,
             plan_mode=plan_mode,
-            enable_thinking=enable_thinking
+            enable_thinking=enable_thinking,
+            prompts_folder=prompts_folder,
+            config_file=config_file
         )
         
         success = main_app.run(

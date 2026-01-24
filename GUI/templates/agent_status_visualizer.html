@@ -631,6 +631,11 @@
                             content = String(content);
                         }
                         
+                        // Limit content length to 50 characters to avoid font size issues
+                        if (content.length > 50) {
+                            content = content.substring(0, 50);
+                        }
+                        
                         // Clean content for Mermaid: remove newlines, quotes, and other special characters
                         // Replace newlines with spaces
                         content = content.replace(/\n/g, ' ').replace(/\r/g, '');

@@ -333,6 +333,7 @@ class AGIAgentMain:
                  streaming: Optional[bool] = None,
                  MCP_config_file: Optional[str] = None,
                  prompts_folder: Optional[str] = None,
+                 config_file: Optional[str] = None,
                  link_dir: Optional[str] = None,
                  user_id: Optional[str] = None,
                  routine_file: Optional[str] = None,
@@ -355,10 +356,14 @@ class AGIAgentMain:
             streaming: Whether to use streaming output
             MCP_config_file: Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')
             prompts_folder: Custom prompts folder path (optional, defaults to 'prompts')
+            config_file: Custom config file path (optional, defaults to 'config/config.txt')
             link_dir: Link to external code directory (optional)
             routine_file: Routine file path to include in task planning (optional)
             enable_thinking: Whether to enable thinking mode (None to use config.txt value)
         """
+        # Store config_file for use in config loading
+        self.config_file = config_file or "config/config.txt"
+        
         # Handle last requirement loading for continue mode
         self.last_requirement = None
         if continue_mode:
@@ -369,23 +374,23 @@ class AGIAgentMain:
             else:
                 print_system("ℹ️ Continue mode: No previous requirement found")
         
-        # Load API key from config/config.txt if not provided
+        # Load API key from config file if not provided
         if api_key is None:
-            api_key = get_api_key()
+            api_key = get_api_key(self.config_file)
             if api_key is None:
-                raise ValueError("API key not found. Please provide api_key parameter, set it in config/config.txt, or set AGIAGENT_API_KEY environment variable")
+                raise ValueError(f"API key not found. Please provide api_key parameter, set it in {self.config_file}, or set AGIAGENT_API_KEY environment variable")
 
-        # Load model from config/config.txt if not provided
+        # Load model from config file if not provided
         if model is None:
-            model = get_model()
+            model = get_model(self.config_file)
             if model is None:
-                raise ValueError("Model not found. Please provide model parameter, set it in config/config.txt, or set AGIAGENT_MODEL environment variable")
+                raise ValueError(f"Model not found. Please provide model parameter, set it in {self.config_file}, or set AGIAGENT_MODEL environment variable")
 
-        # Load API base from config/config.txt if not provided
+        # Load API base from config file if not provided
         if api_base is None:
-            api_base = get_api_base()
+            api_base = get_api_base(self.config_file)
             if api_base is None:
-                raise ValueError("API base URL not found. Please provide api_base parameter, set it in config/config.txt, or set AGIAGENT_API_BASE environment variable")
+                raise ValueError(f"API base URL not found. Please provide api_base parameter, set it in {self.config_file}, or set AGIAGENT_API_BASE environment variable")
 
         # Store the validated parameters
         self.out_dir = out_dir

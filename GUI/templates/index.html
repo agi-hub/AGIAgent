@@ -1718,6 +1718,43 @@
             overflow-y: auto;
             padding: 0;
             margin: 0;
+            position: relative;
+        }
+
+        .directory-list.drag-over {
+            border: 2px dashed var(--color-accent);
+            background: var(--bg-upload-area-hover);
+            box-shadow: 0 0 0 2px var(--shadow-focus);
+        }
+
+        .directory-list.drag-over::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 122, 204, 0.1);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .directory-list.drag-over::after {
+            content: attr(data-drag-text);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-upload-area);
+            padding: 20px 40px;
+            border-radius: 8px;
+            border: 2px solid var(--color-accent);
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 500;
+            z-index: 2;
+            pointer-events: none;
+            white-space: nowrap;
         }
 
         .directory-placeholder {
@@ -15270,6 +15307,8 @@
             // 初始化MCP服务器选择功能
             initMCPServerSelection();
 
+            // 初始化工作目录拖拽上传功能
+            initDirectoryDragAndDrop();
 
             // 加载模型配置选项
             loadModelConfigs();
@@ -17310,6 +17349,95 @@
                 // 清空文件输入
                 directoryFileInput.value = '';
             });
+        }
+
+        // 工作目录区域拖拽上传功能（支持从浏览器外部拖拽文件）
+        // 延迟初始化，确保DOM和所有变量都已加载
+        function initDirectoryDragAndDrop() {
+            const directoryList = document.getElementById('directoryList');
+            if (!directoryList) {
+                console.warn('directoryList element not found, retrying...');
+                setTimeout(initDirectoryDragAndDrop, 100);
+                return;
+            }
+
+            // 设置拖拽提示文本
+            const dragText = I18N.drop_files_to_upload || (CURRENT_LANG === 'zh' ? '拖放文件到此处上传' : 'Drop files here to upload');
+            directoryList.setAttribute('data-drag-text', dragText);
+            
+            // 阻止默认行为，允许拖拽
+            directoryList.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 检查是否是文件拖拽（从浏览器外部拖拽的文件）
+                // 如果draggedFileInfo存在，说明是从工作目录内部拖拽的文件，不处理
+                if (draggedFileInfo) {
+                    return;
+                }
+                
+                // 检查是否是文件拖拽（不是从工作目录内部拖拽的文件）
+                if (e.dataTransfer.types.includes('Files')) {
+                    // 检查是否有选中的工作目录
+                    if (selectedDirectory) {
+                        e.dataTransfer.dropEffect = 'copy';
+                        directoryList.classList.add('drag-over');
+                    } else {
+                        e.dataTransfer.dropEffect = 'none';
+                        directoryList.classList.remove('drag-over');
+                    }
+                }
+            });
+
+            directoryList.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                // 只有当真正离开目录列表区域时才移除样式
+                if (!directoryList.contains(e.relatedTarget)) {
+                    directoryList.classList.remove('drag-over');
+                }
+            });
+
+            directoryList.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                directoryList.classList.remove('drag-over');
+                
+                // 如果draggedFileInfo存在，说明是从工作目录内部拖拽的文件，不处理
+                if (draggedFileInfo) {
+                    return;
+                }
+                
+                // 检查是否是文件拖拽（从浏览器外部拖拽的文件）
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    // 检查是否有选中的工作目录
+                    if (!selectedDirectory) {
+                        const warningMsg = I18N.select_directory_error || (CURRENT_LANG === 'zh' ? '请先选择工作目录' : 'Please select a workspace directory first');
+                        addMessage(warningMsg, 'error');
+                        return;
+                    }
+
+                    // 检查guest用户权限
+                    if (isGuest) {
+                        addMessage(I18N.guest_cannot_upload || 'Guest用户无法上传文件', 'error');
+                        return;
+                    }
+
+                    // 将FileList转换为数组
+                    const files = Array.from(e.dataTransfer.files);
+                    
+                    // 上传文件到选中的工作目录
+                    quickUploadFiles(files, selectedDirectory);
+                }
+            });
+        }
+        
+        // 在DOM加载完成后初始化拖拽功能
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDirectoryDragAndDrop);
+        } else {
+            // DOM已经加载完成，延迟一点确保所有变量都已初始化
+            setTimeout(initDirectoryDragAndDrop, 100);
         }
 
         // 快速上传文件函数（不显示模态框，直接在聊天中显示消息）

@@ -37,6 +37,8 @@ IF you are an executor (your name is agent_<id>, where <id> is a number like 001
 
 ## Run Long-Term
 
+**TASK COMPLETION SIGNAL RULE**: As an executor agent, you MUST NOT send task completion signals. Only the manager agent should determine when tasks are completed and send completion signals. Sub-agents should report their progress and status updates to the manager, but should not send task end/completion signals.
+
 If the user has not provided a requirement, enter the IDLE state and wait for further instructions from the user. The user will notify you of the next step via a message. When you receive a new requirement, immediately spawn an executor agent to carry out the specific task. The executor agent should send you status updates and inform you of key progress or completion. You should not perform the task yourself. You must add any new task to the task map in plan.md and update the task map status accordingly. Also, update the task map based on the progress reports from the executor agent. If you do not receive any messages from the user or executor agents, you may remain in the IDLE state.
 
 **IMPORTANT - Infinite Sleep Usage**: When all tasks are completed and there are no other active agents (check using get_agent_session_info), you should use the IDLE tool with sleep=-1 to enter infinite sleep mode. This will only wake up when a user sends a message. This is the appropriate way to wait for new user instructions when the system is completely idle.

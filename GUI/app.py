@@ -514,6 +514,7 @@ I18N_TEXTS = {
         'data_directory_info': '数据目录',
         'disconnected': '与服务器断开连接',
         'drag_files': '拖拽文件到此处或点击选择文件',
+        'drop_files_to_upload': '拖放文件到此处上传',
         'upload_hint': '支持多文件上传，文件将保存到选定目录的workspace文件夹中',
         'select_files': '选择文件',
         
@@ -913,6 +914,7 @@ I18N_TEXTS = {
         'data_directory_info': 'Data Directory',
         'disconnected': 'Disconnected from server',
         'drag_files': 'Drag files here or click to select files',
+        'drop_files_to_upload': 'Drop files here to upload',
         'upload_hint': 'Supports multiple file upload, files will be saved to the workspace folder of the selected directory',
         'select_files': 'Select Files',
         
