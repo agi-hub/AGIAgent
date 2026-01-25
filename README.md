@@ -29,6 +29,10 @@
 
 [![观看演示视频](./md/images/AGIAgent_GUI.png)](https://www.youtube.com/watch?v=dsRfuH3s9Kk)
 
+### 📺 BiliBili演示视频
+
+- [游戏编程演示 - 合金弹头](https://www.bilibili.com/video/BV1KJUMBpEah/?vd_source=2c7e6ae9217ccc667ef46d56a3b686fa)
+- [文档撰写演示](https://www.bilibili.com/video/BV1wmUTB5EMN/?spm_id_from=333.1387.homepage.video_card.click)
 
 ### 📹 功能演示视频（鼠标单击打开演示视频）
 

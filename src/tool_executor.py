@@ -360,6 +360,7 @@ class ToolExecutor:
             "merge_file": self.tools.merge_file,
             "parse_doc_to_md": self.tools.parse_doc_to_md,
             "convert_docs_to_markdown": self.tools.convert_docs_to_markdown,
+            "create_img": self.tools.create_img,
         }
         
         # Add history compression tool if available

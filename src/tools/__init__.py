@@ -27,6 +27,7 @@ from .terminal_tools import TerminalTools
 from .web_search_tools import WebSearchTools
 from .help_tools import HelpTools
 from .mouse_tools import MouseTools
+from .image_generation_tools import ImageGenerationTools
 
 # Import MCP knowledge base tools
 try:
@@ -59,7 +60,8 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
         HelpTools,
         MouseTools,
         MCPKnowledgeBaseTools,
-        PluginTools
+        PluginTools,
+        ImageGenerationTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
@@ -75,6 +77,7 @@ if PLUGIN_TOOLS_AVAILABLE and MCP_KB_TOOLS_AVAILABLE:
             MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
             PluginTools.__init__(self, workspace_root)
+            ImageGenerationTools.__init__(self, workspace_root)
         
         def cleanup(self):
             """Clean up resources used by tools"""
@@ -140,7 +143,8 @@ elif MCP_KB_TOOLS_AVAILABLE:
         WebSearchTools,
         HelpTools,
         MouseTools,
-        MCPKnowledgeBaseTools
+        MCPKnowledgeBaseTools,
+        ImageGenerationTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
@@ -155,6 +159,7 @@ elif MCP_KB_TOOLS_AVAILABLE:
             HelpTools.__init__(self)
             MouseTools.__init__(self)
             MCPKnowledgeBaseTools.__init__(self, workspace_root, user_id)
+            ImageGenerationTools.__init__(self, workspace_root)
         
         def cleanup(self):
             """Clean up resources used by tools"""
@@ -219,7 +224,8 @@ else:
         TerminalTools,
         WebSearchTools,
         HelpTools,
-        MouseTools
+        MouseTools,
+        ImageGenerationTools
     ):
         def __init__(self, workspace_root: str = None, llm_api_key: str = None, 
                      llm_model: str = None, llm_api_base: str = None, 
@@ -233,6 +239,7 @@ else:
             WebSearchTools.__init__(self, llm_api_key, llm_model, llm_api_base, enable_llm_filtering, enable_summary, workspace_root=workspace_root, out_dir=out_dir)
             HelpTools.__init__(self)
             MouseTools.__init__(self)
+            ImageGenerationTools.__init__(self, workspace_root)
         
         def cleanup(self):
             """Clean up resources used by tools"""

@@ -1077,6 +1077,126 @@ def has_vision_config(config_file: str = "config/config.txt") -> bool:
     
     return False
 
+def get_image_generation_api_key(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get image generation API key from configuration file
+    Falls back to main API key if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Image generation API key string or None
+    """
+    config = load_config(config_file)
+    image_generation_api_key = config.get('image_generation_api_key')
+    
+    # If image_generation_api_key is not set or is placeholder, return main api_key
+    if not image_generation_api_key or image_generation_api_key.strip() == '' or image_generation_api_key.strip() == 'your key':
+        return get_api_key(config_file)
+    
+    return image_generation_api_key
+
+def get_image_generation_api_base(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get image generation API base URL from configuration file
+    Falls back to main API base if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Image generation API base URL string or None
+    """
+    config = load_config(config_file)
+    image_generation_api_base = config.get('image_generation_api_base')
+    
+    # If image_generation_api_base is not set or is placeholder, return main api_base
+    if not image_generation_api_base or image_generation_api_base.strip() == '':
+        return get_api_base(config_file)
+    
+    return image_generation_api_base
+
+def get_image_generation_model(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get image generation model name from configuration file
+    Defaults to google/gemini-3-pro-image-preview if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Image generation model name string or default
+    """
+    config = load_config(config_file)
+    image_generation_model = config.get('image_generation_model')
+    
+    # If image_generation_model is not set or is placeholder, return default
+    if not image_generation_model or image_generation_model.strip() == '' or image_generation_model.strip() == 'your key':
+        return 'google/gemini-3-pro-image-preview'  # Default model
+    
+    return image_generation_model
+
+def get_svg_optimizer_api_key(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get SVG optimizer API key from configuration file
+    Falls back to main API key if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        SVG optimizer API key string or None
+    """
+    config = load_config(config_file)
+    svg_optimizer_api_key = config.get('svg_optimizer_api_key')
+    
+    # If svg_optimizer_api_key is not set or is placeholder, return main api_key
+    if not svg_optimizer_api_key or svg_optimizer_api_key.strip() == '' or svg_optimizer_api_key.strip() == 'your key':
+        return get_api_key(config_file)
+    
+    return svg_optimizer_api_key
+
+def get_svg_optimizer_api_base(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get SVG optimizer API base URL from configuration file
+    Falls back to main API base if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        SVG optimizer API base URL string or None
+    """
+    config = load_config(config_file)
+    svg_optimizer_api_base = config.get('svg_optimizer_api_base')
+    
+    # If svg_optimizer_api_base is not set or is placeholder, return main api_base
+    if not svg_optimizer_api_base or svg_optimizer_api_base.strip() == '':
+        return get_api_base(config_file)
+    
+    return svg_optimizer_api_base
+
+def get_svg_optimizer_model(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get SVG optimizer model name from configuration file
+    Defaults to google/gemini-2.0-flash-exp:free if not configured
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        SVG optimizer model name string or default
+    """
+    config = load_config(config_file)
+    svg_optimizer_model = config.get('svg_optimizer_model')
+    
+    # If svg_optimizer_model is not set or is placeholder, return default
+    if not svg_optimizer_model or svg_optimizer_model.strip() == '':
+        return 'google/gemini-2.0-flash-exp:free'  # Default model
+    
+    return svg_optimizer_model
+
 def get_admit_task_completed_with_tools(config_file: str = "config/config.txt") -> bool:
     """
     Get TASK_COMPLETED signal handling configuration from configuration file

@@ -77,10 +77,10 @@ except ImportError:
     SVG_OPTIMIZER_AVAILABLE = False
 
 try:
-    from src.utils.llm_svg_optimizer import create_llm_optimizer_from_env
+    from src.utils.llm_svg_optimizer import create_image_generation_optimizer_from_config
     LLM_SVG_OPTIMIZER_AVAILABLE = True
 except ImportError:
-    #print("⚠️ LLM SVG optimizer not available")
+    #print("⚠️ Image generation SVG optimizer not available")
     LLM_SVG_OPTIMIZER_AVAILABLE = False
 
 # Import SVG to PNG converter
@@ -7968,7 +7968,7 @@ def save_to_config():
 
 @app.route('/api/optimize-svg', methods=['POST'])
 def optimize_svg():
-    """Optimize SVG file using either traditional or LLM-based optimization"""
+    """Generate image from SVG file using image generation API"""
     try:
         data = request.get_json() or {}
         file_path = data.get('file_path')
@@ -8003,88 +8003,258 @@ def optimize_svg():
 
         # Read original SVG content
         with open(full_path, 'r', encoding='utf-8') as f:
-            original_content = f.read()
+            original_svg_content = f.read()
 
         optimization_report = None
-        optimized_content = original_content
+        generated_image_path = None
 
         if use_llm and LLM_SVG_OPTIMIZER_AVAILABLE:
-            # Use LLM-based optimization
-            try:
-                optimizer = create_llm_optimizer_from_env()
-                optimized_content, report = optimizer.optimize_svg_with_llm(original_content)
-
+            # 先检查是否已经生成过_aicreate图像
+            # 生成_aicreate文件路径：原文件名_aicreate.png
+            from pathlib import Path
+            svg_path_obj = Path(full_path)
+            aicreate_path = svg_path_obj.parent / f"{svg_path_obj.stem}_aicreate.png"
+            
+            # 检查文件是否存在
+            if aicreate_path.exists():
+                # 已存在，直接使用该文件，不重新生成
+                generated_image_path = str(aicreate_path)
+                
+                # 转换为相对路径
+                if os.path.isabs(generated_image_path):
+                    try:
+                        generated_image_path = os.path.relpath(generated_image_path, user_base_dir)
+                    except ValueError:
+                        pass
+                
+                # 清理路径（移除output_*/workspace/前缀）
+                original_rel_path = file_path.replace('\\', '/')
+                original_dir = os.path.dirname(original_rel_path).replace('\\', '/')
+                original_dir_parts = original_dir.split('/') if original_dir else []
+                cleaned_dir_parts = []
+                skip_next = False
+                for i, part in enumerate(original_dir_parts):
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if part.startswith('output_'):
+                        if i + 1 < len(original_dir_parts) and original_dir_parts[i + 1] == 'workspace':
+                            skip_next = True
+                        continue
+                    if part == 'workspace' and i > 0 and original_dir_parts[i - 1].startswith('output_'):
+                        continue
+                    cleaned_dir_parts.append(part)
+                
+                generated_filename = os.path.basename(generated_image_path)
+                if cleaned_dir_parts:
+                    generated_image_path = '/'.join(cleaned_dir_parts) + '/' + generated_filename
+                else:
+                    generated_image_path = generated_filename
+                
+                # 创建优化报告
                 optimization_report = {
-                    'method': 'LLM',
-                    'llm_provider': getattr(optimizer, 'provider', 'unknown'),
-                    'llm_model': getattr(optimizer, 'model', 'unknown'),
-                    'original_issues_count': len(report.get('original_issues', [])),
-                    'changes_made': report.get('changes_made', []),
-                    'issues_fixed': report.get('issues_fixed', [])
+                    'method': 'ImageGeneration',
+                    'model': 'cached',
+                    'api_base': 'cached',
+                    'output_path': generated_image_path,
+                    'image_format': 'png',
+                    'cached': True  # 标记为缓存文件
                 }
-            except Exception as llm_error:
-                use_llm = False
+                
+                # 更新markdown文件中的图像链接
+                updated_markdown_files = _update_markdown_image_links(
+                    user_base_dir, file_path, generated_image_path
+                )
+                
+                if updated_markdown_files:
+                    optimization_report['updated_markdown_files'] = updated_markdown_files
+            else:
+                # 不存在，调用大模型生成
+                try:
+                    optimizer = create_image_generation_optimizer_from_config()
+                    generated_image_path, report = optimizer.generate_image_from_svg(original_svg_content, full_path)
 
-        if not use_llm and SVG_OPTIMIZER_AVAILABLE:
-            # Use traditional optimization
-            try:
-                optimizer = AdvancedSVGOptimizer(OptimizationLevel.STANDARD)
-                optimized_content, report = optimizer.optimize_svg_with_report(original_content)
+                    # Convert absolute path to relative path, and clean up path
+                    if generated_image_path:
+                        if os.path.isabs(generated_image_path):
+                            try:
+                                generated_image_path = os.path.relpath(generated_image_path, user_base_dir)
+                            except ValueError:
+                                # If paths are on different drives, use absolute path
+                                pass
+                        
+                        # Extract directory structure from original file path, removing output_*/workspace/ prefix
+                        # Example: "images/example.svg" -> "images/example_aicreate.png"
+                        # Example: "output_20260125_154810/workspace/example.svg" -> "example_aicreate.png"
+                        # Example: "output_20260125_154810/workspace/images/example.svg" -> "images/example_aicreate.png"
+                        
+                        # Get original file's directory structure (relative to user_base_dir)
+                        original_rel_path = file_path.replace('\\', '/')
+                        original_dir = os.path.dirname(original_rel_path).replace('\\', '/')
+                        
+                        # Remove output_*/workspace/ prefix from original directory
+                        original_dir_parts = original_dir.split('/') if original_dir else []
+                        cleaned_dir_parts = []
+                        skip_next = False
+                        for i, part in enumerate(original_dir_parts):
+                            if skip_next:
+                                skip_next = False
+                                continue
+                            # Skip "output_*" pattern directories
+                            if part.startswith('output_'):
+                                # Check if next part is "workspace"
+                                if i + 1 < len(original_dir_parts) and original_dir_parts[i + 1] == 'workspace':
+                                    skip_next = True
+                                continue
+                            # Skip "workspace" directory if it's after an output_* directory
+                            if part == 'workspace' and i > 0 and original_dir_parts[i - 1].startswith('output_'):
+                                continue
+                            cleaned_dir_parts.append(part)
+                        
+                        # Get generated image filename
+                        generated_filename = os.path.basename(generated_image_path)
+                        
+                        # Combine cleaned directory with filename
+                        if cleaned_dir_parts:
+                            generated_image_path = '/'.join(cleaned_dir_parts) + '/' + generated_filename
+                        else:
+                            generated_image_path = generated_filename
 
-                optimization_report = {
-                    'method': 'Traditional',
-                    'original_issues_count': len(report.original_issues),
-                    'fixed_issues_count': len(report.fixed_issues),
-                    'remaining_issues_count': len(report.remaining_issues)
-                }
-            except Exception as trad_error:
-                return jsonify({'success': False, 'error': f'Optimization failed: {str(trad_error)}'})
+                    optimization_report = {
+                        'method': 'ImageGeneration',
+                        'model': report.get('model', 'unknown'),
+                        'api_base': report.get('api_base', 'unknown'),
+                        'output_path': generated_image_path,
+                        'image_format': report.get('image_format', 'png')
+                    }
 
-        # Create backup if content changed
-        if optimized_content != original_content:
-            backup_path = full_path + '.optimized_backup'
-            try:
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    f.write(original_content)
-            except Exception as backup_error:
-                pass
+                    # Update markdown files that reference this SVG
+                    updated_markdown_files = _update_markdown_image_links(
+                        user_base_dir, file_path, generated_image_path
+                    )
 
-            # Save optimized content
-            with open(full_path, 'w', encoding='utf-8') as f:
-                f.write(optimized_content)
+                    if updated_markdown_files:
+                        optimization_report['updated_markdown_files'] = updated_markdown_files
+
+                except Exception as img_gen_error:
+                    import traceback
+                    error_details = traceback.format_exc()
+                    return jsonify({
+                        'success': False,
+                        'error': f'Image generation failed: {str(img_gen_error)}\n\n{error_details}'
+                    })
+
+        if not use_llm or not LLM_SVG_OPTIMIZER_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Image generation is not available. Please ensure image_generation_api_key is configured in config/config.txt'
+            })
 
         # Generate success message
-        if optimized_content != original_content:
-            message = f"SVG文件已成功优化！"
-            if optimization_report:
-                if use_llm and optimization_report.get('method') == 'LLM':
-                    message += f"\\n\\n🤖 AI优化完成"
-                    message += f"\\n• 使用模型: {optimization_report.get('llm_provider', 'unknown')} - {optimization_report.get('llm_model', 'unknown')}"
-                    message += f"\\n• 检测到问题: {optimization_report.get('original_issues_count', 0)}"
-                    if optimization_report.get('changes_made'):
-                        message += f"\\n• 主要改进: {len(optimization_report['changes_made'])} 项"
-                    if optimization_report.get('issues_fixed'):
-                        message += f"\\n• 修复问题: {len(optimization_report['issues_fixed'])} 个"
-                else:
-                    message += f"\\n\\n传统优化完成"
-                    message += f"\\n• 检测到问题: {optimization_report.get('original_issues_count', 0)}"
-                    message += f"\\n• 已修复问题: {optimization_report.get('fixed_issues_count', 0)}"
-                    message += f"\\n• 剩余问题: {optimization_report.get('remaining_issues_count', 0)}"
+        if optimization_report:
+            output_path = optimization_report.get('output_path', 'unknown')
+            # 只显示文件名，不显示完整路径
+            if output_path != 'unknown':
+                output_path = os.path.basename(output_path)
+                message = f"图像生成成功，输出文件: {output_path}"
+            else:
+                message = f"图像生成成功"
         else:
-            message = "SVG文件已经是最佳状态，无需优化"
+            message = f"图像生成成功"
 
         return jsonify({
             'success': True,
             'message': message,
             'optimization_report': optimization_report,
-            'used_llm': use_llm
+            'used_llm': use_llm,
+            'generated_image_path': generated_image_path
         })
 
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         return jsonify({
             'success': False,
-            'error': f'SVG optimization failed: {str(e)}'
+            'error': f'SVG image generation failed: {str(e)}\n\n{error_details}'
         })
+
+
+def _update_markdown_image_links(base_dir: str, original_svg_path: str, new_image_path: str) -> list:
+    """
+    更新markdown文件中引用SVG文件的图像链接
+    
+    Args:
+        base_dir: 基础目录
+        original_svg_path: 原始SVG文件路径（相对路径）
+        new_image_path: 新生成的图像文件路径（相对路径）
+        
+    Returns:
+        已更新的markdown文件列表
+    """
+    import re
+    from pathlib import Path
+    
+    updated_files = []
+    
+    # 查找所有markdown文件
+    base_path = Path(base_dir)
+    md_files = list(base_path.rglob('*.md'))
+    
+    # 准备匹配模式：匹配引用原始SVG文件的图像链接
+    # 支持多种格式：![alt](path), ![alt](path "title"), <img src="path">
+    svg_filename = os.path.basename(original_svg_path)
+    svg_name_without_ext = os.path.splitext(svg_filename)[0]
+    
+    for md_file in md_files:
+        try:
+            with open(md_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            original_content = content
+            content_changed = False
+            
+            # 模式1: ![alt](svg_path)
+            pattern1 = r'!\[([^\]]*)\]\(([^)]*' + re.escape(svg_filename) + r'[^)]*)\)'
+            def replace_func1(match):
+                nonlocal content_changed
+                alt_text = match.group(1)
+                old_path = match.group(2)
+                # 检查路径是否匹配（支持相对路径和绝对路径）
+                if svg_filename in old_path or svg_name_without_ext in old_path:
+                    content_changed = True
+                    return f'![{alt_text}]({new_image_path})'
+                return match.group(0)
+            
+            content = re.sub(pattern1, replace_func1, content)
+            
+            # 模式2: <img src="svg_path" alt="alt">
+            pattern2 = r'<img\s+([^>]*src=["\']([^"\']*' + re.escape(svg_filename) + r'[^"\']*)["\'][^>]*)>'
+            def replace_func2(match):
+                nonlocal content_changed
+                img_attrs = match.group(1)
+                old_src = match.group(2)
+                if svg_filename in old_src or svg_name_without_ext in old_src:
+                    content_changed = True
+                    # 替换src属性
+                    new_attrs = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_image_path}"', img_attrs)
+                    return f'<img {new_attrs}>'
+                return match.group(0)
+            
+            content = re.sub(pattern2, replace_func2, content)
+            
+            # 如果内容有变化，保存文件
+            if content_changed:
+                with open(md_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                rel_path = os.path.relpath(md_file, base_dir)
+                updated_files.append(rel_path)
+                
+        except Exception as e:
+            # 忽略无法处理的文件
+            print(f"Warning: Failed to update markdown file {md_file}: {e}")
+            continue
+    
+    return updated_files
 
 
 def get_mcp_servers_config():

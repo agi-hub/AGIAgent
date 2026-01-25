@@ -289,5 +289,27 @@
       },
       "required": ["command"]
     }
+  },
+  "create_img": {
+    "description": "Generate an image from a text prompt using AI image generation models and save it as a PNG file. The tool uses the configured image generation API (image_generation_api_key, image_generation_api_base, image_generation_model) from config/config.txt. Supports both Zhipu AI and OpenRouter APIs.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "Text prompt describing the image to generate. Be specific and detailed for better results."
+        },
+        "resolution": {
+          "type": "string",
+          "description": "Image resolution in format 'WIDTHxHEIGHT' (e.g., '1280x1280', '1024x768', '1920x1080'). Default: '1280x1280'.",
+          "default": "1280x1280"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Path where the image should be saved (PNG format). Supports relative paths (relative to workspace root) or absolute paths. If not provided, a filename will be generated based on the prompt. The file extension will be automatically set to .png if not already present."
+        }
+      },
+      "required": ["prompt"]
+    }
   }
 } 

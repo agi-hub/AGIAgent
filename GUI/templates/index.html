@@ -10039,22 +10039,28 @@
                         window._mdHrefOccurrenceMap[href] = occIndex + 1;
                     }
 
-                    // 检查是否为SVG文件或SVG相关图片
-                    const isSvgFile = src && (
+                    // 先检查是否为AI生成的图像（文件名包含_aicreate），这些应该按普通图像处理
+                    const isAicreateImage = (href && (href.includes('_aicreate') || href.includes('_aicreated'))) ||
+                                          (src && (src.includes('_aicreate') || src.includes('_aicreated')));
+                    
+                    // 检查是否为其他图片格式（PNG、JPG等）
+                    // src可能是API路径（如 /api/file/...?api_key=...），需要检查路径中是否包含图片扩展名
+                    const pathToCheck = href || src || '';
+                    const isOtherImage = pathToCheck && (
+                        pathToCheck.toLowerCase().includes('.png') || 
+                        pathToCheck.toLowerCase().includes('.jpg') || 
+                        pathToCheck.toLowerCase().includes('.jpeg') || 
+                        pathToCheck.toLowerCase().includes('.gif') || 
+                        pathToCheck.toLowerCase().includes('.bmp') || 
+                        pathToCheck.toLowerCase().includes('.webp')
+                    ) && !pathToCheck.toLowerCase().includes('.svg');
+                    
+                    // 检查是否为SVG文件或SVG相关图片（排除_aicreate图像）
+                    const isSvgFile = !isAicreateImage && src && (
                         src.toLowerCase().endsWith('.svg') || 
                         src.includes('.svg') ||
                         src.toLowerCase().includes('svg_') ||
                         (text && text.toLowerCase().includes('svg'))
-                    );
-                    
-                    // 检查是否为其他图片格式（PNG、JPG等）
-                    const isOtherImage = src && (
-                        src.toLowerCase().endsWith('.png') || 
-                        src.toLowerCase().endsWith('.jpg') || 
-                        src.toLowerCase().endsWith('.jpeg') || 
-                        src.toLowerCase().endsWith('.gif') || 
-                        src.toLowerCase().endsWith('.bmp') || 
-                        src.toLowerCase().endsWith('.webp')
                     );
                     
                     // 检查是否为网上下载的图片或需要显示控制按钮的图片
@@ -10086,8 +10092,16 @@
                                         + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"${I18N.restore_svg_tooltip || '恢复原图'}\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '恢复'}</button>`
                                         + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"${I18N.delete_svg_tooltip || '删除SVG图'}\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isOtherImage) {
-                            // PNG、JPG等其他图片：只显示删除按钮
-                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            // isAicreateImage 已经在上面定义过了
+                            if (isAicreateImage) {
+                                // AI生成的图像：显示还原按钮
+                                const btnRestoreStyle = 'background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
+                                buttonsHtml = `<button class=\"md-restore-aicreate-btn\" style=\"${btnRestoreStyle}\" title=\"还原到原始SVG图\" onclick=\"restoreAicreateImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '还原'}</button>`
+                                            + `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            } else {
+                                // 普通PNG、JPG等其他图片：只显示删除按钮
+                                buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            }
                         }
                         
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`
@@ -13250,17 +13264,17 @@
                     }
                 }
                 
-                console.log('AI SVG优化调试信息:');
+                console.log('AI图像生成调试信息:');
                 console.log('  原始href:', href);
                 console.log('  原始src:', src);
                 console.log('  处理后filePath:', filePath);
                 
-                // 显示AI优化进行中的状态
+                // 显示AI图像生成进行中的状态
                 const originalText = btnEl.innerHTML;
-                btnEl.innerHTML = '<i class="fas fa-robot fa-spin"></i> AI优化中...';
+                btnEl.innerHTML = '<i class="fas fa-robot fa-spin"></i> AI生成中...';
                 btnEl.disabled = true;
                 
-                // 调用SVG优化API（带LLM标志）
+                // 调用SVG图像生成API（带LLM标志）
                 fetch('/api/optimize-svg', {
                     method: 'POST',
                     headers: {
@@ -13269,7 +13283,7 @@
                     },
                     body: JSON.stringify({
                         file_path: filePath,
-                        use_llm: true,  // 关键：使用大模型
+                        use_llm: true,  // 关键：使用文生图API
                         api_key: currentUser && currentUser !== 'default' ? currentUser : ''
                     })
                 })
@@ -13279,66 +13293,48 @@
                     btnEl.disabled = false;
                     
                     if (data.success) {
-                        // AI优化成功，显示结果
-                        const report = data.optimization_report;
-                        let message = data.message;
+                        // AI图像生成成功，显示简化的结果
+                        alert(data.message);
                         
-                        if (report) {
-                            if (data.used_llm && report.method === 'LLM') {
-                                message += `\\n\\n🤖 AI优化详情:`;
-                                message += `\\n• 使用模型: ${report.llm_provider} - ${report.llm_model}`;
-                                message += `\\n• 检测到问题: ${report.original_issues_count}`;
-                                
-                                if (report.changes_made && report.changes_made.length > 0) {
-                                    message += `\\n\\n🔧 主要改进:`;
-                                    report.changes_made.slice(0, 5).forEach(change => {
-                                        message += `\\n• ${change}`;
-                                    });
-                                    if (report.changes_made.length > 5) {
-                                        message += `\\n• 还有 ${report.changes_made.length - 5} 项改进...`;
-                                    }
+                        // 重新从服务器加载markdown文件以显示新生成的图像
+                        // 这样可以确保显示的是更新后的markdown内容（包含新的图像链接）
+                        const markdownPath = window.currentOriginalFilePath || currentFilePath;
+                        if (markdownPath) {
+                            // 使用reloadCurrentMarkdown函数重新加载
+                            reloadCurrentMarkdown().catch(error => {
+                                console.error('重新加载markdown失败:', error);
+                                // 如果重新加载失败，尝试使用缓存的processed内容
+                                if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
+                                    const fake = { 
+                                        content: window.currentMarkdownContent.processed, 
+                                        type: 'markdown', 
+                                        size: 'N/A', 
+                                        file_path: markdownPath 
+                                    };
+                                    displayFileContent(fake, '');
                                 }
-                                
-                                if (report.issues_fixed && report.issues_fixed.length > 0) {
-                                    message += `\\n\\n✅ 修复的问题:`;
-                                    report.issues_fixed.slice(0, 3).forEach(fix => {
-                                        message += `\\n• ${fix}`;
-                                    });
-                                    if (report.issues_fixed.length > 3) {
-                                        message += `\\n• 还有 ${report.issues_fixed.length - 3} 个修复...`;
-                                    }
-                                }
-                            } else {
-                                // 回退到传统优化的报告
-                                message += `\\n\\n传统优化详情:`;
-                                message += `\\n• 检测到问题: ${report.original_issues_count}`;
-                                message += `\\n• 已修复问题: ${report.fixed_issues_count}`;
-                                message += `\\n• 剩余问题: ${report.remaining_issues_count}`;
+                            });
+                        } else {
+                            // 如果没有markdown路径，使用缓存的processed内容
+                            if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
+                                const fake = { 
+                                    content: window.currentMarkdownContent.processed, 
+                                    type: 'markdown', 
+                                    size: 'N/A', 
+                                    file_path: window.currentOriginalFilePath || currentFilePath 
+                                };
+                                displayFileContent(fake, '');
                             }
                         }
-                        
-                        alert(message);
-                        
-                        // 刷新markdown预览以显示优化后的SVG
-                        if (window.currentMarkdownContent && window.currentMarkdownContent.processed) {
-                            // 触发重新渲染
-                            const fake = { 
-                                content: window.currentMarkdownContent.processed, 
-                                type: 'markdown', 
-                                size: 'N/A', 
-                                file_path: window.currentOriginalFilePath || currentFilePath 
-                            };
-                            displayFileContent(fake, '');
-                        }
                     } else {
-                        alert(`AI SVG优化失败: ${data.error}`);
+                        alert(`AI图像生成失败: ${data.error}`);
                     }
                 })
                 .catch(error => {
                     btnEl.innerHTML = originalText;
                     btnEl.disabled = false;
-                    console.error('AI SVG优化错误:', error);
-                    alert(`AI SVG优化出错: ${error.message}`);
+                    console.error('AI图像生成错误:', error);
+                    alert(`AI图像生成出错: ${error.message}`);
                 });
                 
             } catch (e) {
@@ -13636,6 +13632,107 @@
             }
         }
 
+        // 还原AI生成的图像到原始SVG
+        function restoreAicreateImage(btnEl) {
+            try {
+                const src = btnEl?.getAttribute('data-md-src');
+                const href = btnEl?.getAttribute('data-md-href');
+                const occIndex = parseInt(btnEl?.getAttribute('data-md-occurrence') || '0', 10);
+                
+                if (!src && !href) {
+                    alert('无法获取图像路径');
+                    return;
+                }
+                
+                // 使用href（原始markdown中的路径）进行替换
+                // href是markdown中的原始路径，如: images/svg_f41704c3_aicreate.png
+                const imagePath = href || src;
+                
+                // 从_aicreate图像路径推导原始SVG路径
+                // 例如: images/svg_f41704c3_aicreate.png -> images/svg_f41704c3.svg
+                let svgPath = imagePath;
+                
+                // 移除_aicreate后缀，恢复为.svg
+                if (svgPath.includes('_aicreate')) {
+                    svgPath = svgPath.replace('_aicreate.png', '.svg')
+                                    .replace('_aicreate.jpg', '.svg')
+                                    .replace('_aicreate.jpeg', '.svg')
+                                    .replace('_aicreated.png', '.svg')
+                                    .replace('_aicreated.jpg', '.svg')
+                                    .replace('_aicreated.jpeg', '.svg');
+                } else {
+                    // 如果没有找到_aicreate，尝试其他方式
+                    const pathParts = svgPath.split('/');
+                    const filename = pathParts[pathParts.length - 1];
+                    const nameWithoutExt = filename.replace(/\.(png|jpg|jpeg)$/i, '');
+                    if (nameWithoutExt.endsWith('_aicreate') || nameWithoutExt.endsWith('_aicreated')) {
+                        const baseName = nameWithoutExt.replace(/_aicreate(d)?$/i, '');
+                        pathParts[pathParts.length - 1] = baseName + '.svg';
+                        svgPath = pathParts.join('/');
+                    } else {
+                        // 如果无法推导，提示用户
+                        alert('无法找到对应的SVG文件路径');
+                        return;
+                    }
+                }
+                
+                console.log('还原AI图像到SVG:', imagePath, '->', svgPath);
+                
+                if (!window.currentMarkdownContent || !window.currentMarkdownContent.processed) {
+                    alert('未找到Markdown内容');
+                    return;
+                }
+                
+                // 在Markdown中替换图像链接为SVG链接
+                // 使用href（原始markdown路径）进行匹配和替换
+                let mdContent = window.currentMarkdownContent.processed;
+                const escapedImagePath = escapeRegExp(imagePath);
+                const imagePattern = new RegExp(`!\\[([^\\]]*)\\]\\(${escapedImagePath}\\)`, 'g');
+                
+                let count = 0;
+                mdContent = mdContent.replace(imagePattern, (match, altText) => {
+                    const cur = count;
+                    count += 1;
+                    if (cur === occIndex) {
+                        return `![${altText}](${svgPath})`;
+                    }
+                    return match;
+                });
+                
+                // 检查是否真的替换了
+                if (count === 0) {
+                    console.warn('未找到匹配的图像链接:', imagePath);
+                    alert('未找到对应的图像链接，可能已经被修改');
+                    return;
+                }
+                
+                // 更新markdown内容
+                window.currentMarkdownContent.processed = mdContent;
+                
+                // 刷新预览
+                const fake = {
+                    content: mdContent,
+                    type: 'markdown',
+                    size: 'N/A',
+                    file_path: window.currentOriginalFilePath || currentFilePath
+                };
+                displayFileContent(fake, '');
+                
+                // 自动保存
+                autoSaveMarkdown().then(saved => {
+                    if (saved) {
+                        console.log('Markdown已自动保存');
+                    }
+                }).catch(e => {
+                    console.warn('自动保存失败:', e);
+                });
+                
+            } catch (e) {
+                console.warn('还原AI图像失败:', e);
+                alert(`还原失败: ${e.message}`);
+            }
+        }
+
         // UTF-8 base64解码函数（支持中文）
         function decodeBase64UTF8(base64String) {
             try {
@@ -13849,22 +13946,28 @@
                         window._mdHrefOccurrenceMap[href] = occIndex + 1;
                     }
 
-                    // 检查是否为SVG文件或SVG相关图片
-                    const isSvgFile = src && (
+                    // 先检查是否为AI生成的图像（文件名包含_aicreate），这些应该按普通图像处理
+                    const isAicreateImage = (href && (href.includes('_aicreate') || href.includes('_aicreated'))) ||
+                                          (src && (src.includes('_aicreate') || src.includes('_aicreated')));
+                    
+                    // 检查是否为其他图片格式（PNG、JPG等）
+                    // src可能是API路径（如 /api/file/...?api_key=...），需要检查路径中是否包含图片扩展名
+                    const pathToCheck = href || src || '';
+                    const isOtherImage = pathToCheck && (
+                        pathToCheck.toLowerCase().includes('.png') || 
+                        pathToCheck.toLowerCase().includes('.jpg') || 
+                        pathToCheck.toLowerCase().includes('.jpeg') || 
+                        pathToCheck.toLowerCase().includes('.gif') || 
+                        pathToCheck.toLowerCase().includes('.bmp') || 
+                        pathToCheck.toLowerCase().includes('.webp')
+                    ) && !pathToCheck.toLowerCase().includes('.svg');
+                    
+                    // 检查是否为SVG文件或SVG相关图片（排除_aicreate图像）
+                    const isSvgFile = !isAicreateImage && src && (
                         src.toLowerCase().endsWith('.svg') || 
                         src.includes('.svg') ||
                         src.toLowerCase().includes('svg_') ||
                         (text && text.toLowerCase().includes('svg'))
-                    );
-                    
-                    // 检查是否为其他图片格式（PNG、JPG等）
-                    const isOtherImage = src && (
-                        src.toLowerCase().endsWith('.png') || 
-                        src.toLowerCase().endsWith('.jpg') || 
-                        src.toLowerCase().endsWith('.jpeg') || 
-                        src.toLowerCase().endsWith('.gif') || 
-                        src.toLowerCase().endsWith('.bmp') || 
-                        src.toLowerCase().endsWith('.webp')
                     );
                     
                     // 检查是否为网上下载的图片或需要显示控制按钮的图片
@@ -13896,8 +13999,16 @@
                                         + `<button class=\"md-restore-svg-btn\" style=\"background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;\" title=\"${I18N.restore_svg_tooltip || '恢复原图'}\" onclick=\"restoreSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '恢复'}</button>`
                                         + `<button class=\"md-remove-svg-btn\" style=\"${btnDangerStyle}\" title=\"${I18N.delete_svg_tooltip || '删除SVG图'}\" onclick=\"removeSvgImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
                         } else if (isOtherImage) {
-                            // PNG、JPG等其他图片：只显示删除按钮
-                            buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            // isAicreateImage 已经在上面定义过了
+                            if (isAicreateImage) {
+                                // AI生成的图像：显示还原按钮
+                                const btnRestoreStyle = 'background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; height: fit-content; transition: background-color 0.2s;';
+                                buttonsHtml = `<button class=\"md-restore-aicreate-btn\" style=\"${btnRestoreStyle}\" title=\"还原到原始SVG图\" onclick=\"restoreAicreateImage(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#f57c00'\" onmouseout=\"this.style.backgroundColor='#ff9800'\"><i class=\\\"fas fa-undo\\\"></i> ${I18N.restore_svg || '还原'}</button>`
+                                            + `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            } else {
+                                // 普通PNG、JPG等其他图片：只显示删除按钮
+                                buttonsHtml = `<button class=\"md-remove-image-btn\" style=\"${btnDangerStyle}\" title=\"删除此图\" onclick=\"removeImageFromMarkdown(this)\" data-md-href=\"${href}\" data-md-src=\"${src}\" data-md-occurrence=\"${occIndex}\" onmouseover=\"this.style.backgroundColor='#b71c1c'\" onmouseout=\"this.style.backgroundColor='#d32f2f'\"><i class=\\\"fas fa-trash\\\"></i> ${I18N.delete_svg || '删除'}</button>`;
+                            }
                         }
                         
                         return `<div class=\"md-img-switch\" style=\"${containerStyle}\">`

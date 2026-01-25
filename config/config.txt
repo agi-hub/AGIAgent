@@ -10,7 +10,7 @@ LANG=zh
 # GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.7
+model=glm-4.5
 max_tokens=16384
 
 # GLM coding-plan API configuration
@@ -91,6 +91,18 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # vision_api_key=your key
 # vision_api_base=https://api.openai.com/v1
 # vision_max_tokens=4096
+
+# Image generation model configuration
+# glm-image, cogview-4-250304, cogview-4, cogview-3-flash
+image_generation_api_key=your key
+image_generation_api_base=https://open.bigmodel.cn/api/paas/v4/images/generations
+image_generation_model=cogview-3-Flash
+
+# SVG optimizer API configuration (nano banana)
+# Used by SVG optimizer feature to convert SVG code to images using vision models
+svg_optimizer_api_key=your key
+svg_optimizer_api_base=https://openrouter.ai/api/v1
+svg_optimizer_model=google/gemini-3-pro-image-preview
 
 # Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
 # When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
@@ -204,7 +216,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=../data
+gui_default_data_directory=data
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions
