@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": [
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/thy/Desktop/ZiSuo/proj_01/AGIAgent"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,415 @@
+{
+  "web_search": {
+    "description": "Search the web for real-time information about any topic. Use this tool when you need up-to-date information. The HTML and filtered txt files will be saved to the workspace/web_search_result directory.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "search_term": {
+          "type": "string",
+          "description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant."
+        }
+      },
+      "required": ["search_term"]
+    }
+  },
+  "search_img": {
+    "description": "Obtain relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses a multi-search engine strategy: If Google is available, search in the order Google->Baidu->Bing; if Google is not available, search in the order Baidu->Bing.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Image search query string, describing the content of the images to find. Please use specific and clear descriptive terms, such as 'red rose flower', 'blue sky and white clouds landscape', etc."
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "fetch_webpage_content": {
+    "description": "Fetch content from a webpage URL for analysis or information extraction.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL to fetch content from"
+        },
+        "search_term": {
+          "type": "string",
+          "description": "Optional search term to highlight in the content"
+        }
+      },
+      "required": ["url"]
+    }
+  },
+  "talk_to_user": {
+    "description": "Display a question or message to the user and wait for keyboard input with timeout. This tool allows interactive communication with the user. In infinite loop mode, use timeout=-1 to disable timeout when notifying task completion.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The question or message to display to the user"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Maximum time to wait for user response in seconds (default: 10 seconds, -1 to disable timeout)"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "get_sensor_data": {
+    "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "integer",
+          "description": "Data type to acquire: 1=image, 2=video (5 seconds), 3=audio, 4=sensor data",
+          "enum": [1, 2, 3, 4]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source identifier: file path for existing files, or device number for cameras/microphones/sensors (e.g. '0' for camera 0)"
+        },
+        "para": {
+          "type": "object",
+          "description": "Parameters in JSON format. For images/cameras: {\"resolution\": \"640x320\"}. For videos: {\"resolution\": \"640x320\", \"duration\": 5}. For audio: {\"sampling_rate\": 16000, \"duration\": 5}. For sensors: varies by sensor type.",
+          "properties": {
+            "resolution": {
+              "type": "string",
+              "description": "Resolution for image/video capture (e.g., '640x320', '1920x1080')"
+            },
+            "duration": {
+              "type": "integer",
+              "description": "Duration in seconds for video/audio capture"
+            },
+            "sampling_rate": {
+              "type": "integer",
+              "description": "Sampling rate for audio capture (default: 16000 Hz)"
+            }
+          }
+        }
+      },
+      "required": ["type", "source"]
+    }
+  },
+  "read_img": {
+    "description": "Read and analyze an image using the configured vision model, returning a text description of the image content. This tool uses the vision_model configuration to analyze images and returns text instead of base64-encoded image data. Use this tool when you need to understand what's in an image, extract text from images, or analyze visual content.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Query or instruction for what to analyze in the image. For example: 'What text is in this image?', 'Describe what you see in this image', 'What objects are visible?', 'Extract all text content', etc."
+        },
+        "image_path": {
+          "type": "string",
+          "description": "Path to the image file. Supports absolute paths, paths relative to workspace root, or paths relative to current directory. Common formats: jpg, jpeg, png, gif, webp"
+        }
+      },
+      "required": ["query", "image_path"]
+    }
+  },
+  "merge_file": {
+    "description": "Merge multiple files into a single output file using the system cat command. If the output file is a Markdown file (.md), it will automatically be converted to Word and PDF formats.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of files to merge, e.g., ['file1.txt', 'file2.txt', 'file3.md']. Files will be merged in the order specified."
+        },
+        "output_file": {
+          "type": "string",
+          "description": "Name of the merged output file, e.g., 'combined_report.md'."
+        }
+      },
+      "required": ["file_list", "output_file"]
+    }
+  },
+  "convert_docs_to_markdown": {
+    "description": "Convert various document formats to Markdown. Output files will have the same filename but substituted by a .md extension. Images are automatically extracted and saved to a doc_images folder.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "Path to the document file to convert to Markdown. Supported formats: .docx, .xlsx, .html, .tex, .rst, .pptx, .pdf"
+        }
+      },
+      "required": ["file_path"]
+    }
+  },
+  "tool_help": {
+    "description": "Get detailed help information for a specific tool, including its parameters and usage examples.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "description": "The name of the tool to get help for"
+        }
+      },
+      "required": ["tool_name"]
+    }
+  },
+  "get_background_update_status": {
+    "description": "Get the status information and statistics of the background incremental update thread for code repository monitoring to track automatic code indexing updates.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  "file_search": {
+    "description": "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Fuzzy filename to search for"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "delete_file": {
+    "description": "Deletes a file at the specified path. The operation will fail gracefully if the file doesn't exist.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "target_file": {
+          "type": "string",
+          "description": "The path of the file to delete, relative to the workspace root."
+        }
+      },
+      "required": ["target_file"]
+    }
+  },
+  "get_sensor_data": {
+    "description": "Acquire physical world information including images, videos, audio, and sensor data from various sources such as cameras, microphones, or sensor devices.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "integer",
+          "description": "Data type to acquire: 1=image, 2=video (5 seconds), 3=audio, 4=sensor data",
+          "enum": [1, 2, 3, 4]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source identifier: file path for existing files, or device number for cameras/microphones/sensors (e.g. '0' for camera 0)"
+        },
+        "para": {
+          "type": "object",
+          "description": "Parameters in JSON format. For images/cameras: {\"resolution\": \"640x320\"}. For videos: {\"resolution\": \"640x320\", \"duration\": 5}. For audio: {\"sampling_rate\": 16000, \"duration\": 5}. For sensors: varies by sensor type.",
+          "properties": {
+            "resolution": {
+              "type": "string",
+              "description": "Resolution for image/video capture (e.g., '640x320', '1920x1080')"
+            },
+            "duration": {
+              "type": "integer",
+              "description": "Duration in seconds for video/audio capture"
+            },
+            "sampling_rate": {
+              "type": "integer",
+              "description": "Sampling rate for audio capture (default: 16000 Hz)"
+            }
+          }
+        }
+      },
+      "required": ["type", "source"]
+    }
+  },
+  "read_img": {
+    "description": "Read and analyze an image using the configured vision model, returning a text description of the image content. This tool uses the vision_model configuration to analyze images and returns text instead of base64-encoded image data. Use this tool when you need to understand what's in an image, extract text from images, or analyze visual content.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Query or instruction for what to analyze in the image. For example: 'What text is in this image?', 'Describe what you see in this image', 'What objects are visible?', 'Extract all text content', etc."
+        },
+        "image_path": {
+          "type": "string",
+          "description": "Path to the image file. Supports absolute paths, paths relative to workspace root, or paths relative to current directory. Common formats: jpg, jpeg, png, gif, webp"
+        }
+      },
+      "required": ["query", "image_path"]
+    }
+  },
+  "run_claude": {
+    "description": "Run claude command using claude_shell.py as a separate process. This tool executes claude in a separate process and passes the working directory to claude_shell.py.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "The prompt to send to claude"
+        },
+        "work_dir": {
+          "type": "string",
+          "description": "Optional working directory path for claude_shell.py execution. If not specified, uses the workspace root directory."
+        }
+      },
+      "required": ["prompt"]
+    }
+  },
+  "mouse_control": {
+    "description": "Control mouse operations, including moving the mouse to a specified coordinate, single clicking the left mouse button, double clicking, right mouse button clicking, and scrolling the mouse wheel. This is a cross-platform mouse control tool that prioritizes using the PyAutoGUI or PyNput libraries, and falls back to system commands if those are not available.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Type of operation. Possible values: 'move' (move mouse), 'click' (single click), 'double_click' (double click), 'right_click' (right-button click), 'scroll' (scroll wheel).",
+          "enum": ["move", "click", "double_click", "right_click", "scroll"]
+        },
+        "x": {
+          "type": "integer",
+          "description": "X coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate in pixels. Required for move, click, and scroll actions."
+        },
+        "button": {
+          "type": "string",
+          "description": "Mouse button type, only used when action='click'. Possible values: 'left', 'right'. Defaults to 'left'.",
+          "enum": ["left", "right"]
+        },
+        "clicks": {
+          "type": "integer",
+          "description": "Number of clicks, only used when action='click'. Defaults to 1."
+        },
+        "scroll_delta": {
+          "type": "integer",
+          "description": "Amount to scroll by, only used when action='scroll'. Positive for scroll up, negative for scroll down. Larger absolute values scroll more."
+        }
+      },
+      "required": ["action"]
+    }
+  },
+  "read_received_messages": {
+    "description": "Fetch messages from your own mailbox, including broadcast messages and P2P messages. Messages are automatically marked as read after retrieval.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "include_read": {
+          "type": "boolean",
+          "description": "Include already read messages (default: false)"
+        }
+      },
+      "required": []
+    }
+  },
+  "send_status_update_to_manager": {
+    "description": "Send a status update from an agent to the manager about task progress.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "ID of the agent sending the update. ALWAYS use 'current_agent' to auto-detect the correct agent ID.",
+          "default": "current_agent"
+        },
+        "round_number": {
+          "type": "integer",
+          "description": "Current execution round number"
+        },
+        "task_completed": {
+          "type": "boolean",
+          "description": "Whether the task is completed"
+        },
+        "llm_response_preview": {
+          "type": "string",
+          "description": "Preview of LLM response (first 200 characters)"
+        },
+        "tool_calls_summary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tool names called in this round"
+        },
+        "current_task_description": {
+          "type": "string",
+          "description": "Description of current task being worked on"
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Error message if any error occurred"
+        }
+      },
+      "required": ["agent_id", "round_number", "task_completed", "llm_response_preview", "tool_calls_summary"]
+    }
+  },
+  "idle": {
+    "description": "Idle tool that represents doing nothing in this round, only used for multi-agent synchronization. DO NOT use this for sending TASK_COMPLETED signal. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'no_action_needed')"
+        },
+        "sleep": {
+          "type": "number",
+          "description": "Sleep time in seconds (default: 10). Set to 0 to skip sleep. Set to -1 for infinite sleep mode (only wakes up when user sends a message) - ONLY use this when manager has completed all tasks and there are no other active agents."
+        }
+      },
+      "required": []
+    }
+  },
+  "recall_memories": {
+    "description": "Search and recall relevant memories from long-term memory based on semantic similarity. This tool implements RAG-like functionality to retrieve past experiences and knowledge.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The query to search for relevant memories. Can be a question, topic, or description of what you're looking for."
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of most relevant memories to retrieve. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "recall_memories_by_time": {
+    "description": "Search and recall memories from a specific time period. Useful for finding what happened 'yesterday', 'last week', or on a specific date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "time_query": {
+          "type": "string",
+          "description": "Time-based query such as 'yesterday', 'last week', 'this month', or specific dates like '2024-01-01'"
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of memories to retrieve from that time period. Defaults to 5.",
+          "default": 5
+        }
+      },
+      "required": ["time_query"]
+    }
+  },
+  "get_memory_summary": {
+    "description": "Get a summary of the long-term memory system status, including total number of memories, storage information, and system health.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+} 

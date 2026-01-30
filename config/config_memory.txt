@@ -1,0 +1,59 @@
+# AGI Agent Long-Term Memory System Configuration File
+# This file is used to configure parameters related to the long-term memory feature
+
+# API configuration - inherited from config/config.txt
+
+# Memory-specific configurations are now centralized in config/config.txt
+
+# Memory similarity threshold (0.0-1.0)
+# When the similarity between new memory and existing memory exceeds this threshold,
+# the existing memory will be updated instead of creating a new memory
+memory_similarity_threshold=0.5
+
+# Maximum number of tokens for memory summary
+memory_max_tokens=4096
+
+# Memory storage path (relative to workspace)
+memory_storage_path=long_term_memory
+
+# Default number of results returned when retrieving memory
+default_recall_count=5
+
+# Whether to automatically store memory after task completion
+auto_store_task_memory=True
+
+# Memory update strategy
+# - "intelligent": intelligently merge similar memories
+# - "append": always append new memory
+# - "replace": replace similar memory
+memory_update_strategy=intelligent
+
+# Memory search weight configuration
+# Embedding search weight
+embedding_search_weight=0.6
+# TF-IDF search weight
+tfidf_search_weight=0.4
+
+# Memory cleanup configuration
+# Maximum number of memories (old memories will be cleaned up if exceeded)
+max_memory_count=10000
+# Number of days to retain memory
+memory_retention_days=365
+
+# Debug mode
+memory_debug_mode=False
+
+# Memory module logging configuration
+# Controls the logging level for memory-related operations
+# Available levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Default: INFO (shows all information messages)
+# Set to WARNING to reduce output and only show warnings and errors
+# Set to CRITICAL to minimize output, or use log_enabled=False to disable console output completely
+log_level=CRITICAL
+log_enabled=False 
+
+# Memory module performance monitoring configuration
+# Controls whether to enable performance monitoring and log file generation
+# Set to False to disable performance monitoring and prevent logs/performance.log creation
+# Default: True (enables performance monitoring)
+performance_monitor_enabled=False

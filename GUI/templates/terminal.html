@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ i18n.get('terminal', '终端' if lang == 'zh' else 'Terminal') }} - {{ i18n.app_title.replace(' GUI', '') }}</title>
+    <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
+    <!-- xterm.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #cccccc;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .terminal-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #1e1e1e;
+        }
+
+        .terminal-header {
+            background: #2d2d30;
+            padding: 10px 15px;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .terminal-header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .terminal-header-title {
+            color: #569cd6;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .terminal-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f44336;
+        }
+
+        .status-indicator.connected {
+            background: #4caf50;
+        }
+
+        .terminal-header-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        .terminal-btn {
+            background: transparent;
+            border: 1px solid #3e3e42;
+            color: #cccccc;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .terminal-btn:hover {
+            background: #3e3e42;
+            border-color: #569cd6;
+            color: #569cd6;
+        }
+
+        .terminal-btn:active {
+            transform: scale(0.98);
+        }
+
+        .terminal-wrapper {
+            flex: 1;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+
+        .terminal-footer {
+            background: #2d2d30;
+            padding: 8px 15px;
+            border-top: 1px solid #3e3e42;
+            font-size: 11px;
+            color: #9cdcfe;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .terminal-info {
+            display: flex;
+            gap: 20px;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .info-item i {
+            font-size: 10px;
+        }
+
+        /* xterm.js 样式覆盖 */
+        .xterm {
+            font-feature-settings: "liga" 0;
+            position: relative;
+            user-select: none;
+            -ms-user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .xterm-viewport {
+            background-color: #1e1e1e;
+            overflow-y: scroll;
+            cursor: default;
+            position: absolute;
+            right: 0;
+            left: 0;
+            top: 0;
+            bottom: 0;
+        }
+
+        .xterm-screen {
+            position: relative;
+        }
+
+        .xterm-cursor-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .xterm-cursor-layer.xterm-cursor-blink {
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <div class="terminal-header-left">
+                <div class="terminal-header-title">
+                    <i class="fas fa-terminal"></i> {{ i18n.get('terminal', '终端' if lang == 'zh' else 'Terminal') }}
+                </div>
+                <div class="terminal-status">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">{{ i18n.get('connecting', '连接中...' if lang == 'zh' else 'Connecting...') }}</span>
+                </div>
+            </div>
+            <div class="terminal-header-right">
+                <button class="terminal-btn" id="clearBtn" title="{{ i18n.get('clear_terminal', '清空终端' if lang == 'zh' else 'Clear Terminal') }}">
+                    <i class="fas fa-eraser"></i> {{ i18n.get('clear', '清空' if lang == 'zh' else 'Clear') }}
+                </button>
+                <button class="terminal-btn" id="closeBtn" title="{{ i18n.get('close', '关闭' if lang == 'zh' else 'Close') }}">
+                    <i class="fas fa-times"></i> {{ i18n.get('close', '关闭' if lang == 'zh' else 'Close') }}
+                </button>
+            </div>
+        </div>
+        <div class="terminal-wrapper">
+            <div id="terminal"></div>
+        </div>
+        <div class="terminal-footer">
+            <div class="terminal-info">
+                <div class="info-item">
+                    <i class="fas fa-info-circle"></i>
+                    <span>{{ i18n.get('terminal_hint', '提示：输入命令并按Enter执行，输入exit退出终端' if lang == 'zh' else 'Tip: Type commands and press Enter to execute, type exit to quit') }}</span>
+                </div>
+            </div>
+            <div class="terminal-info">
+                <div class="info-item">
+                    <i class="fas fa-keyboard"></i>
+                    <span id="commandCount">0 {{ i18n.get('commands', '命令' if lang == 'zh' else 'commands') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- xterm.js -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <!-- xterm.js addons -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <!-- Socket.IO -->
+    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+
+    <script>
+        // 初始化终端
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            convertEol: false,  // 不自动转换换行符，保持原始格式以正确处理ls等命令的\r字符
+            theme: {
+                background: '#1e1e1e',
+                foreground: '#cccccc',
+                cursor: '#ffffff',
+                selection: '#264f78',
+                black: '#000000',
+                red: '#f48771',
+                green: '#75b798',
+                yellow: '#dcdcaa',
+                blue: '#569cd6',
+                magenta: '#c586c0',
+                cyan: '#9cdcfe',
+                white: '#cccccc',
+                brightBlack: '#666666',
+                brightRed: '#f48771',
+                brightGreen: '#75b798',
+                brightYellow: '#dcdcaa',
+                brightBlue: '#569cd6',
+                brightMagenta: '#c586c0',
+                brightCyan: '#9cdcfe',
+                brightWhite: '#ffffff'
+            }
+        });
+
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+
+        // 打开终端
+        term.open(document.getElementById('terminal'));
+        fitAddon.fit();
+
+        // 调整窗口大小时重新适配
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+
+        // Socket.IO 连接
+        // 注意：主页面使用 'agia_api_key' 保存API key，需要保持一致
+        const apiKey = localStorage.getItem('agia_api_key') || localStorage.getItem('api_key') || '';
+        const socket = io({
+            auth: {
+                api_key: apiKey,
+                client_session_id: localStorage.getItem('client_session_id') || ''
+            }
+        });
+
+        let commandCount = 0;
+        
+        // 监听来自主页面的postMessage命令
+        window.addEventListener('message', function(event) {
+            // 安全检查：只接受来自同源的消息
+            if (event.origin !== window.location.origin) {
+                return;
+            }
+            
+            if (event.data && event.data.type === 'execute_command' && event.data.command) {
+                // 如果socket已连接，立即执行命令
+                if (socket.connected) {
+                    socket.emit('terminal_input', { command: event.data.command });
+                } else {
+                    // 如果socket未连接，保存命令到localStorage，等待连接后执行
+                    localStorage.setItem('terminal_auto_command', event.data.command);
+                    localStorage.setItem('terminal_auto_command_timestamp', Date.now().toString());
+                }
+            }
+        });
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const commandCountEl = document.getElementById('commandCount');
+
+        // 检查并执行待执行的命令
+        function checkAndExecutePendingCommand() {
+            const autoCommand = localStorage.getItem('terminal_auto_command');
+            const commandTimestamp = localStorage.getItem('terminal_auto_command_timestamp');
+            
+            if (autoCommand && commandTimestamp && socket.connected) {
+                // 检查命令是否在最近5秒内设置（避免执行旧命令）
+                const timestamp = parseInt(commandTimestamp);
+                const now = Date.now();
+                if (now - timestamp < 5000) {
+                    // 清除命令，避免重复执行
+                    localStorage.removeItem('terminal_auto_command');
+                    localStorage.removeItem('terminal_auto_command_timestamp');
+                    
+                    // 执行命令
+                    setTimeout(() => {
+                        socket.emit('terminal_input', { command: autoCommand });
+                    }, 300);
+                    return true;
+                } else {
+                    // 命令太旧，清除
+                    localStorage.removeItem('terminal_auto_command');
+                    localStorage.removeItem('terminal_auto_command_timestamp');
+                }
+            }
+            return false;
+        }
+
+        // 连接状态更新
+        socket.on('connect', () => {
+            statusIndicator.classList.add('connected');
+            statusText.textContent = '{{ i18n.get("connected", "已连接" if lang == "zh" else "Connected") }}';
+            term.writeln('\r\n\x1b[32m✓ Terminal connected\x1b[0m');
+            // 请求初始化信息（工作目录）
+            socket.emit('terminal_connect');
+            
+            // 检查是否有待执行的命令
+            checkAndExecutePendingCommand();
+        });
+
+        // 接收终端初始化信息
+        socket.on('terminal_init', (data) => {
+            const workingDir = data.working_directory;
+            if (workingDir) {
+                // 更新当前工作目录（不发送cd命令，避免重复输出路径）
+                currentWorkingDir = workingDir;
+                term.writeln(`\x1b[33mWorking directory: ${workingDir}\x1b[0m`);
+            }
+            term.writeln('\x1b[33mType "exit" to close the terminal\x1b[0m\r\n');
+            // 显示提示符
+            term.prompt();
+            
+            // 检查是否有待执行的命令（从localStorage读取）
+            const autoCommand = localStorage.getItem('terminal_auto_command');
+            const commandTimestamp = localStorage.getItem('terminal_auto_command_timestamp');
+            
+            if (autoCommand && commandTimestamp) {
+                // 检查命令是否在最近5秒内设置（避免执行旧命令）
+                const timestamp = parseInt(commandTimestamp);
+                const now = Date.now();
+                if (now - timestamp < 5000) {
+                    // 清除命令，避免重复执行
+                    localStorage.removeItem('terminal_auto_command');
+                    localStorage.removeItem('terminal_auto_command_timestamp');
+                    
+                    // 等待一下，确保提示符已显示
+                    setTimeout(() => {
+                        // 执行命令
+                        socket.emit('terminal_input', { command: autoCommand });
+                    }, 300);
+                } else {
+                    // 命令太旧，清除
+                    localStorage.removeItem('terminal_auto_command');
+                    localStorage.removeItem('terminal_auto_command_timestamp');
+                }
+            }
+        });
+
+        socket.on('disconnect', () => {
+            statusIndicator.classList.remove('connected');
+            statusText.textContent = '{{ i18n.get("disconnected", "已断开" if lang == "zh" else "Disconnected") }}';
+            term.writeln('\r\n\x1b[31m✗ Terminal disconnected\x1b[0m');
+        });
+
+        // 接收终端输出
+        socket.on('terminal_output', (data) => {
+            if (data.output) {
+                // 由于convertEol: false，需要手动处理\n，确保换行后回到行首
+                // 将单独的\n（不是\r\n的一部分）转换为\r\n
+                // 但保留\r字符用于ls等多列格式化输出
+                let output = data.output;
+                // 替换单独的\n为\r\n，但保留\r\n不变
+                // 使用正则表达式：匹配不在\r后面的\n
+                output = output.replace(/([^\r])\n/g, '$1\r\n');
+                // 处理开头的\n（如果存在）
+                if (output.startsWith('\n')) {
+                    output = '\r\n' + output.substring(1);
+                }
+                term.write(output);
+            }
+        });
+
+        // 接收终端错误
+        socket.on('terminal_error', (data) => {
+            if (data.error) {
+                term.writeln('\r\n\x1b[31mError: ' + data.error + '\x1b[0m');
+                term.prompt();
+            }
+        });
+
+        // 命令执行完成
+        socket.on('command_complete', () => {
+            term.prompt();
+        });
+
+        // 终端输入处理
+        let currentLine = '';
+        let cursorPosition = 0;
+        
+        term.onData((data) => {
+            const code = data.charCodeAt(0);
+            
+            // Tab键 - 自动补全
+            if (code === 9) {
+                // Tab键的字符码是9
+                // 发送补全请求到服务器
+                socket.emit('terminal_autocomplete', { 
+                    line: currentLine,
+                    cursor: cursorPosition,
+                    working_dir: currentWorkingDir
+                });
+                return false; // 阻止默认行为
+            }
+            // Enter键
+            else if (code === 13) {
+                term.write('\r\n');
+                if (currentLine.trim()) {
+                    commandCount++;
+                    commandCountEl.textContent = commandCount + ' {{ i18n.get("commands", "命令" if lang == "zh" else "commands") }}';
+                    
+                    // 检查退出命令
+                    if (currentLine.trim().toLowerCase() === 'exit' || currentLine.trim().toLowerCase() === 'quit') {
+                        socket.emit('terminal_input', { command: currentLine });
+                        setTimeout(() => {
+                            window.close();
+                        }, 500);
+                        return;
+                    }
+                    
+                    // 发送命令到服务器
+                    socket.emit('terminal_input', { command: currentLine });
+                    currentLine = '';
+                    cursorPosition = 0;
+                } else {
+                    term.prompt();
+                }
+            }
+            // Backspace键
+            else if (code === 127) {
+                if (cursorPosition > 0) {
+                    currentLine = currentLine.slice(0, cursorPosition - 1) + currentLine.slice(cursorPosition);
+                    cursorPosition--;
+                    
+                    // 获取终端列数
+                    const cols = term.cols;
+                    const prompt = currentWorkingDir + '> ';
+                    const fullLine = prompt + currentLine;
+                    const promptLength = prompt.length;
+                    
+                    // 计算完整行占用的行数
+                    const totalLength = fullLine.length;
+                    const totalRows = Math.ceil(totalLength / cols);
+                    
+                    // 计算光标在完整行中的绝对位置（包括提示符）
+                    const absoluteCursorPos = promptLength + cursorPosition;
+                    const targetRow = Math.floor(absoluteCursorPos / cols);
+                    const targetCol = absoluteCursorPos % cols;
+                    
+                    // 计算删除前的内容占用的行数（用于清除）
+                    const beforeLength = promptLength + currentLine.length + 1; // +1 for the deleted char
+                    const beforeRows = Math.ceil(beforeLength / cols);
+                    
+                    // 清除策略：清除所有可能占用的行
+                    // 先回到行首
+                    term.write('\r');
+                    
+                    // 如果有多行，需要向上移动到第一行
+                    // 假设光标在最后一行，向上移动
+                    if (beforeRows > 1) {
+                        term.write('\x1b[' + (beforeRows - 1) + 'A');
+                    }
+                    
+                    // 清除所有相关行（使用清除整行的方式）
+                    for (let i = 0; i < beforeRows; i++) {
+                        term.write('\x1b[2K'); // 清除整行
+                        if (i < beforeRows - 1) {
+                            term.write('\x1b[B'); // 向下移动一行
+                        }
+                    }
+                    
+                    // 回到第一行行首
+                    if (beforeRows > 1) {
+                        term.write('\x1b[' + (beforeRows - 1) + 'A');
+                    }
+                    term.write('\r');
+                    
+                    // 重新显示提示符和当前行
+                    term.write(prompt + currentLine);
+                    
+                    // 移动光标到正确位置
+                    // 计算重新显示后的光标位置（在行尾）
+                    const newTotalLength = fullLine.length;
+                    const newDisplayRow = Math.floor(newTotalLength / cols);
+                    const newDisplayCol = newTotalLength % cols;
+                    
+                    // 调整到目标行（如果目标行小于显示行，向上移动）
+                    if (newDisplayRow > targetRow) {
+                        term.write('\x1b[' + (newDisplayRow - targetRow) + 'A');
+                    }
+                    
+                    // 调整到目标列
+                    const currentCol = (newDisplayRow === targetRow) ? newDisplayCol : (newTotalLength % cols);
+                    if (currentCol > targetCol) {
+                        term.write('\b'.repeat(currentCol - targetCol));
+                    } else if (currentCol < targetCol) {
+                        term.write('\x1b[' + (targetCol - currentCol) + 'C');
+                    }
+                }
+            }
+            // 左箭头
+            else if (code === 27 && data.length > 1 && data.charCodeAt(1) === 91 && data.charCodeAt(2) === 68) {
+                if (cursorPosition > 0) {
+                    cursorPosition--;
+                    term.write('\b');
+                }
+            }
+            // 右箭头
+            else if (code === 27 && data.length > 1 && data.charCodeAt(1) === 91 && data.charCodeAt(2) === 67) {
+                if (cursorPosition < currentLine.length) {
+                    cursorPosition++;
+                    term.write(data.slice(3));
+                }
+            }
+            // Ctrl+C
+            else if (code === 3) {
+                socket.emit('terminal_input', { command: '\x03' });
+                currentLine = '';
+                cursorPosition = 0;
+                term.write('^C\r\n');
+                term.prompt();
+            }
+            // 其他字符
+            else if (code >= 32) {
+                currentLine = currentLine.slice(0, cursorPosition) + data + currentLine.slice(cursorPosition);
+                cursorPosition += data.length;
+                term.write(data);
+            }
+        });
+        
+        // 接收自动补全结果
+        socket.on('terminal_autocomplete_result', (data) => {
+            if (data.completions && data.completions.length > 0) {
+                // 获取当前输入的最后一部分（光标位置之前）
+                const textBeforeCursor = currentLine.substring(0, cursorPosition);
+                const parts = textBeforeCursor.split(/\s+/);
+                const lastPart = parts[parts.length - 1] || '';
+                
+                // 检查是否是目录子项补全（从后端返回的标志）
+                const isDirCompletion = data.is_dir_completion || false;
+                
+                if (data.completions.length === 1) {
+                    // 只有一个补全结果，直接替换
+                    const completion = data.completions[0];
+                    
+                    if (isDirCompletion) {
+                        // 目录子项补全：追加补全结果（需要添加路径分隔符）
+                        // 如果lastPart不以分隔符结尾，需要添加分隔符
+                        let newLastPart = lastPart;
+                        if (!newLastPart.endsWith('/') && !newLastPart.endsWith('\\')) {
+                            // 根据系统确定使用哪个分隔符
+                            const separator = lastPart.includes('\\') ? '\\' : '/';
+                            newLastPart = newLastPart + separator;
+                        }
+                        newLastPart = newLastPart + completion;
+                        
+                        const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                        const suffix = currentLine.substring(cursorPosition);
+                        const newLine = prefix + newLastPart + suffix;
+                        const addedChars = newLastPart.length - lastPart.length;
+                        
+                        currentLine = newLine;
+                        cursorPosition += addedChars;
+                        
+                        term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                        const remaining = currentLine.length - cursorPosition;
+                        if (remaining > 0) {
+                            term.write('\b'.repeat(remaining));
+                        }
+                    } else {
+                        // 检查lastPart是否包含路径分隔符
+                        const hasPathSeparator = lastPart.includes('/') || lastPart.includes('\\');
+                        
+                        if (hasPathSeparator) {
+                            // 路径段补全：只替换最后一个路径段
+                            // 例如：/usr/l -> /usr/lib，只替换 'l' 部分
+                            const lastSeparatorIndex = Math.max(
+                                lastPart.lastIndexOf('/'),
+                                lastPart.lastIndexOf('\\')
+                            );
+                            
+                            if (lastSeparatorIndex >= 0) {
+                                const pathPrefix = lastPart.substring(0, lastSeparatorIndex + 1);
+                                const newLastPart = pathPrefix + completion;
+                                const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                                const suffix = currentLine.substring(cursorPosition);
+                                const newLine = prefix + newLastPart + suffix;
+                                const addedChars = newLastPart.length - lastPart.length;
+                                
+                                currentLine = newLine;
+                                cursorPosition += addedChars;
+                                
+                                term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                                const remaining = currentLine.length - cursorPosition;
+                                if (remaining > 0) {
+                                    term.write('\b'.repeat(remaining));
+                                }
+                                return;
+                            }
+                        }
+                        
+                        // 非路径补全：替换整个lastPart
+                        const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                        const suffix = currentLine.substring(cursorPosition);
+                        const newLine = prefix + completion + suffix;
+                        const addedChars = completion.length - lastPart.length;
+                        
+                        currentLine = newLine;
+                        cursorPosition += addedChars;
+                        
+                        term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                        const remaining = currentLine.length - cursorPosition;
+                        if (remaining > 0) {
+                            term.write('\b'.repeat(remaining));
+                        }
+                    }
+                } else {
+                    // 多个补全结果，显示列表
+                    term.write('\r\n');
+                    data.completions.forEach(comp => {
+                        term.writeln('  ' + comp);
+                    });
+                    term.write('\r\n' + currentWorkingDir + '> ' + currentLine);
+                    // 移动光标到正确位置
+                    const remaining = currentLine.length - cursorPosition;
+                    if (remaining > 0) {
+                        term.write('\b'.repeat(remaining));
+                    }
+                }
+            }
+        });
+
+        // 当前工作目录（用于显示提示符）
+        let currentWorkingDir = 'C:\\';
+        
+        // 显示提示符
+        term.prompt = function() {
+            const platform = navigator.platform.toLowerCase();
+            let prompt = '$ ';
+            if (platform.includes('win')) {
+                // Windows使用当前工作目录
+                prompt = currentWorkingDir + '> ';
+            } else {
+                // Linux/Mac也使用当前工作目录
+                prompt = currentWorkingDir + '> ';
+            }
+            term.write('\r\n' + prompt);
+        };
+        
+        // 接收提示符更新事件
+        socket.on('terminal_prompt_update', (data) => {
+            if (data.directory) {
+                currentWorkingDir = data.directory;
+                // 立即更新提示符（如果命令已完成）
+                // 注意：这里不直接调用term.prompt()，因为command_complete事件会处理
+            }
+        });
+
+        // 清空终端
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            term.clear();
+            term.prompt();
+        });
+
+        // 关闭终端
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            if (confirm('{{ i18n.get("close_terminal_confirm", "确定要关闭终端吗？" if lang == "zh" else "Are you sure you want to close the terminal?") }}')) {
+                socket.emit('terminal_input', { command: 'exit' });
+                window.close();
+            }
+        });
+
+        // 初始提示符（移除，等待terminal_init后再显示）
+    </script>
+</body>
+</html>
+

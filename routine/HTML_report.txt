@@ -1,0 +1,9 @@
+Build reports using HTML templates, writing directly as HTML source code.
+Require rich graphics and detailed discussion. Use long sentences, with each paragraph containing approximately 300 words.
+Use connecting words such as "in terms of xxx", "on one hand, on the other hand", or "first, second, third, finally", or "first, second" etc. to connect sub-points, instead of listing sub-points in bullet format. Use rich connecting words, and adjacent paragraphs must use different connecting words.
+Use examples and illustrations to explain your viewpoints.
+Add sufficient details to support your viewpoints. Paragraphs should adopt a general-specific or general-specific-general structure. You can use transition words, transition sentences to connect sentences, or connect sentences through pronouns and keywords.
+Search for images from the internet and add illustrations, or use standard SVG syntax for illustrations.
+Make full use of research data, analyze data with programs and generate images. Make full use of tables to elaborate data or viewpoints.
+You can add a references section to summarize data sources.
+Please output in ENGLISH.

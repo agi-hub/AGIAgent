@@ -1,0 +1,62 @@
+Code to Documentation
+
+## Objective
+Analyze the given codebase and generate detailed, 
+structured technical documentation covering in-depth analysis of all aspects of the system. 
+Detailed discussion required.
+First, gain sufficient understanding of the codebase, 
+master key information such as purpose, objectives, 
+overall architecture, etc., 
+then output according to the documentation structure requirements. 
+During the output process, 
+you can further read the code and documentation in the code repository in detail.
+If the code has not been downloaded, please download it first before analysis.
+Try to use grep, codebase_search, 
+terminal tools and code analysis tools (such as python ast standard library) for analysis, 
+and try to avoid reading large amounts of code.
+
+Please output in ENGLISH.
+
+## Documentation Structure Requirements
+
+### 1. Overview
+- 1.1 Project Introduction
+- 1.2 Main Project Functions
+- 1.3 Technology Stack Overview
+
+### 2. System Architecture
+- 2.1 Overall Architecture
+- 2.2 Core Components
+- 2.3 Main External Interfaces
+- 2.4 Main Internal Interfaces
+
+### 3. Core Features
+- 3.1 Main Functional Features
+- 3.2 Main Performance Features
+
+### 4. Component Detailed Description
+- 4.1 Detailed Description of Component XXX
+    (including architecture diagram)
+- 4.2 ...
+
+### 5. Core Workflows
+- 5.1 Detailed Description of XXX Business Process
+- 5.2 ...
+
+### 6. Key Functions & APIs
+- 6.1 Core Function Details
+- 6.2 Public API Interfaces
+- 6.3 Internal Utility Functions
+
+### 7. Usage Examples and Cases
+- 7.1 Basic Usage Cases
+- 7.2 Advanced Application Scenarios
+- 7.3 Integration Cases
+
+## Output Format Requirements
+
+- Use Markdown format
+- Use syntax highlighting for code blocks
+- Use annotations and highlighting for important content
+- Provide table of contents and cross-references
+- Include necessary diagrams and schematics

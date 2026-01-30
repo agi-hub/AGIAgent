@@ -1,0 +1,118 @@
+When writing CVPR-style conference papers, please strictly follow the following standards. 
+You can write different chapters into different md files, 
+and finally use the merge_file tool to combine them into a complete paper. 
+Do not merge them into a large md file yourself.
+
+Please write in ENGLISH.
+
+## CVPR Conference Paper Structure and Format Requirements
+
+### 1. Title and Abstract
+- Title: Concise and impactful, highlighting the key contribution (typically 6-10 words)
+- Abstract: 150-200 words, emphasizing novelty and results
+- Keywords: 3-5 relevant keywords for the computer vision community
+- Author affiliations and contact information
+
+### 2. Main Text Structure (CVPR Format - 8 pages max)
+
+#### 2.1 Introduction
+- Problem motivation and significance (1-2 paragraphs)
+- Brief related work overview (1 paragraph)
+- Main contributions (clearly stated in 3-4 bullet points)
+- Paper organization (1 paragraph)
+
+#### 2.2 Related Work
+- Focused literature review on most relevant recent work
+- Critical analysis of existing approaches and their limitations
+- Clear positioning of the proposed method
+- Keep concise due to page limit constraints
+
+#### 2.3 Method
+- Core technical contribution and approach
+- Mathematical formulations and algorithmic details
+- Architecture diagrams and implementation specifics
+- Key innovations and design choices
+
+#### 2.4 Experiments
+- Experimental setup and datasets
+- Implementation details and hyperparameters
+- Main results and comparisons with baselines
+- Ablation studies and analysis
+
+#### 2.5 Results and Analysis
+- Comprehensive experimental evaluation
+- Comparison with state-of-the-art methods
+- Visualization of results and failure cases
+- Statistical significance and error analysis
+
+#### 2.6 Conclusion
+- Summary of contributions and key findings
+- Limitations and future work
+- Impact on the field
+
+## CVPR Writing Standards Requirements
+
+### 1. Language and Style
+- Use clear, concise academic language with technical precision
+- Each paragraph should be 150-250 words due to page constraints
+- Use active voice for clarity and impact
+- Employ "we" appropriately for collaborative work
+- Focus on results and contributions rather than extensive background
+
+### 2. Technical Writing Standards
+- Emphasize novelty and technical contributions
+- Provide sufficient detail for reproducibility
+- Use standard computer vision terminology and notation
+- Include clear algorithmic descriptions and pseudocode when needed
+- Focus on experimental validation and performance improvements
+
+### 3. Figures and Tables
+- High-impact figures with clear visualizations (300+ DPI)
+- Concise captions that highlight key insights
+- Tables with performance metrics and statistical significance
+- Use SVG/mermaid for network architectures and method pipelines
+- Include qualitative results and failure case analysis
+
+## CVPR Research Support Requirements
+
+### 1. Literature Review and Citation
+- Focus on recent CVPR, ICCV, ECCV, and top-tier conference publications
+- Emphasize work from the last 2-3 years in computer vision
+- Use arXiv, Google Scholar, and conference proceedings for literature search
+- Follow CVPR citation format and style
+- Include 20-40 high-quality references from top-tier venues
+
+### 2. Experimental Validation
+- Evaluation on standard computer vision datasets (ImageNet, COCO, etc.)
+- Comparison with 3-5 recent state-of-the-art methods
+- Ablation studies to validate key components
+- Computational efficiency analysis (FLOPs, parameters, inference time)
+- Qualitative results and visualizations
+
+### 3. Reproducibility and Code
+- Provide implementation details and hyperparameters
+- Make code publicly available on GitHub
+- Include training and inference scripts
+- Document hardware requirements and training time
+
+## CVPR Quality Standards
+
+### 1. Technical Innovation
+- Novel technical contributions with clear improvements
+- Strong experimental validation on standard benchmarks
+- Clear problem formulation and solution approach
+- Analysis of limitations and failure cases
+
+### 2. Impact and Novelty
+- Significant improvement over existing methods
+- Practical applications in computer vision
+- Potential for follow-up research
+- Clear positioning in the field
+
+### 3. Presentation Quality
+- High-quality figures with clear visualizations
+- Concise, impactful writing within page limits
+- Proper technical notation and terminology
+- Effective use of space and formatting
+
+During the writing process, ensure each section meets CVPR standards for technical novelty, experimental rigor, and presentation impact within the 8-page limit.

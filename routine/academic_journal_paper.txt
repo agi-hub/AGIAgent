@@ -1,0 +1,124 @@
+When writing IEEE Transactions-style journal papers, please strictly follow the following standards. 
+You can write different chapters into different md files, 
+and finally use the merge_file tool to combine them into a complete paper. 
+Do not merge them into a large md file yourself.
+
+Please write in ENGLISH.
+
+## IEEE Transactions Journal Paper Structure and Format Requirements
+
+### 1. Title and Abstract
+- Title: Concise, descriptive, and technically accurate (typically 8-12 words)
+- Abstract: 150-250 words, structured format including: Background, Objective, Methods, Results, and Conclusions
+- Keywords: 4-6 IEEE standard keywords from the IEEE keyword list
+- Author affiliations and contact information clearly stated
+
+### 2. Main Text Structure (IEEE Transactions Format)
+
+#### 2.1 Introduction
+- Problem motivation and significance (2-3 paragraphs)
+- Literature review and related work (comprehensive, 3-4 paragraphs)
+- Research contributions and novelty (clearly stated in bullet points)
+- Paper organization overview
+
+#### 2.2 Background and Related Work
+- Theoretical foundations and mathematical preliminaries
+- Comprehensive literature survey with critical analysis
+- Identification of research gaps and limitations
+- Positioning of current work within existing literature
+
+#### 2.3 Methodology/System Design
+- Detailed technical approach and system architecture
+- Mathematical formulations and algorithms
+- Implementation details and design choices
+- Theoretical analysis and complexity considerations
+
+#### 2.4 Experimental Setup
+- Dataset description and experimental environment
+- Evaluation metrics and methodology
+- Baseline methods and comparison frameworks
+- Statistical significance testing procedures
+
+#### 2.5 Results and Analysis
+- Comprehensive experimental results with statistical analysis
+- Ablation studies and sensitivity analysis
+- Performance comparisons with state-of-the-art methods
+- Discussion of results and their implications
+
+#### 2.6 Discussion
+- Theoretical insights and practical implications
+- Limitations and potential improvements
+- Broader impact and applications
+- Future research directions
+
+#### 2.7 Conclusion
+- Summary of main contributions
+- Key findings and their significance
+- Impact on the field and practical applications
+
+## IEEE Transactions Writing Standards Requirements
+
+### 1. Language and Style
+- Use formal academic language with precise technical terminology
+- Each paragraph should be 200-300 words with clear logical flow
+- Use IEEE standard mathematical notation and symbols
+- Employ passive voice appropriately for technical descriptions
+- Avoid first-person pronouns; use "we" sparingly and "I" never
+
+### 2. Technical Writing Standards
+- Provide detailed mathematical formulations with proper notation
+- Include comprehensive experimental validation and statistical analysis
+- Use IEEE standard figure and table formatting
+- Ensure reproducibility with detailed methodology descriptions
+- Include complexity analysis and theoretical foundations
+
+### 3. Figures and Tables
+- High-quality figures with IEEE standard formatting (300+ DPI)
+- Clear, descriptive captions with detailed explanations
+- Tables with proper statistical measures (mean, std, p-values)
+- Use SVG/mermaid for system architecture diagrams and flowcharts
+- Include ablation study results and sensitivity analysis plots
+
+## IEEE Transactions Research Support Requirements
+
+### 1. Literature Review and Citation
+- Comprehensive survey of IEEE Transactions and top-tier journal publications
+- Focus on recent advances (last 3-5 years) in the specific domain
+- Use IEEE Xplore and other academic databases for literature search
+- Follow IEEE citation format strictly
+- Include 40-80 high-quality references from peer-reviewed sources
+
+### 2. Experimental Validation
+- Extensive experimental evaluation on multiple standard datasets
+- Statistical significance testing (t-tests, ANOVA, etc.)
+- Comparison with at least 5-10 state-of-the-art methods
+- Ablation studies to validate each component
+- Cross-validation and robustness testing
+
+### 3. Reproducibility and Open Science
+- Provide detailed implementation details and hyperparameters
+- Make code and datasets publicly available when possible
+- Include computational complexity analysis
+- Document experimental setup and hardware specifications
+
+## IEEE Transactions Quality Standards
+
+### 1. Technical Rigor
+- Novel theoretical contributions with mathematical proofs
+- Comprehensive experimental validation
+- Clear problem formulation and solution approach
+- Detailed analysis of limitations and failure cases
+
+### 2. Impact and Significance
+- Clear advancement over existing state-of-the-art
+- Practical applications and real-world relevance
+- Broader impact on the research community
+- Potential for future research directions
+
+### 3. Presentation Quality
+- Professional figures and tables with IEEE formatting
+- Clear, concise writing with logical flow
+- Proper mathematical notation and terminology
+- Comprehensive supplementary material when needed
+
+During the writing process, ensure each section meets IEEE Transactions standards for technical depth, experimental rigor, and presentation quality.

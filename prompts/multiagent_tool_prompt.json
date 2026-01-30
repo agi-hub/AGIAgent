@@ -1,0 +1,111 @@
+{
+  "spawn_agent": {
+    "description": "Spawn a new AGIAgent agent to handle a specific task asynchronously in a shared workspace. All spawned agents run in the background for parallel execution. Useful for complex task decomposition and parallel execution.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_description": {
+          "type": "string",
+          "description": "Description of the task for the new AGIAgent agent"
+        },
+        "agent_id": {
+          "type": "string",
+          "description": "Custom agent ID (optional, will auto-generate if not provided). Must match format 'agent_XXX' where XXX is a 3-digit number"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for the new agent (optional, will use current if not provided)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name for the new agent (optional, will use current if not provided)"
+        },
+        "max_loops": {
+          "type": "integer",
+          "description": "Maximum execution loops for the new agent (default: 25)"
+        },
+        "MCP_config_file": {
+          "type": "string",
+          "description": "Custom MCP configuration file path (optional, defaults to 'config/mcp_servers.json')"
+        },
+        "prompts_folder": {
+          "type": "string",
+          "description": "Custom prompts folder path (optional, defaults to 'prompts'). Allows using different prompt templates and tool interfaces"
+        }
+      },
+      "required": ["task_description"]
+    }
+  },
+  "send_P2P_message": {
+    "description": "Send a peer-to-peer (P2P) message to a specific agent or manager for direct communication. Use 'manager' as receiver_id to send messages to the manager. The content parameter is REQUIRED and must be provided as a string or object.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "receiver_id": {
+          "type": "string",
+          "description": "Target agent ID to send message to (use 'manager' for manager)"
+        },
+        "content": {
+          "type": "string",
+          "description": "Message content as string. This is a REQUIRED parameter. Example: 'Hello, please respond to this message' or 'Task completed successfully'"
+        }
+      },
+      "required": ["receiver_id", "content"]
+    }
+  },
+  "send_broadcast_message": {
+    "description": "Send a message to all active agents in the system. The content parameter is REQUIRED and must be provided as a string.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "Message content as string. This is a REQUIRED parameter. Example: 'System maintenance in 5 minutes' or 'All agents please report status'"
+        }
+      },
+      "required": ["content"]
+    }
+  },
+  "get_agent_session_info": {
+    "description": "Get comprehensive information about current agent session including session statistics, agent details, and list of all active agents.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  "terminate_agent": {
+    "description": "Terminate a specific AGIAgent agent. Use 'self' or leave agent_id empty to terminate current agent. This sends a terminate signal to the agent, causing it to stop execution and clean up resources.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "ID of the agent to terminate. Use 'self' or leave empty to terminate current agent."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for termination (optional)"
+        }
+      },
+      "required": []
+    }
+  },
+  "idle": {
+    "description": "Idle tool that represents doing nothing in this round, only used for multi-agent synchronization. DO NOT use this for sending TASK_COMPLETED signal. This tool allows an agent to explicitly indicate that no action is needed in the current execution round. By default, it will sleep for 10 seconds to wait for other agents, monitoring the manager's inbox for new extmsg messages. If extmsg is detected, it will exit early. Otherwise waits for the full sleep duration. IMPORTANT: Set sleep to -1 for infinite sleep mode - this will only wake up when a user sends a message. This should ONLY be used when the manager has completed all tasks and there are no other active agents.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for idling (e.g., 'waiting_for_other_agents', 'no_action_needed')"
+        },
+        "sleep": {
+          "type": "number",
+          "description": "Sleep time in seconds (default: 10). Set to 0 to skip sleep. Set to -1 for infinite sleep mode (only wakes up when user sends a message) - ONLY use this when manager has completed all tasks and there are no other active agents."
+        }
+      },
+      "required": []
+    }
+  }
+} 

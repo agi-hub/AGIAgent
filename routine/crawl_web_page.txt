@@ -1,0 +1,5 @@
+Based on the user's prompt requirements, 
+appropriately transform the keywords that need to be crawled into synonyms. 
+For each transformation, obtain as much relevant information as possible through web search 
+and summarize it into a document. After each prompt change, append to the document in writing form.
+Please output in ENGLISH.

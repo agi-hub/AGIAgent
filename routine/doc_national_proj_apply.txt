@@ -1,0 +1,29 @@
+Write application documents according to the following template. You can write different chapters into different md files and use the merge_file tool to combine them into a complete md file. Do not merge them into a large md file yourself.
+Discussion requirements: rich graphics and detailed discussion. Use long sentences as much as possible, with each paragraph containing approximately 300 words.
+Use connecting words such as "in terms of xxx", "on one hand, on the other hand", or "first, second, third, finally", or "first, second" etc. to connect sub-points, instead of listing sub-points in bullet format. Use rich connecting words, and adjacent paragraphs must use different connecting words.
+Use examples and illustrations to explain your viewpoints. Paragraphs should adopt a general-specific or general-specific-general structure.
+For each chapter, please search for relevant information from web pages, knowledge bases, and code repositories and organize it according to the guidelines (requirements) in the prompts. When writing each chapter, add illustrations. You can use SVG/mermaid for drawing or search for images from the internet.
+Make full use of research data, analyze data with programs and generate images. Make full use of tables to elaborate data or viewpoints.
+
+Please output in ENGLISH.
+
+Title:
+XXXX Project Application
+
+I. Current Development Status at Home and Abroad
+II. Project Research Content, Research Methods and Technical Routes
+(1) Main Research Content of the Project
+Key scientific problems and key technical problems to be solved, main research content to be carried out to address these problems, limited to 3000 words.
+(2) Research Methods Adopted by the Project
+Methods, principles, mechanisms, algorithms, models, etc. to be adopted for the problems to be solved by the project research, limited to 2000 words.
+
+III. Detailed Decomposition of Project Tasks
+Explain research objectives, main research content, major scientific problems or key technologies to be solved, assessment indicators and assessment methods/means, etc. by project task segments. Each project is limited to 3000 words.
+
+IV. Main Innovation Points
+Briefly describe the main innovation points of the project around basic frontiers, common key technologies or application demonstrations. Specific content should include the basic form of the innovation and its frontier nature, timeliness, etc., and explain whether it has methodological, theoretical and intellectual property characteristics. The description of each innovation point is limited to 500 words.
+V. Expected Economic and Social Benefits
+Expected scientific, technical, and industrial indicators of the project and scientific value, social, economic, and ecological benefits. Limited to 1500 words.
+
+VI. Project Annual Plan
+Formulate the project's planned progress every 6 months. The project's assessment indicators should be decomposed and implemented in the annual plan, and whether it is a milestone node should be marked.

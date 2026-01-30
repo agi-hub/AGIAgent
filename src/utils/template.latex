@@ -1,0 +1,211 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage{xeCJK}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{datetime2}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage{fvextra}
+\usepackage{framed}
+\usepackage{listings}
+\usepackage{seqsplit}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xurl}
+\usepackage{calc}
+
+% Support for unnumbered tables in Pandoc 3.8+
+\newcounter{none}
+
+\geometry{margin=2.5cm}
+
+% Font settings
+% Font is specified by pandoc command line parameter -V CJKmainfont
+% This allows different fonts for different operating systems
+% macOS: Hiragino Sans GB
+% Linux: Noto Serif CJK SC
+% Windows: Microsoft YaHei
+
+% Image settings - prevent overflow and control size, center display
+\usepackage{adjustbox}
+\setkeys{Gin}{width=\linewidth,height=0.9\textheight,keepaspectratio}
+
+% Redefine includegraphics for better default size control and centering
+\let\originalincludegraphics\includegraphics
+\renewcommand{\includegraphics}[2][]{%
+  \begingroup
+  \centering
+  \setkeys{Gin}{width=\linewidth,height=0.9\textheight,keepaspectratio}%
+  \setkeys{Gin}{#1}%
+  \originalincludegraphics{#2}%
+  \endgroup
+}
+
+% Ensure floating images are also centered
+\usepackage{float}
+\let\originalfigure\figure
+\let\endoriginalfigure\endfigure
+\renewenvironment{figure}[1][]{\originalfigure[H]\centering}{\endoriginalfigure}
+
+% Code highlighting settings
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codecomment}{RGB}{106,153,85}
+\definecolor{codekeyword}{RGB}{86,156,214}
+\definecolor{codestring}{RGB}{206,145,120}
+
+% Define code block environment
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+  commandchars=\\\{\},
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true
+}
+
+% Define code block with background
+\newenvironment{Shaded}{%
+  \begin{snugshade}%
+}{%
+  \end{snugshade}%
+}
+
+% Define syntax highlighting commands (complete version)
+\providecommand{\CommentTok}[1]{\textcolor{codecomment}{#1}}
+\providecommand{\KeywordTok}[1]{\textcolor{codekeyword}{\textbf{#1}}}
+\providecommand{\StringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\NormalTok}[1]{#1}
+\providecommand{\FunctionTok}[1]{\textcolor{blue}{#1}}
+\providecommand{\VariableTok}[1]{\textcolor{purple}{#1}}
+\providecommand{\OperatorTok}[1]{\textcolor{brown}{#1}}
+\providecommand{\ControlFlowTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\DataTypeTok}[1]{\textcolor{green}{\textbf{#1}}}
+\providecommand{\DecValTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\BaseNTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\FloatTok}[1]{\textcolor{orange}{#1}}
+\providecommand{\CharTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\RegionMarkerTok}[1]{#1}
+\providecommand{\ErrorTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\AlertTok}[1]{\textcolor{red}{\textbf{#1}}}
+\providecommand{\WarningTok}[1]{\textcolor{orange}{\textbf{#1}}}
+\providecommand{\AttributeTok}[1]{\textcolor{teal}{#1}}
+\providecommand{\InformationTok}[1]{\textcolor{blue}{#1}}
+\providecommand{\OtherTok}[1]{\textcolor{violet}{#1}}
+\providecommand{\DocumentationTok}[1]{\textcolor{codecomment}{\textit{#1}}}
+\providecommand{\AnnotationTok}[1]{\textcolor{codecomment}{\textbf{#1}}}
+\providecommand{\ImportTok}[1]{\textcolor{magenta}{#1}}
+\providecommand{\PreprocessorTok}[1]{\textcolor{magenta}{\textbf{#1}}}
+\providecommand{\ExtensionTok}[1]{#1}
+\providecommand{\SpecialCharTok}[1]{\textcolor{red}{#1}}
+\providecommand{\SpecialStringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\VerbatimStringTok}[1]{\textcolor{codestring}{#1}}
+\providecommand{\BuiltInTok}[1]{\textcolor{blue}{\textbf{#1}}}
+\providecommand{\ConstantTok}[1]{\textcolor{purple}{\textbf{#1}}}
+\providecommand{\NameBuiltinTok}[1]{\textcolor{blue}{\textbf{#1}}}
+\providecommand{\CloseingTok}[1]{#1}
+\providecommand{\ParameterTok}[1]{#1}
+
+% Define tightlist command (Pandoc-generated compact list)
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% Define pandocbounded command (Pandoc-generated code block boundary command)
+% If fvextra package is installed, this command should already be defined
+% But for compatibility, we provide a backup definition
+% \pandocbounded is used to wrap code blocks to ensure code does not exceed page boundaries
+% This is a simple wrapper, if fvextra provides a better implementation, it will be overridden
+\providecommand{\pandocbounded}[1]{#1}
+
+% Set code background color
+\definecolor{shadecolor}{RGB}{248,248,248}
+
+% Define special handling for extra long code lines
+\newcommand{\longcode}[1]{\seqsplit{#1}}
+
+% Redefine Verbatim environment to better handle long lines
+\RecustomVerbatimEnvironment{Verbatim}{Verbatim}{
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true
+}
+
+% listings settings (backup)
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\footnotesize,
+  commentstyle=\color{codecomment},
+  keywordstyle=\color{codekeyword},
+  stringstyle=\color{codestring},
+  breaklines=true,
+  breakatwhitespace=false,
+  postbreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\color{red}\hookrightarrow}},
+  frame=single,
+  framesep=3pt,
+  framexleftmargin=3pt,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  tabsize=2,
+  showspaces=false,
+  showstringspaces=false,
+  xleftmargin=17pt,
+  framexleftmargin=17pt,
+  framexrightmargin=5pt,
+  framexbottommargin=4pt,
+  rulecolor=\color{gray!30},
+  columns=flexible,
+  keepspaces=true
+}
+
+% Link settings - support long URL line breaks
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,breaklinks=true}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{\today}
+\fancyfoot[C]{\thepage\ / \pageref{LastPage}}
+
+% Disable automatic section numbering (because Markdown may already have numbering)
+\setcounter{secnumdepth}{0}
+
+% Begin document
+\begin{document}
+
+% Title
+$if(title)$
+\begin{center}
+{\Huge\bfseries $title$}\\[1cm]
+$if(subtitle)$
+{\Large $subtitle$}\\[0.5cm]
+$endif$
+$if(author)$
+{\large Author: $author$}\\[0.5cm]
+$endif$
+{\large Generated: \DTMnow}\\[1cm]
+
+% Generation log box
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{Document Generation Log}\\[0.3cm]
+\begin{tabular}{ll}
+Engine & XeLaTeX \\
+Template Version & Minimal Log v1.0 \\
+SVG Processing & CJK Optimization Filter \\
+Status & Normal \\
+Start Time & \DTMnow \\
+\end{tabular}
+\end{minipage}}
+\end{center}
+
+\tableofcontents
+\newpage
+$endif$
+
+% Document body
+$body$
+
+\end{document}

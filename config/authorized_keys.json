@@ -1,0 +1,263 @@
+{
+  "keys": [
+    {
+      "name": "agiagenttest",
+      "sha256_hash": "134c753ae8604c0fda2a9517db30801412dabf361ba173922726576e7a94d7ad",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-08-31T06:49:48.708992",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "wuzhenzhi",
+      "phone_number": "3884",
+      "sha256_hash": "edba6ef3c5b5c3abd73010cede25aea943db7d68db4556e71ddc47026353393d",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-13T10:56:45.726236",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "xiaoxiong",
+      "phone_number": "1111",
+      "sha256_hash": "ac267c4b60e17faf57c44eb31a23bd3f22f355a5e59e5383843d45b396a6c42c",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-13T13:49:46.770563",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "agibot",
+      "phone_number": "9485",
+      "sha256_hash": "9fd3e33af858bf635c8a82687e6a8f0491704e0855016f85edeb9173ac8dfe03",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-13T14:00:03.062306",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "15313274884",
+      "phone_number": "4884",
+      "sha256_hash": "bddd3c3303228d18a8dfd6efe1ceaaa0895a60f29dc1ef2f34a2fa6ddbacab1e",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-14T15:42:55.511285",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "xiaozhi",
+      "phone_number": "1112",
+      "sha256_hash": "ef5c36f3c01cafc8291336bb5c0aeca234c4d86dddbbdc67a506b3ada6a042dc",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-15T12:15:25.818164",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "feverwind",
+      "phone_number": "4546",
+      "sha256_hash": "5b1383a897653a373d70056b81c284e4a70862364e74a518b091618d44519053",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-17T21:56:23.303563",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "zhangchenggong0312@163.com",
+      "phone_number": "5419",
+      "sha256_hash": "35abc0d20cc51e53fd0ee5cbee10b7c170139fafa8a93eab28b9427d5cfcc12a",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-19T08:28:06.165858",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "z4534426",
+      "phone_number": "5817",
+      "sha256_hash": "760c602d043a7e96d148d6346b6566b82d956a3766ae3d0eee0cc456b3a32707",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-19T10:46:40.838718",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "xsp",
+      "phone_number": "5564",
+      "sha256_hash": "994137973b3a4d8c0c70e7d1d91c1d61da8ee7f59948463503842e5d166af5d1",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-23T17:41:52.098902",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "Jun-18666102690",
+      "phone_number": "2690",
+      "sha256_hash": "b86a4497e14fb2005b57870a342a3eadee265f936b6820adfd85268705a5f09b",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-24T12:08:59.425691",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "jackie148",
+      "phone_number": "5556",
+      "sha256_hash": "29b06d643b58f5922c761ac321a841d44064a8abc9f2e907b1a1308338bc033e",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-11-26T14:21:54.159055",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "kang",
+      "phone_number": "0013",
+      "sha256_hash": "5f13a6e8a7bf55ad206afe6843e7743b3aea386b1e07f99cbd710450d9f57165",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-10T02:05:38.589839",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "zcg",
+      "phone_number": "7686",
+      "sha256_hash": "f757d50b1cbde955c9135b892415eefc4cd318144a90ec698647b383825a5b2a",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-11T01:08:10.674371",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "jitonga",
+      "phone_number": "0351",
+      "sha256_hash": "88848621aed08409bf5ccbae0c58e430014eb7705f247bfdc97653f74669ae30",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-13T16:11:24.181951",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "manykun",
+      "phone_number": "8223",
+      "sha256_hash": "539faed19602c9014836113eb082bc08b3b479dbe5bc95b9f6fb6b2972a333bc",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-15T09:59:14.971372",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "jixinglong",
+      "phone_number": "5229",
+      "sha256_hash": "48ca3a5ca7ce8b37dbac9e4004f731730a8ed3c006d58b72a0124b52373a6909",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-23T01:58:42.205124",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "tian8cy",
+      "phone_number": "7853",
+      "sha256_hash": "2463233b4e6eeb54d5715344db4e9310fd7730f7a06e49148d7b7e69ce1fda02",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2025-12-25T11:01:16.589136",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "13889205769",
+      "phone_number": "5769",
+      "sha256_hash": "7f4bcca0643e8c84c90ba24a57aee1b9e94dc21e9998d423da31438116a99f30",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2026-01-08T01:43:13.980311",
+      "expires_at": null,
+      "enabled": true
+    },
+    {
+      "name": "tianhaoyang",
+      "phone_number": "7949",
+      "sha256_hash": "6a7a70d6212ae47020cb1800194d9d07d09495ff69b6bf4fc6876bf0f2047aec",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "created_at": "2026-01-19T11:11:38.314627",
+      "expires_at": null,
+      "enabled": true
+    }
+  ]
+}

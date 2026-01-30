@@ -1,0 +1,3 @@
+Design slides using HTML format, similar to PowerPoint format. Require rich graphics and limit the size of each page. Images can be located on the left half, right half, or full page. Various presentation forms such as tables and diagrams can be used. Require simplicity, elegance, and style.
+
+Please output in ENGLISH.

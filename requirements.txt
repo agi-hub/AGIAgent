@@ -1,0 +1,40 @@
+requests>=2.20.0
+openai>=1.0.0 
+anthropic>=0.3.0 
+numpy>=1.18.0 
+psutil
+
+scikit-learn>=0.22.0 
+jieba>=0.35.0
+pyyaml>=5.4.0   
+playwright>=1.20.0 
+tqdm>=4.30.0  
+pandoc>=2.0.0
+
+pillow
+pandocfilters
+cairosvg
+beautifulsoup4
+
+# GUI dependencies
+flask>=2.0.0
+flask-socketio>=5.0.0
+flask-cors>=3.0.0
+eventlet>=0.30.0
+
+#for MCP
+fastmcp
+
+#for pdf read
+pymupdf>=1.20.0
+
+# Windows PDF generation
+pywin32>=306; sys_platform == "win32"
+
+# for multimedia data (can be removed)
+pandas
+openpyxl
+tabulate
+markdown
+
+

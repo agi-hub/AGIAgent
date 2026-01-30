@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '用户注册' if lang == 'zh' else 'User Registration' }} - {{ i18n.app_title.replace(' GUI', '') }}</title>
+    <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'SimSun', sans-serif;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e8f0f5 50%, #f5f9fc 100%);
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(64, 150, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(100, 200, 255, 0.06) 0%, transparent 50%),
+                linear-gradient(0deg, transparent 24%, rgba(100, 150, 255, 0.03) 25%, rgba(100, 150, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(100, 150, 255, 0.03) 75%, rgba(100, 150, 255, 0.03) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(100, 150, 255, 0.03) 25%, rgba(100, 150, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(100, 150, 255, 0.03) 75%, rgba(100, 150, 255, 0.03) 76%, transparent 77%, transparent);
+            background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #1a4d7a;
+        }
+
+        .register-container {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 50%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
+            box-shadow:
+                0 8px 32px rgba(64, 150, 255, 0.15),
+                0 2px 8px rgba(0, 0, 0, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+            backdrop-filter: blur(10px);
+        }
+
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo {
+            width: 160px;
+            height: 160px;
+            object-fit: contain;
+            filter: drop-shadow(0 3px 8px rgba(64, 150, 255, 0.3));
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .title-section {
+            flex: 1;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a4d7a;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            color: #5a8db8;
+            font-size: 14px;
+            text-shadow: none;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            color: #1a4d7a;
+            margin-bottom: 8px;
+            text-shadow: none;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            background: #ffffff;
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4096ff;
+            background: #ffffff;
+            box-shadow:
+                0 0 0 3px rgba(64, 150, 255, 0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .form-input.error {
+            border-color: #ff4757;
+            box-shadow: 0 0 0 3px rgba(255, 71, 87, 0.1);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            min-height: 80px;
+            resize: vertical;
+            transition: all 0.3s ease;
+            background: #ffffff;
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #4096ff;
+            background: #ffffff;
+            box-shadow:
+                0 0 0 3px rgba(64, 150, 255, 0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .register-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #4096ff 0%, #2979ff 50%, #4096ff 100%);
+            color: #ffffff;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 4px 12px rgba(64, 150, 255, 0.3);
+            text-shadow: none;
+        }
+
+        .register-btn:hover {
+            background: linear-gradient(135deg, #2979ff 0%, #1e6fff 50%, #2979ff 100%);
+            box-shadow:
+                0 6px 20px rgba(64, 150, 255, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .register-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 10px;
+            color: #4096ff;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error-message {
+            color: #ff4757;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+        }
+
+        .success-message {
+            color: #2ed573;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .back-link a {
+            color: #4096ff;
+            text-decoration: none;
+            font-size: 14px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 1px solid rgba(64, 150, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link a:hover {
+            background: rgba(64, 150, 255, 0.1);
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.2);
+            text-decoration: none;
+        }
+
+        .api-key-result {
+            background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+            box-shadow:
+                0 4px 16px rgba(64, 150, 255, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        }
+
+        .api-key-result h3 {
+            color: #1a4d7a;
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .api-key-display {
+            background: #f0f4f8;
+            border: 1px solid rgba(64, 150, 255, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            font-size: 14px;
+            word-break: break-all;
+            margin: 10px 0;
+            color: #1a4d7a;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+            text-shadow: none;
+        }
+
+        .copy-btn {
+            background: linear-gradient(135deg, #4096ff 0%, #2979ff 100%);
+            color: #ffffff;
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.3);
+            text-shadow: none;
+        }
+
+        .copy-btn:hover {
+            background: linear-gradient(135deg, #2979ff 0%, #1e6fff 100%);
+            box-shadow:
+                0 4px 12px rgba(64, 150, 255, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .captcha-instruction {
+            font-size: 14px;
+            color: #5a8db8;
+            margin-bottom: 8px;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+        }
+
+        .captcha-text {
+            font-size: 18px;
+            color: #1a4d7a;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            text-align: center;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.15);
+        }
+
+        .agreement-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 8px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .agreement-checkbox {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            accent-color: #4096ff;
+            cursor: pointer;
+        }
+
+        .agreement-text {
+            font-size: 14px;
+            color: #1a4d7a;
+            line-height: 1.5;
+            font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            text-shadow: none;
+        }
+
+        .agreement-link {
+            color: #4096ff;
+            text-decoration: none;
+            font-weight: bold;
+            text-shadow: none;
+        }
+
+        .agreement-link:hover {
+            text-decoration: underline;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 50%, #ffffff 100%);
+            border: 2px solid rgba(64, 150, 255, 0.3);
+            border-radius: 12px;
+            box-shadow:
+                0 8px 32px rgba(64, 150, 255, 0.2),
+                0 2px 8px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            margin: 5% auto;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #1a4d7a;
+            position: relative;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(64, 150, 255, 0.3);
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a4d7a;
+            text-shadow: none;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: #4096ff;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            text-shadow: none;
+        }
+
+        .close-modal:hover {
+            color: #ff4757;
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #1a4d7a;
+            text-shadow: none;
+        }
+
+        .modal-body h3 {
+            color: #1a4d7a;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 18px;
+            text-shadow: none;
+        }
+
+        .modal-body p {
+            margin-bottom: 15px;
+        }
+
+        /* Desktop styles - horizontal layout */
+        @media (min-width: 769px) {
+            body {
+                background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                max-width: 600px;
+                border: 3px solid rgba(64, 150, 255, 0.3);
+                box-shadow:
+                    0 12px 40px rgba(64, 150, 255, 0.2),
+                    0 4px 12px rgba(0, 0, 0, 0.1),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            }
+
+            .logo-section {
+                justify-content: flex-start;
+                text-align: left;
+                gap: 30px;
+            }
+
+            .logo-container {
+                flex-shrink: 0;
+            }
+
+            .logo {
+                width: 200px;
+                height: 200px;
+                filter: drop-shadow(0 4px 12px rgba(64, 150, 255, 0.4));
+            }
+
+            .logo-text-container {
+                width: 140px; /* 桌面端更大的固定宽度 */
+            }
+
+            .logo-text {
+                font-size: 18px;
+                font-weight: bold;
+                text-shadow: 0 2px 8px rgba(64, 150, 255, 0.3);
+            }
+
+            .title-section {
+                text-align: left;
+            }
+
+            .title {
+                font-size: 28px;
+                margin-bottom: 12px;
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
+            }
+
+            .subtitle {
+                font-size: 16px;
+                text-shadow: none;
+            }
+        }
+
+        /* Tablet styles */
+        @media (max-width: 768px) and (min-width: 481px) {
+            body {
+                background-size: 100% 100%, 100% 100%, 35px 35px, 35px 35px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                max-width: 500px;
+                padding: 35px;
+            }
+
+            .logo-section {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .logo {
+                width: 180px;
+                height: 180px;
+                filter: drop-shadow(0 3px 10px rgba(64, 150, 255, 0.3));
+            }
+
+            .logo-text-container {
+                width: 130px; /* 平板端中等宽度 */
+            }
+
+            .logo-text {
+                font-size: 17px;
+                text-shadow: 0 2px 6px rgba(64, 150, 255, 0.3);
+            }
+
+            .title {
+                font-size: 26px;
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
+            }
+        }
+
+        /* Mobile styles - vertical layout */
+        @media (max-width: 480px) {
+            body {
+                background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+                font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+            }
+
+            .register-container {
+                padding: 30px 20px;
+                margin: 10px;
+                max-width: 100%;
+            }
+
+            .logo-section {
+                flex-direction: column;
+                gap: 15px;
+                margin-bottom: 25px;
+            }
+
+            .logo-container {
+                gap: 10px;
+            }
+
+            .logo {
+                width: 120px;
+                height: 120px;
+                filter: drop-shadow(0 4px 12px rgba(64, 150, 255, 0.3));
+            }
+
+            .logo-text-container {
+                width: 150px; /* 移动端最大宽度适应屏幕 */
+            }
+
+            .logo-text {
+                font-size: 18px;
+                font-weight: bold;
+                text-shadow: 0 2px 6px rgba(64, 150, 255, 0.3);
+            }
+
+            .title-section {
+                text-align: center;
+            }
+
+            .title {
+                font-size: 22px;
+                margin-bottom: 10px;
+                text-shadow: 0 2px 4px rgba(26, 77, 122, 0.1);
+            }
+
+            .subtitle {
+                font-size: 15px;
+                text-shadow: none;
+            }
+
+            .agreement-container {
+                padding: 12px;
+                margin-bottom: 15px;
+            }
+
+            .captcha-instruction {
+                font-size: 13px;
+            }
+
+            .captcha-text {
+                font-size: 16px;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+        <div class="register-container">
+            <div class="logo-section">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="AGI Agent Logo" class="logo">
+                </div>
+                <div class="title-section">
+                    <h1 class="title">{{ '用户注册' if lang == 'zh' else 'User Registration' }}</h1>
+                    <p class="subtitle">{{ '注册账号并获取您的API密钥' if lang == 'zh' else 'Register an account and get your API key' }}</p>
+                </div>
+            </div>
+
+            <!-- 存储国际化文本的隐藏元素 -->
+            <div id="i18n-data" style="display: none;"
+                 data-lang="{{ lang }}"
+                 data-username-required="{{ '用户名不能为空' if lang == 'zh' else 'Username is required' }}"
+                 data-username-min-length="{{ '用户名至少需要2个字符' if lang == 'zh' else 'Username must be at least 2 characters' }}"
+                 data-phone-required="{{ '手机号不能为空' if lang == 'zh' else 'Phone number is required' }}"
+                 data-phone-invalid="{{ '请输入有效的手机号' if lang == 'zh' else 'Please enter a valid phone number' }}"
+                 data-captcha-required="{{ '请输入验证码' if lang == 'zh' else 'Please enter verification code' }}"
+                 data-captcha-incorrect="{{ '验证码错误，请重新输入' if lang == 'zh' else 'Verification code incorrect, please try again' }}"
+                 data-agreement-required="{{ '请同意用户协议' if lang == 'zh' else 'Please agree to the user agreement' }}"
+                 data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
+                 data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
+                 data-copied="{{ '已复制！' if lang == 'zh' else 'Copied!' }}"
+                 data-copy-failed="{{ '复制失败，请手动复制API密钥' if lang == 'zh' else 'Copy failed, please manually copy the API key' }}"
+                 data-registration-success="{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}"
+                 data-user-exists="{{ '用户已存在' if lang == 'zh' else 'User Already Exists' }}"
+                 data-existing-user-message="{{ '该用户已注册，以下是您的API密钥' if lang == 'zh' else 'This user is already registered. Here is your API key' }}">
+            </div>
+
+        <form id="registerForm">
+            <div class="form-group">
+                <label for="username">{{ '用户名' if lang == 'zh' else 'Username' }} *</label>
+                <input type="text" id="username" name="username" class="form-input"
+                       placeholder="{{ '请输入用户名' if lang == 'zh' else 'Enter username' }}" required>
+                <div class="error-message" id="usernameError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="phone_number">{{ '手机号' if lang == 'zh' else 'Phone Number' }} *</label>
+                <input type="tel" id="phone_number" name="phone_number" class="form-input"
+                       placeholder="{{ '请输入手机号' if lang == 'zh' else 'Enter phone number' }}" required>
+                <div class="error-message" id="phoneError"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="captcha">{{ '验证码' if lang == 'zh' else 'Verification' }} *</label>
+                <p class="captcha-instruction">{{ '请填写以下内容的拼音（不含声调）' if lang == 'zh' else 'Please write the first letter of each word:' }}</p>
+                <p class="captcha-text">{{ '我不是大模型' if lang == 'zh' else 'I am not a large model' }}</p>
+                <input type="text" id="captcha" name="captcha" class="form-input"
+                       placeholder="{{ '请输入拼音' if lang == 'zh' else 'Enter first letters' }}" required maxlength="50">
+                <div class="error-message" id="captchaError"></div>
+            </div>
+
+            <div class="agreement-container">
+                <input type="checkbox" id="agreement" name="agreement" class="agreement-checkbox" required>
+                <label for="agreement" class="agreement-text">
+                    {{ '我已阅读并同意' if lang == 'zh' else 'I have read and agree to the' }}
+                    <a href="#" id="showAgreement" class="agreement-link">{{ '《用户协议》' if lang == 'zh' else 'User Agreement' }}</a>
+                </label>
+            </div>
+
+            <button type="submit" class="register-btn" id="registerBtn">
+                {{ '注册账号' if lang == 'zh' else 'Register Account' }}
+            </button>
+
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner fa-spin"></i>
+                {{ '正在注册...' if lang == 'zh' else 'Registering...' }}
+            </div>
+        </form>
+
+        <div class="api-key-result" id="apiKeyResult">
+            <h3 id="resultTitle">{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}</h3>
+            <p id="resultMessage">{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}</p>
+            <div class="api-key-display" id="apiKeyDisplay"></div>
+            <button class="copy-btn" id="copyBtn">{{ '复制密钥' if lang == 'zh' else 'Copy Key' }}</button>
+            <p id="warningMessage" style="margin-top: 15px; font-size: 12px; color: #ff6b6b; font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif; text-shadow: none;">
+                {{ '⚠️ 请务必保存此密钥，丢失后请重新用相同用户名和手机号注册！' if lang == 'zh' else '⚠️ Please save this key securely. It cannot be recovered if lost!' }}
+            </p>
+        </div>
+
+        <div class="back-link">
+            <a href="{{ from_page }}" id="backLink">{{ '返回登录' if lang == 'zh' else 'Back to Login' }}</a>
+        </div>
+    </div>
+
+    <!-- 用户协议模态窗口 -->
+    <div id="agreementModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">{{ '用户协议' if lang == 'zh' else 'User Agreement' }}</h2>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h3>{{ '1. 服务条款' if lang == 'zh' else '1. Terms of Service' }}</h3>
+                <p>{{ '欢迎使用AGI Agent。本服务由我们提供，以下是您使用本服务时需要遵守的条款。' if lang == 'zh' else 'Welcome to AGI Agent. This service is provided by us, and the following are the terms you need to comply with when using this service.' }}</p>
+
+                <h3>{{ '2. 用户注册' if lang == 'zh' else '2. User Registration' }}</h3>
+                <p>{{ '注册本服务需要提供真实、准确的信息。您负责维护账户的安全性。' if lang == 'zh' else 'Registration for this service requires providing true and accurate information. You are responsible for maintaining the security of your account.' }}</p>
+
+                <h3>{{ '3. 使用规则' if lang == 'zh' else '3. Usage Rules' }}</h3>
+                <p>{{ '您同意不使用本服务进行任何违法、侵权或有害活动。我们保留随时终止违规账户的权利。' if lang == 'zh' else 'You agree not to use this service for any illegal, infringing, or harmful activities. We reserve the right to terminate violating accounts at any time.' }}</p>
+
+                <h3>{{ '4. 隐私政策' if lang == 'zh' else '4. Privacy Policy' }}</h3>
+                <p>{{ '我们重视您的隐私。收集的信息仅用于提供服务，不会向第三方出售或泄露。' if lang == 'zh' else 'We value your privacy. The information collected is only used to provide services and will not be sold or disclosed to third parties.' }}</p>
+
+                <h3>{{ '5. 服务变更' if lang == 'zh' else '5. Service Changes' }}</h3>
+                <p>{{ '我们保留随时修改或终止服务的权利。重大变更将提前通知用户。' if lang == 'zh' else 'We reserve the right to modify or terminate the service at any time. Major changes will be notified to users in advance.' }}</p>
+
+                <h3>{{ '6. 免责声明' if lang == 'zh' else '6. Disclaimer' }}</h3>
+                <p>{{ '本服务按"现状"提供。我们不对服务中断、数据丢失或其他间接损害承担责任。' if lang == 'zh' else 'This service is provided "as is". We are not responsible for service interruptions, data loss, or other indirect damages.' }}</p>
+
+                <h3>{{ '7. 适用法律' if lang == 'zh' else '7. Applicable Law' }}</h3>
+                <p>{{ '本协议受相关法律法规管辖。如有争议，应通过友好协商解决。' if lang == 'zh' else 'This agreement is governed by relevant laws and regulations. Disputes should be resolved through friendly negotiation.' }}</p>
+
+                <p style="margin-top: 20px; font-weight: bold; color: #4096ff;">
+                    {{ '请仔细阅读以上条款，注册即表示您同意并接受这些条款。' if lang == 'zh' else 'Please read the above terms carefully. Registration means you agree to and accept these terms.' }}
+                </p>
+            </div>
+        </div>
+    </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取国际化文本
+            const i18nData = document.getElementById('i18n-data');
+            const i18n = {
+                usernameRequired: i18nData.getAttribute('data-username-required'),
+                usernameMinLength: i18nData.getAttribute('data-username-min-length'),
+                phoneRequired: i18nData.getAttribute('data-phone-required'),
+                phoneInvalid: i18nData.getAttribute('data-phone-invalid'),
+                captchaRequired: i18nData.getAttribute('data-captcha-required'),
+                captchaIncorrect: i18nData.getAttribute('data-captcha-incorrect'),
+                agreementRequired: i18nData.getAttribute('data-agreement-required'),
+                registrationFailed: i18nData.getAttribute('data-registration-failed'),
+                networkError: i18nData.getAttribute('data-network-error'),
+                copied: i18nData.getAttribute('data-copied'),
+                copyFailed: i18nData.getAttribute('data-copy-failed'),
+                registrationSuccess: i18nData.getAttribute('data-registration-success'),
+                userExists: i18nData.getAttribute('data-user-exists'),
+                existingUserMessage: i18nData.getAttribute('data-existing-user-message')
+            };
+
+            const form = document.getElementById('registerForm');
+            const registerBtn = document.getElementById('registerBtn');
+            const loading = document.getElementById('loading');
+            const apiKeyResult = document.getElementById('apiKeyResult');
+            const apiKeyDisplay = document.getElementById('apiKeyDisplay');
+            const copyBtn = document.getElementById('copyBtn');
+            const backLink = document.getElementById('backLink');
+            let registeredApiKey = null;
+
+            // Form validation
+            function validateForm() {
+                let isValid = true;
+
+                // Username validation
+                const username = document.getElementById('username').value.trim();
+                const usernameError = document.getElementById('usernameError');
+                if (!username) {
+                    usernameError.textContent = i18n.usernameRequired;
+                    usernameError.style.display = 'block';
+                    document.getElementById('username').classList.add('error');
+                    isValid = false;
+                } else if (username.length < 2) {
+                    usernameError.textContent = i18n.usernameMinLength;
+                    usernameError.style.display = 'block';
+                    document.getElementById('username').classList.add('error');
+                    isValid = false;
+                } else {
+                    usernameError.style.display = 'none';
+                    document.getElementById('username').classList.remove('error');
+                }
+
+                // Phone validation
+                const phone = document.getElementById('phone_number').value.trim();
+                const phoneError = document.getElementById('phoneError');
+                
+                // 更宽松的电话号码验证，支持国际格式
+                const phoneRegex = /^(\+?[\d\s\-\(\)]{7,20})$/; // 支持国际格式，7-20位数字，可选+号开头
+                
+                if (!phone) {
+                    phoneError.textContent = i18n.phoneRequired;
+                    phoneError.style.display = 'block';
+                    document.getElementById('phone_number').classList.add('error');
+                    isValid = false;
+                } else if (!phoneRegex.test(phone)) {
+                    phoneError.textContent = i18n.phoneInvalid;
+                    phoneError.style.display = 'block';
+                    document.getElementById('phone_number').classList.add('error');
+                    isValid = false;
+                } else {
+                    phoneError.style.display = 'none';
+                    document.getElementById('phone_number').classList.remove('error');
+                }
+
+                // Captcha validation
+                const captcha = document.getElementById('captcha').value.trim().toLowerCase();
+                const captchaError = document.getElementById('captchaError');
+                const currentLang = i18nData.getAttribute('data-lang');
+                
+                let isValidCaptcha = false;
+                
+                if (currentLang === 'zh') {
+                    // 中文版：验证拼音 "我不是大模型" -> "wo bu shi da mo xing"
+                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    const expectedCaptcha = 'wobushidamoxing';
+                    const expectedCaptchaWithSpaces = 'wo bu shi da mo xing';
+                    isValidCaptcha = normalizedCaptcha === expectedCaptcha || captcha === expectedCaptchaWithSpaces;
+                } else {
+                    // 英文版：验证首字母 "I am not a large model" -> "ianalm"
+                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    isValidCaptcha = normalizedCaptcha === 'ianalm';
+                }
+
+                if (!captcha) {
+                    captchaError.textContent = i18n.captchaRequired;
+                    captchaError.style.display = 'block';
+                    document.getElementById('captcha').classList.add('error');
+                    isValid = false;
+                } else if (!isValidCaptcha) {
+                    captchaError.textContent = i18n.captchaIncorrect;
+                    captchaError.style.display = 'block';
+                    document.getElementById('captcha').classList.add('error');
+                    isValid = false;
+                } else {
+                    captchaError.style.display = 'none';
+                    document.getElementById('captcha').classList.remove('error');
+                }
+
+                return isValid;
+            }
+
+            // Form submission
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                if (!validateForm()) {
+                    return;
+                }
+
+                // Agreement validation - only check when submitting
+                const agreement = document.getElementById('agreement').checked;
+                if (!agreement) {
+                    alert(i18n.agreementRequired);
+                    return;
+                }
+
+                // Show loading
+                registerBtn.disabled = true;
+                loading.classList.add('show');
+
+                try {
+                    const formData = new FormData(form);
+                    const data = {
+                        username: formData.get('username'),
+                        phone_number: formData.get('phone_number'),
+                        captcha: formData.get('captcha'),
+                        agreement: formData.get('agreement') ? true : false
+                    };
+
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        // Save the API key to sessionStorage for secure transfer to login page
+                        registeredApiKey = result.api_key;
+                        try {
+                            sessionStorage.setItem('registered_api_key', registeredApiKey);
+                        } catch (e) {
+                            console.error('Failed to save API key to sessionStorage:', e);
+                        }
+                        
+                        // Show success result
+                        apiKeyDisplay.textContent = result.api_key;
+                        apiKeyResult.style.display = 'block';
+                        form.style.display = 'none';
+
+                        // Check if this is an existing user
+                        const isExistingUser = result.user_info && result.user_info.existing_user;
+
+                        // Update title and message based on user status
+                        const resultTitle = document.getElementById('resultTitle');
+                        const resultMessage = document.getElementById('resultMessage');
+                        const warningMessage = document.getElementById('warningMessage');
+
+                        if (isExistingUser) {
+                            resultTitle.textContent = i18n.userExists;
+                            resultMessage.textContent = i18n.existingUserMessage;
+                            warningMessage.style.display = 'none'; // Hide warning for existing users
+                        } else {
+                            resultTitle.textContent = i18n.registrationSuccess;
+                            resultMessage.textContent = i18nData.getAttribute('data-lang') === 'zh' ?
+                                '您的API密钥已生成，请妥善保存：' : 'Your API key has been generated. Please save it securely:';
+                            warningMessage.style.display = 'block';
+                        }
+
+                        // Setup copy functionality
+                        // Remove any existing event listeners by cloning the button
+                        const newCopyBtn = copyBtn.cloneNode(true);
+                        copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+                        
+                        newCopyBtn.addEventListener('click', function() {
+                            const apiKey = result.api_key;
+                            const originalText = newCopyBtn.textContent;
+                            
+                            // Try modern clipboard API first
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(apiKey).then(function() {
+                                    newCopyBtn.textContent = i18n.copied;
+                                    newCopyBtn.style.background = '#17a2b8';
+                                    setTimeout(() => {
+                                        newCopyBtn.textContent = originalText;
+                                        newCopyBtn.style.background = '';
+                                    }, 2000);
+                                }).catch(function(err) {
+                                    console.error('Clipboard API failed:', err);
+                                    // Fallback to traditional method
+                                    fallbackCopy(apiKey, newCopyBtn, originalText);
+                                });
+                            } else {
+                                // Fallback to traditional method
+                                fallbackCopy(apiKey, newCopyBtn, originalText);
+                            }
+                        });
+                        
+                        // Fallback copy function using execCommand
+                        function fallbackCopy(text, button, originalText) {
+                            const textArea = document.createElement('textarea');
+                            textArea.value = text;
+                            textArea.style.position = 'fixed';
+                            textArea.style.left = '-999999px';
+                            textArea.style.top = '-999999px';
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            
+                            try {
+                                const successful = document.execCommand('copy');
+                                if (successful) {
+                                    button.textContent = i18n.copied;
+                                    button.style.background = '#17a2b8';
+                                    setTimeout(() => {
+                                        button.textContent = originalText;
+                                        button.style.background = '';
+                                    }, 2000);
+                                } else {
+                                    alert(i18n.copyFailed);
+                                }
+                            } catch (err) {
+                                console.error('Fallback copy failed:', err);
+                                alert(i18n.copyFailed);
+                            } finally {
+                                document.body.removeChild(textArea);
+                            }
+                        }
+                    } else {
+                        alert(result.error || i18n.registrationFailed);
+                    }
+                } catch (error) {
+                    console.error('Registration error:', error);
+                    alert(i18n.networkError);
+                } finally {
+                    registerBtn.disabled = false;
+                    loading.classList.remove('show');
+                }
+            });
+
+            // Real-time validation
+            document.getElementById('username').addEventListener('input', validateForm);
+            document.getElementById('phone_number').addEventListener('input', validateForm);
+            document.getElementById('captcha').addEventListener('input', validateForm);
+
+            // Agreement modal functionality
+            const agreementModal = document.getElementById('agreementModal');
+            const showAgreementLink = document.getElementById('showAgreement');
+            const closeModalBtn = document.getElementById('closeModal');
+
+            showAgreementLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                agreementModal.style.display = 'block';
+            });
+
+            closeModalBtn.addEventListener('click', function() {
+                agreementModal.style.display = 'none';
+            });
+
+            // Close modal when clicking outside
+            window.addEventListener('click', function(event) {
+                if (event.target === agreementModal) {
+                    agreementModal.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

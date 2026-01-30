@@ -1,0 +1,333 @@
+# Language setting: en for English, zh for Chinese
+#LANG=en
+LANG=zh
+
+# Model configuration section
+# Please fill in each config in 5 lines, i.e.
+# name (with comment #), key, base, model, max_output_tokens
+# the configuration in comment will not be valid.
+
+# GLM coding-plan API configuration
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.7
+max_tokens=16384
+
+# GLM coding-plan API configuration
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.5-air
+max_tokens=16384
+
+# Minimax Coding plan
+api_key=your key
+api_base=https://api.minimaxi.com/anthropic
+model=minimax-m2.1
+max_tokens=16384
+
+# Anthropic models
+# api_key=your key
+# api_base=https://api.openai-proxy.org/anthropic
+# model=claude-sonnet-4-0
+# max_tokens=32768
+
+# Openrouter Qwen3-30b
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=qwen/qwen3-coder-30b-a3b-instruct
+max_tokens=16384
+
+# Openrouter Minimax M2.1
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=minimax/fp8
+max_tokens=16384
+
+# Openrouter Grok Code
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=x-ai/grok-code-fast-1
+max_tokens=16384
+
+# Openrouter Xiaomi
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=xiaomi/mimo-v2-flash:free
+max_tokens=16384
+
+# Openrouter Nvidia nemotron 3 nano
+api_key=your key
+api_base=https://openrouter.ai/api/v1
+model=nvidia/nemotron-3-nano-30b-a3b:free
+max_tokens=16384
+
+
+# DeepSeek API configuration
+# api_key=your key
+# api_base=https://api.deepseek.com/v1
+# model=deepseek-chat
+
+# Volcengine Doubao API configuration
+# api_key=your key
+# api_base=https://ark.cn-beijing.volces.com/api/v3
+# model=doubao-1-5-pro-32k-250115
+
+# Moonshot
+# api_key=your key
+# api_base=https://api.moonshot.cn/anthropic
+# model=kimi-k2-0711-preview
+# max_tokens=8192
+
+# SiliconFlow API configuration 
+# api_key=your key
+# api_base=https://api.siliconflow.cn/v1
+# model=Qwen/Qwen3-30B-A3B
+# max_tokens=4096
+
+# Ollama (local serve)
+# api_key=your key
+# api_base=http://localhost:11434/v1
+# model=qwen3:8b
+# max_tokens=4096
+
+
+# Note: only the last configuration is valid.
+
+# Streaming output configuration: True for streaming, False for batch output
+streaming=True
+
+# Long-term memory configuration
+enable_long_term_memory=False
+
+# Long-term memory model configuration (default to the same as model and api_base)
+mem_model=gpt-4.1
+mem_model_api_key=your key
+mem_model_api_base=https://api.openai-proxy.org/v1
+
+# Long-term memory embedding model, if using long-term memory, embedding_model is required.
+embedding_model=BAAI/bge-m3
+embedding_model_api_key=your key
+embedding_model_api_base=https://api.siliconflow.cn/v1
+
+# Vision model configuration (for image recognition with get_sensor_data)
+# If not configured, will use the main model (model, api_key, api_base) for vision tasks
+# It's recommended to configure a vision-capable model here (e.g., GPT-4 Vision, Claude 3, Gemini)
+# vision_model=gpt-4o
+# vision_api_key=your key
+# vision_api_base=https://api.openai.com/v1
+# vision_max_tokens=4096
+
+# Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
+# When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
+# When set to False, uses chat-based tool calling (tools described in messages)
+# This overrides the automatic model-based detection
+# Default: True (use standard tool calling when available)
+Tool_calling_format=False
+
+# Tool call parsing format configuration: json or xml
+# Controls which format to try first when parsing tool calls from model responses
+# When set to "json", tries JSON format first, then falls back to Python format
+# When set to "xml", tries XML format first, then falls back to Python format
+# Python format is always tried as fallback regardless of this setting
+# Default: json
+tool_call_parse_format=xml
+
+# Thinking support configuration
+# Controls whether to enable and display thinking process from reasoning models (e.g., OpenAI o1, Claude Sonnet 4.5)
+# When enabled (True), the thinking field from model responses will be extracted and displayed
+# When disabled (False), thinking content will be ignored even if the model returns it
+# This applies to both standard tool calling and chat-based tool calling formats
+# Default: True (enabled for models that support thinking)
+enable_thinking=True
+
+# Truncation Length Configuration
+# These configurations control the length of information returned by tool calls to the large model,
+# preventing overly long content from affecting performance
+
+# Main tool result truncation length, default 10000 characters
+# Used for truncating tool execution results, parameter displays, formatted outputs, etc.
+
+# Debug system configuration
+# Enable debug system for enhanced debugging capabilities
+# When set to True, enables stack trace, memory monitoring, and execution tracking
+enable_debug_system=False
+
+# Recommended values: 5000-20000, adjust based on model context window size
+# Affects:
+# - Tool results returned to LLM
+# - Tool parameter displays
+# - Search result summaries
+# - Output limits in debug logs
+truncation_length=100000
+
+# Web content truncation length, default 50000 characters, uses 5x truncation_length if not set
+# Used for truncating large-capacity content like web search results
+# Recommended values: 10000-100000
+# Affects:
+# - Web search content
+# - Web scraping results
+# - Large document content
+web_content_truncation_length=20000
+
+# Usage recommendations:
+# 1. If using models with smaller context windows (<32K), consider lowering all truncation values
+# 2. If using models with large context windows (>128K), you can appropriately increase truncation values
+# 3. When processing large amounts of data, you can temporarily increase web_content_truncation_length
+# 4. Changes to configuration require program restart to take effect
+
+# Note: compression_min_length, compression_head_length, and compression_tail_length
+# have been removed as they are no longer used by EnhancedHistoryCompressor.
+# The new compression strategy directly deletes old records instead of field-level compression.
+
+# Simplified search result terminal output (default: True)
+# When enabled, workspace_search and web_search only display simplified result summaries in terminal
+# When disabled, display full search result details
+simplified_search_output=True
+
+# Trigger length for conversation history compression (in characters)
+# Only when the total conversation history exceeds this length will compression be triggered
+# Recommended values: 50000-120000 characters
+# Lower values trigger compression earlier, saving more context
+# Higher values delay compression, preserving more detailed conversation history
+# When history length is below this value, no compression will be performed
+summary_trigger_length=100000
+
+# Compression target length for conversation history compression (in characters)
+# When compression is triggered, history will be compressed to this target length (usually smaller than summary_trigger_length)
+# This prevents repeated compression cycles that could cause cache misses
+# Recommended values: 10000-80000 characters (typically 50-70% of summary_trigger_length)
+# Lower values compress more aggressively, saving more context but potentially losing more history
+# Higher values preserve more history but may trigger compression more frequently
+# Default: 70% of summary_trigger_length if not set
+compression_target_length=50000
+
+# Summary report generation (default: False)
+# When enabled, generates single task summary and task summary reports
+# When disabled, skips summary report generation to save time and resources
+# Affects:
+# - Single task summary generation
+# - Task summary report creation
+# - Summary markdown file output
+summary_report=False
+
+# Web Search Summary Configuration
+# Controls whether to use AI to generate comprehensive summaries of web search results
+# When enabled, the search results will be analyzed and summarized by the large model
+# providing detailed individual webpage analysis and synthesis across all sources
+# Default: True (enabled for better user experience)
+web_search_summary=False
+
+# Web search summary usage recommendations:
+# 1. Enable web_search_summary=True for comprehensive analysis of search results
+# 2. Disable web_search_summary=False to get only individual webpage content without AI summary
+# 3. When enabled, requires valid API configuration and LLM model for summarization
+# 4. Summarization focuses on extracting information relevant to the search query
+# 5. Each webpage result is analyzed individually with file location references
+# 6. Changes to this setting take effect immediately for new searches
+
+# GUI Default User Data Directory Configuration
+# Specifies the default directory for GUI to display file lists and manage workspace directories
+# If not set or the specified directory doesn't exist, uses the current working directory as default
+# This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
+gui_default_data_directory=/data_patent
+
+# Interactive Command Auto-Fix Configuration
+# Controls whether to automatically fix interactive commands to non-interactive versions
+# When enabled, the system will automatically add flags like --quiet, -y, -n to commands
+# to prevent them from requiring user input during execution
+# Default: False (disabled)
+# Set to True to enable automatic modification of interactive commands
+auto_fix_interactive_commands=True
+
+# Multi-Agent Mode Configuration
+# Controls whether to enable multi-agent functionality
+# When enabled, multi-agent tools like spawn_agent, wait_for_agibot_spawns, etc. are available
+# When disabled, these tools are hidden from the model to reduce complexity
+# Default: True (enabled)
+# Set to False to disable multi-agent capabilities
+multi_agent=False
+
+# Round Synchronization Barrier (experimental)
+# When enabled, all agents will execute in lockstep windows.
+# After each agent executes N rounds (sync_round), it will enter wait_for_sync state.
+# A separate sync manager monitors agents' status files, and when ALL are waiting,
+# it releases a sync signal so each agent can proceed to next N rounds.
+# Set enable_round_sync to true to enable; sync_round must be >= 1 (default: 2)
+enable_round_sync=True
+sync_round=5
+
+# Jieba Chinese Segmentation Configuration
+# Controls whether to enable jieba Chinese text segmentation for code parsing
+# When enabled, jieba will be used to segment Chinese comments and text for better search results
+# When disabled, only basic English tokenization is used (recommended for better performance)
+# Default: False (disabled)
+# Set to True to enable jieba Chinese segmentation
+enable_jieba=True
+
+# Emoji Display Configuration
+# Controls whether to display emoji symbols in print outputs
+# When enabled (False), emoji symbols are displayed normally
+# When disabled (True), emoji symbols are filtered out using regex before printing
+# This only removes emoji characters, preserving other Unicode text (Chinese, etc.)
+# This is useful for systems that don't support emoji fonts properly
+# Default: False (emoji enabled)
+# Set to True to disable emoji display
+emoji_disabled=False
+
+# Markdown file auto-conversion configuration
+# Controls whether to automatically convert markdown files to Word, PDF, and LaTeX formats after editing
+# When enabled (True), the corresponding format will be automatically generated when a markdown file is edited
+# When disabled (False), the format will not be automatically generated
+# Default: True for Word and PDF (backward compatibility), False for LaTeX
+auto_convert_to_word=True
+auto_convert_to_pdf=True
+auto_convert_to_latex=False
+
+# TASK_COMPLETED with Tools Configuration
+# Controls whether to admit TASK_COMPLETED signal when it appears along with tool calls
+# When enabled (True), if LLM outputs TASK_COMPLETED along with tool calls:
+#   - Tools will be executed first
+#   - After tool execution, the TASK_COMPLETED flag will be re-added and the task will complete
+# When disabled (False), if LLM outputs TASK_COMPLETED along with tool calls:
+#   - The TASK_COMPLETED flag will be dropped
+#   - Tools will be executed
+#   - The task will NOT complete automatically (will continue to next round)
+# Default: False (execute tools but don't complete task)
+# Recommended: True (allows task completion after tool execution when LLM explicitly signals completion)
+admit_task_completed_with_tools=True
+
+# GUI Virtual Terminal Configuration
+# Controls whether to enable virtual terminal features in GUI
+# When enabled (True), users can use one-click run buttons for executable files (.py, .sh, .cmd, etc.)
+# and the terminal open button in the GUI
+# When disabled (False), these features are hidden and clicking them will show a configuration disabled message
+# Default: False (disabled)
+# Set to True to enable virtual terminal features
+GUI_virtual_terminal=False
+
+# GUI Button Display Configuration
+# Controls whether to display specific buttons in the GUI interface
+
+# Infinite Execute Mode Button Display Configuration
+# Controls whether to show the infinite execute mode button (loops=-1) in GUI
+# When enabled (True), the infinite execute button is visible in the GUI
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the infinite execute mode button
+GUI_show_infinite_execute_button=False
+
+# Multi-Agent Button Display Configuration
+# Controls whether to show the multi-agent toggle button in GUI
+# When enabled (True), the multi-agent button is visible in the GUI
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the multi-agent button
+GUI_show_multi_agent_button=False
+
+# Agent View Button Display Configuration
+# Controls whether to show the agent view button in GUI
+# When enabled (True), the agent view button is visible in the GUI header
+# When disabled (False), the button is hidden
+# Default: True (enabled)
+# Set to False to hide the agent view button
+GUI_show_agent_view_button=False

@@ -1,0 +1,6 @@
+You are a manager. Please use the spawn_agent tool to start 2 agents with sufficient rounds to conduct a debate with you.
+The manager serves as the host and judge, while the other two agents serve as the affirmative and negative debaters respectively.
+Agents communicate using the broadcast_message tool for broadcasting speeches, rather than speaking in file format. They need to follow competition rules, promptly collect broadcast messages from their inbox, and must speak when invited to speak, without speaking at other times. Tell them not to end tasks on their own.
+You need to host the complete debate process. You can give both sides some time to prepare materials at the beginning, then conduct a standard debate competition procedure.
+Please document the debaters' debate content. Finally, write a summary report of the debate competition.
+Please output in ENGLISH.

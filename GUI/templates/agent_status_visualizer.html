@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-agent Viewer</title>
+    <!-- Load Mermaid with error handling -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" 
+            crossorigin="anonymous"
+            onerror="console.error('Failed to load Mermaid from CDN'); window.mermaidLoadFailed = true;">
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f3f3f3;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .last-update {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .output-dir {
+            margin-top: 8px;
+            color: #666;
+            font-size: 0.9em;
+            padding: 6px 12px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            display: inline-block;
+            border-left: 3px solid #0366d6;
+        }
+
+        .output-dir strong {
+            color: #333;
+            margin-right: 8px;
+        }
+
+        #outputDirPath {
+            font-family: 'Courier New', monospace;
+            color: #0366d6;
+            font-weight: 500;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #0366d6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #005cc5;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .auto-refresh-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #666;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        #diagram-container {
+            min-height: 600px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        
+        #diagram-container .mermaid {
+            display: inline-block;
+            margin: 0 auto;
+        }
+
+        /* Style Mermaid notes to have slightly smaller font */
+        #diagram-container .mermaid .note {
+            font-size: 12px !important;
+        }
+
+        #diagram-container .mermaid .noteText {
+            font-size: 12px !important;
+            line-height: 1.3 !important;
+        }
+
+        /* Reduce spacing for message labels in sequence diagram */
+        #diagram-container .mermaid .messageText {
+            line-height: 1.2 !important;
+            margin-top: -5px !important;
+            padding-top: 0 !important;
+        }
+
+        #diagram-container .mermaid .messageLine0,
+        #diagram-container .mermaid .messageLine1 {
+            line-height: 1.2 !important;
+        }
+
+        /* Style status update notes (Note right) to appear green */
+        #diagram-container .mermaid .note.right {
+            background-color: #d4edda !important;
+            border-color: #c3e6cb !important;
+        }
+
+        #diagram-container .mermaid .note.right .noteText {
+            color: #155724 !important;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c62828;
+        }
+
+        .agent-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .agent-card {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #0366d6;
+        }
+
+        .agent-card h3 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .agent-card .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .status.running {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .status.completed {
+            background: #bbdefb;
+            color: #1565c0;
+        }
+
+        .status.error {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .agent-card .info {
+            margin-top: 8px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .agent-card .info span {
+            display: block;
+            margin: 4px 0;
+        }
+
+        .mermaid-figures {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .mermaid-figures h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            text-align: center;
+        }
+
+        .mermaid-figure {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .mermaid-figure h3 {
+            color: #0366d6;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .mermaid-figure img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- Debug: Page loaded indicator -->
+    <script>
+        console.log('HTML body tag reached');
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOMContentLoaded event fired');
+        });
+        window.addEventListener('load', function() {
+            // Check if Mermaid loaded after page load
+            setTimeout(function() {
+                if (typeof mermaid === 'undefined') {
+                    console.warn('Mermaid still not loaded after page load');
+                    const container = document.getElementById('diagram-container');
+                    if (container) {
+                        container.innerHTML = '<div class="error">Mermaid library failed to load. Your browser may be blocking CDN access due to privacy settings.<br><small>Please allow access to cdn.jsdelivr.net or disable tracking prevention for this site.</small></div>';
+                    }
+                }
+            }, 2000);
+        });
+    </script>
+    <div class="container">
+        <div class="header-info">
+            <div>
+                <h1>Multi-agent Viewer</h1>
+                <div class="last-update" id="lastUpdate">Loading...</div>
+                <div class="output-dir" id="outputDir">
+                    <strong>📁 Directory </strong> <span id="outputDirPath">loading...</span>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>Live</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="refreshBtn">🔄 Refresh</button>
+            <button id="reloadBtn">🔄 Reload Directory</button>
+            <label class="auto-refresh-label">
+                <input type="checkbox" id="autoRefresh" checked>
+                <span>Auto-refresh (1s)</span>
+            </label>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div id="mermaidFigures" class="mermaid-figures">
+            <h2>📊 Plan Diagrams</h2>
+            <div id="mermaidFiguresContent">
+                <!-- Mermaid figures will be loaded here -->
+                <p>No plan diagrams found.</p>
+            </div>
+        </div>
+
+        <div id="agentSummary" class="agent-summary"></div>
+
+        <div id="diagram-container">
+            <div class="loading" id="loadingIndicator">
+                <div style="text-align: center; padding: 40px;">
+                    <div style="font-size: 18px; margin-bottom: 10px;">⏳ Loading...</div>
+                    <div style="font-size: 14px; color: #666;" id="loadingStatus">Initializing...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Immediate console log to verify script is loading
+        console.log('Script started loading...');
+        
+        // Get API base path - handle nginx proxy paths like /en/
+        function getApiBasePath() {
+            // Get current pathname (e.g., /en/agent-status-visualizer or /agent-status-visualizer)
+            const pathname = window.location.pathname;
+            // Extract base path (everything before the last segment)
+            // For /en/agent-status-visualizer -> /en
+            // For /agent-status-visualizer -> ''
+            const segments = pathname.split('/').filter(s => s);
+            if (segments.length > 1) {
+                // Remove the last segment (page name) and join the rest
+                segments.pop();
+                return '/' + segments.join('/');
+            }
+            return '';
+        }
+        
+        // Detect if we're accessing through app.py (which uses /agent-status-visualizer route)
+        // vs standalone agent_status_visualizer.py (which uses root path)
+        function isAppPyRoute() {
+            const pathname = window.location.pathname;
+            // If pathname contains 'agent-status-visualizer', we're likely through app.py
+            return pathname.includes('agent-status-visualizer');
+        }
+        
+        const API_BASE_PATH = getApiBasePath();
+        const USE_APP_PY_ROUTES = isAppPyRoute();
+        console.log('API base path detected:', API_BASE_PATH || '(root)');
+        console.log('Using app.py routes:', USE_APP_PY_ROUTES);
+        
+        // Helper function to build API URLs
+        // Routes mapping: standard routes -> app.py routes
+        const ROUTE_MAP = {
+            'api/status': USE_APP_PY_ROUTES ? 'api/agent-status' : 'api/status',
+            'api/reload': USE_APP_PY_ROUTES ? 'api/agent-status-reload' : 'api/reload',
+            'api/files/': USE_APP_PY_ROUTES ? 'api/agent-status-files/' : 'api/files/',
+            'api/agent-status-files/': 'api/agent-status-files/' // Keep as-is if already using app.py route
+        };
+        
+        function apiUrl(path) {
+            // Remove leading slash from path if present
+            let cleanPath = path.startsWith('/') ? path.slice(1) : path;
+            
+            // Map to correct route if needed (check longest matches first)
+            const sortedKeys = Object.keys(ROUTE_MAP).sort((a, b) => b.length - a.length);
+            for (const key of sortedKeys) {
+                if (cleanPath.startsWith(key)) {
+                    cleanPath = cleanPath.replace(key, ROUTE_MAP[key]);
+                    break;
+                }
+            }
+            
+            // Build URL, ensuring no double slashes
+            if (API_BASE_PATH) {
+                const result = API_BASE_PATH + '/' + cleanPath;
+                // Remove any double slashes (except after http://)
+                return result.replace(/([^:]\/)\/+/g, '$1');
+            } else {
+                return '/' + cleanPath;
+            }
+        }
+        
+        // Add error handler for uncaught errors
+        window.addEventListener('error', function(e) {
+            console.error('Uncaught error:', e.error);
+            const errorContainer = document.getElementById('errorContainer');
+            if (errorContainer) {
+                errorContainer.innerHTML = 
+                    `<div class="error">JavaScript Error: ${e.error ? e.error.message : 'Unknown error'}<br><small>Check browser console (F12) for details</small></div>`;
+            }
+        });
+
+        let autoRefreshInterval = null;
+        let mermaidInitialized = false;
+
+        // Check if Mermaid is loaded
+        if (typeof mermaid === 'undefined') {
+            console.error('Mermaid library not loaded!');
+            document.getElementById('diagram-container').innerHTML = 
+                '<div class="error">Error: Mermaid library failed to load. Please check your internet connection.</div>';
+        }
+
+        // Initialize Mermaid (non-blocking)
+        function initializeMermaid() {
+            try {
+                if (typeof mermaid !== 'undefined') {
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'default',
+                        sequence: {
+                            diagramMarginX: 50,
+                            diagramMarginY: 10,
+                            actorMargin: 80,
+                            width: 150,
+                            height: 65,
+                            boxMargin: 10,
+                            boxTextMargin: 5,
+                            noteMargin: 10,
+                            messageMargin: 25,
+                            mirrorActors: true,
+                            bottomMarginAdj: 1,
+                            useMaxWidth: true,
+                            rightAngles: false,
+                            showSequenceNumbers: true
+                        }
+                    });
+                    console.log('Mermaid initialized successfully');
+                    mermaidInitialized = true;
+                } else {
+                    throw new Error('Mermaid library not loaded');
+                }
+            } catch (err) {
+                console.error('Failed to initialize Mermaid:', err);
+                const container = document.getElementById('diagram-container');
+                if (container) {
+                    container.innerHTML = `<div class="error">Failed to initialize Mermaid: ${err.message}<br><small>Please check your browser settings or internet connection</small></div>`;
+                }
+            }
+        }
+        
+        // Initialize Mermaid asynchronously to avoid blocking
+        if (typeof mermaid !== 'undefined') {
+            // Use setTimeout to defer initialization
+            setTimeout(initializeMermaid, 0);
+        } else {
+            // Wait for Mermaid to load
+            window.addEventListener('load', function() {
+                setTimeout(initializeMermaid, 100);
+            });
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Unknown';
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN');
+        }
+
+        function generateMermaidDiagram(data) {
+            try {
+                const { agents, messages, agent_ids, tool_calls, status_updates } = data;
+                
+                if (!agent_ids || agent_ids.length === 0) {
+                    return 'sequenceDiagram\n    Note over System: No agents found';
+                }
+
+                // Build sequence diagram
+                let diagram = 'sequenceDiagram\n';
+                diagram += '    autonumber\n';
+
+                // Sort agent_ids: User, manager, agent_001, agent_002...
+                const sortedAgentIds = [...agent_ids].sort((a, b) => {
+                    // User comes first
+                    if (a.toLowerCase() === 'user') return -1;
+                    if (b.toLowerCase() === 'user') return 1;
+                    // manager comes second
+                    if (a.toLowerCase() === 'manager') return -1;
+                    if (b.toLowerCase() === 'manager') return 1;
+                    // Then agent_001, agent_002, etc. (numerical order)
+                    const aMatch = a.match(/^agent_(\d+)$/i);
+                    const bMatch = b.match(/^agent_(\d+)$/i);
+                    if (aMatch && bMatch) {
+                        return parseInt(aMatch[1]) - parseInt(bMatch[1]);
+                    }
+                    if (aMatch) return -1;
+                    if (bMatch) return 1;
+                    // Other agents come last, sorted alphabetically
+                    return a.localeCompare(b);
+                });
+
+                // Define participants (agents)
+                sortedAgentIds.forEach(agentId => {
+                    const status = agents[agentId] || {};
+                    // First line: agent ID only
+                    // Second line: Loop information only if status is 'running'
+                    // Don't show Loop for completed/failed/terminated agents
+                    const agentStatus = status.status || 'unknown';
+                    const isRunning = agentStatus === 'running';
+                    const loopInfo = (isRunning && status.current_loop !== undefined) ? 
+                        `<br/>Loop: ${status.current_loop}/${status.max_loops || 'N/A'}` : '';
+                    
+                    // Clean agent ID for Mermaid (replace special chars)
+                    const participantId = agentId.replace(/[^a-zA-Z0-9_]/g, '_');
+                    const participantLabel = `${agentId}${loopInfo}`;
+                    diagram += `    participant ${participantId} as "${participantLabel}"\n`;
+                });
+
+                // Initial state notes removed as requested
+
+                // Combine messages and tool calls, sort by timestamp
+                const allEvents = [];
+                
+                // Add messages
+                if (messages && messages.length > 0) {
+                    messages.forEach((msg) => {
+                        allEvents.push({
+                            type: 'message',
+                            timestamp: msg.timestamp || '',
+                            data: msg
+                        });
+                    });
+                }
+                
+                // Add tool calls
+                if (data.tool_calls && data.tool_calls.length > 0) {
+                    data.tool_calls.forEach((toolCall) => {
+                        allEvents.push({
+                            type: 'tool_call',
+                            timestamp: toolCall.timestamp || '',
+                            data: toolCall
+                        });
+                    });
+                }
+                
+                // Add status updates
+                if (data.status_updates && data.status_updates.length > 0) {
+                    data.status_updates.forEach((statusUpdate) => {
+                        allEvents.push({
+                            type: 'status_update',
+                            timestamp: statusUpdate.timestamp || '',
+                            data: statusUpdate
+                        });
+                    });
+                }
+                
+                // Sort all events by timestamp
+                allEvents.sort((a, b) => {
+                    const timeA = a.timestamp || '';
+                    const timeB = b.timestamp || '';
+                    return timeA.localeCompare(timeB);
+                });
+                
+                // Render events in chronological order
+                allEvents.forEach((event) => {
+                    if (event.type === 'message') {
+                        const msg = event.data;
+                        const sender = (msg.sender_id || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_');
+                        const receiver = (msg.receiver_id || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_');
+                        const msgId = msg.message_id || 'msg';
+                        
+                        // Extract content - handle both object and string formats
+                        let content = 'No content';
+                        if (msg.content) {
+                            if (typeof msg.content === 'string') {
+                                content = msg.content;
+                            } else if (typeof msg.content === 'object') {
+                                // Try to extract text field first
+                                if (msg.content.text) {
+                                    content = msg.content.text;
+                                } else if (msg.content.reason) {
+                                    // For system messages, use reason
+                                    content = msg.content.reason;
+                                } else if (msg.content.signal) {
+                                    // For signal messages, use signal
+                                    content = msg.content.signal;
+                                } else {
+                                    // Fallback: stringify the object
+                                    try {
+                                        content = JSON.stringify(msg.content);
+                                    } catch (e) {
+                                        content = String(msg.content);
+                                    }
+                                }
+                            } else {
+                                content = String(msg.content);
+                            }
+                        }
+                        
+                        // Ensure content is a string before calling replace
+                        if (typeof content !== 'string') {
+                            content = String(content);
+                        }
+                        
+                        // Clean content for Mermaid: remove newlines, quotes, and other special characters
+                        // Replace newlines with spaces
+                        content = content.replace(/\n/g, ' ').replace(/\r/g, '');
+                        // Replace multiple spaces with single space
+                        content = content.replace(/\s+/g, ' ').trim();
+                        // Escape quotes and other special characters that might break Mermaid
+                        content = content.replace(/"/g, "'").replace(/:/g, '：'); // Replace colon with full-width colon
+                        // Remove other problematic characters
+                        content = content.replace(/[<>{}[\]\\]/g, '');
+                        
+                        // Word wrap content at approximately 15 characters (reduced from 20)
+                        // Keep whole words intact (including identifiers like Agent_001)
+                        const wrapLength = 15;
+                        let wrappedContent = '';
+                        let currentLine = '';
+                        // Split by spaces, but keep words with underscores together
+                        const words = content.split(' ').filter(w => w.length > 0); // Filter empty words
+                        
+                        for (const word of words) {
+                            // Check if adding this word to current line would exceed wrapLength
+                            const testLine = currentLine ? (currentLine + ' ' + word) : word;
+                            
+                            if (testLine.length <= wrapLength) {
+                                // Fits on current line
+                                currentLine = testLine;
+                            } else {
+                                // Doesn't fit - need to wrap
+                                if (currentLine) {
+                                    // Save current line and start new line with this word
+                                    wrappedContent += (wrappedContent ? '<br/>' : '') + currentLine;
+                                    currentLine = word;
+                                } else {
+                                    // Current line is empty, but word is too long
+                                    // Only break if word is significantly longer than wrapLength
+                                    if (word.length > wrapLength * 1.5) {
+                                        // Break long word into chunks (only for very long words)
+                                        for (let i = 0; i < word.length; i += wrapLength) {
+                                            const chunk = word.substring(i, i + wrapLength);
+                                            wrappedContent += (wrappedContent ? '<br/>' : '') + chunk;
+                                        }
+                                        currentLine = '';
+                                    } else {
+                                        // Keep word intact even if slightly over limit
+                                        currentLine = word;
+                                    }
+                                }
+                            }
+                        }
+                        if (currentLine) {
+                            wrappedContent += (wrappedContent ? '<br/>' : '') + currentLine;
+                        }
+                        
+                        // Remove trailing <br/> tags to avoid extra spacing at the end
+                        wrappedContent = wrappedContent.replace(/(<br\/>)+$/, '').trim();
+                        
+                        // Remove leading/trailing whitespace from each line (split by <br/>)
+                        const lines = wrappedContent.split('<br/>').map(line => line.trim()).filter(line => line.length > 0);
+                        wrappedContent = lines.join('<br/>');
+                        
+                        // Put message ID on first line, content on following lines
+                        // Mermaid supports <br/> for line breaks in message labels
+                        const label = `${msgId}<br/>${wrappedContent}`;
+                        
+                        diagram += `    ${sender}->>${receiver}: ${label}\n`;
+                    } else if (event.type === 'tool_call') {
+                        const toolCall = event.data;
+                        const agentId = (toolCall.agent_id || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_');
+                        const toolName = toolCall.tool_name || 'unknown';
+                        let params = toolCall.parameters || '{}';
+                        
+                        // Extract only values from parameters (remove keys)
+                        // Parse the parameter string to extract values, excluding True/False/None
+                        let paramValues = [];
+                        try {
+                            // Match pattern: 'key': 'value' or "key": "value" or 'key': "value"
+                            // Handle both single and double quotes
+                            const valuePattern = /['"][^'"]*['"]\s*:\s*['"]([^'"]+)['"]/g;
+                            let match;
+                            while ((match = valuePattern.exec(params)) !== null) {
+                                const value = match[1];
+                                if (value && value.trim() && value.length < 200) { // Skip very long values
+                                    paramValues.push(value.trim());
+                                }
+                            }
+                            
+                            // Also match numeric values: 'key': 123 (but skip True/False/None)
+                            const numericPattern = /['"][^'"]*['"]\s*:\s*([0-9]+)/g;
+                            while ((match = numericPattern.exec(params)) !== null) {
+                                const value = match[1];
+                                if (value) {
+                                    paramValues.push(value);
+                                }
+                            }
+                        } catch (e) {
+                            // If parsing fails, use original params
+                            console.warn('Failed to extract parameter values:', e);
+                        }
+                        
+                        // Join values with comma, or use original if no values extracted
+                        let paramsDisplay = paramValues.length > 0 ? paramValues.join(', ') : params;
+                        
+                        // If still showing original params, try to clean it up
+                        if (paramsDisplay === params && params.startsWith('{') && params.endsWith('}')) {
+                            // Remove outer braces and try to extract values more aggressively
+                            const innerParams = params.slice(1, -1);
+                            const simpleValuePattern = /:\s*['"]([^'"]{1,100})['"]/g;
+                            let match;
+                            paramValues = [];
+                            while ((match = simpleValuePattern.exec(innerParams)) !== null) {
+                                const value = match[1];
+                                if (value && value.trim()) {
+                                    paramValues.push(value.trim());
+                                }
+                            }
+                            if (paramValues.length > 0) {
+                                paramsDisplay = paramValues.join(', ');
+                            }
+                        }
+                        
+                        // Clean parameters for display - remove problematic characters
+                        paramsDisplay = paramsDisplay.replace(/\n/g, ' ').replace(/\r/g, '');
+                        paramsDisplay = paramsDisplay.replace(/\s+/g, ' ').trim();
+                        // Remove characters that break Mermaid parsing
+                        paramsDisplay = paramsDisplay.replace(/[<>{}[\]\\]/g, '');
+                        
+                        // Word wrap parameters at approximately 20 characters (increased to show more content)
+                        // Handle both word boundaries and long strings without spaces
+                        const wrapLength = 20;
+                        let wrappedParams = '';
+                        let currentLine = '';
+                        const words = paramsDisplay.split(' ');
+                        
+                        for (const word of words) {
+                            // If word itself is longer than wrapLength, break it
+                            if (word.length > wrapLength) {
+                                // First, add current line if it exists
+                                if (currentLine) {
+                                    wrappedParams += (wrappedParams ? '<br/>' : '') + currentLine;
+                                    currentLine = '';
+                                }
+                                // Break long word into chunks
+                                for (let i = 0; i < word.length; i += wrapLength) {
+                                    const chunk = word.substring(i, i + wrapLength);
+                                    wrappedParams += (wrappedParams ? '<br/>' : '') + chunk;
+                                }
+                            } else {
+                                // Normal word wrapping
+                                const testLine = currentLine ? (currentLine + ' ' + word) : word;
+                                if (testLine.length <= wrapLength) {
+                                    currentLine = testLine;
+                                } else {
+                                    if (currentLine) {
+                                        wrappedParams += (wrappedParams ? '<br/>' : '') + currentLine;
+                                    }
+                                    currentLine = word;
+                                }
+                            }
+                        }
+                        if (currentLine) {
+                            wrappedParams += (wrappedParams ? '<br/>' : '') + currentLine;
+                        }
+                        
+                        // Truncate if still too long (more than 5 lines), but don't add ellipsis
+                        const lines = wrappedParams.split('<br/>');
+                        if (lines.length > 5) {
+                            wrappedParams = lines.slice(0, 5).join('<br/>');
+                        }
+                        
+                        // Special handling for edit_file: extract target_file and display as "edit_file: filename"
+                        let toolDisplayName = toolName;
+                        if (toolName === 'edit_file') {
+                            try {
+                                // Try to extract target_file from the parameters
+                                const targetFileMatch = params.match(/['"]target_file['"]:\s*['"]([^'"]+)['"]/);
+                                if (targetFileMatch && targetFileMatch[1]) {
+                                    const filename = targetFileMatch[1];
+                                    toolDisplayName = `edit_file: ${filename}`;
+                                    wrappedParams = ''; // Don't show parameters separately since filename is in the title
+                                }
+                            } catch (e) {
+                                // If extraction fails, just show edit_file
+                                console.warn('Failed to extract target_file for edit_file:', e);
+                            }
+                        }
+                        
+                        // Add yellow Note for tool call (Mermaid Note doesn't support HTML tags, use plain text)
+                        // Format: tool name on first line, parameter values wrapped below
+                        const toolDisplay = wrappedParams ? `🔧 ${toolDisplayName}<br/>${wrappedParams}` : `🔧 ${toolDisplayName}`;
+                        diagram += `    Note over ${agentId}: ${toolDisplay}\n`;
+                    } else if (event.type === 'status_update') {
+                        const statusUpdate = event.data;
+                        const agentId = (statusUpdate.agent_id || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_');
+                        const status = statusUpdate.status || 'unknown';
+                        
+                        // Clean status for display
+                        let statusDisplay = status;
+                        // Remove characters that break Mermaid parsing
+                        statusDisplay = statusDisplay.replace(/[<>{}[\]\\]/g, '');
+                        
+                        // Word wrap status at approximately 20 characters
+                        const wrapLength = 20;
+                        let wrappedStatus = '';
+                        let currentLine = '';
+                        const words = statusDisplay.split(' ');
+                        
+                        for (const word of words) {
+                            if (word.length > wrapLength) {
+                                if (currentLine) {
+                                    wrappedStatus += (wrappedStatus ? '<br/>' : '') + currentLine;
+                                    currentLine = '';
+                                }
+                                for (let i = 0; i < word.length; i += wrapLength) {
+                                    const chunk = word.substring(i, i + wrapLength);
+                                    wrappedStatus += (wrappedStatus ? '<br/>' : '') + chunk;
+                                }
+                            } else {
+                                const testLine = currentLine ? (currentLine + ' ' + word) : word;
+                                if (testLine.length <= wrapLength) {
+                                    currentLine = testLine;
+                                } else {
+                                    if (currentLine) {
+                                        wrappedStatus += (wrappedStatus ? '<br/>' : '') + currentLine;
+                                    }
+                                    currentLine = word;
+                                }
+                            }
+                        }
+                        if (currentLine) {
+                            wrappedStatus += (wrappedStatus ? '<br/>' : '') + currentLine;
+                        }
+                        
+                        // Add green Note for status update (Note over displays centered on agent's lifeline)
+                        // Format: Status update centered on the agent's vertical line
+                        diagram += `    Note over ${agentId}: ✅ Status: ${wrappedStatus}\n`;
+                    }
+                });
+
+                // Add final state notes (removed Loop information as requested)
+                // Removed individual agent state notes to avoid printing "success (Loop 0)" etc.
+
+                return diagram;
+            } catch (err) {
+                console.error('Error generating diagram:', err);
+                return `sequenceDiagram\n    Note over System: Error generating diagram: ${err.message}`;
+            }
+        }
+
+        function renderAgentSummary(data) {
+            const { agents } = data;
+            const summaryContainer = document.getElementById('agentSummary');
+            
+            if (!agents || Object.keys(agents).length === 0) {
+                summaryContainer.innerHTML = '<div class="agent-card"><h3>No agents found</h3></div>';
+                return;
+            }
+
+            let html = '';
+            Object.values(agents).forEach(agent => {
+                const status = agent.status || 'unknown';
+                const statusClass = status.toLowerCase();
+                const isRunning = status === 'running';
+                // Only show Loop information if agent is running
+                const loopInfo = isRunning ? 
+                    `<span>Loop: ${agent.current_loop || 0} / ${agent.max_loops || 'N/A'}</span>` : '';
+                html += `
+                    <div class="agent-card">
+                        <h3>${agent.agent_id || 'Unknown'}</h3>
+                        <span class="status ${statusClass}">${status}</span>
+                        <div class="info">
+                            ${loopInfo}
+                            <span>Model: ${agent.model || 'N/A'}</span>
+                            ${agent.last_loop_update ? `<span>Last Update: ${formatTimestamp(agent.last_loop_update)}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            summaryContainer.innerHTML = html;
+        }
+
+        function renderMermaidFigures(figures) {
+            const figuresContainer = document.getElementById('mermaidFiguresContent');
+            if (!figures || figures.length === 0) {
+                figuresContainer.innerHTML = '<p>No plan diagrams found.</p>';
+                return;
+            }
+
+            // Get directory and API key parameters from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const dirParam = urlParams.get('dir') || '';
+            const apiKeyParam = urlParams.get('api_key') || '';
+
+            let html = '';
+            figures.forEach(figure => {
+                // Use the /api/files or /api/agent-status-files route to serve images from output directory
+                // Build URL with path and query parameters
+                // Note: Flask's <path:path> can handle paths with slashes, but we need to encode them properly
+                // Convert Windows backslashes to forward slashes for URL compatibility
+                const normalizedPath = figure.path.replace(/\\/g, '/');
+                const pathParts = normalizedPath.split('/');
+                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+                // Use 'api/files/' as base - apiUrl() will map it correctly based on access method
+                let imageUrl = apiUrl(`api/files/${encodedPath}`);
+                const params = new URLSearchParams();
+                if (dirParam) {
+                    params.set('dir', dirParam);
+                }
+                if (apiKeyParam) {
+                    params.set('api_key', apiKeyParam);
+                }
+                if (params.toString()) {
+                    imageUrl += '?' + params.toString();
+                }
+                
+                const figureNum = figure.figure_number || figure.figure_num || '?';
+                html += `
+                    <div class="mermaid-figure">
+                        <h3>Figure ${figureNum}</h3>
+                        <img src="${imageUrl}" alt="Figure ${figureNum}" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <p style="display:none; color: #999; font-style: italic;">Failed to load image: ${figure.path}</p>
+                    </div>
+                `;
+            });
+            figuresContainer.innerHTML = html;
+        }
+
+        function updateLoadingStatus(status) {
+            const statusEl = document.getElementById('loadingStatus');
+            if (statusEl) {
+                statusEl.textContent = status;
+            }
+        }
+
+        async function loadData() {
+            try {
+                updateLoadingStatus('Fetching data from server...');
+                
+                // Add timeout to fetch request
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                
+                let response;
+                try {
+                    response = await fetch(apiUrl('api/status'), {
+                        signal: controller.signal,
+                        cache: 'no-cache',  // Disable cache to ensure fresh data
+                        headers: {
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                    clearTimeout(timeoutId);
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('Request timeout: Server took too long to respond');
+                    }
+                    throw fetchError;
+                }
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error:', response.status, errorText);
+                    throw new Error(`HTTP error! status: ${response.status}: ${errorText}`);
+                }
+                
+                updateLoadingStatus('Parsing response...');
+                const data = await response.json();
+                console.log('Data received:', { 
+                    messages: data.messages?.length || 0, 
+                    tool_calls: data.tool_calls?.length || 0,
+                    agents: Object.keys(data.agents || {}).length 
+                });
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Always update output directory, even on error
+                if (data.output_directory) {
+                    document.getElementById('outputDirPath').textContent = data.output_directory;
+                } else {
+                    document.getElementById('outputDirPath').textContent = '未设置';
+                }
+
+                // Clear error
+                document.getElementById('errorContainer').innerHTML = '';
+
+                // Update last update time
+                document.getElementById('lastUpdate').textContent = 
+                    `Last updated: ${formatTimestamp(data.timestamp)}`;
+
+                // Render agent summary (fast operation)
+                updateLoadingStatus('Rendering agent summary...');
+                renderAgentSummary(data);
+
+                // Render mermaid figures from plan.md
+                updateLoadingStatus('Rendering plan diagrams...');
+                renderMermaidFigures(data.mermaid_figures || []);
+
+                // Generate and render diagram
+                updateLoadingStatus('Generating diagram...');
+                const diagramStart = performance.now();
+                const diagram = generateMermaidDiagram(data);
+                const diagramGenTime = (performance.now() - diagramStart).toFixed(2);
+                console.log(`Generated diagram in ${diagramGenTime}ms:`, diagram.substring(0, 200) + '...');
+                
+                const container = document.getElementById('diagram-container');
+                container.innerHTML = '<div id="mermaid-diagram"></div>';
+
+                const mermaidDiv = document.getElementById('mermaid-diagram');
+                mermaidDiv.textContent = diagram;
+
+                try {
+                    updateLoadingStatus('Rendering diagram with Mermaid...');
+                    console.log('Rendering Mermaid diagram...');
+                    const renderStart = performance.now();
+                    if (typeof mermaid === 'undefined' || window.mermaidLoadFailed) {
+                        throw new Error('Mermaid library not available. Browser may be blocking CDN access.');
+                    }
+                    await mermaid.run({
+                        nodes: [mermaidDiv]
+                    });
+                    const renderTime = (performance.now() - renderStart).toFixed(2);
+                    console.log(`Mermaid diagram rendered successfully in ${renderTime}ms`);
+                    updateLoadingStatus('Complete!');
+                    // Hide loading indicator after a short delay
+                    setTimeout(() => {
+                        const loadingEl = document.getElementById('loadingIndicator');
+                        if (loadingEl) {
+                            loadingEl.style.display = 'none';
+                        }
+                    }, 300);
+                } catch (err) {
+                    console.error('Mermaid rendering error:', err);
+                    // Show diagram code as text if rendering fails
+                    container.innerHTML = `<div class="error">
+                        <strong>Error rendering diagram:</strong> ${err.message}<br>
+                        <small>This may be due to browser privacy settings blocking CDN access.</small><br>
+                        <details style="margin-top: 10px;">
+                            <summary>Show diagram code</summary>
+                            <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow: auto; max-height: 400px;">${diagram}</pre>
+                        </details>
+                    </div>`;
+                }
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                const errorMsg = error.message || 'Unknown error';
+                document.getElementById('errorContainer').innerHTML = 
+                    `<div class="error">Error loading data: ${errorMsg}<br><small>Check browser console (F12) for details</small></div>`;
+                document.getElementById('outputDirPath').textContent = '加载失败';
+            }
+        }
+
+        function setupAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            
+            if (checkbox.checked) {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                }
+                autoRefreshInterval = setInterval(loadData, 10000);
+            } else {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        }
+
+        async function reloadDirectory() {
+            try {
+                console.log('Reloading directory...');
+                const response = await fetch(apiUrl('api/reload'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('Directory reloaded:', data.output_directory);
+                    // Update the output directory display
+                    document.getElementById('outputDirPath').textContent = data.output_directory;
+                    // Show success message
+                    const errorContainer = document.getElementById('errorContainer');
+                    errorContainer.innerHTML = `<div style="background: #e8f5e9; color: #2e7d32; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #4caf50;">
+                        ✅ ${data.message}
+                    </div>`;
+                    // Reload data
+                    await loadData();
+                    // Clear success message after 3 seconds
+                    setTimeout(() => {
+                        errorContainer.innerHTML = '';
+                    }, 3000);
+                } else {
+                    throw new Error(data.message || 'Failed to reload directory');
+                }
+            } catch (error) {
+                console.error('Error reloading directory:', error);
+                document.getElementById('errorContainer').innerHTML = 
+                    `<div class="error">Error reloading directory: ${error.message}</div>`;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('refreshBtn').addEventListener('click', loadData);
+        document.getElementById('reloadBtn').addEventListener('click', reloadDirectory);
+        document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
+
+        // Initial load - wait for DOM to be ready
+        function initializeApp() {
+            updateLoadingStatus('Initializing application...');
+            try {
+                // Start loading data immediately
+                loadData().then(() => {
+                    setupAutoRefresh();
+                }).catch(err => {
+                    console.error('Error during initialization:', err);
+                    const errorContainer = document.getElementById('errorContainer');
+                    if (errorContainer) {
+                        errorContainer.innerHTML = `<div class="error">Initialization error: ${err.message}</div>`;
+                    }
+                });
+            } catch (err) {
+                console.error('Error during initialization:', err);
+                const errorContainer = document.getElementById('errorContainer');
+                if (errorContainer) {
+                    errorContainer.innerHTML = `<div class="error">Initialization error: ${err.message}</div>`;
+                }
+            }
+        }
+        
+        // Use requestAnimationFrame to defer initialization and avoid blocking
+        function startApp() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    requestAnimationFrame(initializeApp);
+                });
+            } else {
+                requestAnimationFrame(initializeApp);
+            }
+        }
+        
+        // Start app initialization
+        startApp();
+    </script>
+</body>
+</html>
+

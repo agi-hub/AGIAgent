@@ -1,0 +1,29 @@
+Code Quality Guidelines:
+
+1. Write clean, readable code with proper comments
+2. Follow PEP 8 style guidelines for Python code
+3. Use meaningful variable and function names
+4. Include error handling and input validation
+5. Write unit tests for important functions
+6. Document complex algorithms and business logic
+7. Use type hints where applicable
+8. Optimize for maintainability over premature optimization
+
+Project Structure Guidelines:
+
+1. Organize code into logical modules and packages
+2. Separate concerns between different components
+3. Use configuration files for settings
+4. Include comprehensive README documentation
+5. Version control with meaningful commit messages
+6. Use virtual environments for dependency management
+
+Testing and Debugging:
+
+1. Test edge cases and error conditions
+2. Use logging for debugging instead of print statements
+3. Validate inputs and outputs
+4. Include integration tests for workflows
+5. Document any known limitations or issues
+
+Please output in ENGLISH.

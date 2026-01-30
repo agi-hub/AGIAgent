@@ -1,0 +1,9 @@
+Add as many images as possible to each document (documents starting with numbers, 
+excluding the final merged document). Images can be retrieved from the web, 
+diagrams can be drawn using SVG or Mermaid, 
+and can also include data visualization charts generated from code. 
+Images should be added based on the text content.
+Images should be placed in the images folder and can be drawn by directly modifying the markdown.
+After configuring images for all documents, merge the documents again.
+
+

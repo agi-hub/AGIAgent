@@ -1,0 +1,8 @@
+{
+  "app_name": "专利撰写助手",
+  "prompts_path": "prompts",
+  "routine_path": "routine",
+  "logo_path": "logo.png",
+  "config_path": "config.txt"
+}
+

@@ -1,0 +1,9 @@
+{
+  "app_name": "专业图文写作",
+  "app_title": "",
+  "prompts_path": "prompts",
+  "routine_path": "routine",
+  "logo_path": "logo.png",
+  "config_path": "config.txt"
+}
+
