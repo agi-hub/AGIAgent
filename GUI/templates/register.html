@@ -644,6 +644,7 @@
                  data-phone-invalid="{{ '请输入有效的手机号' if lang == 'zh' else 'Please enter a valid phone number' }}"
                  data-captcha-required="{{ '请输入验证码' if lang == 'zh' else 'Please enter verification code' }}"
                  data-captcha-incorrect="{{ '验证码错误，请重新输入' if lang == 'zh' else 'Verification code incorrect, please try again' }}"
+                 data-captcha-not-pinyin="{{ '请在验证码中输入正确的拼音' if lang == 'zh' else 'Please enter correct pinyin in verification code' }}"
                  data-agreement-required="{{ '请同意用户协议' if lang == 'zh' else 'Please agree to the user agreement' }}"
                  data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
                  data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
@@ -671,7 +672,7 @@
 
             <div class="form-group">
                 <label for="captcha">{{ '验证码' if lang == 'zh' else 'Verification' }} *</label>
-                <p class="captcha-instruction">{{ '请填写以下内容的拼音（不含声调）' if lang == 'zh' else 'Please write the first letter of each word:' }}</p>
+                <p class="captcha-instruction">{{ '请填写以下内容的' if lang == 'zh' else 'Please write the first letter of each word:' }}<span style="color: #ff4757; font-weight: bold;">{{ '拼音' if lang == 'zh' else '' }}</span>{{ '（不含声调）' if lang == 'zh' else '' }}</p>
                 <p class="captcha-text">{{ '我不是大模型' if lang == 'zh' else 'I am not a large model' }}</p>
                 <input type="text" id="captcha" name="captcha" class="form-input"
                        placeholder="{{ '请输入拼音' if lang == 'zh' else 'Enter first letters' }}" required maxlength="50">
@@ -758,6 +759,7 @@
                 phoneInvalid: i18nData.getAttribute('data-phone-invalid'),
                 captchaRequired: i18nData.getAttribute('data-captcha-required'),
                 captchaIncorrect: i18nData.getAttribute('data-captcha-incorrect'),
+                captchaNotPinyin: i18nData.getAttribute('data-captcha-not-pinyin'),
                 agreementRequired: i18nData.getAttribute('data-agreement-required'),
                 registrationFailed: i18nData.getAttribute('data-registration-failed'),
                 networkError: i18nData.getAttribute('data-network-error'),
@@ -822,7 +824,8 @@
                 }
 
                 // Captcha validation
-                const captcha = document.getElementById('captcha').value.trim().toLowerCase();
+                const captchaInput = document.getElementById('captcha');
+                const captcha = captchaInput.value.trim();
                 const captchaError = document.getElementById('captchaError');
                 const currentLang = i18nData.getAttribute('data-lang');
                 
@@ -830,29 +833,47 @@
                 
                 if (currentLang === 'zh') {
                     // 中文版：验证拼音 "我不是大模型" -> "wo bu shi da mo xing"
-                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    // 首先检查输入是否为英文（拼音）
+                    const isEnglish = /^[a-zA-Z\s]+$/.test(captcha);
+                    
+                    if (!isEnglish) {
+                        // 输入不是英文，提示错误
+                        captchaError.textContent = i18n.captchaNotPinyin;
+                        captchaError.style.display = 'block';
+                        captchaInput.classList.add('error');
+                        isValid = false;
+                        return isValid;
+                    }
+                    
+                    // 验证拼音是否正确
+                    const normalizedCaptcha = captcha.toLowerCase().replace(/\s+/g, '');
                     const expectedCaptcha = 'wobushidamoxing';
                     const expectedCaptchaWithSpaces = 'wo bu shi da mo xing';
-                    isValidCaptcha = normalizedCaptcha === expectedCaptcha || captcha === expectedCaptchaWithSpaces;
+                    isValidCaptcha = normalizedCaptcha === expectedCaptcha || captcha.toLowerCase() === expectedCaptchaWithSpaces;
                 } else {
                     // 英文版：验证首字母 "I am not a large model" -> "ianalm"
-                    const normalizedCaptcha = captcha.replace(/\s+/g, '');
+                    const normalizedCaptcha = captcha.toLowerCase().replace(/\s+/g, '');
                     isValidCaptcha = normalizedCaptcha === 'ianalm';
                 }
 
                 if (!captcha) {
                     captchaError.textContent = i18n.captchaRequired;
                     captchaError.style.display = 'block';
-                    document.getElementById('captcha').classList.add('error');
+                    captchaInput.classList.add('error');
                     isValid = false;
                 } else if (!isValidCaptcha) {
-                    captchaError.textContent = i18n.captchaIncorrect;
+                    // 验证码错误，如果是中文版且输入是英文，提示"请在验证码中输入正确的拼音"
+                    if (currentLang === 'zh' && /^[a-zA-Z\s]+$/.test(captcha)) {
+                        captchaError.textContent = i18n.captchaNotPinyin;
+                    } else {
+                        captchaError.textContent = i18n.captchaIncorrect;
+                    }
                     captchaError.style.display = 'block';
-                    document.getElementById('captcha').classList.add('error');
+                    captchaInput.classList.add('error');
                     isValid = false;
                 } else {
                     captchaError.style.display = 'none';
-                    document.getElementById('captcha').classList.remove('error');
+                    captchaInput.classList.remove('error');
                 }
 
                 return isValid;

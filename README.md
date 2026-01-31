@@ -11,7 +11,7 @@
 
 - **正在寻找开源的 Claude cowork？** AGI Agent 提供类似的协作式 AI 体验，让您能够与智能体协作，智能体可以理解您的需求、操作本地环境并自主执行复杂任务。
 - **需要通用化的本地智能体？** 如果您想要一个能够在本地机器上处理多样化任务的智能体系统——从代码编写到文档生成，从数据分析到系统操作——AGI Agent 正是为您设计的。
-- **编写复杂的专业文档？** 如果您需要创建带有丰富插图、复杂的专业报告，如学术论文、深度研究或专利，AGI Agent 表现的表现会让你满意（[参考介绍](https://agiagentonline.com/colordocintro)）;
+- **编写复杂的专业文档？** 如果您需要创建带有丰富插图、复杂的专业报告，如学术论文、深度研究或专利，AGI Agent 表现的表现会让你满意（[参考介绍](https://github.com/agi-hub/ColorDoc/)）;
 - **寻求可本地部署的代理？** 如果您想要一个支持本地部署且兼容各种 Anthropic/OpenAI 接口模型的代理系统，这可能是您的解决方案;
 - **Vibe 爱好者？** 如果您热衷于 Vibe 工作流程，您会喜欢 AGI Agent。
 
@@ -25,12 +25,14 @@
 - **📖 100% 开源**：提供完整的源代码，实现透明度、可定制性和社区驱动的改进，无供应商锁定。
 - **⚙️ 无需 Claude Code 作为底层**：从零开始构建的独立架构，AGI Agent 不需要 Claude Code 作为底层依赖，提供更大的灵活性和控制权。
 
-## Vibe Demo （鼠标单击打开Youtube视频）
+## Vibe Demo 
 
-[![观看演示视频](./md/images/AGIAgent_GUI.png)](https://www.youtube.com/watch?v=dsRfuH3s9Kk)
+<a href="https://www.youtube.com/watch?v=dsRfuH3s9Kk"><img src="./md/images/AGIAgent_GUI.png" alt="观看演示视频" width="600"></a> 鼠标单击打开Youtube视频
+
+<a href="https://youtu.be/OfP0tCyMUFE"><img src="./md/images/AGIAgent_GUI_zh.png" alt="功能介绍（中文）" width="600"></a> 鼠标单击打开Youtube视频
+[视频中国备用链接](https://www.bilibili.com/video/BV1ez6nBmEU3?t=2.2)
 
 ### 📺 BiliBili演示视频
-
 - [游戏编程演示 - 合金弹头](https://www.bilibili.com/video/BV1KJUMBpEah/?vd_source=2c7e6ae9217ccc667ef46d56a3b686fa)
 - [文档撰写演示](https://www.bilibili.com/video/BV1wmUTB5EMN/?spm_id_from=333.1387.homepage.video_card.click)
 
@@ -39,16 +41,25 @@
 <div align="center">
 
 <a href="https://agiagentonline.com/colordocintro/videos/专业深度图文报告.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/专业深度图文报告.png" width="300" alt="专业深度图文报告"></a>
+
+<br/>
+
 <a href="https://agiagentonline.com/colordocintro/videos/写专利交底书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写专利交底书.png" width="300" alt="写专利交底书"></a>
 
 <br/>
 
 <a href="https://agiagentonline.com/colordocintro/videos/写国家项目申请书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写国家项目申请书.png" width="300" alt="写国家项目申请书"></a>
+
+<br/>
+
 <a href="https://agiagentonline.com/colordocintro/videos/写图文博客、小红书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写图文博客、小红书.png" width="300" alt="写图文博客、小红书"></a>
 
 <br/>
 
 <a href="https://agiagentonline.com/colordocintro/videos/分析用户数据、绘制图表.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/分析用户数据、绘制图表.png" width="300" alt="分析用户数据、绘制图表"></a>
+
+<br/>
+
 <a href="https://agiagentonline.com/colordocintro/videos/报告-Agent发展趋势.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/报告-Agent发展趋势.png" width="300" alt="报告-Agent发展趋势"></a>
 
 <br/>
@@ -62,51 +73,21 @@
 <div align="center">
 
 <a href="https://agiagentonline.com/example-results-records/izhikevich_neuron_visualization.html"><img src="https://agiagentonline.com/example-results-records/python%E7%A8%8B%E5%BA%8F%E7%BB%98%E5%88%B6%E5%9B%BE%E5%83%8F.png" width="300" alt="python程序绘制图像"></a>
+
+<br/>
+
 <a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_guide.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="300" alt="写个网页介绍乐山大佛"></a>
 
 <br/>
 
 <a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="300" alt="抽奖转盘"></a>
+
+<br/>
+
 <a href="https://agiagentonline.com/example-results-records/maze-game.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E6%89%BE%E5%A6%88%E5%A6%88%E7%9A%84%E5%B0%8F%E6%B8%B8%E6%88%8F.png" width="300" alt="写个找妈妈的小游戏"></a>
 
 </div>
 
-### 📚 作品展示
-
-以下是使用 AGI Agent 生成的部分作品示例，展示了平台在各类文档生成任务中的能力：
-
-#### 🔬 技术研究报告（鼠标单击下载查看）
-- [大模型及智能体对国内外就业的影响及未来趋势综述](https://agiagentonline.com/colordocintro/assets/examples/大模型及智能体对国内外就业的影响及未来趋势综述.docx)
-- [2026年AI_Agent发展趋势报告](https://agiagentonline.com/colordocintro/assets/examples/2026年AI_Agent发展趋势报告.docx)
-- [大模型推理芯片发展趋势报告](https://agiagentonline.com/colordocintro/assets/examples/大模型推理芯片发展趋势报告.docx)
-- [06-大模型推理芯片未来展望与发展路径](https://agiagentonline.com/colordocintro/assets/examples/06-大模型推理芯片未来展望与发展路径.docx)
-- [手机大模型推理芯片未来趋势_完整报告](https://agiagentonline.com/colordocintro/assets/examples/手机大模型推理芯片未来趋势_完整报告.docx)
-- [大模型辅助金融投资的现状与未来_完整报告](https://agiagentonline.com/colordocintro/assets/examples/大模型辅助金融投资的现状与未来_完整报告.docx)
-- [类脑持续学习算法综述](https://agiagentonline.com/colordocintro/assets/examples/类脑持续学习算法综述.docx)
-- [浅析马斯克的脑机接口技术-完整报告](https://agiagentonline.com/colordocintro/assets/examples/浅析马斯克的脑机接口技术-完整报告.docx)
-- [01_国内外发展现状](https://agiagentonline.com/colordocintro/assets/examples/01_国内外发展现状.docx)
-- [色彩学完整介绍](https://agiagentonline.com/colordocintro/assets/examples/色彩学完整介绍.docx)
-
-#### 📊 社会调研报告
-- [中国偏远山区儿童教育情况研究报告](https://agiagentonline.com/colordocintro/assets/examples/中国偏远山区儿童教育情况研究报告.docx)
-- [中国生育率调研报告-完整版](https://agiagentonline.com/colordocintro/assets/examples/中国生育率调研报告-完整版.docx)
-- [中国老龄化趋势下智能化养老研究报告](https://agiagentonline.com/colordocintro/assets/examples/中国老龄化趋势下智能化养老研究报告.docx)
-- [青少年游戏成瘾情况分析报告](https://agiagentonline.com/colordocintro/assets/examples/青少年游戏成瘾情况分析报告.docx)
-
-#### 📝 项目申请书与专利
-- [量子中继与星地一体化通信技术攻关项目申请书](https://agiagentonline.com/colordocintro/assets/examples/量子中继与星地一体化通信技术攻关项目申请书.docx)
-- [量子通信数据稳定性增强技术专利交底书](https://agiagentonline.com/colordocintro/assets/examples/量子通信数据稳定性增强技术专利交底书.docx)
-
-#### 🗺️ 旅游攻略与介绍
-- [三亚旅游攻略](https://agiagentonline.com/colordocintro/assets/examples/sanya_travel_guide.docx)
-- [汕头旅游攻略](https://agiagentonline.com/colordocintro/assets/examples/汕头旅游攻略.docx)
-- [乌镇历史介绍](https://agiagentonline.com/colordocintro/assets/examples/乌镇历史介绍.docx)
-- [北京市鼓楼到珠市口公交路线](https://agiagentonline.com/colordocintro/assets/examples/北京市鼓楼到珠市口公交路线.docx)
-
-#### 🎬 其他作品
-- [疯狂动物城2_尼克的视角](https://agiagentonline.com/colordocintro/assets/examples/疯狂动物城2_尼克的视角.docx)
-- [疯狂动物城爆火的深层原因_完整报告](https://agiagentonline.com/colordocintro/assets/examples/疯狂动物城爆火的深层原因_完整报告.docx)
-- [皮卡丘图片搜索报告](https://agiagentonline.com/colordocintro/assets/examples/皮卡丘图片搜索报告.docx)
 
 ## AGI Agent原理介绍
 
