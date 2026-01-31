@@ -26,11 +26,18 @@
 - **⚙️ 无需 Claude Code 作为底层**：从零开始构建的独立架构，AGI Agent 不需要 Claude Code 作为底层依赖，提供更大的灵活性和控制权。
 
 ## Vibe Demo 
+<div align="center">
 
-<a href="https://www.youtube.com/watch?v=dsRfuH3s9Kk"><img src="./md/images/AGIAgent_GUI.png" alt="观看演示视频" width="600"></a> 鼠标单击打开Youtube视频
+<a href="https://www.youtube.com/watch?v=dsRfuH3s9Kk"><img src="./md/images/AGIAgent_GUI.png" alt="观看演示视频" width="800"></a> 
 
-<a href="https://youtu.be/OfP0tCyMUFE"><img src="./md/images/AGIAgent_GUI_zh.png" alt="功能介绍（中文）" width="600"></a> 鼠标单击打开Youtube视频
-[视频中国备用链接](https://www.bilibili.com/video/BV1ez6nBmEU3?t=2.2)
+鼠标单击打开Youtube视频
+
+<a href="https://youtu.be/OfP0tCyMUFE"><img src="./md/images/AGIAgent_GUI_zh.png" alt="功能介绍（中文）" width="800"></a> 
+
+鼠标单击打开Youtube视频 （[视频中国备用链接](https://www.bilibili.com/video/BV1ez6nBmEU3?t=2.2)）
+
+</div>
+
 
 ### 📺 BiliBili演示视频
 - [游戏编程演示 - 合金弹头](https://www.bilibili.com/video/BV1KJUMBpEah/?vd_source=2c7e6ae9217ccc667ef46d56a3b686fa)
@@ -40,51 +47,46 @@
 
 <div align="center">
 
-<a href="https://agiagentonline.com/colordocintro/videos/专业深度图文报告.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/专业深度图文报告.png" width="300" alt="专业深度图文报告"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/专业深度图文报告.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/专业深度图文报告.png" width="500" alt="专业深度图文报告"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/写专利交底书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写专利交底书.png" width="300" alt="写专利交底书"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/写专利交底书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写专利交底书.png" width="500" alt="写专利交底书"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/写国家项目申请书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写国家项目申请书.png" width="300" alt="写国家项目申请书"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/写国家项目申请书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写国家项目申请书.png" width="500" alt="写国家项目申请书"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/写图文博客、小红书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写图文博客、小红书.png" width="300" alt="写图文博客、小红书"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/写图文博客、小红书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写图文博客、小红书.png" width="500" alt="写图文博客、小红书"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/分析用户数据、绘制图表.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/分析用户数据、绘制图表.png" width="300" alt="分析用户数据、绘制图表"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/分析用户数据、绘制图表.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/分析用户数据、绘制图表.png" width="500" alt="分析用户数据、绘制图表"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/报告-Agent发展趋势.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/报告-Agent发展趋势.png" width="300" alt="报告-Agent发展趋势"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/报告-Agent发展趋势.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/报告-Agent发展趋势.png" width="500" alt="报告-Agent发展趋势"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/colordocintro/videos/矢量图像绘制及多格式图像输出.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/矢量图像绘制及多格式图像输出.png" width="300" alt="矢量图像绘制及多格式图像输出"></a>
+<a href="https://agiagentonline.com/colordocintro/videos/矢量图像绘制及多格式图像输出.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/矢量图像绘制及多格式图像输出.png" width="500" alt="矢量图像绘制及多格式图像输出"></a>
 
-</div>
 
-### 🖼️ 演示案例（鼠标单击打开页面）
-
-<div align="center">
-
-<a href="https://agiagentonline.com/example-results-records/izhikevich_neuron_visualization.html"><img src="https://agiagentonline.com/example-results-records/python%E7%A8%8B%E5%BA%8F%E7%BB%98%E5%88%B6%E5%9B%BE%E5%83%8F.png" width="300" alt="python程序绘制图像"></a>
+<a href="https://agiagentonline.com/example-results-records/izhikevich_neuron_visualization.html"><img src="https://agiagentonline.com/example-results-records/python%E7%A8%8B%E5%BA%8F%E7%BB%98%E5%88%B6%E5%9B%BE%E5%83%8F.png" width="500" alt="python程序绘制图像"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_guide.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="300" alt="写个网页介绍乐山大佛"></a>
+<a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_guide.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="500" alt="写个网页介绍乐山大佛"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="300" alt="抽奖转盘"></a>
+<a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="500" alt="抽奖转盘"></a>
 
 <br/>
 
-<a href="https://agiagentonline.com/example-results-records/maze-game.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E6%89%BE%E5%A6%88%E5%A6%88%E7%9A%84%E5%B0%8F%E6%B8%B8%E6%88%8F.png" width="300" alt="写个找妈妈的小游戏"></a>
+<a href="https://agiagentonline.com/example-results-records/maze-game.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E6%89%BE%E5%A6%88%E5%A6%88%E7%9A%84%E5%B0%8F%E6%B8%B8%E6%88%8F.png" width="500" alt="写个找妈妈的小游戏"></a>
 
 </div>
 
