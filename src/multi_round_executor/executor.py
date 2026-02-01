@@ -792,30 +792,26 @@ class MultiRoundTaskExecutor:
                                          for record in recent_records)
                 total_history_length = records_to_summarize_length + recent_records_length
                 
-                # Use enhanced compression for history management
-                # Two-stage compression: simple compression (field-level) + truncation compression (record-level)
+                # Use compression for history management
+                # Supports two strategies: 'delete' (EnhancedHistoryCompressor) and 'llm_summary' (LLMSummaryCompressor)
                 # Only compress if total history length exceeds summary_trigger_length
                 trigger_length = get_summary_trigger_length()
                 if hasattr(self.executor, 'simple_compressor') and self.executor.simple_compressor:
                     try:
-                        # Check if using EnhancedHistoryCompressor (new method)
-                        if hasattr(self.executor.simple_compressor, 'compress_history') and \
-                           hasattr(self.executor.simple_compressor, '_truncation_compress'):
-                            # New enhanced compression: simple + truncation
-                            # This handles both field compression and record deletion
-                            # EnhancedHistoryCompressor will check trigger_length internally
-                            
+                        # Check if compressor has compress_history method
+                        if hasattr(self.executor.simple_compressor, 'compress_history'):
                             # Record compression before state
                             original_llm_count = len(history_for_llm)
-                            # Calculate original length using same method as EnhancedHistoryCompressor
                             fields_to_count = ['prompt', 'result', 'content', 'response', 'output', 'data']
                             original_total_length = sum(
                                 sum(len(str(r.get(field, ""))) for field in fields_to_count)
                                 for r in history_for_llm
                             )
                             
+                            # Get keep_recent_rounds from compressor
+                            keep_recent_rounds = getattr(self.executor.simple_compressor, 'keep_recent_rounds', 2)
+                            
                             # Calculate recent rounds length (before compression)
-                            keep_recent_rounds = self.executor.simple_compressor.keep_recent_rounds
                             if len(history_for_llm) > keep_recent_rounds:
                                 recent_records_before = history_for_llm[-keep_recent_rounds:]
                                 recent_rounds_length = sum(
@@ -825,6 +821,7 @@ class MultiRoundTaskExecutor:
                             else:
                                 recent_rounds_length = original_total_length
                             
+                            # Call compressor (works for both EnhancedHistoryCompressor and LLMSummaryCompressor)
                             compressed_history, compression_stats = self.executor.simple_compressor.compress_history(task_history)
                             
                             # Extract LLM records from compressed history
@@ -839,14 +836,10 @@ class MultiRoundTaskExecutor:
                             
                             # Calculate compression results
                             final_llm_count = len(history_for_llm)
-                            # Calculate final length using same method as EnhancedHistoryCompressor
-                            fields_to_count = ['prompt', 'result', 'content', 'response', 'output', 'data']
                             final_total_length = sum(
                                 sum(len(str(r.get(field, ""))) for field in fields_to_count)
                                 for r in history_for_llm
                             )
-                            simple_stats = compression_stats.get('simple_compression', {})
-                            truncation_stats = compression_stats.get('truncation_compression', {})
                             
                             # Calculate recent rounds length (after compression)
                             if len(history_for_llm) > 0:
@@ -858,20 +851,23 @@ class MultiRoundTaskExecutor:
                             else:
                                 recent_rounds_length_after = 0
                             
-                            # Only print if compression occurred (threshold exceeded)
-                            if truncation_stats.get('truncated', False):
+                            # Check if compression occurred based on compression method
+                            compression_method = compression_stats.get('compression_method', 'delete')
+                            compression_occurred = False
+                            
+                            if compression_method == 'llm_summary':
+                                # LLM Summary compression
+                                compression_occurred = compression_stats.get('compressed', False)
+                            else:
+                                # Delete compression (EnhancedHistoryCompressor)
+                                truncation_stats = compression_stats.get('truncation_compression', {})
+                                compression_occurred = truncation_stats.get('truncated', False)
+                            
+                            # Print compression log if compression occurred
+                            if compression_occurred:
                                 recent_count = min(keep_recent_rounds, len(history_for_llm)) if len(history_for_llm) > 0 else 0
-                                print_debug(f"🗜️ History compression: Before {original_llm_count} records, {original_total_length:,} chars, After {final_llm_count} records, {final_total_length:,} chars, recent {recent_count} rounds {recent_rounds_length_after:,} chars")
-                        else:
-                            # Fallback to old compression method (backward compatibility)
-                            # Only compress if total history length exceeds summary_trigger_length
-                            if total_history_length > trigger_length and len(history_for_llm) > 2:
-                                records_to_compress = history_for_llm[:-2] if len(history_for_llm) > 2 else []
-                                recent_records_to_keep = history_for_llm[-2:] if len(history_for_llm) > 2 else history_for_llm
-                                
-                                if records_to_compress:
-                                    compressed_older_records = self.executor.simple_compressor.compress_history(records_to_compress, trigger_length=trigger_length)
-                                    history_for_llm = compressed_older_records + recent_records_to_keep
+                                strategy_label = "[LLM Summary]" if compression_method == 'llm_summary' else "[Delete]"
+                                print_debug(f"🗜️ {strategy_label} History compression: Before {original_llm_count} records, {original_total_length:,} chars, After {final_llm_count} records, {final_total_length:,} chars, recent {recent_count} rounds {recent_rounds_length_after:,} chars")
 
                     except Exception as e:
                         print_debug(f"⚠️ History compression failed: {e}")

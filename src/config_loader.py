@@ -1532,3 +1532,77 @@ def get_zhipu_search_engine(config_file: str = "config/config.txt") -> str:
         Search engine type, defaults to "search_std"
     """
     return get_config_value("zhipu_search_engine", default="search_std", config_file=config_file)
+
+
+def get_summary_streaming(config_file: str = "config/config.txt") -> bool:
+    """
+    Get summary streaming configuration from configuration file
+    
+    Controls whether to use streaming output when generating conversation summaries.
+    When enabled, summary content is displayed character by character as it's generated.
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Boolean indicating whether to use streaming output for summaries (default: True)
+    """
+    config = load_config(config_file)
+    streaming_str = config.get('summary_streaming', 'True').lower()
+    
+    # Convert string to boolean
+    if streaming_str in ('true', '1', 'yes', 'on'):
+        return True
+    elif streaming_str in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        print(f"Warning: Invalid summary_streaming value '{streaming_str}' in config file, using default True")
+        return True
+
+
+def get_compression_strategy(config_file: str = "config/config.txt") -> str:
+    """
+    Get history compression strategy from configuration file
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Compression strategy string: 'delete' or 'llm_summary' (default: 'delete')
+    """
+    config = load_config(config_file)
+    strategy = config.get('compression_strategy', 'delete').lower().strip()
+    
+    valid_strategies = ['delete', 'llm_summary']
+    if strategy not in valid_strategies:
+        print(f"Warning: Invalid compression_strategy value '{strategy}' in config file, must be one of {valid_strategies}, using default 'delete'")
+        return 'delete'
+    
+    return strategy
+
+
+def get_keep_recent_rounds(config_file: str = "config/config.txt") -> int:
+    """
+    Get the number of recent conversation rounds to keep uncompressed
+    
+    Args:
+        config_file: Path to the configuration file
+        
+    Returns:
+        Number of recent rounds to keep (default: 2)
+    """
+    config = load_config(config_file)
+    keep_recent_str = config.get('keep_recent_rounds')
+    
+    if keep_recent_str:
+        try:
+            keep_recent = int(keep_recent_str)
+            if keep_recent < 0:
+                print(f"Warning: keep_recent_rounds cannot be negative, got '{keep_recent_str}', using default 2")
+                return 2
+            return keep_recent  # Allow 0 (compress all records)
+        except ValueError:
+            print(f"Warning: Invalid keep_recent_rounds value '{keep_recent_str}' in config file, must be an integer, using default 2")
+            return 2
+    
+    return 2  # Default: keep 2 recent rounds

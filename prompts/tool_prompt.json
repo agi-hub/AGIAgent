@@ -19,29 +19,28 @@
       "required": ["query"]
     }
   },
-  "read_file": {
-    "description": "Read the contents of a file. When should_read_entire_file=true, the entire file is read regardless of line parameters. When should_read_entire_file=false, only the specified line range is read.",
+  "read_multiple_files": {
+    "description": "Read the contents of multiple files in a single call. More efficient than calling read_file multiple times. Use this when you need to read 2 or more files at once.",
     "parameters": {
       "type": "object",
       "properties": {
-        "target_file": {
-          "type": "string",
-          "description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path."
+        "target_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of file paths to read. Can be relative paths in the workspace or absolute paths. Maximum 20 files per call."
         },
         "should_read_entire_file": {
           "type": "boolean",
-          "description": "Whether to read the entire file. When true, line parameters are ignored. When false, line parameters are required. Defaults to false."
+          "description": "Whether to read entire files. If true, reads up to 500 lines per file. If false, reads up to max_lines_per_file lines. Defaults to true."
         },
-        "start_line_one_indexed": {
+        "max_lines_per_file": {
           "type": "integer",
-          "description": "The one-indexed line number to start reading from (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
-        },
-        "end_line_one_indexed_inclusive": {
-          "type": "integer",
-          "description": "The one-indexed line number to end reading at (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
+          "description": "Maximum lines to read per file when should_read_entire_file=false. Defaults to 200."
         }
       },
-      "required": ["target_file", "should_read_entire_file"]
+      "required": ["target_files"]
     }
   },
   "run_terminal_cmd": {

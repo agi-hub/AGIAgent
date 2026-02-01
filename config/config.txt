@@ -8,13 +8,13 @@ LANG=zh
 # the configuration in comment will not be valid.
 
 # GLM coding-plan API configuration
-api_key=your key
+api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
 api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.5
+model=glm-4.7
 max_tokens=16384
 
 # GLM coding-plan API configuration
-# api_key=your key
+# api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
 # api_base=https://open.bigmodel.cn/api/anthropic
 # model=glm-4.5-air
 # max_tokens=16384
@@ -187,6 +187,33 @@ summary_trigger_length=100000
 # Higher values preserve more history but may trigger compression more frequently
 # Default: 70% of summary_trigger_length if not set
 compression_target_length=50000
+
+# History compression strategy (default: delete)
+# Determines how old conversation history is compressed when exceeding trigger_length
+# Options:
+#   - delete: Directly delete old records (fast, zero cost, but loses history)
+#   - llm_summary: Use LLM to generate summary of old records (slower, costs tokens, preserves context)
+# When using llm_summary:
+#   - Old records are summarized into a concise summary by LLM
+#   - Recent N rounds (keep_recent_rounds) are kept uncompressed
+#   - Summary preserves key operations, results, and decisions
+# Recommendation:
+#   - Use 'delete' for faster execution and lower cost
+#   - Use 'llm_summary' when historical context is important for the task
+compression_strategy=llm_summary
+
+# Number of recent conversation rounds to keep uncompressed (default: 2)
+# Only used when compression is triggered
+# These recent rounds will not be compressed/deleted, keeping full context
+# Recommendation: 2-5 rounds, higher values preserve more recent context but use more tokens
+keep_recent_rounds=0
+
+# Summary streaming output configuration (default: True)
+# Controls whether to use streaming output when generating conversation summaries
+# When enabled, summary content is displayed character by character as it's generated
+# When disabled, summary content is displayed all at once after generation completes
+# Default: True (streaming enabled for better user experience)
+summary_streaming=True
 
 # Summary report generation (default: False)
 # When enabled, generates single task summary and task summary reports

@@ -442,6 +442,130 @@ class FileSystemTools:
                 'resolved_path': file_path
             }
 
+    def read_multiple_files(self, target_files: list, should_read_entire_file: bool = True,
+                           max_lines_per_file: int = 200, **kwargs) -> Dict[str, Any]:
+        """
+        Read the contents of multiple files in a single call.
+        
+        Args:
+            target_files: List of file paths to read. Can be relative paths in the workspace or absolute paths.
+            should_read_entire_file: Whether to read entire files. If False, only first max_lines_per_file lines are read.
+            max_lines_per_file: Maximum lines to read per file when should_read_entire_file=False. Default 200.
+            
+        Returns:
+            Dictionary containing results for all files.
+        """
+        if kwargs:
+            print_debug(f"⚠️  Ignoring additional parameters: {list(kwargs.keys())}")
+        
+        if not target_files:
+            return {
+                'status': 'failed',
+                'error': 'No files specified. Please provide a list of file paths.',
+                'files_requested': 0
+            }
+        
+        if not isinstance(target_files, list):
+            # Try to handle if a single string was passed
+            if isinstance(target_files, str):
+                target_files = [target_files]
+            else:
+                return {
+                    'status': 'failed',
+                    'error': f'target_files must be a list of file paths, got {type(target_files).__name__}',
+                    'files_requested': 0
+                }
+        
+        results = []
+        success_count = 0
+        failed_count = 0
+        total_lines_read = 0
+        
+        # Limit the number of files to prevent excessive reads
+        max_files = 20
+        if len(target_files) > max_files:
+            print_debug(f"⚠️ Too many files requested ({len(target_files)}), limiting to {max_files}")
+            target_files = target_files[:max_files]
+        
+        for target_file in target_files:
+            file_path = self._resolve_path(target_file)
+            file_result = {
+                'file': target_file,
+                'resolved_path': file_path
+            }
+            
+            # Check if file exists
+            if not os.path.exists(file_path):
+                file_result['status'] = 'failed'
+                file_result['error'] = f'File not found: {file_path}'
+                failed_count += 1
+                results.append(file_result)
+                continue
+            
+            # Check if it's a file (not directory)
+            if not os.path.isfile(file_path):
+                file_result['status'] = 'failed'
+                file_result['error'] = f'Path is not a file: {file_path}'
+                failed_count += 1
+                results.append(file_result)
+                continue
+            
+            # Read file
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    all_lines = f.readlines()
+                
+                total_lines = len(all_lines)
+                
+                if should_read_entire_file:
+                    # Read entire file mode: max 500 lines
+                    max_entire_lines = 500
+                    if total_lines <= max_entire_lines:
+                        content = ''.join(all_lines)
+                        lines_read = total_lines
+                    else:
+                        content = ''.join(all_lines[:max_entire_lines])
+                        lines_read = max_entire_lines
+                        file_result['truncated'] = True
+                else:
+                    # Partial read mode
+                    lines_to_read = min(total_lines, max_lines_per_file)
+                    content = ''.join(all_lines[:lines_to_read])
+                    lines_read = lines_to_read
+                    if lines_to_read < total_lines:
+                        file_result['truncated'] = True
+                
+                file_result['status'] = 'success'
+                file_result['content'] = content
+                file_result['total_lines'] = total_lines
+                file_result['lines_read'] = lines_read
+                
+                success_count += 1
+                total_lines_read += lines_read
+                
+            except UnicodeDecodeError as e:
+                file_result['status'] = 'failed'
+                file_result['error'] = f'Unicode decode error: {str(e)}'
+                failed_count += 1
+            except Exception as e:
+                file_result['status'] = 'failed'
+                file_result['error'] = str(e)
+                failed_count += 1
+            
+            results.append(file_result)
+        
+        # Determine overall status
+        overall_status = 'success' if failed_count == 0 else ('partial' if success_count > 0 else 'failed')
+        
+        return {
+            'status': overall_status,
+            'files_requested': len(target_files),
+            'files_success': success_count,
+            'files_failed': failed_count,
+            'total_lines_read': total_lines_read,
+            'results': results
+        }
+
     def list_dir(self, relative_workspace_path: str = "", **kwargs) -> Dict[str, Any]:
         """
         List the contents of a directory.

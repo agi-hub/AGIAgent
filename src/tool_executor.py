@@ -300,17 +300,41 @@ class ToolExecutor:
         else:
             self.multi_agent_tools = None
         
-        # Initialize enhanced history compressor
+        # Initialize history compressor based on configuration
+        # Supports two strategies: 'delete' (EnhancedHistoryCompressor) and 'llm_summary' (LLMSummaryCompressor)
         try:
-            from tools.enhanced_history_compressor import EnhancedHistoryCompressor
-            # EnhancedHistoryCompressor will automatically load trigger_length from config if None
-            self.simple_compressor = EnhancedHistoryCompressor(
-                trigger_length=None,  # Will be loaded from config automatically
-                keep_recent_rounds=2  # Keep last 2 rounds uncompressed
-            )
+            from config_loader import get_compression_strategy, get_keep_recent_rounds
+            compression_strategy = get_compression_strategy()
+            keep_recent_rounds = get_keep_recent_rounds()
+            
+            self.compression_strategy = compression_strategy
+            
+            if compression_strategy == 'llm_summary':
+                # Use LLM summary compression
+                from tools.llm_summary_compressor import LLMSummaryCompressor
+                self.simple_compressor = LLMSummaryCompressor(
+                    trigger_length=None,  # Will be loaded from config automatically
+                    target_length=None,   # Will be loaded from config automatically
+                    keep_recent_rounds=keep_recent_rounds,
+                    api_client=self.api_client if hasattr(self, 'api_client') else None,
+                    model=self.model,
+                    api_key=self.api_key,
+                    api_base=self.api_base,
+                )
+                print_system(f"🗜️ Using LLM summary compression strategy (keep_recent_rounds={keep_recent_rounds})")
+            else:
+                # Use delete compression (default)
+                from tools.enhanced_history_compressor import EnhancedHistoryCompressor
+                self.simple_compressor = EnhancedHistoryCompressor(
+                    trigger_length=None,  # Will be loaded from config automatically
+                    keep_recent_rounds=keep_recent_rounds
+                )
+                print_system(f"🗜️ Using delete compression strategy (keep_recent_rounds={keep_recent_rounds})")
+                
         except ImportError as e:
-            print_system(f"⚠️ Failed to import EnhancedHistoryCompressor: {e}, enhanced compression disabled")
+            print_system(f"⚠️ Failed to import history compressor: {e}, compression disabled")
             self.simple_compressor = None
+            self.compression_strategy = None
         
         # Initialize history compression tools
         try:
@@ -342,6 +366,7 @@ class ToolExecutor:
         self.tool_map = {
             "workspace_search": self.tools.workspace_search,
             "read_file": self.tools.read_file,
+            "read_multiple_files": self.tools.read_multiple_files,
             "run_terminal_cmd": self.tools.run_terminal_cmd,
             "run_claude": self.tools.run_claude,
             "list_dir": self.tools.list_dir,

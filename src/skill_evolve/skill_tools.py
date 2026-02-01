@@ -26,9 +26,13 @@ import re
 import yaml
 import shutil
 import time
+import warnings
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+
+# Suppress pkg_resources deprecation warning from jieba
+warnings.filterwarnings('ignore', category=UserWarning, message='.*pkg_resources.*')
 
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -36,6 +40,13 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
+
+# Import jieba for Chinese text segmentation
+try:
+    import jieba
+    JIEBA_AVAILABLE = True
+except ImportError:
+    JIEBA_AVAILABLE = False
 
 from src.tools.print_system import print_current, print_error, print_debug
 from src.config_loader import get_gui_default_data_directory
@@ -45,6 +56,31 @@ class SkillTools:
     """
     Skill管理与经验总结工具类
     """
+    
+    @staticmethod
+    def _tokenize_chinese(text: str) -> List[str]:
+        """
+        中文分词函数，使用jieba进行分词
+        
+        Args:
+            text: 待分词的文本
+            
+        Returns:
+            分词后的词列表
+        """
+        if JIEBA_AVAILABLE:
+            return list(jieba.cut(text))
+        else:
+            # 如果jieba不可用，使用简单的字符级分词作为fallback
+            # 分离中文字符和英文单词
+            tokens = []
+            # 提取英文单词
+            english_words = re.findall(r'[a-zA-Z]+', text)
+            tokens.extend(english_words)
+            # 提取中文字符（单字）
+            chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+            tokens.extend(chinese_chars)
+            return tokens
     
     def __init__(self, workspace_root: Optional[str] = None, user_id: Optional[str] = None):
         """
@@ -327,8 +363,13 @@ class SkillTools:
                     'content': content
                 })
             
-            # TF-IDF向量化
-            vectorizer = TfidfVectorizer(max_features=1000, stop_words=None)
+            # TF-IDF向量化，使用中文分词器
+            vectorizer = TfidfVectorizer(
+                tokenizer=self._tokenize_chinese,
+                token_pattern=None,  # 使用自定义tokenizer时需要设置为None
+                max_features=1000, 
+                stop_words=None
+            )
             try:
                 tfidf_matrix = vectorizer.fit_transform(texts)
                 query_vector = vectorizer.transform([query])

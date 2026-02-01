@@ -1,0 +1,30 @@
+"read_file": {
+  "description": "Read the contents of a file. When should_read_entire_file=true, the entire file is read regardless of line parameters. When should_read_entire_file=false, only the specified line range is read.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target_file": {
+        "type": "string",
+        "description": "The path of the file to read. You can use either a relative path in the workspace or an absolute path."
+      },
+      "should_read_entire_file": {
+        "type": "boolean",
+        "description": "Whether to read the entire file. When true, line parameters are ignored. When false, line parameters are required. Defaults to false."
+      },
+      "start_line_one_indexed": {
+        "type": "integer",
+        "description": "The one-indexed line number to start reading from (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
+      },
+      "end_line_one_indexed_inclusive": {
+        "type": "integer",
+        "description": "The one-indexed line number to end reading at (inclusive). Required when should_read_entire_file=false, ignored when should_read_entire_file=true."
+      }
+    },
+    "required": ["target_file", "should_read_entire_file"]
+  }
+},
+
+
+
+
+
