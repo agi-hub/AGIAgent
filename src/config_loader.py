@@ -22,6 +22,8 @@ from typing import Dict, Optional, Tuple
 # Global cache configuration
 _config_cache: Dict[str, Dict[str, str]] = {}
 _config_file_mtime: Dict[str, float] = {}
+# Track if GUI data directory warning has been printed
+_gui_data_dir_warning_printed: bool = False
 
 def clear_config_cache() -> None:
     """
@@ -680,7 +682,11 @@ def get_gui_default_data_directory(config_file: str = "config/config.txt") -> Op
     if os.path.exists(gui_data_dir) and os.path.isdir(gui_data_dir):
         return gui_data_dir
     else:
-        print(f"Warning: GUI default data directory '{gui_data_dir}' does not exist or is not a directory")
+        # Only print warning once
+        global _gui_data_dir_warning_printed
+        if not _gui_data_dir_warning_printed:
+            print(f"Warning: GUI default data directory '{gui_data_dir}' does not exist or is not a directory")
+            _gui_data_dir_warning_printed = True
         return None
 
 def get_auto_fix_interactive_commands(config_file: str = "config/config.txt") -> bool:

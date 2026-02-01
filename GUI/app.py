@@ -3940,6 +3940,27 @@ def serve_static_file(file_path):
         traceback.print_exc()
         abort(500)
 
+@app.route('/api/user-guide')
+def serve_user_guide():
+    """Serve user guide PDF file"""
+    try:
+        # Get the project root directory (parent of GUI directory)
+        project_root = os.path.dirname(app_dir)
+        user_guide_path = os.path.join(project_root, 'md', 'user_guide.pdf')
+        
+        if not os.path.exists(user_guide_path) or not os.path.isfile(user_guide_path):
+            abort(404)
+        
+        # Check if download parameter is set
+        download = request.args.get('download', 'false').lower() == 'true'
+        
+        return send_file(user_guide_path, mimetype='application/pdf', as_attachment=download, download_name='user_guide.pdf' if download else None)
+    except Exception as e:
+        print(f"Error serving user guide: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        abort(500)
+
 @app.route('/api/html-preview/<path:file_path>')
 def serve_html_preview(file_path):
     """Serve HTML file with proper base URL for relative resource loading"""
@@ -5122,6 +5143,64 @@ def handle_terminal_input(data):
         if cwd:
             cwd = os.path.abspath(cwd)
         
+        # 如果命令中包含cd到workspace的路径，提前更新cwd为workspace目录
+        # 这样可以确保subprocess在正确的目录执行，避免命令中的cd失败
+        # 同时可以简化命令，移除不必要的cd到workspace的部分
+        if '&&' in command and 'workspace' in command:
+            # 检查是否是cd命令链，且目标目录包含workspace
+            cd_match = re.search(r'cd\s+["\']?([^"\']+)["\']?\s+&&', command)
+            if cd_match:
+                target_dir = cd_match.group(1)
+                # 检查是否是output_xxx/workspace格式
+                if target_dir.startswith('output_') and '/workspace' in target_dir:
+                    # 提取output_xxx部分
+                    output_dir = target_dir.split('/')[0]
+                    user_dir = user_session.get_user_directory(session_base_data_dir)
+                    workspace_dir = os.path.join(user_dir, output_dir, 'workspace')
+                    if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+                        # 更新cwd为workspace目录，这样subprocess会在正确的目录执行
+                        workspace_abs = os.path.abspath(workspace_dir)
+                        # 检查当前cwd是否是用户基础目录
+                        if os.path.basename(cwd) != 'workspace' and cwd == user_dir:
+                            # 当前cwd是用户基础目录，更新为workspace目录
+                            cwd = workspace_abs
+                            user_session.set_terminal_cwd(cwd)
+                            # 从命令中移除cd到workspace的部分，只保留后续命令
+                            # 例如：cd "output_xxx/workspace" && python script.py -> python script.py
+                            # 或者：cd "output_xxx/workspace" && cd "subdir" && python script.py -> cd "subdir" && python script.py
+                            command_parts = command.split('&&')
+                            if len(command_parts) > 1:
+                                # 移除第一个cd命令（cd到workspace的部分）
+                                remaining_parts = command_parts[1:]
+                                command = ' && '.join(part.strip() for part in remaining_parts)
+                                # 更新cmd_lower用于后续处理
+                                cmd_lower = command.strip().lower()
+                elif target_dir == 'workspace' or target_dir.endswith('/workspace'):
+                    # cd "workspace" 或 cd "xxx/workspace"格式
+                    user_dir = user_session.get_user_directory(session_base_data_dir)
+                    # 尝试找到workspace目录
+                    workspace_dir = os.path.join(user_dir, 'workspace')
+                    if not os.path.exists(workspace_dir):
+                        # 尝试在output_xxx目录下找workspace
+                        import glob
+                        output_dirs = glob.glob(os.path.join(user_dir, 'output_*'))
+                        for output_dir in output_dirs:
+                            potential_workspace = os.path.join(output_dir, 'workspace')
+                            if os.path.exists(potential_workspace) and os.path.isdir(potential_workspace):
+                                workspace_dir = potential_workspace
+                                break
+                    if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+                        workspace_abs = os.path.abspath(workspace_dir)
+                        if os.path.basename(cwd) != 'workspace' and cwd == user_dir:
+                            cwd = workspace_abs
+                            user_session.set_terminal_cwd(cwd)
+                            # 从命令中移除cd到workspace的部分
+                            command_parts = command.split('&&')
+                            if len(command_parts) > 1:
+                                remaining_parts = command_parts[1:]
+                                command = ' && '.join(part.strip() for part in remaining_parts)
+                                cmd_lower = command.strip().lower()
+        
         # 根据操作系统选择shell
         cmd_lower = command.strip().lower()
         
@@ -5175,7 +5254,11 @@ def handle_terminal_input(data):
         else:
             # Linux/Mac处理
             shell = True
-            executable = '/bin/bash'
+            # macOS使用zsh，Linux使用bash
+            if platform.system() == 'Darwin':  # macOS
+                executable = '/bin/zsh'
+            else:  # Linux
+                executable = '/bin/bash'
             
             # Linux下也需要处理cd命令
             # 支持: cd dir, cd "dir", cd 'dir', cd ~, cd -, cd .., cd dir/
@@ -5238,8 +5321,19 @@ def handle_terminal_input(data):
                                 new_cwd = os.path.join(cwd, target_dir)
                         new_cwd = os.path.abspath(os.path.normpath(new_cwd))
                         
-                        # 更新terminal_cwd状态
-                        if user_session.set_terminal_cwd(new_cwd):
+                        # 检查目标目录是否与当前目录相同
+                        if os.path.abspath(new_cwd) == os.path.abspath(cwd):
+                            # 目标目录与当前目录相同，不需要cd，直接执行后续命令
+                            # 提取cd命令之后的部分
+                            after_cd = command.split('&&', 1)
+                            if len(after_cd) > 1:
+                                # 有后续命令，只执行后续命令
+                                full_command = after_cd[1].strip()
+                            else:
+                                # 只有cd命令，执行cd .（无操作但保持一致性）
+                                full_command = 'cd .'
+                            # cwd保持不变
+                        elif user_session.set_terminal_cwd(new_cwd):
                             # 切换成功，执行组合命令，使用新的cwd作为subprocess的工作目录
                             full_command = command  # 保持原命令不变
                             cwd = new_cwd  # 更新当前cwd用于subprocess
@@ -5270,6 +5364,28 @@ def handle_terminal_input(data):
                                 new_cwd = target_dir
                             else:
                                 # 处理相对路径
+                                # 检查当前工作目录是否已经是workspace目录
+                                # 如果target_dir包含output_xxx/workspace这样的路径，且当前cwd已经是workspace，需要去掉output_xxx/workspace前缀
+                                cwd_basename = os.path.basename(cwd)
+                                if cwd_basename == 'workspace':
+                                    # 当前目录已经是workspace，检查target_dir是否包含output_xxx/workspace模式
+                                    # 例如：target_dir = "output_20260104_102756/workspace" 或 "output_20260104_102756/workspace/subdir"
+                                    parts = target_dir.split('/')
+                                    workspace_idx = -1
+                                    for i, part in enumerate(parts):
+                                        if part == 'workspace':
+                                            workspace_idx = i
+                                            break
+                                    
+                                    if workspace_idx != -1:
+                                        # 找到workspace，使用workspace之后的部分
+                                        if workspace_idx + 1 < len(parts):
+                                            # workspace后面还有路径
+                                            target_dir = '/'.join(parts[workspace_idx + 1:])
+                                        else:
+                                            # workspace后面没有路径，说明就是workspace本身
+                                            target_dir = '.'
+                                
                                 # 如果target_dir以用户目录名开头，去掉它（因为cwd已经是用户目录了）
                                 user_dir_name = user_session.user_dir_name
                                 if target_dir.startswith(user_dir_name + '/'):
@@ -5282,8 +5398,12 @@ def handle_terminal_input(data):
                                 new_cwd = os.path.join(cwd, target_dir)
                         new_cwd = os.path.abspath(os.path.normpath(new_cwd))
                         
-                        # 更新terminal_cwd状态
-                        if user_session.set_terminal_cwd(new_cwd):
+                        # 检查目标目录是否与当前目录相同
+                        if os.path.abspath(new_cwd) == os.path.abspath(cwd):
+                            # 目标目录与当前目录相同，执行cd .（无操作但保持一致性）
+                            full_command = 'cd .'
+                            # cwd保持不变
+                        elif user_session.set_terminal_cwd(new_cwd):
                             # 切换成功，执行cd命令（不输出pwd，避免重复）
                             # 注意：在Linux下，cd命令在子shell中执行，不会影响父进程的工作目录
                             # 但是我们已经更新了terminal_cwd状态，后续命令会使用新的cwd
@@ -5312,6 +5432,13 @@ def handle_terminal_input(data):
             # 确保pip输出不被缓冲
             if 'install' in cmd_lower_for_env:
                 env['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'
+        
+        # 在执行命令前，输出命令本身（仅用于自动执行的命令，用户手动输入的命令已经在终端中显示）
+        # 检查是否是自动执行的命令（通过检查命令是否包含引号中的脚本名，这通常是一键运行按钮触发的）
+        # 对于用户手动输入的命令，命令已经在终端中显示了，不需要重复输出
+        # 这里我们只在命令看起来像是自动执行的情况下输出（包含引号的脚本执行命令）
+        # 但实际上，用户手动输入的命令已经在终端中显示了，所以这里不输出命令
+        # 如果需要显示命令，可以在前端处理，但通常不需要，因为用户输入时已经显示了
         
         # 执行命令
         # 对于Windows，使用二进制模式读取以更好地处理格式
@@ -5635,14 +5762,12 @@ def handle_terminal_input(data):
                     process.stdout.close()
                     return_code = process.wait()
                     
-                    # 如果是cd命令（包括组合命令中的cd）且成功执行，发送更新后的提示符
-                    if ('cd' in cmd_lower and (' && ' in command or cmd_lower.startswith('cd'))) and return_code == 0:
-                        # 获取当前目录并发送更新后的提示符
-                        # 使用 session 特定的 base_data_dir
-                        session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
-                        current_dir = user_session.get_terminal_cwd(session_base_data_dir)
-                        # 发送提示符更新事件
-                        socketio.emit('terminal_prompt_update', {'directory': current_dir}, room=session_id)
+                    # 命令执行完成后，更新提示符（无论是否成功）
+                    # 使用 session 特定的 base_data_dir
+                    session_base_data_dir = gui_instance.get_base_data_dir_for_session(session_id)
+                    current_dir = user_session.get_terminal_cwd(session_base_data_dir)
+                    # 发送提示符更新事件
+                    socketio.emit('terminal_prompt_update', {'directory': current_dir}, room=session_id)
                     
                     socketio.emit('command_complete', {}, room=session_id)
                 except Exception as e:
@@ -6238,6 +6363,285 @@ def get_file_count(dir_name):
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@app.route('/api/file-snapshots/<path:file_path>', methods=['GET'])
+def get_file_snapshots(file_path):
+    """Get list of snapshot versions for a file"""
+    try:
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
+        
+        # URL decode the file path
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Security check: normalize path and prevent path traversal
+        normalized_file_path = os.path.normpath(file_path)
+        if '..' in normalized_file_path or normalized_file_path.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid file path'}), 403
+        
+        # Full path to the file
+        full_file_path = os.path.join(user_base_dir, normalized_file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_file_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid file path'}), 403
+        
+        # Check if file exists
+        if not os.path.exists(full_file_path) or not os.path.isfile(full_file_path):
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        # Find workspace directory (could be in output_xxx/workspace or directly in user_base_dir/workspace)
+        workspace_dir = None
+        # Try to find workspace directory by checking if file_path contains workspace
+        path_parts = normalized_file_path.split(os.sep)
+        if 'workspace' in path_parts:
+            workspace_idx = path_parts.index('workspace')
+            workspace_path_parts = path_parts[:workspace_idx + 1]
+            potential_workspace = os.path.join(user_base_dir, *workspace_path_parts)
+            if os.path.exists(potential_workspace) and os.path.isdir(potential_workspace):
+                workspace_dir = potential_workspace
+        
+        # If not found, try common locations
+        if not workspace_dir:
+            # Try output_xxx/workspace pattern
+            for item in os.listdir(user_base_dir):
+                item_path = os.path.join(user_base_dir, item)
+                if os.path.isdir(item_path) and item.startswith('output_'):
+                    potential_workspace = os.path.join(item_path, 'workspace')
+                    if os.path.exists(potential_workspace) and os.path.isdir(potential_workspace):
+                        # Check if file is under this workspace
+                        rel_path_from_workspace = os.path.relpath(full_file_path, potential_workspace)
+                        if not rel_path_from_workspace.startswith('..'):
+                            workspace_dir = potential_workspace
+                            break
+        
+        if not workspace_dir:
+            return jsonify({'success': True, 'snapshots': []})
+        
+        # Get snapshot directory (parent of workspace)
+        parent_dir = os.path.dirname(workspace_dir)
+        snapshot_base_dir = os.path.join(parent_dir, 'file_snapshot')
+        
+        if not os.path.exists(snapshot_base_dir):
+            return jsonify({'success': True, 'snapshots': []})
+        
+        # Get relative path from workspace
+        rel_path_from_workspace = os.path.relpath(full_file_path, workspace_dir)
+        file_dir = os.path.dirname(rel_path_from_workspace)
+        file_name = os.path.basename(rel_path_from_workspace)
+        
+        # Split filename and extension
+        name_parts = file_name.rsplit('.', 1)
+        if len(name_parts) == 2:
+            base_name, extension = name_parts
+            extension = '.' + extension
+        else:
+            base_name = file_name
+            extension = ''
+        
+        # Get snapshot directory for this file
+        snapshot_file_dir = os.path.join(snapshot_base_dir, file_dir) if file_dir else snapshot_base_dir
+        
+        if not os.path.exists(snapshot_file_dir):
+            return jsonify({'success': True, 'snapshots': []})
+        
+        # Find all matching snapshot files
+        snapshots = []
+        import re
+        # Pattern: base_name_XXX.extension where XXX is 3 digits
+        pattern = re.compile(rf'^{re.escape(base_name)}_(\d{{3}}){re.escape(extension)}$')
+        
+        for filename in os.listdir(snapshot_file_dir):
+            match = pattern.match(filename)
+            if match:
+                snapshot_path = os.path.join(snapshot_file_dir, filename)
+                if os.path.isfile(snapshot_path):
+                    snapshot_id = int(match.group(1))
+                    mtime = os.path.getmtime(snapshot_path)
+                    snapshots.append({
+                        'filename': filename,
+                        'snapshot_id': snapshot_id,
+                        'modified_time': mtime,
+                        'modified_time_str': datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                    })
+        
+        # Sort by modified time (newest first)
+        snapshots.sort(key=lambda x: x['modified_time'], reverse=True)
+        
+        return jsonify({'success': True, 'snapshots': snapshots})
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/api/restore-file', methods=['POST'])
+def restore_file():
+    """Restore a file from snapshot"""
+    try:
+        data = request.get_json() or {}
+        file_path = data.get('file_path')
+        snapshot_filename = data.get('snapshot_filename')
+        
+        if not file_path or not snapshot_filename:
+            return jsonify({'success': False, 'error': 'Missing file_path or snapshot_filename'}), 400
+        
+        # Get API key from query parameters or headers
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        
+        # Create a temporary session for API calls
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        # 确保根据 URL 切换正确的 app，以使用正确的 base_data_dir
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        
+        # 使用请求特定的 base_data_dir，避免并发问题
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
+        
+        # URL decode the file path
+        import urllib.parse
+        file_path = urllib.parse.unquote(file_path)
+        
+        # Security check: normalize path and prevent path traversal
+        normalized_file_path = os.path.normpath(file_path)
+        if '..' in normalized_file_path or normalized_file_path.startswith('/'):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid file path'}), 403
+        
+        # Full path to the file
+        full_file_path = os.path.join(user_base_dir, normalized_file_path)
+        
+        # Security check: ensure path is within user's output directory
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_file_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid file path'}), 403
+        
+        # Check if file exists
+        if not os.path.exists(full_file_path) or not os.path.isfile(full_file_path):
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        # Find workspace directory (same logic as get_file_snapshots)
+        workspace_dir = None
+        path_parts = normalized_file_path.split(os.sep)
+        if 'workspace' in path_parts:
+            workspace_idx = path_parts.index('workspace')
+            workspace_path_parts = path_parts[:workspace_idx + 1]
+            potential_workspace = os.path.join(user_base_dir, *workspace_path_parts)
+            if os.path.exists(potential_workspace) and os.path.isdir(potential_workspace):
+                workspace_dir = potential_workspace
+        
+        if not workspace_dir:
+            for item in os.listdir(user_base_dir):
+                item_path = os.path.join(user_base_dir, item)
+                if os.path.isdir(item_path) and item.startswith('output_'):
+                    potential_workspace = os.path.join(item_path, 'workspace')
+                    if os.path.exists(potential_workspace) and os.path.isdir(potential_workspace):
+                        rel_path_from_workspace = os.path.relpath(full_file_path, potential_workspace)
+                        if not rel_path_from_workspace.startswith('..'):
+                            workspace_dir = potential_workspace
+                            break
+        
+        if not workspace_dir:
+            return jsonify({'success': False, 'error': 'Workspace directory not found'}), 404
+        
+        # Get snapshot directory
+        parent_dir = os.path.dirname(workspace_dir)
+        snapshot_base_dir = os.path.join(parent_dir, 'file_snapshot')
+        
+        # Get relative path from workspace
+        rel_path_from_workspace = os.path.relpath(full_file_path, workspace_dir)
+        file_dir = os.path.dirname(rel_path_from_workspace)
+        file_name = os.path.basename(rel_path_from_workspace)
+        
+        # Get snapshot file path
+        snapshot_file_dir = os.path.join(snapshot_base_dir, file_dir) if file_dir else snapshot_base_dir
+        snapshot_path = os.path.join(snapshot_file_dir, snapshot_filename)
+        
+        # Security check: ensure snapshot is within snapshot directory
+        real_snapshot_base = os.path.realpath(snapshot_base_dir)
+        real_snapshot_path = os.path.realpath(snapshot_path)
+        if not real_snapshot_path.startswith(real_snapshot_base):
+            return jsonify({'success': False, 'error': 'Access denied: Invalid snapshot path'}), 403
+        
+        if not os.path.exists(snapshot_path) or not os.path.isfile(snapshot_path):
+            return jsonify({'success': False, 'error': 'Snapshot file not found'}), 404
+        
+        # Read current file content
+        with open(full_file_path, 'r', encoding='utf-8') as f:
+            current_content = f.read()
+        
+        # Create snapshot of current file before restoring
+        # Split filename and extension
+        name_parts = file_name.rsplit('.', 1)
+        if len(name_parts) == 2:
+            base_name, extension = name_parts
+            extension = '.' + extension
+        else:
+            base_name = file_name
+            extension = ''
+        
+        # Ensure snapshot directory exists
+        os.makedirs(snapshot_file_dir, exist_ok=True)
+        
+        # Find the next available snapshot ID
+        snapshot_id = 0
+        while True:
+            new_snapshot_filename = f"{base_name}_{snapshot_id:03d}{extension}"
+            new_snapshot_path = os.path.join(snapshot_file_dir, new_snapshot_filename)
+            
+            if not os.path.exists(new_snapshot_path):
+                break
+                
+            snapshot_id += 1
+            
+            # Safety check
+            if snapshot_id > 999:
+                return jsonify({'success': False, 'error': 'Too many snapshots'}), 500
+        
+        # Save current file as snapshot
+        with open(new_snapshot_path, 'w', encoding='utf-8') as f:
+            f.write(current_content)
+        
+        # Read snapshot content
+        with open(snapshot_path, 'r', encoding='utf-8') as f:
+            snapshot_content = f.read()
+        
+        # Restore file
+        with open(full_file_path, 'w', encoding='utf-8') as f:
+            f.write(snapshot_content)
+        
+        return jsonify({
+            'success': True,
+            'message': 'File restored successfully',
+            'new_snapshot': new_snapshot_filename
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
         }), 500
 
 @app.route('/api/out-files/<path:dir_name>', methods=['GET'])

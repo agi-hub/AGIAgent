@@ -1063,7 +1063,8 @@
         .load-history-btn,
         .agent-view-btn,
         .terminal-btn,
-        .clear-chat-btn {
+        .clear-chat-btn,
+        .download-btn {
             width: 28px;
             height: 28px;
             min-width: 28px;
@@ -1109,7 +1110,8 @@
         .load-history-btn:hover,
         .agent-view-btn:hover,
         .terminal-btn:hover,
-        .clear-chat-btn:hover:not(:disabled) {
+        .clear-chat-btn:hover:not(:disabled),
+        .download-btn:hover:not(:disabled) {
             opacity: 0.9;
             background: var(--color-accent);
         }
@@ -1117,7 +1119,8 @@
         .load-history-btn i,
         .agent-view-btn i,
         .terminal-btn i,
-        .clear-chat-btn i {
+        .clear-chat-btn i,
+        .download-btn i {
             color: white;
         }
         
@@ -2065,6 +2068,31 @@
         }
 
         .download-file-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 恢复文件按钮样式 */
+        .restore-file-btn {
+            background: transparent !important;
+            border: none !important;
+            color: #888;
+            cursor: pointer;
+            padding: 2px 4px; /* 缩小padding */
+            border-radius: 3px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .restore-file-btn:hover {
+            background: rgba(255, 152, 0, 0.1) !important;
+            color: #ff9800;
+        }
+
+        .restore-file-btn:active {
             transform: scale(0.95);
         }
 
@@ -3072,6 +3100,29 @@
             flex-shrink: 0;
         }
 
+        /* 帮助模态窗口样式 - 全屏显示PDF */
+        #helpModal .modal-content {
+            width: 98% !important;
+            max-width: none !important;
+            height: 95vh !important;
+        }
+
+        #helpPdfContainer {
+            width: 100% !important;
+            min-height: calc(95vh - 60px) !important;
+        }
+
+        #helpPdfPages {
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        #helpPdfPages canvas {
+            width: 95% !important;
+            max-width: 100% !important;
+            height: auto !important;
+        }
+
         .modal-header h3 {
             margin: 0;
             font-size: 1.2em;
@@ -3901,6 +3952,9 @@
                     <i class="fas fa-user-plus"></i>
                     <span>{{ '注册' if lang == 'zh' else 'Register' }}</span>
                 </a>
+                <button id="downloadBtn" class="theme-toggle-btn" title="{{ i18n.get('download_offline', '下载离线版本' if lang == 'zh' else 'Download Offline Version') }}" onclick="window.open('https://github.com/agi-hub/AGIAgent/releases', '_blank')">
+                    <i class="fas fa-download"></i>
+                </button>
                 <button id="langToggleBtn" class="lang-toggle-btn" title="{{ '切换语言' if lang == 'zh' else 'Switch Language' }}">
                     <span id="langToggleText">{{ 'EN' if lang == 'zh' else '中文' }}</span>
                 </button>
@@ -3909,6 +3963,9 @@
                 </button>
                 <button id="configToggleBtn" class="theme-toggle-btn" title="{{ i18n.get('show_config_options', '显示配置选项' if lang == 'zh' else 'Show Configuration') }}">
                     <i class="fas fa-cog" id="configToggleIcon"></i>
+                </button>
+                <button id="helpBtn" class="theme-toggle-btn" title="{{ '帮助' if lang == 'zh' else 'Help' }}">
+                    <i class="fas fa-question-circle"></i>
                 </button>
                 <button id="contactUsBtn" class="theme-toggle-btn" title="{{ '联系我们' if lang == 'zh' else 'Contact Us' }}">
                     <i class="fas fa-envelope"></i>
@@ -4180,6 +4237,28 @@
         </div>
     </div>
 
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content" style="width: 98%; height: 95vh; margin: 2.5vh auto; max-width: none;">
+            <div class="modal-header">
+                <h3>{{ '用户手册' if lang == 'zh' else 'User Guide' }}</h3>
+                <div class="modal-header-buttons">
+                    <a id="helpPdfDownloadBtn" href="/api/user-guide?download=true" download="user_guide.pdf" class="modal-button" title="{{ '下载PDF' if lang == 'zh' else 'Download PDF' }}" style="text-decoration: none; color: white;">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    <span class="close" id="helpModalClose">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 0; height: calc(100% - 60px); overflow-y: auto; overflow-x: hidden;">
+                <div id="helpPdfContainer" style="width: 100%; min-height: calc(95vh - 60px); border: none; overflow: visible; background: var(--bg-primary);">
+                    <div style="text-align: center; padding: 20px; color: var(--text-primary);">
+                        <i class="fas fa-spinner fa-spin"></i> {{ '正在加载PDF...' if lang == 'zh' else 'Loading PDF...' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Folder Hint Modal -->
     <div id="folderHintModal" class="modal">
         <div class="modal-content" style="max-width: 500px; height: auto; max-height: 80vh;">
@@ -4337,6 +4416,44 @@
                             {{ i18n.get('delete_confirm', '删除' if lang == 'zh' else 'Delete') }}
                         </button>
                         <button id="cancelDeleteFolder" class="btn btn-secondary" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                            {{ i18n.get('cancel', '取消' if lang == 'zh' else 'Cancel') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restore File Modal -->
+    <div id="restoreFileModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 600px; height: auto; max-height: 80vh;">
+            <div class="modal-header">
+                <h3>{{ i18n.get('restore_file_title', '恢复文件' if lang == 'zh' else 'Restore File') }}</h3>
+                <span class="close" id="restoreFileClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="padding: 20px;">
+                    <p id="restoreFileName" style="font-weight: bold; color: #ffffff; margin-bottom: 20px; word-break: break-all;"></p>
+                    <div id="restoreFileLoading" style="text-align: center; padding: 20px; color: #888;">
+                        <i class="fas fa-spinner fa-spin"></i> {{ i18n.get('loading', '加载中...' if lang == 'zh' else 'Loading...') }}
+                    </div>
+                    <div id="restoreFileVersions" style="display: none; max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
+                        <p style="color: #ffffff; margin-bottom: 10px;">{{ i18n.get('select_version', '请选择要恢复的版本：' if lang == 'zh' else 'Please select a version to restore:') }}</p>
+                        <div id="restoreFileVersionList" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Version list will be populated here -->
+                        </div>
+                    </div>
+                    <div id="restoreFileNoVersions" style="display: none; text-align: center; padding: 20px; color: #888;">
+                        <i class="fas fa-info-circle"></i> {{ i18n.get('no_versions', '该文件没有历史版本' if lang == 'zh' else 'No version history found for this file') }}
+                    </div>
+                    <div id="restoreFileError" style="display: none; text-align: center; padding: 20px; color: #ff6b6b;">
+                        <i class="fas fa-exclamation-triangle"></i> <span id="restoreFileErrorMsg"></span>
+                    </div>
+                    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                        <button id="confirmRestoreFile" class="btn btn-primary" style="background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; display: none;">
+                            {{ i18n.get('restore_confirm', '确认恢复' if lang == 'zh' else 'Confirm Restore') }}
+                        </button>
+                        <button id="cancelRestoreFile" class="btn btn-secondary" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
                             {{ i18n.get('cancel', '取消' if lang == 'zh' else 'Cancel') }}
                         </button>
                     </div>
@@ -8322,7 +8439,7 @@
         
         let autoScrollPending = false;
         let lastAutoScrollTime = 0;
-        const AUTO_SCROLL_THROTTLE_TIME = 16; // 自动滚动节流时间16ms（约一帧时间），实现更及时的滚动
+        const AUTO_SCROLL_THROTTLE_TIME = 500; // 自动滚动节流时间500ms（每秒最多2次），减少大量文字时的滚动抖动
         
         // 节流的自动滚动函数
         function throttledAutoScroll(smooth = true) {
@@ -9143,6 +9260,9 @@
                             </div>
                             <div class="file-item-buttons" style="display: flex; align-items: center; gap: 2px; background: transparent; border: none;">
                                 ${runButtonHtml}
+                                <button class="restore-file-btn" onclick="showRestoreFileModal('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}'); event.stopPropagation();" title="恢复文件 | Restore file">
+                                    <i class="fas fa-history"></i>
+                                </button>
                                 <button class="download-file-btn" onclick="downloadFile('${relativePath.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', false); event.stopPropagation();" title="下载文件 | Download file">
                                     <i class="fas fa-download"></i>
                                 </button>
@@ -9390,7 +9510,10 @@
                 scriptCommand = `python "${scriptName}"`;
             } else if (fileNameLower.endsWith('.sh') || fileNameLower.endsWith('.bash') || fileNameLower.endsWith('.zsh') || fileNameLower.endsWith('.fish')) {
                 // Unix/Linux shell脚本
-                scriptCommand = `bash "${scriptName}"`;
+                // macOS使用zsh，Linux使用bash
+                const platform = navigator.platform.toLowerCase();
+                const shellCmd = platform.includes('mac') ? 'zsh' : 'bash';
+                scriptCommand = `${shellCmd} "${scriptName}"`;
             } else if (fileNameLower.endsWith('.cmd') || fileNameLower.endsWith('.bat')) {
                 // Windows批处理文件
                 scriptCommand = `"${scriptName}"`;
@@ -9403,33 +9526,38 @@
             }
             
             // 构建cd命令链
-            // 如果路径包含output_xxx/workspace，需要先cd到output_xxx/workspace
-            // 然后再cd到子目录（如果有）
+            // 注意：服务器端可能将工作目录设置为用户基础目录，而不是workspace目录
+            // 所以如果路径包含output_xxx/workspace，需要先cd到workspace目录
             if (outputDirIndex !== -1 && workspaceIndex !== -1 && workspaceIndex > outputDirIndex) {
                 // 完整路径：output_xxx/workspace/subdir/file.py
                 const outputDir = pathParts[outputDirIndex];
                 const afterWorkspace = pathParts.slice(workspaceIndex + 1);
                 
+                // 先cd到workspace目录（从用户基础目录）
+                let workspacePath = `${outputDir}/workspace`;
+                
                 if (afterWorkspace.length > 1) {
-                    // 文件在workspace的子目录中：需要cd到output_xxx/workspace，然后cd到子目录
+                    // 文件在workspace的子目录中：先cd到workspace，然后cd到子目录
                     const subDir = afterWorkspace.slice(0, -1).join('/');
-                    command = `cd "${outputDir}/workspace" && cd "${subDir}" && ${scriptCommand}`;
+                    command = `cd "${workspacePath}" && cd "${subDir}" && ${scriptCommand}`;
                 } else {
-                    // 文件直接在workspace目录中：只需要cd到output_xxx/workspace
-                    command = `cd "${outputDir}/workspace" && ${scriptCommand}`;
+                    // 文件直接在workspace目录中：只需要cd到workspace
+                    command = `cd "${workspacePath}" && ${scriptCommand}`;
                 }
             } else if (workspaceIndex !== -1) {
-                // 只有workspace，没有output_xxx（终端可能已经在用户目录）
-                // 这种情况应该不会发生，但为了安全还是处理一下
+                // 只有workspace，没有output_xxx（路径可能是workspace/subdir/file.py）
+                // 先cd到workspace目录
                 const afterWorkspace = pathParts.slice(workspaceIndex + 1);
                 if (afterWorkspace.length > 1) {
                     const subDir = afterWorkspace.slice(0, -1).join('/');
-                    command = `cd "workspace/${subDir}" && ${scriptCommand}`;
+                    command = `cd "workspace" && cd "${subDir}" && ${scriptCommand}`;
                 } else {
+                    // 文件直接在workspace目录中
                     command = `cd "workspace" && ${scriptCommand}`;
                 }
             } else {
                 // 没有workspace，可能是相对路径（终端已经在workspace）
+                // 这种情况说明路径已经是相对于workspace的了
                 const scriptDir = pathParts.slice(0, -1).join('/');
                 if (scriptDir && scriptDir !== '.' && scriptDir !== '') {
                     command = `cd "${scriptDir}" && ${scriptCommand}`;
@@ -15414,6 +15542,7 @@
             
             // 初始化配置选项切换功能
             initConfigToggle();
+            initHelpButton();
 
             // 初始化MCP服务器选择功能
             initMCPServerSelection();
@@ -15490,6 +15619,189 @@
             
             // 加载routine文件列表
             loadRoutineFiles();
+        }
+
+        /**
+         * 加载用户手册PDF
+         */
+        function loadUserGuidePDF() {
+            const container = document.getElementById('helpPdfContainer');
+            if (!container) return;
+            
+            if (typeof pdfjsLib === 'undefined') {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: red;">
+                        <i class="fas fa-exclamation-triangle"></i> PDF.js未加载，无法预览PDF文件
+                    </div>
+                `;
+                return;
+            }
+            
+            const pdfUrl = '/api/user-guide';
+            
+            // 配置PDF.js加载选项
+            const loadingTask = pdfjsLib.getDocument({
+                url: pdfUrl,
+                disableWorker: false,
+                verbosity: 1,
+                cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+                cMapPacked: true,
+                standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+            });
+            
+            loadingTask.promise.then(function(pdf) {
+                container.innerHTML = '';
+                
+                // 创建页面容器
+                const pagesContainer = document.createElement('div');
+                pagesContainer.id = 'helpPdfPages';
+                pagesContainer.style.cssText = 'padding: 20px; text-align: center; width: 100%; max-width: none;';
+                container.appendChild(pagesContainer);
+                
+                // 存储PDF对象
+                window.helpPDF = pdf;
+                
+                // 渲染所有页面
+                renderHelpPDFPages();
+                
+            }).catch(function(error) {
+                console.error('用户手册PDF加载失败:', error);
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #d73a49;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
+                        <h3 style="margin-bottom: 20px;">PDF加载失败</h3>
+                        <p style="margin-bottom: 20px;">${error.message}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        /**
+         * 渲染用户手册PDF的所有页面
+         */
+        function renderHelpPDFPages() {
+            if (!window.helpPDF) return;
+            
+            const pagesContainer = document.getElementById('helpPdfPages');
+            if (!pagesContainer) return;
+            
+            pagesContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> 正在加载PDF...</div>`;
+            
+            // 使用更大的scale值来确保PDF宽度填满容器
+            const containerWidth = pagesContainer.offsetWidth - 40; // 减去padding
+            const scale = Math.min(containerWidth / 595, 3.0); // A4宽度约595px，最大scale为3.0
+            const promises = [];
+            
+            // 为每一页创建渲染任务
+            for (let pageNum = 1; pageNum <= window.helpPDF.numPages; pageNum++) {
+                promises.push(
+                    window.helpPDF.getPage(pageNum).then(function(page) {
+                        const viewport = page.getViewport({ scale: scale });
+                        
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        // 设置canvas样式，宽度为95%以确保填满容器
+                        canvas.style.cssText = 'width: 95%; max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;';
+                        
+                        const renderContext = {
+                            canvasContext: context,
+                            viewport: viewport
+                        };
+                        
+                        // 处理page.render()可能返回Promise或直接渲染的情况
+                        const renderResult = page.render(renderContext);
+                        if (renderResult && typeof renderResult.then === 'function') {
+                            return renderResult.then(() => {
+                                pagesContainer.appendChild(canvas);
+                            });
+                        } else {
+                            pagesContainer.appendChild(canvas);
+                            return Promise.resolve();
+                        }
+                    })
+                );
+            }
+            
+            // 等待所有页面渲染完成
+            Promise.all(promises).then(function() {
+                console.log('用户手册PDF所有页面渲染完成');
+                // 移除加载提示
+                const loadingDiv = pagesContainer.querySelector('div');
+                if (loadingDiv && loadingDiv.innerHTML.includes('正在加载PDF')) {
+                    loadingDiv.remove();
+                }
+            }).catch(function(error) {
+                console.error('PDF页面渲染错误:', error);
+                // 渲染失败时也移除加载提示，显示错误信息
+                pagesContainer.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #d73a49;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
+                        <h3 style="margin-bottom: 20px;">PDF页面渲染失败</h3>
+                        <p style="margin-bottom: 20px;">${error.message}</p>
+                    </div>
+                `;
+            });
+        }
+
+        /**
+         * 初始化帮助按钮功能
+         */
+        function initHelpButton() {
+            const helpBtn = document.getElementById('helpBtn');
+            const helpModal = document.getElementById('helpModal');
+            const helpModalClose = document.getElementById('helpModalClose');
+            const helpPdfDownloadBtn = document.getElementById('helpPdfDownloadBtn');
+            
+            if (!helpBtn || !helpModal || !helpModalClose) return;
+            
+            // 设置下载按钮链接（如果需要API key，可以在这里添加）
+            if (helpPdfDownloadBtn) {
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `&api_key=${encodeURIComponent(currentUser)}` : '';
+                helpPdfDownloadBtn.href = `/api/user-guide?download=true${apiKeyParam}`;
+            }
+            
+            let pdfLoaded = false;
+            
+            // 打开帮助窗口
+            function openHelpModal() {
+                helpModal.style.display = 'block';
+                // 如果PDF还没有加载，则加载PDF
+                if (!pdfLoaded) {
+                    loadUserGuidePDF();
+                    pdfLoaded = true;
+                }
+            }
+            
+            // 关闭帮助窗口
+            function closeHelpModal() {
+                helpModal.style.display = 'none';
+            }
+            
+            // 点击帮助按钮打开窗口
+            helpBtn.addEventListener('click', function() {
+                openHelpModal();
+            });
+            
+            // 点击关闭按钮
+            helpModalClose.addEventListener('click', function() {
+                closeHelpModal();
+            });
+            
+            // 点击窗口外部关闭
+            helpModal.addEventListener('click', function(event) {
+                if (event.target === helpModal) {
+                    closeHelpModal();
+                }
+            });
+            
+            // ESC键关闭
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && helpModal.style.display === 'block') {
+                    closeHelpModal();
+                }
+            });
         }
 
         /**
@@ -17802,6 +18114,202 @@
             document.getElementById('deleteFileModal').style.display = 'none';
             // 执行删除操作
             deleteFile(currentDeleteFilePath, currentDeleteFileName);
+        }
+
+        // 恢复文件功能
+        let currentRestoreFilePath = '';
+        let currentRestoreFileName = '';
+        let currentRestoreSnapshots = [];
+        let selectedSnapshotFilename = '';
+
+        function showRestoreFileModal(filePath, fileName) {
+            currentRestoreFilePath = filePath;
+            currentRestoreFileName = fileName;
+            selectedSnapshotFilename = '';
+            currentRestoreSnapshots = [];
+            
+            // 显示对话框
+            document.getElementById('restoreFileName').textContent = fileName;
+            document.getElementById('restoreFileModal').style.display = 'block';
+            
+            // 重置UI状态
+            document.getElementById('restoreFileLoading').style.display = 'block';
+            document.getElementById('restoreFileVersions').style.display = 'none';
+            document.getElementById('restoreFileNoVersions').style.display = 'none';
+            document.getElementById('restoreFileError').style.display = 'none';
+            document.getElementById('confirmRestoreFile').style.display = 'none';
+            document.getElementById('restoreFileVersionList').innerHTML = '';
+            
+            // 加载历史版本列表
+            loadFileSnapshots(filePath);
+        }
+
+        function loadFileSnapshots(filePath) {
+            const apiKey = currentUser && currentUser !== 'default' ? currentUser : null;
+            const url = `/api/file-snapshots/${encodeURIComponent(filePath)}${apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''}`;
+            
+            fetch(url, {
+                method: 'GET',
+                headers: apiKey ? {'X-API-Key': apiKey} : {}
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('restoreFileLoading').style.display = 'none';
+                
+                if (!data.success) {
+                    document.getElementById('restoreFileError').style.display = 'block';
+                    document.getElementById('restoreFileErrorMsg').textContent = data.error || 'Failed to load snapshots';
+                    return;
+                }
+                
+                if (!data.snapshots || data.snapshots.length === 0) {
+                    document.getElementById('restoreFileNoVersions').style.display = 'block';
+                    return;
+                }
+                
+                // 显示版本列表
+                currentRestoreSnapshots = data.snapshots;
+                const versionList = document.getElementById('restoreFileVersionList');
+                versionList.innerHTML = '';
+                
+                data.snapshots.forEach((snapshot, index) => {
+                    const versionItem = document.createElement('div');
+                    versionItem.style.cssText = 'padding: 10px; border: 1px solid #444; border-radius: 5px; cursor: pointer; background: #2a2a2a; transition: all 0.2s ease;';
+                    versionItem.className = 'restore-version-item';
+                    versionItem.dataset.filename = snapshot.filename;
+                    
+                    if (index === 0) {
+                        versionItem.style.borderColor = '#ff9800';
+                        versionItem.style.background = '#3a2a1a';
+                        selectedSnapshotFilename = snapshot.filename;
+                    }
+                    
+                    versionItem.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="radio" name="restoreVersion" value="${snapshot.filename}" ${index === 0 ? 'checked' : ''} 
+                                   style="margin: 0; cursor: pointer;" onchange="selectRestoreVersion('${snapshot.filename.replace(/'/g, "\\'")}')">
+                            <div style="flex: 1;">
+                                <div style="color: #ffffff; font-weight: bold;">${snapshot.filename}</div>
+                                <div style="color: #888; font-size: 12px; margin-top: 4px;">${snapshot.modified_time_str}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    versionItem.onclick = function(e) {
+                        if (e.target.type !== 'radio') {
+                            const radio = versionItem.querySelector('input[type="radio"]');
+                            radio.checked = true;
+                            selectRestoreVersion(snapshot.filename);
+                        }
+                    };
+                    
+                    versionItem.onmouseenter = function() {
+                        if (!versionItem.querySelector('input[type="radio"]').checked) {
+                            versionItem.style.background = '#333';
+                        }
+                    };
+                    
+                    versionItem.onmouseleave = function() {
+                        if (!versionItem.querySelector('input[type="radio"]').checked) {
+                            versionItem.style.background = '#2a2a2a';
+                        }
+                    };
+                    
+                    versionList.appendChild(versionItem);
+                });
+                
+                document.getElementById('restoreFileVersions').style.display = 'block';
+                document.getElementById('confirmRestoreFile').style.display = 'block';
+            })
+            .catch(error => {
+                document.getElementById('restoreFileLoading').style.display = 'none';
+                document.getElementById('restoreFileError').style.display = 'block';
+                document.getElementById('restoreFileErrorMsg').textContent = 'Network error: ' + error.message;
+            });
+        }
+
+        function selectRestoreVersion(filename) {
+            selectedSnapshotFilename = filename;
+            
+            // 更新UI选中状态
+            document.querySelectorAll('.restore-version-item').forEach(item => {
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio.value === filename) {
+                    item.style.borderColor = '#ff9800';
+                    item.style.background = '#3a2a1a';
+                } else {
+                    item.style.borderColor = '#444';
+                    item.style.background = '#2a2a2a';
+                }
+            });
+        }
+
+        // 关闭恢复文件模态框
+        document.getElementById('restoreFileClose').onclick = function() {
+            document.getElementById('restoreFileModal').style.display = 'none';
+        };
+
+        // 取消恢复
+        document.getElementById('cancelRestoreFile').onclick = function() {
+            document.getElementById('restoreFileModal').style.display = 'none';
+        };
+
+        // 确认恢复文件
+        document.getElementById('confirmRestoreFile').onclick = function() {
+            if (!selectedSnapshotFilename) {
+                addMessage('请选择一个版本', 'error');
+                return;
+            }
+            
+            // 禁用按钮，显示加载状态
+            const confirmBtn = document.getElementById('confirmRestoreFile');
+            const originalText = confirmBtn.textContent;
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '恢复中...';
+            
+            // 执行恢复操作
+            restoreFile(currentRestoreFilePath, selectedSnapshotFilename, originalText);
+        };
+
+        function restoreFile(filePath, snapshotFilename, originalButtonText) {
+            const apiKey = currentUser && currentUser !== 'default' ? currentUser : null;
+            const url = '/api/restore-file';
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(apiKey ? {'X-API-Key': apiKey} : {})
+                },
+                body: JSON.stringify({
+                    file_path: filePath,
+                    snapshot_filename: snapshotFilename,
+                    ...(apiKey ? {api_key: apiKey} : {})
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const confirmBtn = document.getElementById('confirmRestoreFile');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = originalButtonText || '确认恢复';
+                
+                if (data.success) {
+                    // 关闭对话框
+                    document.getElementById('restoreFileModal').style.display = 'none';
+                    // 显示成功消息
+                    addMessage('文件恢复成功', 'success');
+                    // 刷新文件列表
+                    refreshDirectories();
+                } else {
+                    addMessage('恢复失败: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                const confirmBtn = document.getElementById('confirmRestoreFile');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = originalButtonText || '确认恢复';
+                addMessage('恢复失败: ' + error.message, 'error');
+            });
         }
 
         function deleteFile(filePath, fileName) {

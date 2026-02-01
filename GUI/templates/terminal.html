@@ -229,6 +229,7 @@
             fontSize: 14,
             fontFamily: 'Consolas, Monaco, "Courier New", monospace',
             convertEol: false,  // 不自动转换换行符，保持原始格式以正确处理ls等命令的\r字符
+            scrollback: -1,  // 设置为-1表示无限滚动历史，避免输出被截断
             theme: {
                 background: '#1e1e1e',
                 foreground: '#cccccc',
@@ -343,7 +344,7 @@
         socket.on('terminal_init', (data) => {
             const workingDir = data.working_directory;
             if (workingDir) {
-                // 更新当前工作目录（不发送cd命令，避免重复输出路径）
+                // 更新当前工作目录（不发送cd命令，因为服务器端的subprocess已经设置了正确的cwd）
                 currentWorkingDir = workingDir;
                 term.writeln(`\x1b[33mWorking directory: ${workingDir}\x1b[0m`);
             }
@@ -366,7 +367,9 @@
                     
                     // 等待一下，确保提示符已显示
                     setTimeout(() => {
-                        // 执行命令
+                        // 对于自动执行的命令，先显示命令（模拟用户输入）
+                        term.write(autoCommand + '\r\n');
+                        // 然后执行命令
                         socket.emit('terminal_input', { command: autoCommand });
                     }, 300);
                 } else {
@@ -558,6 +561,28 @@
             }
         });
         
+        // 计算多个字符串的共同前缀
+        function findCommonPrefix(strings) {
+            if (!strings || strings.length === 0) return '';
+            if (strings.length === 1) return strings[0];
+            
+            // 找到最短字符串的长度
+            const minLength = Math.min(...strings.map(s => s.length));
+            
+            // 逐个字符比较
+            let commonPrefix = '';
+            for (let i = 0; i < minLength; i++) {
+                const char = strings[0][i];
+                if (strings.every(s => s[i] === char)) {
+                    commonPrefix += char;
+                } else {
+                    break;
+                }
+            }
+            
+            return commonPrefix;
+        }
+        
         // 接收自动补全结果
         socket.on('terminal_autocomplete_result', (data) => {
             if (data.completions && data.completions.length > 0) {
@@ -645,7 +670,70 @@
                         }
                     }
                 } else {
-                    // 多个补全结果，显示列表
+                    // 多个补全结果，计算共同前缀并补全到共同部分
+                    const commonPrefix = findCommonPrefix(data.completions);
+                    
+                    // 检查是否有共同前缀且比当前输入长
+                    let shouldComplete = false;
+                    let completion = '';
+                    
+                    if (isDirCompletion) {
+                        // 目录子项补全：共同前缀应该追加到lastPart后面
+                        if (commonPrefix && commonPrefix.length > 0) {
+                            let newLastPart = lastPart;
+                            if (!newLastPart.endsWith('/') && !newLastPart.endsWith('\\')) {
+                                const separator = lastPart.includes('\\') ? '\\' : '/';
+                                newLastPart = newLastPart + separator;
+                            }
+                            completion = newLastPart + commonPrefix;
+                            shouldComplete = completion.length > lastPart.length;
+                        }
+                    } else {
+                        // 检查lastPart是否包含路径分隔符
+                        const hasPathSeparator = lastPart.includes('/') || lastPart.includes('\\');
+                        
+                        if (hasPathSeparator) {
+                            // 路径段补全：只替换最后一个路径段
+                            const lastSeparatorIndex = Math.max(
+                                lastPart.lastIndexOf('/'),
+                                lastPart.lastIndexOf('\\')
+                            );
+                            
+                            if (lastSeparatorIndex >= 0 && commonPrefix && commonPrefix.length > 0) {
+                                const pathPrefix = lastPart.substring(0, lastSeparatorIndex + 1);
+                                const filePart = lastPart.substring(lastSeparatorIndex + 1);
+                                if (commonPrefix.length > filePart.length) {
+                                    completion = pathPrefix + commonPrefix;
+                                    shouldComplete = true;
+                                }
+                            }
+                        } else {
+                            // 非路径补全：替换整个lastPart
+                            if (commonPrefix && commonPrefix.length > lastPart.length) {
+                                completion = commonPrefix;
+                                shouldComplete = true;
+                            }
+                        }
+                    }
+                    
+                    // 如果有共同前缀且比当前输入长，补全到共同前缀
+                    if (shouldComplete) {
+                        const prefix = textBeforeCursor.substring(0, textBeforeCursor.length - lastPart.length);
+                        const suffix = currentLine.substring(cursorPosition);
+                        const newLine = prefix + completion + suffix;
+                        const addedChars = completion.length - lastPart.length;
+                        
+                        currentLine = newLine;
+                        cursorPosition += addedChars;
+                        
+                        term.write('\r' + currentWorkingDir + '> ' + currentLine);
+                        const remaining = currentLine.length - cursorPosition;
+                        if (remaining > 0) {
+                            term.write('\b'.repeat(remaining));
+                        }
+                    }
+                    
+                    // 显示所有备选项
                     term.write('\r\n');
                     data.completions.forEach(comp => {
                         term.writeln('  ' + comp);
@@ -661,7 +749,9 @@
         });
 
         // 当前工作目录（用于显示提示符）
-        let currentWorkingDir = 'C:\\';
+        // 根据操作系统设置合理的初始值
+        const platform = navigator.platform.toLowerCase();
+        let currentWorkingDir = platform.includes('win') ? 'C:\\' : '/';
         
         // 显示提示符
         term.prompt = function() {
@@ -681,8 +771,7 @@
         socket.on('terminal_prompt_update', (data) => {
             if (data.directory) {
                 currentWorkingDir = data.directory;
-                // 立即更新提示符（如果命令已完成）
-                // 注意：这里不直接调用term.prompt()，因为command_complete事件会处理
+                // 更新提示符路径，command_complete事件会调用term.prompt()显示新提示符
             }
         });
 
