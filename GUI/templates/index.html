@@ -10984,7 +10984,7 @@
                         renderAllPDFPages();
                     }).catch(function(simpleError) {
                         console.error('简化配置也失败:', simpleError);
-                        showPDFError('PDF文件格式无效或已损坏', error);
+                        showPDFError('PDF文件格式无效或已损坏', error, filePath);
                     });
                 } else {
                     let errorMessage = error.message;
@@ -10993,22 +10993,30 @@
                     } else if (error.name === 'UnexpectedResponseException') {
                         errorMessage = '服务器响应异常，请检查文件路径和权限';
                     }
-                    showPDFError(errorMessage, error);
+                    showPDFError(errorMessage, error, filePath);
                 }
             });
             
-            function showPDFError(errorMessage, error) {
-                document.getElementById('pdfContainer').innerHTML = `
+            function showPDFError(errorMessage, error, filePath) {
+                const container = document.getElementById('pdfContainer');
+                container.innerHTML = `
                     <div style="text-align: center; padding: 20px; color: red;">
                         <i class="fas fa-exclamation-triangle"></i> PDF加载失败: ${errorMessage}
                         <br><small style="color: #666; margin-top: 10px; display: block;">
                             技术详情: ${error.name || 'Unknown'} - ${error.message}
                         </small>
-                        <br><button onclick="retryPDFLoad('${filePath}')" style="margin-top: 10px; padding: 5px 15px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                        <br><button id="retryPDFButton" style="margin-top: 10px; padding: 5px 15px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">
                             重试加载
                         </button>
                     </div>
                 `;
+                // 使用事件监听器安全地绑定重试功能
+                const retryButton = document.getElementById('retryPDFButton');
+                if (retryButton && filePath) {
+                    retryButton.addEventListener('click', function() {
+                        loadPDF(filePath);
+                    });
+                }
             }
         }
 
@@ -15621,129 +15629,8 @@
             loadRoutineFiles();
         }
 
-        /**
-         * 加载用户手册PDF
-         */
-        function loadUserGuidePDF() {
-            const container = document.getElementById('helpPdfContainer');
-            if (!container) return;
-            
-            if (typeof pdfjsLib === 'undefined') {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 20px; color: red;">
-                        <i class="fas fa-exclamation-triangle"></i> PDF.js未加载，无法预览PDF文件
-                    </div>
-                `;
-                return;
-            }
-            
-            const pdfUrl = '/api/user-guide';
-            
-            // 配置PDF.js加载选项
-            const loadingTask = pdfjsLib.getDocument({
-                url: pdfUrl,
-                disableWorker: false,
-                verbosity: 1,
-                cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
-                cMapPacked: true,
-                standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
-            });
-            
-            loadingTask.promise.then(function(pdf) {
-                container.innerHTML = '';
-                
-                // 创建页面容器
-                const pagesContainer = document.createElement('div');
-                pagesContainer.id = 'helpPdfPages';
-                pagesContainer.style.cssText = 'padding: 20px; text-align: center; width: 100%; max-width: none;';
-                container.appendChild(pagesContainer);
-                
-                // 存储PDF对象
-                window.helpPDF = pdf;
-                
-                // 渲染所有页面
-                renderHelpPDFPages();
-                
-            }).catch(function(error) {
-                console.error('用户手册PDF加载失败:', error);
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #d73a49;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
-                        <h3 style="margin-bottom: 20px;">PDF加载失败</h3>
-                        <p style="margin-bottom: 20px;">${error.message}</p>
-                    </div>
-                `;
-            });
-        }
-        
-        /**
-         * 渲染用户手册PDF的所有页面
-         */
-        function renderHelpPDFPages() {
-            if (!window.helpPDF) return;
-            
-            const pagesContainer = document.getElementById('helpPdfPages');
-            if (!pagesContainer) return;
-            
-            pagesContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> 正在加载PDF...</div>`;
-            
-            // 使用更大的scale值来确保PDF宽度填满容器
-            const containerWidth = pagesContainer.offsetWidth - 40; // 减去padding
-            const scale = Math.min(containerWidth / 595, 3.0); // A4宽度约595px，最大scale为3.0
-            const promises = [];
-            
-            // 为每一页创建渲染任务
-            for (let pageNum = 1; pageNum <= window.helpPDF.numPages; pageNum++) {
-                promises.push(
-                    window.helpPDF.getPage(pageNum).then(function(page) {
-                        const viewport = page.getViewport({ scale: scale });
-                        
-                        const canvas = document.createElement('canvas');
-                        const context = canvas.getContext('2d');
-                        canvas.height = viewport.height;
-                        canvas.width = viewport.width;
-                        // 设置canvas样式，宽度为95%以确保填满容器
-                        canvas.style.cssText = 'width: 95%; max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;';
-                        
-                        const renderContext = {
-                            canvasContext: context,
-                            viewport: viewport
-                        };
-                        
-                        // 处理page.render()可能返回Promise或直接渲染的情况
-                        const renderResult = page.render(renderContext);
-                        if (renderResult && typeof renderResult.then === 'function') {
-                            return renderResult.then(() => {
-                                pagesContainer.appendChild(canvas);
-                            });
-                        } else {
-                            pagesContainer.appendChild(canvas);
-                            return Promise.resolve();
-                        }
-                    })
-                );
-            }
-            
-            // 等待所有页面渲染完成
-            Promise.all(promises).then(function() {
-                console.log('用户手册PDF所有页面渲染完成');
-                // 移除加载提示
-                const loadingDiv = pagesContainer.querySelector('div');
-                if (loadingDiv && loadingDiv.innerHTML.includes('正在加载PDF')) {
-                    loadingDiv.remove();
-                }
-            }).catch(function(error) {
-                console.error('PDF页面渲染错误:', error);
-                // 渲染失败时也移除加载提示，显示错误信息
-                pagesContainer.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #d73a49;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
-                        <h3 style="margin-bottom: 20px;">PDF页面渲染失败</h3>
-                        <p style="margin-bottom: 20px;">${error.message}</p>
-                    </div>
-                `;
-            });
-        }
+        // 注意：loadUserGuidePDF() 和 renderHelpPDFPages() 函数已移除
+        // 帮助按钮现在直接在新窗口中打开PDF，不再使用PDF.js加载和渲染
 
         /**
          * 初始化帮助按钮功能
@@ -15754,7 +15641,7 @@
             const helpModalClose = document.getElementById('helpModalClose');
             const helpPdfDownloadBtn = document.getElementById('helpPdfDownloadBtn');
             
-            if (!helpBtn || !helpModal || !helpModalClose) return;
+            if (!helpBtn) return;
             
             // 设置下载按钮链接（如果需要API key，可以在这里添加）
             if (helpPdfDownloadBtn) {
@@ -15762,46 +15649,47 @@
                 helpPdfDownloadBtn.href = `/api/user-guide?download=true${apiKeyParam}`;
             }
             
-            let pdfLoaded = false;
-            
-            // 打开帮助窗口
-            function openHelpModal() {
-                helpModal.style.display = 'block';
-                // 如果PDF还没有加载，则加载PDF
-                if (!pdfLoaded) {
-                    loadUserGuidePDF();
-                    pdfLoaded = true;
-                }
+            // 打开帮助PDF（在新浏览器窗口中打开，让浏览器决定如何显示）
+            function openHelpPDF() {
+                // 构建PDF URL，包含API key参数（如果需要）
+                const apiKeyParam = (currentUser && currentUser !== 'default') ? `?api_key=${encodeURIComponent(currentUser)}` : '';
+                const pdfUrl = `/api/user-guide${apiKeyParam}`;
+                
+                // 在新窗口中打开PDF，让浏览器自己决定如何显示
+                window.open(pdfUrl, '_blank');
             }
             
-            // 关闭帮助窗口
-            function closeHelpModal() {
-                helpModal.style.display = 'none';
-            }
-            
-            // 点击帮助按钮打开窗口
+            // 点击帮助按钮在新窗口打开PDF
             helpBtn.addEventListener('click', function() {
-                openHelpModal();
+                openHelpPDF();
             });
             
-            // 点击关闭按钮
-            helpModalClose.addEventListener('click', function() {
-                closeHelpModal();
-            });
-            
-            // 点击窗口外部关闭
-            helpModal.addEventListener('click', function(event) {
-                if (event.target === helpModal) {
-                    closeHelpModal();
+            // 如果模态框相关元素存在，保留关闭功能（虽然不再使用模态框）
+            if (helpModal && helpModalClose) {
+                // 关闭帮助窗口
+                function closeHelpModal() {
+                    helpModal.style.display = 'none';
                 }
-            });
-            
-            // ESC键关闭
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && helpModal.style.display === 'block') {
+                
+                // 点击关闭按钮
+                helpModalClose.addEventListener('click', function() {
                     closeHelpModal();
-                }
-            });
+                });
+                
+                // 点击窗口外部关闭
+                helpModal.addEventListener('click', function(event) {
+                    if (event.target === helpModal) {
+                        closeHelpModal();
+                    }
+                });
+                
+                // ESC键关闭
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && helpModal.style.display === 'block') {
+                        closeHelpModal();
+                    }
+                });
+            }
         }
 
         /**
