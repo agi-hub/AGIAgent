@@ -655,14 +655,14 @@ class TerminalTools:
         
         return "\n".join(suggestions)
 
-    def talk_to_user(self, query: str, timeout: int = 10) -> Dict[str, Any]:
+    def talk_to_user(self, query: str, timeout: int = 120) -> Dict[str, Any]:
         """
         Display a question to the user and wait for keyboard input with timeout.
         Supports both terminal and GUI modes.
         
         Args:
             query: The question to display to the user
-            timeout: Maximum time to wait for user response (default: 10 seconds, -1 to disable timeout)
+            timeout: Maximum time to wait for user response (default: 120 seconds, -1 to disable timeout)
             
         Returns:
             Dict containing the user's response or timeout indication
