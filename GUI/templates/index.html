@@ -25,6 +25,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if is_app_mode %}{{ app_name }}{% else %}{{ i18n.app_title.replace(' GUI', '') }}{% endif %}</title>
     <link href="{{ url_for('static', filename='css/fontawesome.min.css') }}" rel="stylesheet">
+    <!-- 优化FontAwesome字体加载：使用font-display: swap以提升性能 -->
+    <style>
+        @font-face {
+            font-family: "Font Awesome 6 Brands";
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "Font Awesome 6 Free";
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "Font Awesome 5 Brands";
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "Font Awesome 5 Free";
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "FontAwesome";
+            font-display: swap;
+        }
+    </style>
     <!-- Prism.js for syntax highlighting -->
     <link href="{{ url_for('static', filename='css/prism-tomorrow.min.css') }}" rel="stylesheet">
     <!-- Custom Prism.js override styles for better visibility -->
@@ -354,8 +377,7 @@
             font-style: italic !important;
         }
     </style>
-    <!-- PDF.js -->
-    <script src="{{ url_for('static', filename='js/pdf.min.js') }}"></script>
+    <!-- PDF.js - 改为按需加载，在预览PDF时才加载 -->
     <!-- MathJax for mathematical formulas with fallback -->
     <script>
         // MathJax配置
@@ -581,9 +603,87 @@
     </script>
     
     <!-- 尝试加载MathJax CDN -->
-    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mtml-chtml.js" 
-            onload="window.mathJaxLoadAttempted = true; checkMathJaxStatus();"
-            onerror="window.mathJaxLoadAttempted = true; checkMathJaxStatus();"></script>
+        <!-- MathJax - 按需加载，只在需要渲染数学公式时才加载 -->
+    <script>
+        // MathJax 按需加载函数
+        let mathJaxLoading = false;
+        let mathJaxLoaded = false;
+        
+        function loadMathJax() {
+            if (mathJaxLoaded) return Promise.resolve();
+            if (mathJaxLoading) {
+                // 如果正在加载，等待加载完成
+                return new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        if (mathJaxLoaded) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                });
+            }
+            
+            mathJaxLoading = true;
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mtml-chtml.js';
+                script.async = true;
+                script.onload = function() {
+                    mathJaxLoaded = true;
+                    mathJaxLoading = false;
+                    window.mathJaxLoadAttempted = true;
+                    if (window.MathJax && window.MathJax.startup) {
+                        MathJax.startup.defaultReady();
+                        window.mathJaxAvailable = true;
+                    }
+                    resolve();
+                };
+                script.onerror = function() {
+                    mathJaxLoading = false;
+                    window.mathJaxLoadAttempted = true;
+                    checkMathJaxStatus();
+                    reject(new Error('MathJax加载失败'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // 修改 renderMath 函数，在需要时加载 MathJax
+        const originalRenderMath = window.renderMath || function(element) {
+            if (!element) return Promise.resolve();
+            element.innerHTML = protectLoneDollarSigns(element.innerHTML);
+            if (window.mathJaxAvailable && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                return MathJax.typesetPromise([element]).catch(function (err) {
+                    fallbackMathRendering(element);
+                });
+            } else {
+                fallbackMathRendering(element);
+                return Promise.resolve();
+            }
+        };
+        
+        window.renderMath = function(element) {
+            // 检查内容是否包含数学公式
+            const hasMath = element && (
+                element.innerHTML.includes('$$') || 
+                element.innerHTML.includes('\(') || 
+                element.innerHTML.includes('\[') ||
+                /\$[^$]+\$/.test(element.innerHTML)
+            );
+            
+            if (hasMath && !mathJaxLoaded && !mathJaxLoading) {
+                // 有数学公式但 MathJax 未加载，先加载再渲染
+                return loadMathJax().then(() => {
+                    return originalRenderMath(element);
+                }).catch(() => {
+                    // 加载失败，使用 fallback
+                    return originalRenderMath(element);
+                });
+            } else {
+                return originalRenderMath(element);
+            }
+        };
+    </script>
     <style>
         * {
             margin: 0;
@@ -4584,10 +4684,9 @@
     </div>
 
 
-    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <!-- socket.io.js - 改为按需加载，在用户点击连接时才加载 -->
     <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
-    <!-- Mermaid.js for diagram rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- Mermaid.js - 改为按需加载，在渲染Mermaid图表时才加载 -->
     <script id="i18nData" type="application/json">{{ i18n | tojson }}</script>
     <script>
         // Internationalization configuration
@@ -4631,6 +4730,139 @@
         let wasReconnected = false; // 标记是否是重连后的连接
         let heartbeatInterval = null;  // 心跳定时器
         const HEARTBEAT_INTERVAL = 55000;  // 每55秒发送一次心跳（小于服务器ping_interval=60秒）
+        
+        // 按需加载资源的状态标记
+        let socketIOLoading = false;
+        let socketIOLoaded = false;
+        let pdfJSLoading = false;
+        let pdfJSLoaded = false;
+        let mermaidLoading = false;
+        let mermaidLoaded = false;
+        
+        // 按需加载 socket.io.js
+        function loadSocketIO() {
+            return new Promise((resolve, reject) => {
+                if (socketIOLoaded && typeof io !== 'undefined') {
+                    resolve();
+                    return;
+                }
+                if (socketIOLoading) {
+                    // 如果正在加载，等待加载完成
+                    const checkInterval = setInterval(() => {
+                        if (socketIOLoaded && typeof io !== 'undefined') {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    return;
+                }
+                socketIOLoading = true;
+                const script = document.createElement('script');
+                script.src = "{{ url_for('static', filename='js/socket.io.js') }}";
+                script.async = true;
+                script.onload = () => {
+                    socketIOLoaded = true;
+                    socketIOLoading = false;
+                    resolve();
+                };
+                script.onerror = () => {
+                    socketIOLoading = false;
+                    reject(new Error('Failed to load socket.io.js'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // 按需加载 PDF.js
+        function loadPDFJS() {
+            return new Promise((resolve, reject) => {
+                if (pdfJSLoaded && typeof pdfjsLib !== 'undefined') {
+                    resolve();
+                    return;
+                }
+                if (pdfJSLoading) {
+                    const checkInterval = setInterval(() => {
+                        if (pdfJSLoaded && typeof pdfjsLib !== 'undefined') {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    return;
+                }
+                pdfJSLoading = true;
+                const script = document.createElement('script');
+                script.src = "{{ url_for('static', filename='js/pdf.min.js') }}";
+                script.async = true;
+                script.onload = () => {
+                    pdfJSLoaded = true;
+                    pdfJSLoading = false;
+                    resolve();
+                };
+                script.onerror = () => {
+                    pdfJSLoading = false;
+                    reject(new Error('Failed to load PDF.js'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // 按需加载 Mermaid.js - 仅在用户连接后才加载
+        function loadMermaid() {
+            return new Promise((resolve, reject) => {
+                // 检查是否已连接，只有在连接后才允许加载
+                if (!isConnected) {
+                    reject(new Error('Mermaid.js will be loaded after connection'));
+                    return;
+                }
+                
+                if (mermaidLoaded && typeof mermaid !== 'undefined') {
+                    resolve();
+                    return;
+                }
+                if (mermaidLoading) {
+                    const checkInterval = setInterval(() => {
+                        if (mermaidLoaded && typeof mermaid !== 'undefined') {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    return;
+                }
+                mermaidLoading = true;
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+                script.async = true;
+                script.onload = () => {
+                    mermaidLoaded = true;
+                    mermaidLoading = false;
+                    resolve();
+                };
+                script.onerror = () => {
+                    mermaidLoading = false;
+                    reject(new Error('Failed to load Mermaid.js'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // 通用的Mermaid渲染函数（按需加载）
+        function renderMermaidDiagrams(container) {
+            const targetContainer = container || document;
+            const mermaidElements = targetContainer.querySelectorAll('.mermaid');
+            if (mermaidElements.length === 0) {
+                return Promise.resolve();
+            }
+            return loadMermaid().then(() => {
+                try {
+                    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                    mermaid.run({ querySelector: '.mermaid', nodes: Array.from(mermaidElements) });
+                } catch (e) {
+                    console.warn('Mermaid rendering failed:', e);
+                }
+            }).catch(err => {
+                console.warn('Failed to load Mermaid.js:', err);
+            });
+        }
         
         // 生成或获取持久化的客户端会话ID
         function getOrCreateClientSessionId() {
@@ -4813,7 +5045,7 @@
             });
         }
         
-        function connectUser() {
+        async function connectUser() {
             const apiKey = apiKeyInput.value.trim();
             isManualDisconnect = false;
             isAutoReconnectInProgress = false;
@@ -4826,6 +5058,15 @@
                 socket.removeAllListeners();  // 移除所有事件监听器
                 socket.disconnect();
                 socket = null;
+            }
+            
+            // 按需加载 socket.io.js
+            try {
+                await loadSocketIO();
+            } catch (error) {
+                console.error('Failed to load socket.io.js:', error);
+                updateUserStatus('error', I18N.connection_failed || '连接失败：无法加载socket.io.js');
+                return;
             }
             
             // Create socket connection
@@ -10387,19 +10628,16 @@
                     // 触发数学公式渲染（智能fallback）
                     renderMath(document.getElementById('markdownPreview'));
                     
-                    // 触发Mermaid图表渲染
-                    if (typeof mermaid !== 'undefined') {
-                        try {
-                            mermaid.initialize({ startOnLoad: false, theme: 'default' });
-                            mermaid.run({ querySelector: '.mermaid' });
-                            
+                    // 触发Mermaid图表渲染（按需加载）
+                    const previewDiv = document.getElementById('markdownPreview');
+                    if (previewDiv && previewDiv.querySelector('.mermaid')) {
+                        renderMermaidDiagrams(previewDiv).then(() => {
                             // 检查是否为plan.md，如果是则不设置高度限制
                             const originalFilePath = window.currentOriginalFilePath || file_path || currentFilePath || '';
                             const isPlanMd = originalFilePath && (originalFilePath.endsWith('plan.md') || originalFilePath.endsWith('/plan.md'));
                             
                             if (isPlanMd) {
                                 // 为markdownPreview添加plan-md类
-                                const previewDiv = document.getElementById('markdownPreview');
                                 if (previewDiv) {
                                     previewDiv.classList.add('plan-md');
                                 }
@@ -10414,9 +10652,7 @@
                                     });
                                 }, 200);
                             }
-                        } catch (e) {
-                            console.warn('Mermaid rendering failed:', e);
-                        }
+                        });
                     }
                 }, 100);
             } else if (type === 'pdf') {
@@ -10862,15 +11098,24 @@
             `;
         }
 
-        function loadPDF(filePath) {
+        async function loadPDF(filePath) {
+            // 按需加载 PDF.js
             if (typeof pdfjsLib === 'undefined') {
-                const pdfjsNotLoadedText = I18N.pdfjs_not_loaded || 'PDF.js not loaded, unable to preview PDF files';
-                document.getElementById('pdfContainer').innerHTML = `
-                    <div style="text-align: center; padding: 20px; color: red;">
-                        <i class="fas fa-exclamation-triangle"></i> ${pdfjsNotLoadedText}
-                    </div>
-                `;
-                return;
+                try {
+                    await loadPDFJS();
+                } catch (error) {
+                    console.error('Failed to load PDF.js:', error);
+                    const pdfjsNotLoadedText = I18N.pdfjs_not_loaded || 'PDF.js not loaded, unable to preview PDF files';
+                    const pdfContainer = document.getElementById('pdfContainer');
+                    if (pdfContainer) {
+                        pdfContainer.innerHTML = `
+                            <div style="text-align: center; padding: 20px; color: red;">
+                                <i class="fas fa-exclamation-triangle"></i> ${pdfjsNotLoadedText}
+                            </div>
+                        `;
+                    }
+                    return;
+                }
             }
 
             // 添加API密钥参数
@@ -14257,12 +14502,9 @@
                         // 触发数学公式渲染
                         renderMath(previewDiv);
                         
-                        // 触发Mermaid图表渲染
-                        if (typeof mermaid !== 'undefined') {
-                            try {
-                                mermaid.initialize({ startOnLoad: false, theme: 'default' });
-                                mermaid.run({ querySelector: '.mermaid' });
-                                
+                        // 触发Mermaid图表渲染（按需加载，仅在连接后）
+                        if (previewDiv && previewDiv.querySelector('.mermaid')) {
+                            renderMermaidDiagrams(previewDiv).then(() => {
                                 // 检查是否为plan.md，如果是则不设置高度限制
                                 const originalFilePath = window.currentOriginalFilePath || currentFilePath || '';
                                 const isPlanMd = originalFilePath && (originalFilePath.endsWith('plan.md') || originalFilePath.endsWith('/plan.md'));
@@ -14283,9 +14525,12 @@
                                         });
                                     }, 200);
                                 }
-                            } catch (e) {
-                                console.warn('Mermaid rendering failed:', e);
-                            }
+                            }).catch(err => {
+                                // 静默处理，如果未连接则不加载
+                                if (err.message && !err.message.includes('after connection')) {
+                                    console.warn('Failed to load Mermaid.js:', err);
+                                }
+                            });
                         }
                     }, 50);
                 }
@@ -14724,26 +14969,21 @@
             const container = document.getElementById('mermaid-chart-container');
             if (!container || !window.currentMermaidContent) return;
             
-            // 确保mermaid库已加载
-            if (typeof mermaid === 'undefined') {
-                // 动态加载mermaid库
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/mermaid@10/dist/mermaid.min.js';
-                script.onload = function() {
-                    mermaid.initialize({ 
-                        startOnLoad: false,
-                        theme: 'default',
-                        fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
-                    });
-                    doRenderMermaidChart();
-                };
-                script.onerror = function() {
-                    container.innerHTML = '<div style="color: red; padding: 20px;"><i class="fas fa-exclamation-triangle"></i><br/>Mermaid库加载失败，无法渲染图表</div>';
-                };
-                document.head.appendChild(script);
-            } else {
+            // 使用统一的按需加载函数（仅在连接后加载）
+            loadMermaid().then(() => {
+                mermaid.initialize({ 
+                    startOnLoad: false,
+                    theme: 'default',
+                    fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
+                });
                 doRenderMermaidChart();
-            }
+            }).catch(err => {
+                if (err.message && err.message.includes('after connection')) {
+                    container.innerHTML = '<div style="color: #ff9800; padding: 20px;"><i class="fas fa-info-circle"></i><br/>请先连接服务器后再查看图表</div>';
+                } else {
+                    container.innerHTML = '<div style="color: red; padding: 20px;"><i class="fas fa-exclamation-triangle"></i><br/>Mermaid库加载失败，无法渲染图表</div>';
+                }
+            });
         }
         
         function doRenderMermaidChart() {
