@@ -20,7 +20,7 @@
     }
   },
   "read_multiple_files": {
-    "description": "Read the contents of multiple files in a single call. More efficient than calling read_file multiple times. Use this when you need to read 2 or more files at once.",
+    "description": "Read the contents of one or more files. Supports reading a single file or multiple files in one call. Use this tool whenever you need to read file contents.",
     "parameters": {
       "type": "object",
       "properties": {
