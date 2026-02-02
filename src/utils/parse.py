@@ -1118,6 +1118,46 @@ def fix_wrong_tool_call_format(content: str) -> str:
     return fixed_content
 
 
+def fix_parameter_followed_by_wrong_closing_tag(content: str) -> str:
+    """
+    Fix cases where </parameter> is followed by a wrong closing tag like </read_multiple_files>.
+    This handles the specific pattern: </parameter>\n</any_any_str> -> </parameter>\n</invoke>
+    
+    The function looks for patterns where </parameter> is immediately followed (with optional whitespace/newline)
+    by a closing tag that is not </invoke>, and replaces that wrong closing tag with </invoke>.
+    
+    Args:
+        content: The model's response text that may contain this pattern
+        
+    Returns:
+        Fixed content string
+    """
+    import re
+    
+    pattern = r'(</parameter\s*>)\s*\n\s*(</(?!invoke\s*>)[^>\s]+\s*>)'
+    
+    def replace_wrong_closing(match):
+        parameter_close = match.group(1)
+        wrong_close = match.group(2)
+        
+        # Extract the wrong tag name for logging
+        tag_name_match = re.match(r'</([^>\s]+)', wrong_close)
+        tag_name = tag_name_match.group(1) if tag_name_match else "unknown"
+        
+        try:
+            from tools.print_system import print_debug
+            print_debug(f"⚠️ Fixed wrong closing tag after </parameter>: </{tag_name}> -> </invoke>")
+        except ImportError:
+            pass
+        
+        # Replace with </parameter>\n</invoke>
+        return f'{parameter_close}\n</invoke>'
+    
+    fixed_content = re.sub(pattern, replace_wrong_closing, content, flags=re.MULTILINE | re.DOTALL)
+    
+    return fixed_content
+
+
 def fix_incomplete_invoke_closing_tags(content: str) -> str:
     """
     Fix incomplete XML invoke closing tags. If an <invoke> tag is not properly closed with </invoke>
@@ -1284,6 +1324,76 @@ def parse_tool_calls_from_xml(content: str) -> List[Dict[str, Any]]:
         for tool_name, args_text in invoke_matches:
             args = parse_arguments_xml(args_text)
             all_tool_calls.append({"name": tool_name, "arguments": args})
+    
+    # If parsing failed (no tool calls found), try to fix </parameter>\n</任意字符串> pattern and retry
+    if not all_tool_calls:
+        # Check if there's a pattern like </parameter>\n</任意字符串> that suggests XML syntax error
+        fixed_content = fix_parameter_followed_by_wrong_closing_tag(content)
+        
+        # If content was fixed, retry parsing
+        if fixed_content != content:
+            try:
+                from tools.print_system import print_debug
+                print_debug("⚠️ XML parsing failed, attempting to fix </parameter> followed by wrong closing tag and retrying...")
+            except ImportError:
+                pass
+            
+            # Retry parsing with fixed content
+            # Fix incomplete closing tags again after the fix
+            fixed_content = fix_incomplete_invoke_closing_tags(fixed_content)
+            
+            # Try to parse again with the fixed content
+            invoke_pattern = r'<invoke name="([^"]+)">(.*?)</invoke>'
+            invoke_matches = re.findall(invoke_pattern, fixed_content, re.DOTALL)
+            if invoke_matches:
+                for tool_name, args_text in invoke_matches:
+                    args = parse_arguments_xml(args_text)
+                    all_tool_calls.append({"name": tool_name, "arguments": args})
+                
+                try:
+                    from tools.print_system import print_debug
+                    print_debug(f"✅ Successfully parsed {len(all_tool_calls)} tool call(s) after fixing XML closing tag")
+                except ImportError:
+                    pass
+        
+        # If still no tool calls found, check if XML tool call syntax exists but parsing failed
+        if not all_tool_calls:
+            # Check if there are XML tool call patterns in the content
+            xml_patterns = [
+                r'<invoke\s+name=',  # <invoke name=
+                r'<function_call>',  # <function_call>
+                r'<function_calls>',  # <function_calls>
+            ]
+            
+            has_xml_syntax = any(re.search(pattern, content, re.IGNORECASE) for pattern in xml_patterns)
+            
+            if has_xml_syntax:
+                # XML syntax exists but parsing failed - return error structure
+                # Extract a snippet of the problematic XML for error message
+                xml_snippet = ""
+                for pattern in xml_patterns:
+                    match = re.search(pattern, content, re.IGNORECASE)
+                    if match:
+                        start = max(0, match.start() - 50)
+                        end = min(len(content), match.end() + 200)
+                        xml_snippet = content[start:end]
+                        if len(xml_snippet) > 300:
+                            xml_snippet = xml_snippet[:300] + "..."
+                        break
+                
+                error_message = "XML tool call syntax detected but parsing failed. "
+                if xml_snippet:
+                    error_message += f"Problematic XML snippet: {xml_snippet}"
+                else:
+                    error_message += "Please check your XML format."
+                
+                # Return a special error structure that will be detected by parse_tool_calls
+                return [{
+                    "_xml_parse_error": True,
+                    "error_type": "xml_parse_error",
+                    "error_message": error_message,
+                    "content_snippet": xml_snippet if xml_snippet else content[:500]
+                }]
     
     return all_tool_calls
 

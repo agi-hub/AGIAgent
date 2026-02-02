@@ -1583,6 +1583,34 @@ Please regenerate your tool call with correct JSON format.
 
 END OF ERROR FEEDBACK
 """
+        elif error_type == 'xml_parse_error':
+            feedback_message = f"""
+CRITICAL ERROR FEEDBACK - XML PARSING FAILED
+
+⚠️⚠️⚠️ YOUR PREVIOUS TOOL CALL XML FORMAT WAS INVALID ⚠️⚠️⚠️
+
+The system detected XML tool call syntax in your previous response, but failed to parse it.
+This means your tool call was NOT executed successfully.
+
+Error details: {error_message}
+
+🔴 IMPORTANT REMINDERS:
+1. Use the correct XML format: <invoke name="tool_name">...</invoke>
+2. Ensure all opening tags have matching closing tags
+3. The closing tag MUST be </invoke>, not </tool_name> or any other tag
+4. After the last </parameter> tag, you MUST use </invoke> to close the <invoke> tag
+5. Example correct format:
+   <invoke name="read_multiple_files">
+     <parameter name="target_files">["file1.md", "file2.md"]</parameter>
+     <parameter name="should_read_entire_file">true</parameter>
+   </invoke>
+6. Common mistake: Using </read_multiple_files> instead of </invoke> - this is WRONG
+7. Common mistake: Using </parameter> as the final closing tag - this is WRONG
+
+Please regenerate your tool call with correct XML format.
+
+END OF ERROR FEEDBACK
+"""
         elif error_type == 'hallucination_detected':
             feedback_message = f"""
 CRITICAL ERROR FEEDBACK - HALLUCINATION DETECTED
@@ -2009,16 +2037,39 @@ END OF ERROR FEEDBACK
                 # If JSON format didn't find any tool calls, try XML format as fallback
                 xml_tool_calls = parse_tool_calls_from_xml(content)
                 if xml_tool_calls:
-                    all_tool_calls.extend(xml_tool_calls)
-                    if self.debug_mode:
-                        print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML (fallback from JSON)")
+                    # Check if this is an XML parse error structure
+                    if len(xml_tool_calls) == 1 and isinstance(xml_tool_calls[0], dict) and xml_tool_calls[0].get("_xml_parse_error"):
+                        # XML parse error detected - add error feedback to history
+                        error_info = xml_tool_calls[0]
+                        error_message = error_info.get("error_message", "XML parsing failed")
+                        self._add_error_feedback_to_history(
+                            error_type='xml_parse_error',
+                            error_message=error_message
+                        )
+                        # Don't add this to tool calls
+                    else:
+                        all_tool_calls.extend(xml_tool_calls)
+                        if self.debug_mode:
+                            print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML (fallback from JSON)")
         elif self.tool_call_parse_format == "xml":
             # Try XML format first
             xml_tool_calls = parse_tool_calls_from_xml(content)
             if xml_tool_calls:
-                all_tool_calls.extend(xml_tool_calls)
-                if self.debug_mode:
-                    print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML")
+                # Check if this is an XML parse error structure
+                if len(xml_tool_calls) == 1 and isinstance(xml_tool_calls[0], dict) and xml_tool_calls[0].get("_xml_parse_error"):
+                    # XML parse error detected - add error feedback to history
+                    error_info = xml_tool_calls[0]
+                    error_message = error_info.get("error_message", "XML parsing failed")
+                    self._add_error_feedback_to_history(
+                        error_type='xml_parse_error',
+                        error_message=error_message
+                    )
+                    # Don't add this to tool calls, return empty list
+                    xml_tool_calls = []
+                else:
+                    all_tool_calls.extend(xml_tool_calls)
+                    if self.debug_mode:
+                        print_debug(f"✅ Successfully parsed {len(xml_tool_calls)} tool calls from XML")
             else:
                 # If XML format didn't find any tool calls, try JSON format as fallback
                 json_tool_calls = parse_tool_calls_from_json(content)
