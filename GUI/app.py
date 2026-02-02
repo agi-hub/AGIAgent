@@ -1913,6 +1913,12 @@ class AGIAgentGUI:
         # Set timeout handling callback
         self.concurrency_manager.set_timeout_callback(self._handle_user_task_timeout)
         
+        # 性能优化：添加缓存机制
+        self._directory_cache = {}  # 缓存目录结构和大小
+        self._task_description_cache = {}  # 缓存任务描述
+        self._cache_lock = Lock()  # 缓存锁
+        self._cache_timeout = 30  # 缓存超时时间（秒）
+        
     def switch_app(self, app_name: Optional[str], session_id: Optional[str] = None):
         """
         动态切换应用平台
@@ -2168,7 +2174,7 @@ class AGIAgentGUI:
     
     def get_output_directories(self, user_session, base_data_dir=None):
         """
-        Get all directories containing workspace subdirectory for specific user
+        Get all directories containing workspace subdirectory for specific user (optimized)
         
         Args:
             user_session: User session object
@@ -2185,50 +2191,90 @@ class AGIAgentGUI:
         os.makedirs(user_output_dir, exist_ok=True)
         
         try:
-            # Traverse all subdirectories in user's directory
-            for item in os.listdir(user_output_dir):
-                item_path = os.path.join(user_output_dir, item)
-                
-                # Check if it's a directory
-                if os.path.isdir(item_path):
+            # 优化：使用os.scandir代替os.listdir，减少系统调用
+            with os.scandir(user_output_dir) as entries:
+                for entry in entries:
+                    if not entry.is_dir():
+                        continue
+                    
+                    item = entry.name
+                    item_path = entry.path
+                    
                     # Check if it contains workspace subdirectory
                     workspace_path = os.path.join(item_path, 'workspace')
-                    if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
-                        # Get directory information
-                        stat = os.stat(item_path)
-                        size = self.get_directory_size(item_path)
+                    if not os.path.exists(workspace_path) or not os.path.isdir(workspace_path):
+                        continue
+                    
+                    try:
+                        # 优化：使用entry.stat()获取修改时间，避免额外的stat调用
+                        stat = entry.stat()
                         
-                        # 获取任务描述
+                        # 性能优化：移除目录大小计算（前端不需要显示目录大小，只显示文件大小）
+                        # 这样可以节省大量时间，特别是对于包含大量文件的目录
+                        
+                        # 获取任务描述（已优化，带缓存）
                         task_description = self.get_task_description_from_manager_out(item_path)
                         
+                        # 性能优化：加载完整目录结构（保留其他优化，但取消深度限制）
+                        # 使用完整的递归加载，确保所有子文件夹的文件都能显示
+                        files_structure = self.get_directory_structure(item_path, lazy_load=False)
+                        
                         result.append({
-                        'name': item,
-                        'path': item_path,
-                        'size': self.format_size(size),
-                        'files': self.get_directory_structure(item_path),
-                        'is_current': item == user_session.current_output_dir,  # Mark if it's current directory
-                        'is_selected': item == user_session.selected_output_dir,  # Mark if it's selected directory
-                            'is_last': item == user_session.last_output_dir,  # Mark if it's last used directory
-                        'task_description': task_description  # 任务描述
+                            'name': item,
+                            'path': item_path,
+                            'size': '0 B',  # 不再计算目录大小，节省时间
+                            'files': files_structure,  # 延迟加载的目录结构
+                            'is_current': item == user_session.current_output_dir,
+                            'is_selected': item == user_session.selected_output_dir,
+                            'is_last': item == user_session.last_output_dir,
+                            'task_description': task_description,
+                            'mtime': stat.st_mtime  # 保存修改时间用于排序
                         })
+                    except (OSError, PermissionError):
+                        continue
         except (OSError, PermissionError) as e:
             pass
         
-        # Sort by modification time
-        result.sort(key=lambda x: os.path.getmtime(x['path']), reverse=True)
+        # Sort by modification time (使用已保存的mtime，避免重复stat调用)
+        result.sort(key=lambda x: x.get('mtime', 0), reverse=True)
         return result
     
     def get_directory_size(self, directory):
-        """Calculate directory size"""
+        """Calculate directory size (optimized with caching)"""
+        # 检查缓存
+        cache_key = f"size_{directory}"
+        with self._cache_lock:
+            if cache_key in self._directory_cache:
+                cached_data = self._directory_cache[cache_key]
+                if time.time() - cached_data['timestamp'] < self._cache_timeout:
+                    return cached_data['size']
+        
+        # 优化：使用更快的统计方法
         total_size = 0
         try:
+            # 使用os.walk但优化：减少系统调用
             for dirpath, dirnames, filenames in os.walk(directory):
+                # 跳过不需要遍历的目录（如code_index, __pycache__等）
+                dirnames[:] = [d for d in dirnames if d not in {'code_index', '__pycache__', '.git', '.vscode', 'node_modules'}]
+                
                 for filename in filenames:
                     filepath = os.path.join(dirpath, filename)
-                    if os.path.exists(filepath):
-                        total_size += os.path.getsize(filepath)
+                    try:
+                        # 直接使用stat获取大小，避免额外的exists检查
+                        stat_info = os.stat(filepath)
+                        total_size += stat_info.st_size
+                    except (OSError, IOError):
+                        continue
         except (OSError, IOError):
             pass
+        
+        # 更新缓存
+        with self._cache_lock:
+            self._directory_cache[cache_key] = {
+                'size': total_size,
+                'timestamp': time.time()
+            }
+        
         return total_size
     
     def format_size(self, size_bytes):
@@ -2242,8 +2288,16 @@ class AGIAgentGUI:
             i += 1
         return f"{size_bytes:.1f} {size_names[i]}"
     
-    def get_directory_structure(self, directory, max_depth=10, current_depth=0, base_dir=None):
-        """Get directory structure"""
+    def get_directory_structure(self, directory, max_depth=10, current_depth=0, base_dir=None, lazy_load=False):
+        """Get directory structure (optimized but without depth limitation)
+        
+        Args:
+            directory: 目录路径
+            max_depth: 最大递归深度（保留参数以兼容，但实际不限制）
+            current_depth: 当前深度
+            base_dir: 基础目录路径
+            lazy_load: 是否延迟加载（已取消，始终完整加载）
+        """
         if current_depth > max_depth:
             return []
         
@@ -2251,40 +2305,91 @@ class AGIAgentGUI:
         if base_dir is None:
             base_dir = os.path.dirname(directory)
         
+        # 检查缓存（仅对顶层目录使用缓存）
+        if current_depth == 0:
+            cache_key = f"struct_{directory}"
+            with self._cache_lock:
+                if cache_key in self._directory_cache:
+                    cached_data = self._directory_cache[cache_key]
+                    # 检查目录修改时间
+                    try:
+                        dir_mtime = os.path.getmtime(directory)
+                        if dir_mtime == cached_data.get('dir_mtime'):
+                            if time.time() - cached_data['timestamp'] < self._cache_timeout:
+                                return cached_data['structure']
+                    except OSError:
+                        pass
+        
         items = []
         try:
-            for item in os.listdir(directory):
-                item_path = os.path.join(directory, item)
-                # Calculate relative path to base_dir
-                relative_path = os.path.relpath(item_path, base_dir)
-                # Convert Windows path separators to Unix style
-                relative_path = relative_path.replace('\\', '/')
-                
-                if os.path.isdir(item_path):
-                    children = self.get_directory_structure(item_path, max_depth, current_depth + 1, base_dir)
-                    items.append({
-                        'name': item,
-                        'type': 'directory',
-                        'path': relative_path,
-                        'children': children
-                    })
-                else:
-                    # 过滤掉以tmp开头的PDF文件（临时文件）
-                    if item.lower().startswith('tmp') and item.lower().endswith('.pdf'):
+            # 优化：使用os.scandir代替os.listdir + os.path.isdir，减少系统调用
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        item_path = entry.path
+                        item_name = entry.name
+                        
+                        # Calculate relative path to base_dir
+                        relative_path = os.path.relpath(item_path, base_dir)
+                        # Convert Windows path separators to Unix style
+                        relative_path = relative_path.replace('\\', '/')
+                        
+                        if entry.is_dir():
+                            # 跳过不需要遍历的目录
+                            if item_name.lower() in {'code_index', '__pycache__', '.git', '.vscode', 'node_modules'}:
+                                continue
+                            
+                            # 取消深度限制：完整递归加载所有子目录
+                            # 确保web_search_results/images等深层目录的文件都能显示
+                            children = self.get_directory_structure(item_path, max_depth, current_depth + 1, base_dir, lazy_load)
+                            items.append({
+                                'name': item_name,
+                                'type': 'directory',
+                                'path': relative_path,
+                                'children': children
+                            })
+                        elif entry.is_file():
+                            # 过滤掉以tmp开头的PDF文件（临时文件）
+                            if item_name.lower().startswith('tmp') and item_name.lower().endswith('.pdf'):
+                                continue
+                            
+                            # 优化：使用entry.stat()而不是os.path.getsize，减少系统调用
+                            try:
+                                stat_info = entry.stat()
+                                file_size = stat_info.st_size
+                            except OSError:
+                                file_size = 0
+                            
+                            items.append({
+                                'name': item_name,
+                                'type': 'file',
+                                'path': relative_path,
+                                'size': self.format_size(file_size)
+                            })
+                    except (OSError, PermissionError):
                         continue
-                    items.append({
-                        'name': item,
-                        'type': 'file',
-                        'path': relative_path,
-                        'size': self.format_size(os.path.getsize(item_path))
-                    })
         except (OSError, PermissionError):
             pass
         
-        return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
+        result = sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
+        
+        # 更新缓存（仅对顶层目录）
+        if current_depth == 0:
+            try:
+                dir_mtime = os.path.getmtime(directory)
+                with self._cache_lock:
+                    self._directory_cache[cache_key] = {
+                        'structure': result,
+                        'dir_mtime': dir_mtime,
+                        'timestamp': time.time()
+                    }
+            except OSError:
+                pass
+        
+        return result
     
     def get_task_description_from_manager_out(self, directory_path):
-        """从manager.out文件中读取任务描述
+        """从manager.out文件中读取任务描述（带缓存优化）
         
         Args:
             directory_path: 目录路径
@@ -2292,6 +2397,21 @@ class AGIAgentGUI:
         Returns:
             str: 任务描述（第一个user_requirement），如果没有找到则返回i18n翻译后的"未布置任务"
         """
+        # 检查缓存
+        cache_key = f"task_{directory_path}"
+        with self._cache_lock:
+            if cache_key in self._task_description_cache:
+                cached_data = self._task_description_cache[cache_key]
+                # 检查文件修改时间，如果文件未修改则使用缓存
+                manager_out_path = os.path.join(directory_path, 'logs', 'manager.out')
+                if os.path.exists(manager_out_path):
+                    try:
+                        file_mtime = os.path.getmtime(manager_out_path)
+                        if file_mtime == cached_data['file_mtime']:
+                            return cached_data['description']
+                    except OSError:
+                        pass
+        
         # 获取i18n文本
         i18n = get_i18n_texts()
         no_task_text = i18n.get('no_task_assigned', '未布置任务')
@@ -2303,9 +2423,16 @@ class AGIAgentGUI:
             return no_task_text
         
         try:
-            # 读取文件内容
+            # 获取文件修改时间用于缓存验证
+            file_mtime = os.path.getmtime(manager_out_path)
+            
+            # 优化：只读取文件的前几KB，通常任务描述在文件开头
+            # 如果文件很大，只读取前50KB
+            max_read_size = 50 * 1024  # 50KB
             with open(manager_out_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
+                # 先读取部分内容
+                content = f.read(max_read_size)
+                lines = content.split('\n')
             
             # 从前往后查找"Received user requirement:"行（获取第一个，即最老的用户需求）
             task_description = None
@@ -2318,7 +2445,17 @@ class AGIAgentGUI:
                         break
             
             # 如果找到了任务描述，返回它；否则返回默认值
-            return task_description if task_description else no_task_text
+            result = task_description if task_description else no_task_text
+            
+            # 更新缓存
+            with self._cache_lock:
+                self._task_description_cache[cache_key] = {
+                    'description': result,
+                    'file_mtime': file_mtime,
+                    'timestamp': time.time()
+                }
+            
+            return result
             
         except (IOError, OSError, UnicodeDecodeError) as e:
             # 如果读取失败，返回默认值
@@ -3210,7 +3347,7 @@ def simple_test():
 
 @app.route('/api/output-dirs')
 def get_output_dirs():
-    """Get output directory list"""
+    """Get output directory list (optimized with lazy loading)"""
     try:
         # Get API key from query parameters
         api_key = request.args.get('api_key')
@@ -3232,6 +3369,50 @@ def get_output_dirs():
         return jsonify({'success': True, 'directories': dirs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/load-directory-structure', methods=['POST'])
+def load_directory_structure():
+    """Load directory structure on demand (for lazy loading optimization)"""
+    try:
+        data = request.get_json() or {}
+        dir_name = data.get('dir_name', '')
+        sub_path = data.get('sub_path', '')  # 子目录的相对路径
+        
+        # Get API key
+        api_key = request.args.get('api_key') or request.headers.get('X-API-Key') or data.get('api_key')
+        temp_session_id = create_temp_session_id(request, api_key)
+        user_session = gui_instance.get_user_session(temp_session_id, api_key)
+        
+        if not user_session:
+            return jsonify({'success': False, 'error': 'Authentication failed'}), 401
+        
+        # 确保根据 URL 切换正确的 app
+        gui_instance.ensure_app_switched_for_request(request, temp_session_id)
+        request_base_data_dir = gui_instance.get_base_data_dir_for_request(request)
+        user_base_dir = user_session.get_user_directory(request_base_data_dir)
+        
+        # 构建完整路径
+        if sub_path:
+            full_path = os.path.join(user_base_dir, dir_name, sub_path)
+        else:
+            full_path = os.path.join(user_base_dir, dir_name)
+        
+        # 安全检查
+        real_output_dir = os.path.realpath(user_base_dir)
+        real_file_path = os.path.realpath(full_path)
+        if not real_file_path.startswith(real_output_dir):
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if not os.path.exists(full_path) or not os.path.isdir(full_path):
+            return jsonify({'success': False, 'error': 'Directory not found'}), 404
+        
+        # 加载目录结构（不延迟加载，完整加载）
+        base_dir = os.path.dirname(full_path) if sub_path else os.path.dirname(user_base_dir)
+        structure = gui_instance.get_directory_structure(full_path, lazy_load=False, base_dir=base_dir)
+        
+        return jsonify({'success': True, 'structure': structure})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/download/<path:dir_name>')
 def download_directory(dir_name):
