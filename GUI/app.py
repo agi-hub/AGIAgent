@@ -2314,9 +2314,18 @@ class AGIAgentGUI:
                     # 检查目录修改时间
                     try:
                         dir_mtime = os.path.getmtime(directory)
+                        # 🔧 修复：同时检查workspace子目录的修改时间，确保上传文件后缓存能正确失效
+                        workspace_path = os.path.join(directory, 'workspace')
+                        workspace_mtime = None
+                        if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
+                            workspace_mtime = os.path.getmtime(workspace_path)
+                        
+                        # 如果父目录和workspace目录的修改时间都没有变化，且缓存未过期，则使用缓存
                         if dir_mtime == cached_data.get('dir_mtime'):
-                            if time.time() - cached_data['timestamp'] < self._cache_timeout:
-                                return cached_data['structure']
+                            cached_workspace_mtime = cached_data.get('workspace_mtime')
+                            if workspace_mtime is None or workspace_mtime == cached_workspace_mtime:
+                                if time.time() - cached_data['timestamp'] < self._cache_timeout:
+                                    return cached_data['structure']
                     except OSError:
                         pass
         
@@ -2377,16 +2386,38 @@ class AGIAgentGUI:
         if current_depth == 0:
             try:
                 dir_mtime = os.path.getmtime(directory)
+                # 🔧 修复：同时保存workspace子目录的修改时间
+                workspace_path = os.path.join(directory, 'workspace')
+                workspace_mtime = None
+                if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
+                    workspace_mtime = os.path.getmtime(workspace_path)
+                
                 with self._cache_lock:
                     self._directory_cache[cache_key] = {
                         'structure': result,
                         'dir_mtime': dir_mtime,
+                        'workspace_mtime': workspace_mtime,
                         'timestamp': time.time()
                     }
             except OSError:
                 pass
         
         return result
+    
+    def clear_directory_cache(self, directory):
+        """清除指定目录的缓存
+        
+        Args:
+            directory: 要清除缓存的目录路径
+        """
+        try:
+            cache_key = f"struct_{directory}"
+            with self._cache_lock:
+                if cache_key in self._directory_cache:
+                    del self._directory_cache[cache_key]
+        except Exception:
+            # 如果清除缓存失败，不影响主流程，静默处理
+            pass
     
     def get_task_description_from_manager_out(self, directory_path):
         """从manager.out文件中读取任务描述（带缓存优化）
@@ -7267,6 +7298,7 @@ def agent_status_files(path):
 @app.route('/api/upload/<path:dir_name>', methods=['POST'])
 def upload_files(dir_name):
     """Upload files to workspace of specified directory"""
+    uploaded_files = []  # 在try块外初始化，确保异常处理中可以访问
     try:
         i18n = get_i18n_texts()
         
@@ -7312,8 +7344,6 @@ def upload_files(dir_name):
         # workspace directory path
         workspace_dir = os.path.join(target_dir, 'workspace')
         os.makedirs(workspace_dir, exist_ok=True)
-        
-        uploaded_files = []
         for file in files:
             if file.filename:
                 # Custom secure filename handling, preserve Chinese characters
@@ -7332,6 +7362,15 @@ def upload_files(dir_name):
                 file.save(file_path)
                 uploaded_files.append(safe_filename)
         
+        # 🔧 修复：清除目录缓存，确保上传后的文件能立即显示
+        # 清除目标目录的缓存，这样刷新时能获取到最新的文件列表
+        # 即使清除缓存失败，也不影响文件上传的成功响应
+        try:
+            gui_instance.clear_directory_cache(target_dir)
+        except Exception:
+            # 清除缓存失败不影响文件上传成功，静默处理
+            pass
+        
         # 构造上传成功消息，只显示文件名，不显示文件数量
         files_str = ', '.join(uploaded_files)
         # 通过检查i18n字典中的upload_success键来判断语言
@@ -7348,6 +7387,21 @@ def upload_files(dir_name):
         })
         
     except Exception as e:
+        # 记录错误日志以便调试
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Upload error: {str(e)}\n{error_trace}")
+        
+        # 如果文件已经上传成功，即使后续处理出错，也返回成功
+        # 检查是否有文件已经保存
+        if uploaded_files:
+            files_str = ', '.join(uploaded_files)
+            return jsonify({
+                'success': True,
+                'message': f'文件已上传: {files_str}（部分操作可能未完成）',
+                'files': uploaded_files
+            })
+        
         return jsonify({
             'success': False,
             'error': str(e)

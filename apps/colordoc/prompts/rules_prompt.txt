@@ -106,6 +106,9 @@ For web search usage:
 2. **Response Format**: The tool saves multiple related images (up to 15) to local files and returns a JSON list with all image information
 3. **File Storage**: Multiple images are saved in the workspace/web_search_result/images/ directory with descriptive filenames including sequence numbers
 
+## Image Creation
+When using the create_img tool: The create_img tool is ONLY for drawing natural images (such as landscapes, objects, scenes, animals, etc.). Do NOT use it to draw text, labels, or any text-based content.
+
 ## Preinstalled Packages
 
 Available packages: requests, numpy, psutil, scikit-learn, pandas, openpyxl, playwright, pandoc, pillow - use directly without installation.

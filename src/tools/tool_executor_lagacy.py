@@ -173,7 +173,7 @@ limitations under the License.
                                     stream_error_occurred = True
                                     stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
                                     print_debug(f"⚠️ {stream_error_message}")
-                                    print_current(f"⚠️ Claude API streaming error: {str(e)}")
+                                    print_debug(f"⚠️ Claude API streaming error: {str(e)}")
                                     # 继续处理已接收的内容
                                 finally:
                                     # 确保流被正确关闭（无论是正常结束还是提前停止）

@@ -293,7 +293,7 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                         # Catch exceptions during streaming
                         stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
                         print_debug(f"⚠️ {stream_error_message}")
-                        print_current(f"⚠️ Claude API streaming error: {str(e)}")
+                        print_debug(f"⚠️ Claude API streaming error: {str(e)}")
                         # Continue with any content received so far
                     finally:
                         # Ensure the stream is closed properly, whether normally or early
@@ -460,7 +460,7 @@ def call_claude_with_chat_based_tools_streaming(executor, messages, system_messa
                         except Exception as e:
                             stream_error_message = f"Streaming error: {type(e).__name__}: {str(e)}"
                             print_debug(f"⚠️ {stream_error_message}")
-                            print_current(f"⚠️ Claude API streaming error: {str(e)}")
+                            print_debug(f"⚠️ Claude API streaming error: {str(e)}")
                         finally:
                             try:
                                 if hasattr(stream, 'close'):

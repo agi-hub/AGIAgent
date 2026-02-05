@@ -131,7 +131,7 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
         config_file: Path to the configuration file
         
     Returns:
-        API key string or None if not found
+        API key string, empty string if api_key= is set but empty, or None if not found
     """
     # Check environment variable first (for GUI override)
     env_value = os.environ.get('AGIBOT_API_KEY')
@@ -139,11 +139,14 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
         return env_value
     
     config = load_config(config_file)
-    api_key = config.get('api_key')
+    
+    # Check if api_key exists in config (even if empty)
+    if 'api_key' in config:
+        # Return empty string if api_key= is set but empty
+        return config.get('api_key', '')
     
     # If not found in config file, try AGIAGENT_API_KEY environment variable
-    if not api_key:
-        api_key = os.environ.get('AGIAGENT_API_KEY')
+    api_key = os.environ.get('AGIAGENT_API_KEY')
     
     return api_key
 

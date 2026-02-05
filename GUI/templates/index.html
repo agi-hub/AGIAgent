@@ -18024,52 +18024,67 @@
             });
 
             xhr.addEventListener('load', function() {
-                if (xhr.status === 200) {
-                    const response = JSON.parse(xhr.responseText);
-                    if (response.success) {
-                        // 显示上传成功消息
-                        const filesStr = response.files.join(', ');
-                        const successMsg = CURRENT_LANG === 'zh' ? `成功上传文件: ${filesStr}` : `Successfully uploaded files: ${filesStr}`;
-                        addMessage(successMsg, 'success');
-                        // 清空文件输入
-                        quickFileInput.value = '';
-                        // 刷新目录
-                        refreshDirectories();
-                        
-                        // 自动在需求框添加文件名引用
-                        if (response.files && response.files.length > 0) {
-                            const fileReferences = response.files.map(file => `@${file}`).join(' ');
-                            const fileRefText = response.files.length === 1 ? `${fileReferences}：` : `${fileReferences}:`;
-                            
-                            // 获取当前输入框内容
-                            const currentText = userInput.value.trim();
-                            
-                            // 如果输入框不为空，在末尾添加空格和文件引用
-                            // 如果输入框为空，直接添加文件引用
-                            if (currentText) {
-                                userInput.value = currentText + ' ' + fileRefText;
-                            } else {
-                                userInput.value = fileRefText;
-                            }
-                            
-                            // 触发输入框的resize事件，确保高度自适应
-                            if (typeof resizeTextarea === 'function') {
-                                resizeTextarea();
-                            }
-                            
-                            // 聚焦到输入框
-                            userInput.focus();
-                            // 将光标移动到末尾
-                            const length = userInput.value.length;
-                            userInput.setSelectionRange(length, length);
-                        }
-                    } else {
+                // 尝试解析响应，即使状态码不是200
+                let response = null;
+                try {
+                    response = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    // 如果无法解析JSON，检查是否是200状态码
+                    if (xhr.status === 200) {
                         const failedMsg = I18N.upload_failed || (CURRENT_LANG === 'zh' ? '上传失败' : 'Upload failed');
-                        addMessage(`${failedMsg}: ${response.error}`, 'error');
+                        addMessage(`${failedMsg}: 无效的响应格式`, 'error');
+                        return;
                     }
-                } else {
+                }
+                
+                // 如果响应存在且success为true，即使状态码是500也认为成功
+                // 这是因为文件可能已经上传成功，只是后续处理出错
+                if (response && response.success) {
+                    // 显示上传成功消息
+                    const filesStr = response.files ? response.files.join(', ') : '';
+                    const successMsg = response.message || (CURRENT_LANG === 'zh' ? `成功上传文件: ${filesStr}` : `Successfully uploaded files: ${filesStr}`);
+                    addMessage(successMsg, 'success');
+                    // 清空文件输入
+                    quickFileInput.value = '';
+                    // 刷新目录
+                    refreshDirectories();
+                    
+                    // 自动在需求框添加文件名引用
+                    if (response.files && response.files.length > 0) {
+                        const fileReferences = response.files.map(file => `@${file}`).join(' ');
+                        const fileRefText = response.files.length === 1 ? `${fileReferences}：` : `${fileReferences}:`;
+                        
+                        // 获取当前输入框内容
+                        const currentText = userInput.value.trim();
+                        
+                        // 如果输入框不为空，在末尾添加空格和文件引用
+                        // 如果输入框为空，直接添加文件引用
+                        if (currentText) {
+                            userInput.value = currentText + ' ' + fileRefText;
+                        } else {
+                            userInput.value = fileRefText;
+                        }
+                        
+                        // 触发输入框的resize事件，确保高度自适应
+                        if (typeof resizeTextarea === 'function') {
+                            resizeTextarea();
+                        }
+                        
+                        // 聚焦到输入框
+                        userInput.focus();
+                        // 将光标移动到末尾
+                        const length = userInput.value.length;
+                        userInput.setSelectionRange(length, length);
+                    }
+                } else if (xhr.status === 200 && response) {
+                    // 状态码200但success为false
                     const failedMsg = I18N.upload_failed || (CURRENT_LANG === 'zh' ? '上传失败' : 'Upload failed');
-                    addMessage(`${failedMsg}: HTTP ${xhr.status}`, 'error');
+                    addMessage(`${failedMsg}: ${response.error || '未知错误'}`, 'error');
+                } else {
+                    // 其他错误情况
+                    const failedMsg = I18N.upload_failed || (CURRENT_LANG === 'zh' ? '上传失败' : 'Upload failed');
+                    const errorMsg = response && response.error ? response.error : `HTTP ${xhr.status}`;
+                    addMessage(`${failedMsg}: ${errorMsg}`, 'error');
                 }
             });
 
@@ -18146,36 +18161,52 @@
             });
 
             xhr.addEventListener('load', function() {
-                if (xhr.status === 200) {
-                    const response = JSON.parse(xhr.responseText);
-                    if (response.success) {
-                        // 显示上传完成信息
-                        progressText.textContent = I18N.upload_completed;
-                        uploadResult.innerHTML = `
-                            <div class="success">
-                                <i class="fas fa-check-circle"></i> ${response.message}
-                                <br><small>文件: ${response.files.join(', ')}</small>
-                            </div>
-                        `;
-                        
-                        // 清空文件输入
-                        fileInput.value = '';
-                        
-                        // 2秒后自动关闭对话框并刷新目录
-                        setTimeout(() => {
-                            uploadModal.style.display = 'none';
-                            uploadProgress.style.display = 'none';
-                            uploadResult.innerHTML = '';
-                            progressFill.style.width = '0%';
-                            refreshDirectories();
-                        }, 2000);
-                    } else {
+                // 尝试解析响应，即使状态码不是200
+                let response = null;
+                try {
+                    response = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    // 如果无法解析JSON，检查是否是200状态码
+                    if (xhr.status === 200) {
                         uploadProgress.style.display = 'none';
-                        uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${response.error}</div>`;
+                        uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${I18N.upload_failed || '上传失败'}: 无效的响应格式</div>`;
+                        return;
                     }
-                } else {
+                }
+                
+                // 如果响应存在且success为true，即使状态码是500也认为成功
+                // 这是因为文件可能已经上传成功，只是后续处理出错
+                if (response && response.success) {
+                    // 显示上传完成信息
+                    progressText.textContent = I18N.upload_completed;
+                    const filesStr = response.files ? response.files.join(', ') : '';
+                    uploadResult.innerHTML = `
+                        <div class="success">
+                            <i class="fas fa-check-circle"></i> ${response.message || (CURRENT_LANG === 'zh' ? `成功上传文件: ${filesStr}` : `Successfully uploaded files: ${filesStr}`)}
+                            ${filesStr ? `<br><small>文件: ${filesStr}</small>` : ''}
+                        </div>
+                    `;
+                    
+                    // 清空文件输入
+                    fileInput.value = '';
+                    
+                    // 2秒后自动关闭对话框并刷新目录
+                    setTimeout(() => {
+                        uploadModal.style.display = 'none';
+                        uploadProgress.style.display = 'none';
+                        uploadResult.innerHTML = '';
+                        progressFill.style.width = '0%';
+                        refreshDirectories();
+                    }, 2000);
+                } else if (xhr.status === 200 && response) {
+                    // 状态码200但success为false
                     uploadProgress.style.display = 'none';
-                    uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${I18N.upload_failed_http.replace('{0}', xhr.status)}</div>`;
+                    uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${response.error || '未知错误'}</div>`;
+                } else {
+                    // 其他错误情况
+                    uploadProgress.style.display = 'none';
+                    const errorMsg = response && response.error ? response.error : (I18N.upload_failed_http ? I18N.upload_failed_http.replace('{0}', xhr.status) : `上传失败: HTTP ${xhr.status}`);
+                    uploadResult.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${errorMsg}</div>`;
                 }
             });
 
