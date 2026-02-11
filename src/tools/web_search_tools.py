@@ -391,6 +391,19 @@ class WebSearchTools:
             if len(base_filename) < 3:
                 base_filename = f"webpage_{timestamp}"
             
+            # Limit filename length to avoid Windows path length issues (260 chars max)
+            # Reserve space for directory path, extension, and buffer
+            # Typical path: D:\...\workspace\web_search_result\filename.html (~150-200 chars for path)
+            # Reserve 200 chars for path, 10 chars for extension and buffer
+            max_filename_length = 50  # Conservative limit for filename
+            if len(base_filename) > max_filename_length:
+                # Truncate but keep timestamp
+                prefix_length = max_filename_length - len(timestamp) - 1  # -1 for underscore
+                if prefix_length > 0:
+                    base_filename = base_filename[:prefix_length] + "_" + timestamp
+                else:
+                    base_filename = f"webpage_{timestamp}"
+            
             # Save HTML content (but check for special pages first)
             try:
                 html_content = page.content()
@@ -437,6 +450,10 @@ class WebSearchTools:
                     # Ensure the HTML file has .html extension
                     html_filename = f"{base_filename}.html"
                     html_filepath = os.path.join(self.web_result_dir, html_filename)
+                    
+                    # Ensure directory exists before writing (double-check)
+                    os.makedirs(self.web_result_dir, exist_ok=True)
+                    
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
                     # 成功保存HTML后，记录URL以避免重复下载
@@ -489,6 +506,9 @@ class WebSearchTools:
                         # Ensure the txt file has .txt extension
                         txt_filename = f"{base_filename}.txt"
                         txt_filepath = os.path.join(self.web_result_dir, txt_filename)
+                        
+                        # Ensure directory exists before writing (double-check)
+                        os.makedirs(self.web_result_dir, exist_ok=True)
                         
                         # Create a formatted text file with metadata (统一格式)
                         formatted_content = f"""Title: {title}
@@ -3112,6 +3132,19 @@ Please create a detailed, structured analysis that preserves important informati
             if len(base_filename) < 3:
                 base_filename = f"webpage_{timestamp}"
             
+            # Limit filename length to avoid Windows path length issues (260 chars max)
+            # Reserve space for directory path, extension, and buffer
+            # Typical path: D:\...\workspace\web_search_result\filename.html (~150-200 chars for path)
+            # Reserve 200 chars for path, 10 chars for extension and buffer
+            max_filename_length = 50  # Conservative limit for filename
+            if len(base_filename) > max_filename_length:
+                # Truncate but keep timestamp
+                prefix_length = max_filename_length - len(timestamp) - 1  # -1 for underscore
+                if prefix_length > 0:
+                    base_filename = base_filename[:prefix_length] + "_" + timestamp
+                else:
+                    base_filename = f"webpage_{timestamp}"
+            
             # Save HTML content
             try:
                 # 确保html_content是字符串类型
@@ -3155,6 +3188,10 @@ Please create a detailed, structured analysis that preserves important informati
                 if not is_special:
                     html_filename = f"{base_filename}.html"
                     html_filepath = os.path.join(self.web_result_dir, html_filename)
+                    
+                    # Ensure directory exists before writing (double-check)
+                    os.makedirs(self.web_result_dir, exist_ok=True)
+                    
                     with open(html_filepath, 'w', encoding='utf-8') as f:
                         f.write(html_content)
                     # 成功保存HTML后，记录URL以避免重复下载
@@ -3196,6 +3233,9 @@ Please create a detailed, structured analysis that preserves important informati
                     if cleaned_content and len(cleaned_content.strip()) > 50:
                         txt_filename = f"{base_filename}.txt"
                         txt_filepath = os.path.join(self.web_result_dir, txt_filename)
+                        
+                        # Ensure directory exists before writing (double-check)
+                        os.makedirs(self.web_result_dir, exist_ok=True)
                         
                         # Create a formatted text file with metadata
                         formatted_content = f"""Title: {title}
