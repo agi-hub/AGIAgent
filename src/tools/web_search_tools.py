@@ -4862,8 +4862,10 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 url_matches = re.findall(pattern, html_content, re.IGNORECASE)
                 
                 if url_matches:
-                    print_debug(f"📸 Found {len(url_matches)} image URLs in JavaScript")
-                    for i, url in enumerate(url_matches[:20]):  # 限制最多20张
+                    # 使用set进行去重，避免重复下载同一图片
+                    unique_urls = list(dict.fromkeys(url_matches))  # 保持顺序的去重
+                    print_debug(f"📸 Found {len(url_matches)} image URLs in JavaScript (after dedup: {len(unique_urls)})")
+                    for i, url in enumerate(unique_urls[:20]):  # 限制最多20张
                         valid_images.append({
                             'src': url,
                             'original_src': url,
@@ -4875,6 +4877,9 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 return valid_images
             
             print_debug(f"📸 Found {len(matches)} JSON metadata objects")
+            
+            # 使用set记录已添加的图片URL，避免重复
+            seen_urls = set()
             
             for i, match in enumerate(matches[:20]):  # 限制处理最多20个对象
                 try:
@@ -4903,8 +4908,13 @@ Cleaned Content Length: {len(cleaned_content)} characters
                     image_info = self._format_google_image_object(metadata, i+1)
                     
                     if image_info and image_info.get('original_src'):
-                        valid_images.append(image_info)
-                        print_debug(f"✅ Extracted image {i+1}: {image_info['original_src'][:80]}...")
+                        # 检查URL是否已经添加过，避免重复
+                        if image_info['original_src'] not in seen_urls:
+                            seen_urls.add(image_info['original_src'])
+                            valid_images.append(image_info)
+                            print_debug(f"✅ Extracted image {i+1}: {image_info['original_src'][:80]}...")
+                        else:
+                            print_debug(f"⏭️ Skipped duplicate image {i+1}: {image_info['original_src'][:80]}...")
                     
                 except Exception as e:
                     print_debug(f"⚠️ Error processing JSON object {i+1}: {e}")
