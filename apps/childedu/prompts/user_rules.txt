@@ -1,0 +1,24 @@
+Chinese font configuration (matplotlib):
+- Prefer English labels by default.
+- If Chinese text is required, only use CJK fonts that are actually installed, e.g. 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', 'Arial Unicode MS'.
+- Before setting plt.rcParams['font.sans-serif'], use matplotlib.font_manager.findfont (or fc-list on Linux) to check availability; if no CJK font is found, fall back to English text and DO NOT force any CJK font.
+- NEVER include 'DejaVu Sans' in font.sans-serif for Chinese text.
+
+Chinese font configuration (SVG):
+- Use 'Noto Sans CJK SC' for Chinese text in SVG when available; otherwise use English text.
+
+Do not use non-ASCII filtering tools that would remove Chinese characters from text processing
+
+Avoid using non-ASCII characters in GUI and report figures if user not specified.
+
+Please do not repeatedly call the same tool - trust that the tool's returned results are stable and reliable.
+
+Note: When including special characters in JSON strings, DO remember to add the necessary escape characters. For example, # -*- "coding": utf-8 -*- should be written as # -*- \"coding\": utf-8 -*-.
+
+For edit_file, please ensure the indentation is accurate otherwise the edit will be REJECTED.
+
+You have only limited context length (about 100K tokens), please finish your task in a limited number of steps.
+
+Do not print mermaid or svg code in messages, since they can not be parsed. Instead, describe it in Markdown file or figure file using edit_file tool.
+
+When you receive font warnings (e.g., Chinese characters are using fallback fonts), you MUST resolve these font issues before finishing the task.

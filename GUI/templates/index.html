@@ -6060,21 +6060,9 @@
          * 3. 其他情况下允许自动滚动
          */
         function shouldAutoScroll() {
-            // 如果自动滚动被禁用，直接返回false
-            if (!autoScrollEnabled) {
-                return false;
-            }
-            
-            // 使用统一的阈值检查是否已经接近底部
-            const isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - SCROLL_THRESHOLD;
-            
-            // 如果用户正在向上滚动且不在底部附近，则不执行自动滚动
-            if (isUserScrolling && scrollDirection === 'up' && !isNearBottom) {
-                return false;
-            }
-            
-            // 其他情况下，只要自动滚动启用就允许滚动
-            return autoScrollEnabled;
+            // 修改为：只要有新内容，就始终自动滚动到最新
+            // 忽略用户当前的滚动位置和自动滚动开关状态，保证不会剩下几行没滚到底
+            return true;
         }
         
         // HTML escape function
@@ -8122,7 +8110,16 @@
 
             // 获取当前路径作为来源页面标记
             const currentPath = window.location.pathname;
-            const registerUrl = currentPath === '/' ? '/register' : `/register?from=${encodeURIComponent(currentPath)}`;
+            // 使用后端渲染的 CURRENT_LANG，确保与当前页面展示语言一致
+            const currentLang = (typeof CURRENT_LANG !== 'undefined' && (CURRENT_LANG === 'zh' || CURRENT_LANG === 'en'))
+                ? CURRENT_LANG
+                : 'zh';
+            let registerUrl;
+            if (currentPath === '/') {
+                registerUrl = `/register?lang=${encodeURIComponent(currentLang)}`;
+            } else {
+                registerUrl = `/register?from=${encodeURIComponent(currentPath)}&lang=${encodeURIComponent(currentLang)}`;
+            }
 
             if (isConnected) {
                 // 如果当前处于连接状态，先断开连接

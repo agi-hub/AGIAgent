@@ -3303,8 +3303,17 @@ def terminal():
 @app.route('/register')
 def register():
     """User registration page"""
-    i18n = get_i18n_texts()
-    current_lang = get_language()
+    # Determine current language:
+    # 1) URL parameter ?lang=zh/en
+    # 2) Fallback to config file language
+    lang_param = request.args.get('lang')
+    if lang_param in ('zh', 'en'):
+        current_lang = lang_param
+    else:
+        current_lang = get_language()
+
+    # Load i18n texts for the resolved language
+    i18n = I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
     # 获取来源页面参数，用于返回时跳转到正确的页面
     from_page = request.args.get('from', '/')
     return render_template('register.html', i18n=i18n, lang=current_lang, from_page=from_page)

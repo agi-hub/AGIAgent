@@ -316,6 +316,19 @@
             text-shadow: none;
         }
 
+        .captcha-qr {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .captcha-qr img {
+            max-width: 160px;
+            width: 60%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(64, 150, 255, 0.25);
+        }
+
         .captcha-text {
             font-size: 18px;
             color: #1a4d7a;
@@ -672,10 +685,18 @@
 
             <div class="form-group">
                 <label for="captcha">{{ '验证码' if lang == 'zh' else 'Verification' }} *</label>
-                <p class="captcha-instruction">{{ '请填写以下内容的' if lang == 'zh' else 'Please write the first letter of each word:' }}<span style="color: #ff4757; font-weight: bold;">{{ '拼音' if lang == 'zh' else '' }}</span>{{ '（不含声调）' if lang == 'zh' else '' }}</p>
-                <p class="captcha-text">{{ '我不是大模型' if lang == 'zh' else 'I am not a large model' }}</p>
+                <p class="captcha-instruction">
+                    {{ '关注公众号：AGI智创机器人，点击私信后将验证码输入到下方验证框' if lang == 'zh' else 'Please write the first letter of each word:' }}
+                </p>
+                {% if lang == 'zh' %}
+                <p class="captcha-qr">
+                    <img src="{{ url_for('static', filename='gzh.jpg') }}" alt="AGI智创机器人公众号二维码">
+                </p>
+                {% else %}
+                <p class="captcha-text">I am not a large model</p>
+                {% endif %}
                 <input type="text" id="captcha" name="captcha" class="form-input"
-                       placeholder="{{ '请输入拼音' if lang == 'zh' else 'Enter first letters' }}" required maxlength="50">
+                       placeholder="{{ '请输入验证码' if lang == 'zh' else 'Enter first letters' }}" required maxlength="50">
                 <div class="error-message" id="captchaError"></div>
             </div>
 
@@ -832,24 +853,10 @@
                 let isValidCaptcha = false;
                 
                 if (currentLang === 'zh') {
-                    // 中文版：验证拼音 "我不是大模型" -> "wo bu shi da mo xing"
-                    // 首先检查输入是否为英文（拼音）
-                    const isEnglish = /^[a-zA-Z\s]+$/.test(captcha);
-                    
-                    if (!isEnglish) {
-                        // 输入不是英文，提示错误
-                        captchaError.textContent = i18n.captchaNotPinyin;
-                        captchaError.style.display = 'block';
-                        captchaInput.classList.add('error');
-                        isValid = false;
-                        return isValid;
-                    }
-                    
-                    // 验证拼音是否正确
+                    // 中文版：验证公众号验证码 "zcjqr"
                     const normalizedCaptcha = captcha.toLowerCase().replace(/\s+/g, '');
-                    const expectedCaptcha = 'wobushidamoxing';
-                    const expectedCaptchaWithSpaces = 'wo bu shi da mo xing';
-                    isValidCaptcha = normalizedCaptcha === expectedCaptcha || captcha.toLowerCase() === expectedCaptchaWithSpaces;
+                    const expectedCaptcha = 'zcjqr';
+                    isValidCaptcha = normalizedCaptcha === expectedCaptcha;
                 } else {
                     // 英文版：验证首字母 "I am not a large model" -> "ianalm"
                     const normalizedCaptcha = captcha.toLowerCase().replace(/\s+/g, '');
@@ -862,12 +869,7 @@
                     captchaInput.classList.add('error');
                     isValid = false;
                 } else if (!isValidCaptcha) {
-                    // 验证码错误，如果是中文版且输入是英文，提示"请在验证码中输入正确的拼音"
-                    if (currentLang === 'zh' && /^[a-zA-Z\s]+$/.test(captcha)) {
-                        captchaError.textContent = i18n.captchaNotPinyin;
-                    } else {
-                        captchaError.textContent = i18n.captchaIncorrect;
-                    }
+                    captchaError.textContent = i18n.captchaIncorrect;
                     captchaError.style.display = 'block';
                     captchaInput.classList.add('error');
                     isValid = false;
