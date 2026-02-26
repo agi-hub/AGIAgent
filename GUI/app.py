@@ -7905,6 +7905,32 @@ def get_app_logo(logo_path):
         print(f"Error serving app logo {logo_path}: {e}")
         abort(404)
 
+
+@app.route('/api/user-guide-image')
+def user_guide_image():
+    """Serve user guide image from project md/images directory"""
+    try:
+        # Try to get project root from gui_instance if available
+        project_root = None
+        try:
+            if 'gui_instance' in globals() and hasattr(gui_instance, 'app_manager'):
+                project_root = gui_instance.app_manager.base_dir
+        except Exception:
+            project_root = None
+
+        if not project_root:
+            # Fallback: GUI directory的上一级就是项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        img_path = os.path.join(project_root, 'md', 'images', 'user_guide.png')
+        if not os.path.exists(img_path):
+            abort(404)
+
+        return send_file(img_path, mimetype='image/png')
+    except Exception as e:
+        print(f"Error serving user guide image: {e}")
+        abort(404)
+
 def get_routine_files(session_id=None, app_manager=None, lang_param=None):
     """Get list of routine files from routine directory and workspace files starting with 'routine_'
     

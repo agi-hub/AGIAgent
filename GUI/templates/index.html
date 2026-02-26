@@ -4166,6 +4166,11 @@
                             rows="1"
                         ></textarea>
                         <div class="mode-selection">
+                            <a href="javascript:void(0);" 
+                               id="newUserGuideLink"
+                               style="color: var(--link-color); text-decoration: underline; cursor: pointer; margin-right: auto; font-size: 0.85em; white-space: nowrap;">
+                                {% if lang == 'zh' %}新手指导{% else %}New User Guide{% endif %}
+                            </a>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
                             </label>
@@ -4254,6 +4259,25 @@
              aria-label="{{ i18n.get('show_workspace_panel', '显示工作目录' if lang == 'zh' else 'Show Workspace') }}">
             <i class="fas fa-folder-open"></i>
             <span>{{ i18n.get('workspace_title_short', '工作目录' if lang == 'zh' else 'Workspace') }}</span>
+        </div>
+    </div>
+
+    <!-- 新手指导弹窗（复用预览模态框样式） -->
+    <div id="newUserGuideModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 960px; height: auto; max-height: none;">
+            <div class="modal-header">
+                <h3>
+                    {% if lang == 'zh' %}新手指导{% else %}New User Guide{% endif %}
+                </h3>
+                <div class="modal-header-buttons">
+                    <span class="close" id="newUserGuideClose">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body" style="overflow: visible; max-height: none;">
+                <img src="{{ url_for('user_guide_image') }}"
+                     alt="User Guide"
+                     style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+            </div>
         </div>
     </div>
 
@@ -8872,6 +8896,40 @@
             // 清理定时器
             clearTimeout(batchProcessingTimer);
         });
+        
+        // 新手指导弹窗逻辑
+        (function() {
+            const guideLink = document.getElementById('newUserGuideLink');
+            const guideModal = document.getElementById('newUserGuideModal');
+            const guideClose = document.getElementById('newUserGuideClose');
+
+            if (!guideLink || !guideModal || !guideClose) {
+                return;
+            }
+
+            const openGuideModal = () => {
+                guideModal.style.display = 'block';
+                guideModal.setAttribute('aria-hidden', 'false');
+            };
+
+            const closeGuideModal = () => {
+                guideModal.style.display = 'none';
+                guideModal.setAttribute('aria-hidden', 'true');
+            };
+
+            guideLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                openGuideModal();
+            });
+
+            guideClose.addEventListener('click', closeGuideModal);
+
+            window.addEventListener('click', (event) => {
+                if (event.target === guideModal) {
+                    closeGuideModal();
+                }
+            });
+        })();
         
         /**
          * 测试批量消息处理性能
