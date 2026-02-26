@@ -559,8 +559,8 @@ I18N_TEXTS = {
         'new_name_empty': '新名称不能为空',
         
         # Multi-user support
-        'api_key_label': 'API Key:',
-        'api_key_placeholder': '输入API Key (可选)',
+        'api_key_label': '登录码',
+        'api_key_placeholder': 'API Key (可选)',
         'api_key_tooltip': '输入您的API Key，留空则使用默认用户模式',
         'connect_btn': '连接',
         'disconnect_btn': '断开',
@@ -583,20 +583,20 @@ I18N_TEXTS = {
         'session_restored': '已恢复上次登录会话',
         
         # Model selection
-        'model_label': '模型:',
+        'model_label': '模型',
         'model_tooltip': '选择要使用的AI模型',
         'model_claude_sonnet': 'claude-sonnet-4-0 (高精度)',
         'model_gpt_4': 'gpt-4.1 (高效率)',
         'config_error_title': '配置错误',
-        'config_error_invalid_key': 'API Key配置无效，请检查config/config.txt文件中的GUI API configuration部分',
+        'config_error_invalid_key': '登陆码（login key）配置无效，请检查config/config.txt文件中的GUI API configuration部分',
         
         # Custom model config dialog
         'custom_config_title': '自定义模型配置',
-        'custom_api_key_label': 'API Key:',
+        'custom_api_key_label': '登陆码',
         'custom_api_base_label': 'API Base URL:',
-        'custom_model_label': '模型名称:',
+        'custom_model_label': '模型名称',
         'custom_max_tokens_label': 'Max Output Tokens:',
-        'custom_api_key_placeholder': '请输入API Key',
+        'custom_api_key_placeholder': '请输入登陆码',
         'custom_api_base_placeholder': '请输入API Base URL（如：https://api.example.com/v1）',
         'custom_model_placeholder': '请输入模型名称（如：gpt-4）',
         'custom_max_tokens_placeholder': '请输入最大输出token数量（默认：8192）',
@@ -959,9 +959,9 @@ I18N_TEXTS = {
         'new_name_empty': 'New name cannot be empty',
         
         # Multi-user support
-        'api_key_label': 'API Key:',
-        'api_key_placeholder': 'Enter API Key (optional)',
-        'api_key_tooltip': 'Enter your API Key, leave empty for default user mode',
+        'api_key_label': 'login key',
+        'api_key_placeholder': 'Enter login key (optional)',
+        'api_key_tooltip': 'Enter your login key, leave empty for default user mode',
         'connect_btn': 'Connect',
         'disconnect_btn': 'Disconnect',
         'connecting': 'Connecting...',
@@ -983,20 +983,20 @@ I18N_TEXTS = {
         'session_restored': 'Previous login session restored',
         
         # Model selection
-        'model_label': 'Model:',
+        'model_label': 'Model',
         'model_tooltip': 'Select AI model to use',
         'model_claude_sonnet': 'claude-sonnet-4-0 (High Accuracy)',
         'model_gpt_4': 'gpt-4.1 (High Efficiency)',
         'config_error_title': 'Configuration Error',
-        'config_error_invalid_key': 'Invalid API Key configuration, please check GUI API configuration in config/config.txt',
+        'config_error_invalid_key': 'Invalid login key configuration, please check GUI API configuration in config/config.txt',
         
         # Custom model config dialog
         'custom_config_title': 'Custom Model Configuration',
-        'custom_api_key_label': 'API Key:',
+        'custom_api_key_label': 'login key',
         'custom_api_base_label': 'API Base URL:',
         'custom_model_label': 'Model Name:',
         'custom_max_tokens_label': 'Max Output Tokens:',
-        'custom_api_key_placeholder': 'Enter API Key',
+        'custom_api_key_placeholder': 'Enter login key',
         'custom_api_base_placeholder': 'Enter API Base URL (e.g., https://api.example.com/v1)',
         'custom_model_placeholder': 'Enter model name (e.g., gpt-4)',
         'custom_max_tokens_placeholder': 'Enter max output tokens (default: 8192)',

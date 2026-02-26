@@ -644,7 +644,7 @@
                 </div>
                 <div class="title-section">
                     <h1 class="title">{{ '用户注册' if lang == 'zh' else 'User Registration' }}</h1>
-                    <p class="subtitle">{{ '注册账号并获取您的API密钥' if lang == 'zh' else 'Register an account and get your API key' }}</p>
+                    <p class="subtitle">{{ '注册账号并获取您的登陆码（login key）' if lang == 'zh' else 'Register an account and get your login key' }}</p>
                 </div>
             </div>
 
@@ -662,10 +662,10 @@
                  data-registration-failed="{{ '注册失败，请重试' if lang == 'zh' else 'Registration failed, please try again' }}"
                  data-network-error="{{ '网络错误，请检查连接后重试' if lang == 'zh' else 'Network error, please check connection and try again' }}"
                  data-copied="{{ '已复制！' if lang == 'zh' else 'Copied!' }}"
-                 data-copy-failed="{{ '复制失败，请手动复制API密钥' if lang == 'zh' else 'Copy failed, please manually copy the API key' }}"
+                 data-copy-failed="{{ '复制失败，请手动复制登陆码（login key）' if lang == 'zh' else 'Copy failed, please manually copy the login key' }}"
                  data-registration-success="{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}"
                  data-user-exists="{{ '用户已存在' if lang == 'zh' else 'User Already Exists' }}"
-                 data-existing-user-message="{{ '该用户已注册，以下是您的API密钥' if lang == 'zh' else 'This user is already registered. Here is your API key' }}">
+                 data-existing-user-message="{{ '该用户已注册，以下是您的登陆码（login key）' if lang == 'zh' else 'This user is already registered. Here is your login key' }}">
             </div>
 
         <form id="registerForm">
@@ -720,7 +720,7 @@
 
         <div class="api-key-result" id="apiKeyResult">
             <h3 id="resultTitle">{{ '注册成功！' if lang == 'zh' else 'Registration Successful!' }}</h3>
-            <p id="resultMessage">{{ '您的API密钥已生成，请妥善保存：' if lang == 'zh' else 'Your API key has been generated. Please save it securely:' }}</p>
+            <p id="resultMessage">{{ '您的登陆码（login key）已生成，请妥善保存：' if lang == 'zh' else 'Your login key has been generated. Please save it securely:' }}</p>
             <div class="api-key-display" id="apiKeyDisplay"></div>
             <button class="copy-btn" id="copyBtn">{{ '复制密钥' if lang == 'zh' else 'Copy Key' }}</button>
             <p id="warningMessage" style="margin-top: 15px; font-size: 12px; color: #ff6b6b; font-family: 'DejaVu Sans', 'Liberation Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif; text-shadow: none;">
@@ -948,7 +948,7 @@
                         } else {
                             resultTitle.textContent = i18n.registrationSuccess;
                             resultMessage.textContent = i18nData.getAttribute('data-lang') === 'zh' ?
-                                '您的API密钥已生成，请妥善保存：' : 'Your API key has been generated. Please save it securely:';
+                                '您的登陆码（login key）已生成，请妥善保存：' : 'Your login key has been generated. Please save it securely:';
                             warningMessage.style.display = 'block';
                         }
 
