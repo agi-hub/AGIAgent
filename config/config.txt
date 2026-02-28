@@ -8,13 +8,13 @@ LANG=zh
 # the configuration in comment will not be valid.
 
 # GLM coding-plan API configuration
-api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
+api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
 model=glm-4.7
 max_tokens=16384
 
 # GLM coding-plan API configuration
-# api_key=33a356ba1bf4f18fbddaf77c365561d7.kmTOT9vetcZVA2fg
+# api_key=your key
 # api_base=https://open.bigmodel.cn/api/anthropic
 # model=glm-4.5-air
 # max_tokens=16384
