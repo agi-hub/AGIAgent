@@ -68,12 +68,12 @@
 
 <div align="center">
 
-| [![AI行研报告写作4款软件横评](https://github.com/user-attachments/assets/6594a016-8478-4a3b-8869-bb7a1769b32b)](https://www.bilibili.com/video/BV1eQPuzVEmJ/) | [![免费的专利AI辅助撰写神器](https://github.com/user-attachments/assets/66610d97-c5af-4667-9618-c8232ca40d9c)](https://www.bilibili.com/video/BV1RSPuzyEfB/) |
+| [![AI行研报告写作4款软件横评](https://github.com/user-attachments/assets/2b3dc9ff-6244-4d9e-ab2e-a31ad554d35c)](https://www.bilibili.com/video/BV1eQPuzVEmJ/) | [![免费的专利AI辅助撰写神器](https://github.com/user-attachments/assets/00ecfd39-a74d-4d9e-9454-e0b03f28cf19)](https://www.bilibili.com/video/BV1RSPuzyEfB/) |
 |:---:|:---:|
 | AI行研报告写作4款软件横评 | 免费的专利AI辅助撰写神器 |
-| [![国家项目申请书撰写](https://github.com/user-attachments/assets/3ec7e837-ce89-44cf-99af-a24407eb4e5f)](https://www.bilibili.com/video/BV1iUPuzLEpM/) | [![AGI Agent：开源智能体图文写作案例](https://github.com/user-attachments/assets/291ed2a0-cc06-4b8c-b4d3-0c25a2841ffb)](https://www.bilibili.com/video/BV1wmUTB5EMN/) |
+| [![国家项目申请书撰写](https://github.com/user-attachments/assets/9863ebfb-4d84-4d69-8fc5-0f4717d2d9c0)](https://www.bilibili.com/video/BV1iUPuzLEpM/) | [![AGI Agent：开源智能体图文写作案例](https://github.com/user-attachments/assets/babe2c1d-6306-4fc4-b0f9-52de614fb8fc)](https://www.bilibili.com/video/BV1wmUTB5EMN/) |
 | 国家项目申请书撰写 | AGI Agent：开源智能体图文写作案例 |
-| [![AGI Agent深度图文写作案例-房价走势分析](https://github.com/user-attachments/assets/080be6ba-0de0-4a2d-9c08-565be89e7a1d)](https://www.bilibili.com/video/BV1NzUTBSE1q/) | |
+| [![AGI Agent深度图文写作案例-房价走势分析](https://github.com/user-attachments/assets/3ec7e837-ce89-44cf-99af-a24407eb4e5f)](https://www.bilibili.com/video/BV1NzUTBSE1q/) | |
 | AGI Agent深度图文写作案例-房价走势分析 | |
 
 </div>
@@ -82,7 +82,7 @@
 
 <div align="center">
 
-| [![适合中国宝宝体质的自主智能体AGI Agent](https://github.com/user-attachments/assets/babe2c1d-6306-4fc4-b0f9-52de614fb8fc)](https://www.bilibili.com/video/BV1ez6nBmEU3/) | [![AGI Agent 登陆由纯智能体机器人组建的Moltbook社区](https://github.com/user-attachments/assets/9863ebfb-4d84-4d69-8fc5-0f4717d2d9c0)](https://www.bilibili.com/video/BV1WXFKz3EXQ/) |
+| [![适合中国宝宝体质的自主智能体AGI Agent](https://github.com/user-attachments/assets/080be6ba-0de0-4a2d-9c08-565be89e7a1d)](https://www.bilibili.com/video/BV1ez6nBmEU3/) | [![AGI Agent 登陆由纯智能体机器人组建的Moltbook社区](https://github.com/user-attachments/assets/291ed2a0-cc06-4b8c-b4d3-0c25a2841ffb)](https://www.bilibili.com/video/BV1WXFKz3EXQ/) |
 |:---:|:---:|
 | 适合中国宝宝体质的自主智能体AGI Agent | AGI Agent 登陆Moltbook社区 |
 
@@ -92,7 +92,7 @@
 
 <div align="center">
 
-| [![多智能体辩论赛](https://github.com/user-attachments/assets/00ecfd39-a74d-4d9e-9454-e0b03f28cf19)](https://www.bilibili.com/video/BV1iUPuzLE3N/) |
+| [![多智能体辩论赛](https://github.com/user-attachments/assets/66610d97-c5af-4667-9618-c8232ca40d9c)](https://www.bilibili.com/video/BV1iUPuzLE3N/) |
 |:---:|
 | 多智能体辩论赛 |
 
@@ -102,7 +102,7 @@
 
 <div align="center">
 
-| [![游戏编程-合金弹头](https://github.com/user-attachments/assets/2b3dc9ff-6244-4d9e-ab2e-a31ad554d35c)](https://www.bilibili.com/video/BV1KJUMBpEah/) |
+| [![游戏编程-合金弹头](https://github.com/user-attachments/assets/6594a016-8478-4a3b-8869-bb7a1769b32b)](https://www.bilibili.com/video/BV1KJUMBpEah/) |
 |:---:|
 | 游戏编程-合金弹头 |
 
