@@ -6,6 +6,7 @@
   <a href="http://colordoc.online"><img src="https://img.shields.io/badge/ColorDoc-colordoc.online-FF6B35?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ColorDoc"></a>
   <a href="https://github.com/agi-hub/AGIAgent/wiki/AGIAgent-%E6%8A%80%E6%9C%AF%E7%99%BD%E7%9A%AE%E4%B9%A6"><img src="https://img.shields.io/badge/技术白皮书-Wiki-8A2BE2?style=for-the-badge&logo=gitbook&logoColor=white" alt="技术白皮书 Wiki"></a>
   <a href="https://github.com/user-attachments/files/25679954/AGI.Agent.intro.web.version.pdf"><img src="https://img.shields.io/badge/介绍PPT-PDF-E63946?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="介绍PPT"></a>
+  <a href="md/user_guide.pdf"><img src="https://img.shields.io/badge/使用手册-PDF-FF8C00?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="使用手册"></a>
   <a href="#联系我们"><img src="https://img.shields.io/badge/微信公众号-AGI智创机器人-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="微信公众号"></a>
 </p>
 

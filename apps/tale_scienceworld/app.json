@@ -1,7 +1,0 @@
-{
-  "app_name": "TALE-Suite ScienceWorld",
-  "app_title": "TALE ScienceWorld Runner",
-  "prompts_path": "prompts",
-  "routine_path": "routine",
-  "config_path": "config.txt"
-}

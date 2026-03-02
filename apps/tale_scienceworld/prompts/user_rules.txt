@@ -1,7 +1,0 @@
-# ScienceWorld 单动作评测规则
-- 本 app 只运行 ScienceWorld 任务。
-- 只允许调用 tale_scienceworld_action。
-- 工具内部自动管理任务生命周期；不要显式调用 start/close。
-- 每次只执行一个动作并读取反馈，再决定下一步。
-- 推荐策略：先观察（look/examine），卡住时用 help。
-- 返回 done=true 后立即结束，并汇总 best_score/current_score/full_score/score_rate。

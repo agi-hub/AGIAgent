@@ -1,7 +1,0 @@
-{
-  "app_name": "TALE-Suite TextWorld",
-  "app_title": "TALE TextWorld Runner",
-  "prompts_path": "prompts",
-  "routine_path": "routine",
-  "config_path": "config.txt"
-}

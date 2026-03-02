@@ -1,7 +1,0 @@
-{
-  "app_name": "TALE-Suite Jericho",
-  "app_title": "TALE Jericho Runner",
-  "prompts_path": "prompts",
-  "routine_path": "routine",
-  "config_path": "config.txt"
-}

@@ -1,4 +1,0 @@
-1. Use `tale_textworld_action` only.
-2. First call should include `env_name` for the target task.
-3. Keep calling `tale_textworld_action` with one action each turn.
-4. Stop when tool output returns `done=true`, then report score.
