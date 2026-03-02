@@ -296,6 +296,8 @@ LANG=zh
 
 推荐使用 `install.sh` 一键安装（需要 Python 3.8+）。最小化安装：
 
+> ⚠️ **Python 3.8 用户注意**：`fastmcp` 不支持 Python 3.8，安装前请在 `requirements.txt` 中注释掉 `fastmcp` 那一行。
+
 ```bash
 pip install -r requirements.txt
 
