@@ -38,6 +38,7 @@ import os
 import sys
 import argparse
 import json
+import re
 import atexit
 from datetime import datetime, timezone, timedelta
 from src.multi_round_executor import MultiRoundTaskExecutor
@@ -639,6 +640,149 @@ class AGIAgentMain:
             except:
                 pass
             return False
+
+    def _summarize_score_history(self, task_history: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract TALE score statistics from round history text."""
+        current_score_re = re.compile(r"[\"']?current_score[\"']?\s*[:=]\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+        best_score_re = re.compile(r"[\"']?best_score[\"']?\s*[:=]\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+        full_score_re = re.compile(r"[\"']?full_score[\"']?\s*[:=]\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+        legacy_score_re = re.compile(
+            r"(?<!max_)(?<!norm_)(?<!best_)(?<!current_)(?<!full_)[\"']?score[\"']?\s*[:=]\s*(-?\d+(?:\.\d+)?)",
+            re.IGNORECASE,
+        )
+        legacy_max_score_re = re.compile(r"[\"']?max_score[\"']?\s*[:=]\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+
+        observations: List[Dict[str, Any]] = []
+
+        for record in task_history or []:
+            if not isinstance(record, dict):
+                continue
+
+            result = record.get("result")
+            if not isinstance(result, str) or not result:
+                continue
+
+            current_score_matches = [float(x) for x in current_score_re.findall(result)]
+            best_score_matches = [float(x) for x in best_score_re.findall(result)]
+            full_score_matches = [float(x) for x in full_score_re.findall(result)]
+
+            # Backward compatibility for old logs/tools.
+            if not current_score_matches:
+                current_score_matches = [float(x) for x in legacy_score_re.findall(result)]
+            if not full_score_matches:
+                full_score_matches = [float(x) for x in legacy_max_score_re.findall(result)]
+
+            if not (current_score_matches or best_score_matches or full_score_matches):
+                continue
+
+            obs: Dict[str, Any] = {}
+            if current_score_matches:
+                obs["current_score"] = current_score_matches[-1]
+            if best_score_matches:
+                obs["best_score"] = best_score_matches[-1]
+            if full_score_matches:
+                obs["full_score"] = full_score_matches[-1]
+            observations.append(obs)
+
+        summary: Dict[str, Any] = {
+            "has_metrics": bool(observations),
+            "observation_count": len(observations),
+            "best_score": None,
+            "current_score": None,
+            "full_score": None,
+            "score_rate": None,
+        }
+
+        if not observations:
+            return summary
+
+        for obs in observations:
+            current_score = obs.get("current_score")
+            best_score = obs.get("best_score")
+            full_score = obs.get("full_score")
+
+            if current_score is not None:
+                summary["current_score"] = current_score
+                if summary["best_score"] is None or current_score > summary["best_score"]:
+                    summary["best_score"] = current_score
+
+            if best_score is not None:
+                if summary["best_score"] is None or best_score > summary["best_score"]:
+                    summary["best_score"] = best_score
+
+            if full_score is not None:
+                if summary["full_score"] is None or full_score > summary["full_score"]:
+                    summary["full_score"] = full_score
+
+        if (
+            summary["best_score"] is not None
+            and summary["full_score"] is not None
+            and float(summary["full_score"]) > 0
+        ):
+            summary["score_rate"] = float(summary["best_score"]) / float(summary["full_score"])
+
+        return summary
+
+    def _write_score_summary(
+        self,
+        task_result: Dict[str, Any],
+        loops: int,
+        score_summary: Dict[str, Any],
+    ) -> Optional[str]:
+        """Write per-task score summary to logs/score_summary.json."""
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "task_status": task_result.get("status"),
+            "max_loops": loops,
+            "has_metrics": bool((score_summary or {}).get("has_metrics")),
+            "best_score": (score_summary or {}).get("best_score"),
+            "current_score": (score_summary or {}).get("current_score"),
+            "full_score": (score_summary or {}).get("full_score"),
+            "score_rate": (score_summary or {}).get("score_rate"),
+        }
+        if (
+            payload.get("score_rate") is None
+            and payload.get("best_score") is not None
+            and payload.get("full_score") is not None
+        ):
+            try:
+                if float(payload["full_score"]) > 0:
+                    payload["score_rate"] = float(payload["best_score"]) / float(payload["full_score"])
+            except Exception:
+                payload["score_rate"] = None
+
+        path = os.path.join(self.logs_dir, "score_summary.json")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            return path
+        except Exception as e:
+            print_current(f"⚠️ Failed to write score summary: {e}")
+            return None
+
+    @staticmethod
+    def _format_metric(value: Any, digits: int = 4) -> str:
+        if value is None:
+            return "N/A"
+        try:
+            if isinstance(value, int):
+                return str(value)
+            value_f = float(value)
+            return f"{value_f:.{digits}f}"
+        except Exception:
+            return str(value)
+
+    def _is_tale_eval_context(self, requirement: str) -> bool:
+        """Return True only for TALE dataset evaluation workflows."""
+        req_text = (requirement or "").lower()
+        prompts_path = (self.prompts_folder or "").replace("\\", "/").lower()
+
+        # TALE app prompts path, e.g. apps/tale_alfworld/prompts
+        in_tale_app = "/apps/tale_" in f"/{prompts_path}" if prompts_path else False
+        # TALE tool call marker in requirement text.
+        has_tale_action_marker = bool(re.search(r"\btale_[a-z0-9_]+_action\b", req_text))
+
+        return in_tale_app or has_tale_action_marker
     
     def execute_single_task(self, user_requirement: str, loops: int = 3) -> bool:
         """
@@ -706,6 +850,29 @@ class AGIAgentMain:
             
             # Execute single task
             task_result = executor.execute_single_task(single_task, 0, 1, "")
+
+            score_summary: Dict[str, Any] = {}
+            score_summary_enabled = self._is_tale_eval_context(enhanced_requirement)
+            if score_summary_enabled:
+                # Compute and persist score summary for TALE-style env tasks only.
+                score_summary = self._summarize_score_history(task_result.get("history", []))
+                score_summary_path = self._write_score_summary(
+                    task_result=task_result,
+                    loops=loops,
+                    score_summary=score_summary,
+                )
+                if score_summary.get("has_metrics"):
+                    print_current(
+                        "📊 Score summary: "
+                        f"best_score={self._format_metric(score_summary.get('best_score'))}, "
+                        f"current_score={self._format_metric(score_summary.get('current_score'))}, "
+                        f"full_score={self._format_metric(score_summary.get('full_score'))}, "
+                        f"score_rate={self._format_metric(score_summary.get('score_rate'))}"
+                    )
+                else:
+                    print_current("📊 Score summary: no score metrics found in task history")
+                if score_summary_path:
+                    print_current(f"📄 Score summary file: {score_summary_path}")
             
             # Check if user interrupted execution
             if task_result.get("status") == "user_interrupted":
@@ -727,6 +894,14 @@ class AGIAgentMain:
                 return True
             elif task_result.get("status") == "max_rounds_reached":
                 print_current("⚠️ Task reached maximum execution rounds")
+                if score_summary_enabled and score_summary.get("has_metrics"):
+                    print_current(
+                        "⚠️ Max rounds score snapshot: "
+                        f"best_score={self._format_metric(score_summary.get('best_score'))}, "
+                        f"current_score={self._format_metric(score_summary.get('current_score'))}, "
+                        f"full_score={self._format_metric(score_summary.get('full_score'))}, "
+                        f"score_rate={self._format_metric(score_summary.get('score_rate'))}"
+                    )
                 
                 # Clean up resources before returning
                 try:

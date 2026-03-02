@@ -10,7 +10,7 @@ LANG=zh
 # GLM coding-plan API configuration
 api_key=your key
 api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.7
+model=glm-5
 max_tokens=16384
 
 # GLM coding-plan API configuration
@@ -19,41 +19,11 @@ max_tokens=16384
 # model=glm-4.5-air
 # max_tokens=16384
 
-# Minimax Coding plan
-# api_key=your key
-# api_base=https://api.minimaxi.com/anthropic
-# model=minimax-m2.1
-# max_tokens=16384
-
 # Anthropic models
 # api_key=your key
 # api_base=https://api.openai-proxy.org/anthropic
 # model=claude-sonnet-4-0
 # max_tokens=32768
-
-# Openrouter Qwen3-30b
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=qwen/qwen3-coder-30b-a3b-instruct
-# max_tokens=16384
-
-# Openrouter Minimax M2.1
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=minimax/fp8
-# max_tokens=16384
-
-# Openrouter Grok Code
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=x-ai/grok-code-fast-1
-# max_tokens=16384
-
-# Openrouter Xiaomi
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=xiaomi/mimo-v2-flash:free
-# max_tokens=16384
 
 # Openrouter Nvidia nemotron 3 nano
 # api_key=your key
@@ -90,6 +60,11 @@ max_tokens=16384
 # model=qwen3:8b
 # max_tokens=4096
 
+# Minimax Coding plan
+# api_key=your key
+# api_base=https://api.minimaxi.com/anthropic
+# model=minimax-m2.1
+# max_tokens=16384
 
 # Note: only the last configuration is valid.
 
@@ -97,7 +72,7 @@ max_tokens=16384
 streaming=True
 
 # Long-term memory configuration
-enable_long_term_memory=False
+enable_long_term_memory=True
 
 # Long-term memory model configuration (default to the same as model and api_base)
 mem_model=gpt-4.1
@@ -116,6 +91,18 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # vision_api_key=your key
 # vision_api_base=https://api.openai.com/v1
 # vision_max_tokens=4096
+
+# Image generation model configuration
+# glm-image, cogview-4-250304, cogview-4, cogview-3-flash
+image_generation_api_key=your key
+image_generation_api_base=https://open.bigmodel.cn/api/paas/v4/images/generations
+image_generation_model=cogview-3-Flash
+
+# SVG optimizer API configuration (nano banana)
+# Used by SVG optimizer feature to convert SVG code to images using vision models
+svg_optimizer_api_key=your key
+svg_optimizer_api_base=https://openrouter.ai/api/v1
+svg_optimizer_model=google/gemini-3-pro-image-preview
 
 # Tool calling format configuration: True for standard tool calling, False for chat-based tool calling
 # When set to True, uses native tool calling API (for models that support it like GPT-4, Claude)
@@ -201,6 +188,33 @@ summary_trigger_length=100000
 # Default: 70% of summary_trigger_length if not set
 compression_target_length=50000
 
+# History compression strategy (default: delete)
+# Determines how old conversation history is compressed when exceeding trigger_length
+# Options:
+#   - delete: Directly delete old records (fast, zero cost, but loses history)
+#   - llm_summary: Use LLM to generate summary of old records (slower, costs tokens, preserves context)
+# When using llm_summary:
+#   - Old records are summarized into a concise summary by LLM
+#   - Recent N rounds (keep_recent_rounds) are kept uncompressed
+#   - Summary preserves key operations, results, and decisions
+# Recommendation:
+#   - Use 'delete' for faster execution and lower cost
+#   - Use 'llm_summary' when historical context is important for the task
+compression_strategy=llm_summary
+
+# Number of recent conversation rounds to keep uncompressed (default: 2)
+# Only used when compression is triggered
+# These recent rounds will not be compressed/deleted, keeping full context
+# Recommendation: 2-5 rounds, higher values preserve more recent context but use more tokens
+keep_recent_rounds=0
+
+# Summary streaming output configuration (default: True)
+# Controls whether to use streaming output when generating conversation summaries
+# When enabled, summary content is displayed character by character as it's generated
+# When disabled, summary content is displayed all at once after generation completes
+# Default: True (streaming enabled for better user experience)
+summary_streaming=True
+
 # Summary report generation (default: False)
 # When enabled, generates single task summary and task summary reports
 # When disabled, skips summary report generation to save time and resources
@@ -229,7 +243,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=/data_colordoc
+gui_default_data_directory=data
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions
@@ -314,7 +328,7 @@ GUI_virtual_terminal=False
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the infinite execute mode button
-GUI_show_infinite_execute_button=False
+GUI_show_infinite_execute_button=True
 
 # Multi-Agent Button Display Configuration
 # Controls whether to show the multi-agent toggle button in GUI
@@ -322,7 +336,7 @@ GUI_show_infinite_execute_button=False
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the multi-agent button
-GUI_show_multi_agent_button=False
+GUI_show_multi_agent_button=True
 
 # Agent View Button Display Configuration
 # Controls whether to show the agent view button in GUI
@@ -330,4 +344,4 @@ GUI_show_multi_agent_button=False
 # When disabled (False), the button is hidden
 # Default: True (enabled)
 # Set to False to hide the agent view button
-GUI_show_agent_view_button=False
+GUI_show_agent_view_button=True

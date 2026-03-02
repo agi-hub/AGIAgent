@@ -1,0 +1,44 @@
+{
+  "tale_jericho_action": {
+    "description": "Execute one Jericho action. Tool auto-starts episode on first call and auto-closes when done.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "One textual action sent to environment."
+        },
+        "env_name": {
+          "type": "string",
+          "description": "Target env/task name. Required on first call of a task."
+        },
+        "task_index": {
+          "type": "integer",
+          "description": "Task index fallback when env_name omitted.",
+          "default": 0
+        },
+        "game_seed": {
+          "type": "integer",
+          "description": "Optional game seed."
+        },
+        "admissible_commands": {
+          "type": "boolean",
+          "description": "Expose admissible commands in info.",
+          "default": false
+        },
+        "restart": {
+          "type": "boolean",
+          "description": "Force start a new task and drop current active task.",
+          "default": false
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  }
+}

@@ -362,7 +362,7 @@ Usage Examples:
   # Use custom model configuration
   python agia.py --api-key YOUR_KEY --model gpt-4 --base-url https://api.openai.com/v1 "My requirement"
   
-  # Use app-specific prompts and config (loads from apps/{app_name}/prompts/ and apps/{app_name}/config.txt)
+  # Use app-specific prompts, config and MCP (loads from apps/{app_name}/prompts/, apps/{app_name}/config.txt and apps/{app_name}/mcp_servers.json)
   python agia.py --app colordoc "Generate a document with images"
   python agia.py --app patent "Create a patent application"
         """
@@ -497,7 +497,7 @@ Usage Examples:
         "--app",
         type=str,
         default=None,
-        help="App name (subfolder in apps/). When set, loads prompts from apps/{app}/prompts/ and config from apps/{app}/config.txt"
+        help="App name (subfolder in apps/). When set, loads prompts from apps/{app}/prompts/, config from apps/{app}/config.txt and MCP from apps/{app}/mcp_servers.json"
     )
     
     args = parser.parse_args()
@@ -585,19 +585,33 @@ Usage Examples:
     elif args.thinking:
         enable_thinking = True
     
-    # Handle --app parameter: set prompts_folder and config_file
+    # Handle --app parameter: set prompts_folder, config_file and mcp_config_file
     prompts_folder = None
     config_file = None
+    mcp_config_file = None
     if args.app:
         app_name = args.app
         app_prompts_folder = os.path.join("apps", app_name, "prompts")
         app_config_file = os.path.join("apps", app_name, "config.txt")
+        app_manifest_file = os.path.join("apps", app_name, "app.json")
+        app_mcp_relative_path = "mcp_servers.json"
         
         # Check if app directory exists
         app_dir = os.path.join("apps", app_name)
         if not os.path.exists(app_dir):
             print_current(f"⚠️ Warning: App directory '{app_dir}' does not exist")
         else:
+            # Read optional app manifest for MCP path override
+            if os.path.exists(app_manifest_file):
+                try:
+                    with open(app_manifest_file, 'r', encoding='utf-8') as f:
+                        app_manifest = json.load(f)
+                    manifest_mcp_path = app_manifest.get("mcp_config_path")
+                    if isinstance(manifest_mcp_path, str) and manifest_mcp_path.strip():
+                        app_mcp_relative_path = manifest_mcp_path.strip()
+                except Exception as e:
+                    print_current(f"⚠️ Warning: Failed to parse app manifest '{app_manifest_file}': {e}")
+
             # Check if prompts folder exists
             if os.path.exists(app_prompts_folder):
                 prompts_folder = app_prompts_folder
@@ -611,6 +625,14 @@ Usage Examples:
                 print_current(f"⚙️ Using config file: {config_file}")
             else:
                 print_current(f"⚠️ Warning: Config file '{app_config_file}' does not exist, using default config file")
+
+            # Check if app-specific MCP config exists
+            app_mcp_config_file = os.path.join(app_dir, app_mcp_relative_path)
+            if os.path.exists(app_mcp_config_file):
+                mcp_config_file = app_mcp_config_file
+                print_current(f"🔌 Using MCP config file: {mcp_config_file}")
+            else:
+                print_current(f"⚠️ Warning: MCP config file '{app_mcp_config_file}' does not exist, using default MCP config file")
     
     # Install debug system after determining config file (for --app support)
     from src.config_loader import load_config
@@ -640,6 +662,7 @@ Usage Examples:
             routine_file=args.routine,
             plan_mode=plan_mode,
             enable_thinking=enable_thinking,
+            MCP_config_file=mcp_config_file,
             prompts_folder=prompts_folder,
             config_file=config_file
         )

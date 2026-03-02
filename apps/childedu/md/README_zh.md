@@ -40,3 +40,9 @@ ColorDoc是一个划时代的富图像文档撰写智能体，它不仅是个全
 更多介绍：
 1. 案例展示： <https://shorturl.at/B9Skw>
 2. 技术原理介绍：<https://shorturl.at/KxLWA>
+
+
+
+使用示例：
+
+python agia.py --app childedu --routine "apps/childedu/routine/出模拟考试题.txt" --loops 8 "请生成一套小学三年级数学模拟试卷（人教版上册），题型包含选择、填空、计算、应用题；总分100分；附标准答案和评分细则。若信息不足请先向我提问。"

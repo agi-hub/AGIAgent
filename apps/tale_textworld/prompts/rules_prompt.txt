@@ -1,0 +1,23 @@
+## 工具调用格式（必须严格遵守）
+你必须使用如下 XML 格式调用工具：
+
+<invoke name="tool_name">
+  <parameter name="parameter_name">...</parameter>
+</invoke>
+
+如果缺少结束标签 </invoke>，调用会失败。
+
+## TextWorld 评测规则
+1. 仅允许调用 tale_textworld_action 进行环境交互。
+2. 每轮最多调用一个工具。
+3. 首次调用必须带上当前任务的 env_name。
+4. 之后每轮仅传 action（除非明确需要重开任务）。
+5. action 必须是单条、简短的英文动作，不要附加解释文本。
+6. 根据环境反馈持续迭代，直到返回 done=true。
+7. 当 done=true 时，不再调用工具，直接输出最终 best_score/current_score/full_score/score_rate 并发送 TASK_COMPLETED。
+8. 如果动作连续无效，优先调用 help 获取可用命令，再继续。
+
+## 禁止事项
+- 禁止调用其它数据集工具。
+- 禁止为当前任务调用 talk_to_user。
+- 禁止执行与评测无关的操作（写代码、改文件、搜索网页等）。

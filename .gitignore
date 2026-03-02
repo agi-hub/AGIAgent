@@ -48,3 +48,12 @@ CLAUDE.md
 
 #config
 config/config.txt
+
+# Runtime outputs (do not commit)
+my_outputs/
+output_tale_jericho_*/
+output_tale_jericho_batch_*/
+data/
+data_tale_alfworld/
+data_tale_textworld_express/
+apps/xiaohongshu/

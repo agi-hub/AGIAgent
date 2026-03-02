@@ -24,6 +24,7 @@ import threading
 import logging
 import time
 import warnings
+import importlib
 
 # Suppress asyncio warnings that occur during FastMCP cleanup
 warnings.filterwarnings("ignore", message=".*Event loop is closed.*")
@@ -496,7 +497,101 @@ class ToolExecutor:
             def _custom_tool_disabled_error(*args, **kwargs):
                 return {"status": "error", "message": f"Custom tool initialization failed: {str(e)}"}
             self.tool_map["custom_command"] = _custom_tool_disabled_error
-        
+
+        # Initialize TALE-Suite tools in app-isolated mode.
+        def _detect_tale_app_name(prompts_folder: str) -> str:
+            try:
+                norm = os.path.normpath(prompts_folder or "")
+                parts = norm.split(os.sep)
+                if "apps" in parts:
+                    idx = parts.index("apps")
+                    if idx + 1 < len(parts):
+                        app_name = parts[idx + 1]
+                        if app_name in {
+                            "tale_alfworld",
+                            "tale_textworld",
+                            "tale_textworld_express",
+                            "tale_scienceworld",
+                            "tale_jericho",
+                        }:
+                            return app_name
+            except Exception:
+                pass
+            return ""
+
+        tale_app_tool_specs = {
+            "tale_alfworld": (
+                "tools.tale_alfworld_tools",
+                "TaleAlfworldTools",
+                [
+                    "tale_alfworld_action",
+                ],
+            ),
+            "tale_textworld": (
+                "tools.tale_textworld_tools",
+                "TaleTextworldTools",
+                [
+                    "tale_textworld_action",
+                ],
+            ),
+            "tale_textworld_express": (
+                "tools.tale_textworld_express_tools",
+                "TaleTextworldExpressTools",
+                [
+                    "tale_textworld_express_action",
+                ],
+            ),
+            "tale_scienceworld": (
+                "tools.tale_scienceworld_tools",
+                "TaleScienceworldTools",
+                [
+                    "tale_scienceworld_action",
+                ],
+            ),
+            "tale_jericho": (
+                "tools.tale_jericho_tools",
+                "TaleJerichoTools",
+                [
+                    "tale_jericho_action",
+                ],
+            ),
+        }
+
+        self.tale_dataset_tool = None
+        self.tale_dataset_tool_names = []
+        active_tale_app = _detect_tale_app_name(self.prompts_folder)
+
+        if active_tale_app:
+            spec = tale_app_tool_specs.get(active_tale_app)
+            if spec:
+                module_name, class_name, method_names = spec
+                try:
+                    module = importlib.import_module(module_name)
+                    tool_class = getattr(module, class_name)
+                    self.tale_dataset_tool = tool_class(workspace_root=self.workspace_dir)
+                    registered_names = []
+                    for method_name in method_names:
+                        if hasattr(self.tale_dataset_tool, method_name):
+                            self.tool_map[method_name] = getattr(self.tale_dataset_tool, method_name)
+                            registered_names.append(method_name)
+
+                    self.tale_dataset_tool_names = registered_names
+                    print_system(
+                        f"🎯 TALE dataset tools registered for {active_tale_app}: {', '.join(registered_names)}"
+                    )
+                except Exception as e:
+                    print_current(f"⚠️ TALE tool init failed for {active_tale_app}: {e}")
+                    for method_name in method_names:
+                        def _tale_dataset_disabled_error(*args, _m=method_name, **kwargs):
+                            return {
+                                "status": "error",
+                                "message": (
+                                    f"TALE dataset tool {_m} for {active_tale_app} is unavailable."
+                                ),
+                            }
+
+                        self.tool_map[method_name] = _tale_dataset_disabled_error
+
 
         # Initialize MCP clients
         self.cli_mcp_client = get_cli_mcp_wrapper(self.MCP_config_file)
@@ -608,7 +703,7 @@ class ToolExecutor:
         
         try:
             # Directly check the FastMCP wrapper, avoid relying on the MCP client state
-            from tools.fastmcp_wrapper import get_fastmcp_wrapper, is_fastmcp_initialized
+            from src.tools.fastmcp_wrapper import get_fastmcp_wrapper, is_fastmcp_initialized
             
             # Directly get the FastMCP wrapper, do not rely on is_fastmcp_initialized()
             try:
@@ -2175,7 +2270,7 @@ END OF ERROR FEEDBACK
             current_thread = threading.current_thread().name
             
             if not self.cli_mcp_initialized:
-                from tools.cli_mcp_wrapper import get_cli_mcp_status, initialize_cli_mcp_wrapper
+                from src.tools.cli_mcp_wrapper import get_cli_mcp_status, initialize_cli_mcp_wrapper
                 
                 global_status = get_cli_mcp_status(self.MCP_config_file)
                 if global_status.get("initialized", False):
@@ -2570,7 +2665,7 @@ END OF ERROR FEEDBACK
             # Handle FastMCP tools
             if tool_source == 'fastmcp':
                 try:
-                    from tools.fastmcp_wrapper import get_fastmcp_wrapper
+                    from src.tools.fastmcp_wrapper import get_fastmcp_wrapper
 
                     fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
                     if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):
@@ -2895,7 +2990,7 @@ END OF ERROR FEEDBACK
             
             # Load FastMCP tool definitions dynamically
             try:
-                from tools.fastmcp_wrapper import get_fastmcp_wrapper
+                from src.tools.fastmcp_wrapper import get_fastmcp_wrapper
 
                 fastmcp_wrapper = get_fastmcp_wrapper(config_path=self.MCP_config_file, workspace_dir=self.workspace_dir)
                 if fastmcp_wrapper and getattr(fastmcp_wrapper, 'initialized', False):

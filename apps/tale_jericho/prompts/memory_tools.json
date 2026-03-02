@@ -1,0 +1,15 @@
+{
+  "query_skill": {
+    "description": "MANDATORY TOOL. You must call `query_skill` before any other tool call at the beginning of each task. Search and retrieve relevant skills from the skill library based on semantic similarity. Returns the top 3 most relevant skills with their complete content, including skill_id, title, usage conditions, quality index, and detailed content. Use these results to guide your subsequent environment actions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Required search query for relevant skills. Use the current task goal/env name/problem context."
+        }
+      },
+      "required": ["query"]
+    }
+  }
+} 

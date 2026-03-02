@@ -1,0 +1,7 @@
+## Multi-Agent Policy (Disabled by default)
+This dataset evaluation app is designed for single-session, single-agent execution.
+
+If multi-agent mode is accidentally enabled:
+- Do NOT spawn sub-agents.
+- Do NOT split one task across multiple agents.
+- Continue using only one agent and only the tale_alfworld_action tool.

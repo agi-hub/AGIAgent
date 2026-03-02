@@ -32,6 +32,7 @@ import tempfile
 import io
 from typing import Dict, Any, List, Optional, Set
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -218,14 +219,32 @@ class FastMcpWrapper:
             print_debug(f"⚠️ Error determining workspace directory: {e}")
             return os.getcwd()
 
-        # Check if FastMCP is available
-        if not FASTMCP_AVAILABLE:
-            if not self._installation_message_shown:
-                print_debug("FastMCP not found. Please install it using: pip install fastmcp")
-                print_debug("💡 After installation, restart AGIAgent to use MCP tools.")
-                self._installation_message_shown = True
+    def _ensure_local_url_bypasses_proxy(self, url: Optional[str]):
+        """Ensure localhost/loopback MCP URLs bypass system HTTP proxy."""
+        if not url:
             return
-    
+        try:
+            hostname = (urlparse(url).hostname or "").lower()
+        except Exception:
+            return
+
+        if hostname not in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
+            return
+
+        bypass_hosts = ["localhost", "127.0.0.1", "::1"]
+        for key in ("NO_PROXY", "no_proxy"):
+            current = os.environ.get(key, "")
+            current_items = [item.strip() for item in current.split(",") if item.strip()]
+            existing = {item.lower() for item in current_items}
+            updated = False
+            for host in bypass_hosts:
+                if host.lower() not in existing:
+                    current_items.append(host)
+                    updated = True
+            if updated:
+                os.environ[key] = ",".join(current_items)
+                print_debug(f"🌐 Updated {key} for local MCP URL: {url}")
+
     async def initialize(self) -> bool:
         """Initialize MCP client with persistent server manager"""
         if not FASTMCP_AVAILABLE:
@@ -678,6 +697,7 @@ class FastMcpWrapper:
 
             if is_http_server:
                 # For HTTP servers, use URL directly as transport
+                self._ensure_local_url_bypasses_proxy(url)
                 transport = url
                 server_config_for_fastmcp = {
                     "url": url,
@@ -1005,6 +1025,7 @@ class FastMcpWrapper:
 
                 if is_http_server:
                     # For HTTP servers, use URL directly as transport
+                    self._ensure_local_url_bypasses_proxy(url)
                     transport = url
                     client_kwargs = {}
                     # Note: FastMCP Client doesn't support headers parameter directly

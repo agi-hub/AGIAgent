@@ -1,0 +1,7 @@
+{
+  "app_name": "TALE-Suite ALFWorld",
+  "app_title": "TALE ALFWorld Runner",
+  "prompts_path": "prompts",
+  "routine_path": "routine",
+  "config_path": "config.txt"
+}

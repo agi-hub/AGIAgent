@@ -16,7 +16,9 @@
           "description": "Glob patterns for directories to search over"
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   "read_multiple_files": {
@@ -40,7 +42,9 @@
           "description": "Maximum lines to read per file when should_read_entire_file=false. Defaults to 200."
         }
       },
-      "required": ["target_files"]
+      "required": [
+        "target_files"
+      ]
     }
   },
   "run_terminal_cmd": {
@@ -53,7 +57,9 @@
           "description": "The terminal command to execute"
         }
       },
-      "required": ["command"]
+      "required": [
+        "command"
+      ]
     }
   },
   "grep_search": {
@@ -78,7 +84,9 @@
           "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   "edit_file": {
@@ -93,7 +101,11 @@
         "edit_mode": {
           "type": "string",
           "description": "Editing mode: 'lines_replace' (precise replacement using exact code matching), 'append' (safest - append to the end of the file), 'full_replace' (completely replace file content).",
-          "enum": ["lines_replace", "append", "full_replace"]
+          "enum": [
+            "lines_replace",
+            "append",
+            "full_replace"
+          ]
         },
         "old_code": {
           "type": "string",
@@ -104,7 +116,11 @@
           "description": "Edit content instructions:\n- lines_replace mode: Provide the new code to replace the old_code with.\n- append mode: Directly provide the content to append to the end of the file\n- full_replace mode: Provide the complete new file content, fully replacing the original file"
         }
       },
-      "required": ["target_file", "edit_mode", "code_edit"]
+      "required": [
+        "target_file",
+        "edit_mode",
+        "code_edit"
+      ]
     }
   },
   "web_search": {
@@ -117,7 +133,9 @@
           "description": "The search term to look up on the web. Be specific and include relevant keywords for better results. For technical queries, include version numbers or dates if relevant."
         }
       },
-      "required": ["search_term"]
+      "required": [
+        "search_term"
+      ]
     }
   },
   "search_img": {
@@ -130,7 +148,9 @@
           "description": "Image search query string, describing the content of the images to find. Please use specific and clear descriptive terms, such as 'red rose flower', 'blue sky and white clouds landscape', etc."
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   "fetch_webpage_content": {
@@ -147,7 +167,9 @@
           "description": "Optional search term to highlight in the content"
         }
       },
-      "required": ["url"]
+      "required": [
+        "url"
+      ]
     }
   },
   "talk_to_user": {
@@ -164,7 +186,9 @@
           "description": "Maximum time to wait for user response in seconds (default: 10 seconds, -1 to disable timeout)"
         }
       },
-      "required": ["query"]
+      "required": [
+        "query"
+      ]
     }
   },
   "get_sensor_data": {
@@ -175,7 +199,12 @@
         "type": {
           "type": "integer",
           "description": "Data type to acquire: 1=image, 2=video (5 seconds), 3=audio, 4=sensor data",
-          "enum": [1, 2, 3, 4]
+          "enum": [
+            1,
+            2,
+            3,
+            4
+          ]
         },
         "source": {
           "type": "string",
@@ -200,7 +229,10 @@
           }
         }
       },
-      "required": ["type", "source"]
+      "required": [
+        "type",
+        "source"
+      ]
     }
   },
   "read_img": {
@@ -217,7 +249,10 @@
           "description": "Path to the image file. Supports absolute paths, paths relative to workspace root, or paths relative to current directory. Common formats: jpg, jpeg, png, gif, webp"
         }
       },
-      "required": ["query", "image_path"]
+      "required": [
+        "query",
+        "image_path"
+      ]
     }
   },
   "merge_file": {
@@ -237,7 +272,10 @@
           "description": "Name of the merged output file, e.g., 'combined_report.md'."
         }
       },
-      "required": ["file_list", "output_file"]
+      "required": [
+        "file_list",
+        "output_file"
+      ]
     }
   },
   "convert_docs_to_markdown": {
@@ -250,7 +288,9 @@
           "description": "Path to the document file to convert to Markdown. Supported formats: .docx, .xlsx, .html, .tex, .rst, .pptx, .pdf"
         }
       },
-      "required": ["file_path"]
+      "required": [
+        "file_path"
+      ]
     }
   },
   "compress_history": {
@@ -275,7 +315,9 @@
         "type": {
           "type": "string",
           "description": "Tool type selector: 'game' for the board game tool, or any other value (or omit) for echo tool that returns the input string as output.",
-          "enum": ["game"]
+          "enum": [
+            "game"
+          ]
         },
         "command": {
           "type": "string",
@@ -286,7 +328,9 @@
           "description": "Optional argument string for the command."
         }
       },
-      "required": ["command"]
+      "required": [
+        "command"
+      ]
     }
   },
   "create_img": {
@@ -308,7 +352,284 @@
           "description": "Path where the image should be saved (PNG format). Supports relative paths (relative to workspace root) or absolute paths. If not provided, a filename will be generated based on the prompt. The file extension will be automatically set to .png if not already present."
         }
       },
-      "required": ["prompt"]
+      "required": [
+        "prompt"
+      ]
+    }
+  },
+  "tale_alfworld_evaluate": {
+    "description": "Run ALFWorld evaluation tasks. Default runs all ALFWorld tasks and writes one output folder per task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_count": {
+          "type": "integer",
+          "description": "Number of tasks to run. 0 means all tasks.",
+          "default": 0
+        },
+        "task_offset": {
+          "type": "integer",
+          "description": "Task start offset.",
+          "default": 0
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        },
+        "conda_env": {
+          "type": "string",
+          "description": "Conda environment for running benchmark.py.",
+          "default": "tale-suite"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id.",
+          "default": "glm-5"
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Anthropic-compatible API base URL."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional API key."
+        },
+        "nb_steps": {
+          "type": "integer",
+          "description": "Max steps per task.",
+          "default": 100
+        },
+        "output_root_dir": {
+          "type": "string",
+          "description": "Parent directory for generated output folders."
+        },
+        "output_dir_prefix": {
+          "type": "string",
+          "description": "Prefix for generated output folders.",
+          "default": "output"
+        }
+      },
+      "required": []
+    }
+  },
+  "tale_textworld_evaluate": {
+    "description": "Run TextWorld evaluation tasks. Default runs all TextWorld tasks and writes one output folder per task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_count": {
+          "type": "integer",
+          "description": "Number of tasks to run. 0 means all tasks.",
+          "default": 0
+        },
+        "task_offset": {
+          "type": "integer",
+          "description": "Task start offset.",
+          "default": 0
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        },
+        "conda_env": {
+          "type": "string",
+          "description": "Conda environment for running benchmark.py.",
+          "default": "tale-suite"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id.",
+          "default": "glm-5"
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Anthropic-compatible API base URL."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional API key."
+        },
+        "nb_steps": {
+          "type": "integer",
+          "description": "Max steps per task.",
+          "default": 100
+        },
+        "output_root_dir": {
+          "type": "string",
+          "description": "Parent directory for generated output folders."
+        },
+        "output_dir_prefix": {
+          "type": "string",
+          "description": "Prefix for generated output folders.",
+          "default": "output"
+        }
+      },
+      "required": []
+    }
+  },
+  "tale_textworld_express_evaluate": {
+    "description": "Run TextWorld-Express evaluation tasks. Default runs all tasks and writes one output folder per task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_count": {
+          "type": "integer",
+          "description": "Number of tasks to run. 0 means all tasks.",
+          "default": 0
+        },
+        "task_offset": {
+          "type": "integer",
+          "description": "Task start offset.",
+          "default": 0
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        },
+        "conda_env": {
+          "type": "string",
+          "description": "Conda environment for running benchmark.py.",
+          "default": "tale-suite"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id.",
+          "default": "glm-5"
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Anthropic-compatible API base URL."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional API key."
+        },
+        "nb_steps": {
+          "type": "integer",
+          "description": "Max steps per task.",
+          "default": 100
+        },
+        "output_root_dir": {
+          "type": "string",
+          "description": "Parent directory for generated output folders."
+        },
+        "output_dir_prefix": {
+          "type": "string",
+          "description": "Prefix for generated output folders.",
+          "default": "output"
+        }
+      },
+      "required": []
+    }
+  },
+  "tale_scienceworld_evaluate": {
+    "description": "Run ScienceWorld evaluation tasks. Default runs all tasks and writes one output folder per task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_count": {
+          "type": "integer",
+          "description": "Number of tasks to run. 0 means all tasks.",
+          "default": 0
+        },
+        "task_offset": {
+          "type": "integer",
+          "description": "Task start offset.",
+          "default": 0
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        },
+        "conda_env": {
+          "type": "string",
+          "description": "Conda environment for running benchmark.py.",
+          "default": "tale-suite"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id.",
+          "default": "glm-5"
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Anthropic-compatible API base URL."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional API key."
+        },
+        "nb_steps": {
+          "type": "integer",
+          "description": "Max steps per task.",
+          "default": 100
+        },
+        "output_root_dir": {
+          "type": "string",
+          "description": "Parent directory for generated output folders."
+        },
+        "output_dir_prefix": {
+          "type": "string",
+          "description": "Prefix for generated output folders.",
+          "default": "output"
+        }
+      },
+      "required": []
+    }
+  },
+  "tale_jericho_evaluate": {
+    "description": "Run Jericho evaluation tasks. Default runs all tasks and writes one output folder per task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task_count": {
+          "type": "integer",
+          "description": "Number of tasks to run. 0 means all tasks.",
+          "default": 0
+        },
+        "task_offset": {
+          "type": "integer",
+          "description": "Task start offset.",
+          "default": 0
+        },
+        "tale_suite_root": {
+          "type": "string",
+          "description": "Optional absolute path to tale-suite root."
+        },
+        "conda_env": {
+          "type": "string",
+          "description": "Conda environment for running benchmark.py.",
+          "default": "tale-suite"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id.",
+          "default": "glm-5"
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Anthropic-compatible API base URL."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Optional API key."
+        },
+        "nb_steps": {
+          "type": "integer",
+          "description": "Max steps per task.",
+          "default": 100
+        },
+        "output_root_dir": {
+          "type": "string",
+          "description": "Parent directory for generated output folders."
+        },
+        "output_dir_prefix": {
+          "type": "string",
+          "description": "Prefix for generated output folders.",
+          "default": "output"
+        }
+      },
+      "required": []
     }
   }
-} 
+}
