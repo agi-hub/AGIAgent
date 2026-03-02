@@ -8546,8 +8546,23 @@
             });
         }
 
+        // 追踪输入法（IME）组合状态，解决 Safari/macOS 中文输入法回车被误判的问题
+        let isComposingInput = false;
+        userInput.addEventListener('compositionstart', function() {
+            isComposingInput = true;
+        });
+        userInput.addEventListener('compositionend', function() {
+            isComposingInput = false;
+        });
+
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
+                // 如果输入法正在组合输入（如中文输入法确认候选词），忽略此回车事件
+                // e.isComposing 在大多数浏览器有效，isComposingInput 作为 Safari 的兜底方案
+                if (e.isComposing || isComposingInput) {
+                    return;
+                }
+
                 e.preventDefault();
                 
                 console.log('[DEBUG] 回车键按下');

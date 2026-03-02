@@ -1,9 +1,18 @@
 # AGI Agent
 
+<p align="center">
+  <a href="https://github.com/agi-hub/AGIAgent/releases/tag/v1.0.3"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
+  <a href="https://agiagentonline.com"><img src="https://img.shields.io/badge/AGIAgent_Online-agiagentonline.com-1E90FF?style=for-the-badge&logo=googlechrome&logoColor=white" alt="AGIAgent Online"></a>
+  <a href="http://colordoc.online"><img src="https://img.shields.io/badge/ColorDoc-colordoc.online-FF6B35?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ColorDoc"></a>
+  <a href="https://github.com/agi-hub/AGIAgent/wiki/AGIAgent-%E6%8A%80%E6%9C%AF%E7%99%BD%E7%9A%AE%E4%B9%A6"><img src="https://img.shields.io/badge/Tech_Whitepaper-Wiki-8A2BE2?style=for-the-badge&logo=gitbook&logoColor=white" alt="Tech Whitepaper Wiki"></a>
+  <a href="https://github.com/user-attachments/files/25679954/AGI.Agent.intro.web.version.pdf"><img src="https://img.shields.io/badge/Intro_Slides-PDF-E63946?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Intro Slides"></a>
+  <a href="#contact-us"><img src="https://img.shields.io/badge/WeChat-AGI智创机器人-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
+</p>
+
 [**中文**](README.md) | **English**
 
 ## 🚀 Project Introduction
-**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. Similar to Claude cowork, AGI Agent serves as a general-purpose local agent system that can autonomously operate your computer and handle complex tasks through natural language interaction. It offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 20+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
+**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. Similar to Claude cowork, AGI Agent serves as a general-purpose local agent system that can autonomously operate your computer and handle complex tasks through natural language interaction. It offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 40+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
 
 ### 🤔 Is This Software Right for You?
 
@@ -12,6 +21,16 @@
 - **Writing complex professional documents?** If you need to create richly illustrated, complex professional reports such as academic papers, in-depth research, or patents, AGI Agent excels at this.
 - **Seeking a locally deployable agent?** If you want an agent system that supports local deployment and is compatible with various Anthropic/OpenAI interface models, this could be your solution.
 - **Vibe enthusiast?** If you're passionate about the Vibe workflow, you'll love what AGI Agent offers.
+
+### 🆚 Comparison with OpenClaw
+
+While AGI Agent and OpenClaw both share a common logical foundation — an agent core, memory system, general task execution, long-horizon execution, and local deployment capabilities — AGI Agent is built from scratch with no dependency on any OpenClaw components, and offers the following key advantages:
+
+- **🤖 Agent-First Design**: AGI Agent is a multi-agent system with a rich set of integrated tools. Every aspect — prompts, tool calls, and more — is fully customizable (located in the `prompts` folder), and it comes with a built-in IDE (web version).
+- **🛠️ Enhanced Productivity Tools**: Focused on productivity tasks such as writing professional documents, coding, and data organization. Provides powerful document/image editing capabilities, including lossless Word/PDF export of rich text documents and direct execution of web mini-programs.
+- **🀄 Optimized Chinese Language Support**: Optimized Chinese rendering in Mermaid diagrams, SVG images, and more, with outstanding display quality. The interface supports switching between Chinese and English.
+- **👁️ Real-Time Agent Observation**: Streams output to the web frontend, allowing you to observe the large model agent's processing in real time.
+- **🇨🇳 Strong Compatibility with Chinese LLMs**: Compatible with most domestic Chinese large models, supporting various API interfaces (streaming/non-streaming, tool-call/message, OpenAI/Claude).
 
 ### 🆚 Comparison with Claude Cowork
 
@@ -103,6 +122,15 @@ python agia.py --api-key YOUR_KEY --model gpt-4 --api-base https://api.openai.co
 
 2. Directly specify API configuration through command line, but it's recommended to configure in `config/config.txt` for reuse.
 
+### 🛠️ External Skill File Support
+
+The system supports external skill files (routines). The default skills are stored in the `routine` folder and will be displayed in the skill panel of the GUI (the `routine_zh` folder is shown in Chinese mode, and the `routine` folder is shown in English mode). You can also specify a custom skill directory:
+
+```bash
+#### 🧩 Use a custom skill directory
+python agia.py "<your requirements>" --routine routine_file_dir
+```
+
 ## 🎯 Core Features
 
 - **🧠 Intelligent Task Decomposition**: AI automatically decomposes complex requirements into executable subtasks
@@ -190,6 +218,27 @@ AGI Agent now supports being called directly as a Python library in code, provid
 - 💬 OpenAI-style API, easy to integrate
 - 🔧 Programmatic configuration, flexible control
 - 📊 Detailed return information and status
+
+### 🤖 Custom Agent Toolset
+
+The system supports flexible customization of the tools available to the Agent:
+
+- By default, the system loads tools defined in `prompts/tool_prompts.json`
+- To enable additional tools, move the corresponding entries from `prompts/additional_tools.json` into `prompts/tool_prompts.json`
+- To disable tools you don't need, move them from `prompts/tool_prompts.json` back to `prompts/additional_tools.json`, reducing the Agent's tool count and lowering token consumption
+
+### 📝 Custom Prompts
+
+All system prompts can be freely edited and customized. The prompt files are located in the `prompts/` directory:
+
+| File | Description | Effective Mode |
+|------|-------------|----------------|
+| `prompts/system_prompts.txt` | Main system prompt | Agent mode |
+| `prompts/rules_prompt.txt` | Tool-calling rules prompt | Agent mode |
+| `prompts/user_rules.txt` | Additional user requirement prompt | Agent mode |
+| `prompts/system_plan_prompt.txt` | Plan mode system prompt | Plan mode |
+
+In Agent mode, the system loads `system_prompts.txt`, `rules_prompt.txt`, and `user_rules.txt`. In Plan mode, `system_plan_prompt.txt` is loaded instead. You can directly edit these files to adjust the Agent's behavior and style.
 
 ### 🔌 MCP Protocol Support
 Supports Model Context Protocol (MCP) for communication with external tool servers, greatly expanding the system's tool ecosystem.
