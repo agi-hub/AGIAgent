@@ -1,7 +1,7 @@
 # AGI Agent
 
 <p align="center">
-  <a href="https://github.com/agi-hub/AGIAgent/releases/tag/v1.0.3"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
+  <a href="https://github.com/agi-hub/AGIAgent"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
   <a href="https://agiagentonline.com"><img src="https://img.shields.io/badge/AGIAgent_Online-agiagentonline.com-1E90FF?style=for-the-badge&logo=googlechrome&logoColor=white" alt="AGIAgent Online"></a>
   <a href="http://colordoc.online"><img src="https://img.shields.io/badge/ColorDoc-colordoc.online-FF6B35?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ColorDoc"></a>
   <a href="https://github.com/agi-hub/AGIAgent/wiki/AGIAgent-%E6%8A%80%E6%9C%AF%E7%99%BD%E7%9A%AE%E4%B9%A6"><img src="https://img.shields.io/badge/Tech_Whitepaper-Wiki-8A2BE2?style=for-the-badge&logo=gitbook&logoColor=white" alt="Tech Whitepaper Wiki"></a>
@@ -9,10 +9,18 @@
   <a href="#contact-us"><img src="https://img.shields.io/badge/WeChat-AGI智创机器人-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
+<p align="center">
+  <img src="md/images/main_page_logo.png" alt="AGI Agent Logo" width="600">
+</p>
+
 [**中文**](README.md) | **English**
 
 ## 🚀 Project Introduction
-**AGI Agent** is a versatile platform for general-purpose tasks, including Vibe Document, Vibe Coding, and Vibe computer execution. Similar to Claude cowork, AGI Agent serves as a general-purpose local agent system that can autonomously operate your computer and handle complex tasks through natural language interaction. It offers both GUI and CLI modes, and can be deployed in the cloud, on laptops, or on embedded devices (ARM). The platform includes 40+ built-in tools and many routine files (skills) for a broad range of use cases. AGI Agent excels at creating colorful documents with rich figures, and you can preview and edit your documents directly in the GUI. You can also write programs with multi-round interaction, drag-and-drop file support (or @files), and both agent mode and plan mode. 
+**AGI Agent** is more than a platform for Vibe Colorful Doc, Vibe Coding, and natural-language task execution — it is an **interactive creation platform for rich documents and code**.
+
+Through an intuitive GUI, AGI Agent collaborates with you on deep content refinement: swap images, edit text, tweak SVG graphics and Mermaid diagrams in real time, and even write-and-run HTML mini-apps with instant preview. Combined with natural language and a rich library of skills, it supports multi-round creative iteration, delivering a Cursor-like, highly interactive agent creation experience — both in the browser and in a pure Python environment.
+
+The platform ships with 40+ built-in tools and supports GUI, CLI, and embedded modes. It can be deployed on the cloud, laptops, or embedded devices (ARM), with full compatibility for Anthropic/OpenAI API interfaces and open-source / self-hosted deployments.
 
 ### 🤔 Is This Software Right for You?
 
@@ -28,6 +36,7 @@ While AGI Agent and OpenClaw both share a common logical foundation — an agent
 
 - **🤖 Agent-First Design**: AGI Agent is a multi-agent system with a rich set of integrated tools. Every aspect — prompts, tool calls, and more — is fully customizable (located in the `prompts` folder), and it comes with a built-in IDE (web version).
 - **🛠️ Enhanced Productivity Tools**: Focused on productivity tasks such as writing professional documents, coding, and data organization. Provides powerful document/image editing capabilities, including lossless Word/PDF export of rich text documents and direct execution of web mini-programs.
+- **✍️ Interactive Creation Experience**: Goes beyond generation — AGI Agent collaborates with you on content refinement directly in the GUI: swap images, edit text, tweak SVG graphics and Mermaid diagrams in real time, and write-and-run HTML mini-apps with instant preview. Combined with natural language and a rich skills library, it enables multi-round creative iteration, delivering a Cursor-like, highly interactive agent creation experience in both the browser and pure Python environments.
 - **🀄 Optimized Chinese Language Support**: Optimized Chinese rendering in Mermaid diagrams, SVG images, and more, with outstanding display quality. The interface supports switching between Chinese and English.
 - **👁️ Real-Time Agent Observation**: Streams output to the web frontend, allowing you to observe the large model agent's processing in real time.
 - **🇨🇳 Strong Compatibility with Chinese LLMs**: Compatible with most domestic Chinese large models, supporting various API interfaces (streaming/non-streaming, tool-call/message, OpenAI/Claude).

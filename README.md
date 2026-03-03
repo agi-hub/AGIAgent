@@ -1,7 +1,7 @@
 # AGI Agent
 
 <p align="center">
-  <a href="https://github.com/agi-hub/AGIAgent/releases/tag/v1.0.3"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
+  <a href="https://github.com/agi-hub/AGIAgent"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
   <a href="https://agiagentonline.com"><img src="https://img.shields.io/badge/AGIAgent_Online-agiagentonline.com-1E90FF?style=for-the-badge&logo=googlechrome&logoColor=white" alt="AGIAgent Online"></a>
   <a href="http://colordoc.online"><img src="https://img.shields.io/badge/ColorDoc-colordoc.online-FF6B35?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ColorDoc"></a>
   <a href="https://github.com/agi-hub/AGIAgent/wiki/AGIAgent-%E6%8A%80%E6%9C%AF%E7%99%BD%E7%9A%AE%E4%B9%A6"><img src="https://img.shields.io/badge/技术白皮书-Wiki-8A2BE2?style=for-the-badge&logo=gitbook&logoColor=white" alt="技术白皮书 Wiki"></a>
@@ -10,12 +10,18 @@
   <a href="#联系我们"><img src="https://img.shields.io/badge/微信公众号-AGI智创机器人-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="微信公众号"></a>
 </p>
 
+<p align="center">
+  <img src="md/images/main_page_logo.png" alt="AGI Agent Logo" width="600">
+</p>
+
 [**English**](README_en.md)
 
 ## 🚀 项目介绍
-**AGI Agent** 是一个通用的智能体平台，可以实现氛围文档撰写（Vibe Colorful Doc）、Vibe Coding和基于自然语言的通用任务执行。
-类似于 Claude cowork，AGI Agent 是一个通用化的本地智能体操作系统，能够自主操作您的计算机，通过自然语言交互处理复杂任务。平台包含 40+ 内置工具和许多例程文件（skills），适用于广泛的使用场景。AGI Agent 擅长创建带有丰富图表的专业文档，并可以直接在 GUI 中预览和编辑文档。也可以用它编写程序，支持多轮交互、拖放文件等（@files）。
-提供 GUI 和 CLI 、嵌入式运行等模式，可以部署在云端、笔记本电脑或嵌入式设备（ARM）上。支持Anthropic/OpenAI大模型接口，支持开源/私有化部署。
+**AGI Agent** 不仅是一个支持 Vibe Colorful Doc、Vibe Coding 和自然语言通用任务执行的智能体平台，更是一个**图文文档与代码的交互式创作平台**。
+
+通过直观的 GUI，AGI Agent 能够与您携手完成内容的深度加工——更换图片、编辑文字、实时修改 SVG 矢量图与 Mermaid 流程图，乃至边写边运行 HTML 小程序，让每一次创作都所见即所得。结合自然语言与丰富的 skills 技能库，支持多轮次创意迭代，在网页端和纯 Python 环境下均可获得类 Cursor 的强交互智能体创作体验。
+
+平台内置 40+ 工具，提供 GUI、CLI 及嵌入式运行等多种模式，可部署于云端、笔记本或嵌入式设备（ARM），全面支持 Anthropic/OpenAI 大模型接口及开源/私有化部署。
 
 <div align="center">
   <img src="md/images/bridview_diagram.png" alt="原理总图" width="800">
@@ -35,6 +41,7 @@
 
 - **🤖 强调智能体本身**：AGI Agent 本身是一个集成了众多工具的多智能体系统，且提示词、工具调用等各个方面都可以自己定制（位于 prompts 文件夹），自带 IDE（网页版本）。
 - **🛠️ 强化生产力工具**：AGI Agent 主要用于生产力任务，如写专业文档、编写程序、整理数据等，并提供了强大的文档/图像编辑能力，包括图文文档的 Word/PDF 无损直接导出、网页小程序直接执行等。
+- **✍️ 交互式创作体验**：通过GUI，结合自然语言与 skills 技能库，实现多轮次创意迭代，在网页端、纯 Python 环境下即可获得类 Cursor 的强交互式智能体创作体验，您可以@已编辑的文件（或者拖拽）加入新的需求，您可以review plan计划。更支持与用户协同加工生产的结果——例如在 GUI 中直接更换图片、编辑文字、实时修改 SVG 矢量图与 Mermaid 流程图，HTML 小程序可以边写边运行；
 - **🀄 强化中文处理**：对 Mermaid、SVG 图像等环节的中文进行了优化，生成的图像中文显示效果出众，界面支持中/英文切换。
 - **👁️ 可实时观察智能体工作**：流式输出到网页前端，可观察大模型智能体的实时处理过程。
 - **🇨🇳 强调与中国大模型的配合**：适配了多数国产大模型，支持各类大模型接口（streaming/non-streaming、tool-call/message、OpenAI/Claude）。

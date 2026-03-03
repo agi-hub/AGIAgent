@@ -4398,6 +4398,71 @@
         </div>
     </div>
 
+    <!-- 欢迎弹窗 Welcome Modal -->
+    <div id="welcomeModal" class="modal" style="display: none; z-index: 1500;">
+        <div class="modal-content" style="max-width: 520px; height: auto; max-height: 90vh; margin: 8% auto;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);">
+                <h3 style="display: flex; align-items: center; gap: 8px;">
+                    <span>🎉</span>
+                    <span>{% if lang == 'zh' %}欢迎使用 AGI Agent{% else %}Welcome to AGI Agent{% endif %}</span>
+                </h3>
+                <span class="close" id="welcomeModalClose" style="font-size: 22px; cursor: pointer;">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 24px 28px; overflow-y: auto;">
+                {% if lang == 'zh' %}
+                <p style="margin: 0 0 16px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
+                    👋 感谢您使用 <strong>AGI Agent</strong>！这是一个开源的通用智能体平台，支持 Vibe 编程、图文写作、通用任务执行等多种场景。
+                </p>
+                <p style="margin: 0 0 20px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
+                    如果您觉得这个项目对您有帮助，欢迎在 GitHub 上给我们点个 ⭐ Star，这对我们非常重要，感谢您的支持！
+                </p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer"
+                       style="display: inline-flex; align-items: center; gap: 10px; background: #24292e; color: white;
+                              padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 15px;
+                              font-weight: bold; transition: background 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"
+                       onmouseover="this.style.background='#444d56'" onmouseout="this.style.background='#24292e'">
+                        <i class="fab fa-github" style="font-size: 20px;"></i>
+                        <span>在 GitHub 上点 ⭐ Star</span>
+                    </a>
+                </div>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
+                    💡 提示：点击左侧文件夹选择工作区，在下方输入框输入任务即可开始使用。
+                </p>
+                {% else %}
+                <p style="margin: 0 0 16px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
+                    👋 Welcome to <strong>AGI Agent</strong>! This is an open-source general-purpose agent platform supporting Vibe Coding, document writing, and general task execution.
+                </p>
+                <p style="margin: 0 0 20px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
+                    If you find this project helpful, please give us a ⭐ Star on GitHub — it means a lot to us. Thank you for your support!
+                </p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer"
+                       style="display: inline-flex; align-items: center; gap: 10px; background: #24292e; color: white;
+                              padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 15px;
+                              font-weight: bold; transition: background 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"
+                       onmouseover="this.style.background='#444d56'" onmouseout="this.style.background='#24292e'">
+                        <i class="fab fa-github" style="font-size: 20px;"></i>
+                        <span>⭐ Star on GitHub</span>
+                    </a>
+                </div>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
+                    💡 Tip: Click a folder on the left to select your workspace, then type your task in the input box below.
+                </p>
+                {% endif %}
+            </div>
+            <div style="padding: 12px 28px 20px; text-align: right; border-top: 1px solid var(--border-primary);">
+                <button id="welcomeModalOkBtn"
+                        style="background: var(--color-accent); color: white; border: none; padding: 9px 28px;
+                               border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;
+                               transition: opacity 0.2s;"
+                        onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                    {% if lang == 'zh' %}开始使用 🚀{% else %}Get Started 🚀{% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- SVG编辑器模态框 -->
     <div id="svgEditorModal" class="modal">
         <div class="modal-content" style="width: 95%; height: 95vh; margin: 2.5vh auto;">
@@ -5333,6 +5398,11 @@
                 setTimeout(() => {
                     scrollToBottom(false);
                 }, 100);
+
+                // 显示欢迎弹窗
+                setTimeout(() => {
+                    showWelcomeModal();
+                }, 600);
             });
             
             socket.on('status', function(data) {
@@ -15810,6 +15880,7 @@
             initAppSelector();
             initFolderIconHint();
             initContactUs();
+            initWelcomeModal();
             
             // Terminal按钮点击事件
             const terminalBtn = document.getElementById('terminalBtn');
@@ -17209,6 +17280,38 @@
                     folderHintModal.style.display = 'none';
                 }
             });
+        }
+
+        /**
+         * 显示欢迎弹窗（每次登录成功后显示）
+         */
+        function showWelcomeModal() {
+            const modal = document.getElementById('welcomeModal');
+            if (!modal) return;
+            modal.style.display = 'block';
+        }
+
+        /**
+         * 初始化欢迎弹窗的关闭逻辑
+         */
+        function initWelcomeModal() {
+            const modal = document.getElementById('welcomeModal');
+            const closeBtn = document.getElementById('welcomeModalClose');
+            const okBtn = document.getElementById('welcomeModalOkBtn');
+
+            function closeModal() {
+                if (modal) modal.style.display = 'none';
+            }
+
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            if (okBtn) okBtn.addEventListener('click', closeModal);
+
+            // 点击遮罩层关闭
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) closeModal();
+                });
+            }
         }
 
         /**
