@@ -151,6 +151,10 @@ python agia.py "<your requirements>" --routine routine_file_dir
 - **📚 Codebase Retrieval**: Advanced code repository analysis and intelligent code indexing
 - **🛠️ Rich Tool Ecosystem**: Complete local tools + operating system command calling capabilities, supporting full development processes
 - **🖼️ Image Input Support**: Use `[img=path]` syntax to include images in requirements, supporting Claude and OpenAI vision models
+- **📂 File Input Support**: Supports input of word (docx), pdf, text, code, and other data sources
+- **🎨 Image Creation / Search / Doc-to-Image / Code-to-Image**: Multiple image generation methods, mermaid/svg mixed layout, auto-parsing
+- **📤 Multi-format Export**: Supports export in word/pdf/latex/md formats, with configurable word generation templates
+- **✨ SVG Image Polishing**: Supports SVG image polishing based on nanobanana
 - **🔗 MCP Integration Support**: Integrate external tools through Model Context Protocol, including third-party services like AI search
 - **🖥️ Web Interface**: Intuitive web interface with real-time execution monitoring
 - **📊 Dual Format Reports**: JSON detailed logs + Markdown readable reports
