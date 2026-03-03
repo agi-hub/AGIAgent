@@ -1,6 +1,10 @@
 # AGI Agent
 
 <p align="center">
+  <img src="md/images/main_page_logo.png" alt="AGI Agent Logo" width="600">
+</p>
+
+<p align="center">
   <a href="https://github.com/agi-hub/AGIAgent"><img src="https://img.shields.io/github/v/release/agi-hub/AGIAgent?include_prereleases&style=for-the-badge&logo=github&logoColor=white&color=181717&label=Releases" alt="GitHub release"></a>
   <a href="https://agiagentonline.com"><img src="https://img.shields.io/badge/AGIAgent_Online-agiagentonline.com-1E90FF?style=for-the-badge&logo=googlechrome&logoColor=white" alt="AGIAgent Online"></a>
   <a href="http://colordoc.online"><img src="https://img.shields.io/badge/ColorDoc-colordoc.online-FF6B35?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ColorDoc"></a>
@@ -9,9 +13,7 @@
   <a href="#contact-us"><img src="https://img.shields.io/badge/WeChat-AGI智创机器人-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-<p align="center">
-  <img src="md/images/main_page_logo.png" alt="AGI Agent Logo" width="600">
-</p>
+
 
 [**中文**](README.md) | **English**
 

@@ -3999,7 +3999,21 @@ def get_file_content(file_path):
             except Exception as e:
                 return jsonify({'success': False, 'error': f'Failed to load image: {str(e)}'})
         else:
-            return jsonify({'success': False, 'error': 'File type not supported for preview'})
+            # Unknown file type: try to read as plain text
+            try:
+                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                # Use the extension (without dot) as language label, fallback to 'text'
+                lang_label = ext[1:] if ext else 'text'
+                return jsonify({
+                    'success': True,
+                    'content': content,
+                    'type': 'code',
+                    'language': lang_label,
+                    'size': gui_instance.format_size(file_size)
+                })
+            except Exception as read_err:
+                return jsonify({'success': False, 'error': f'File type not supported for preview: {str(read_err)}'})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

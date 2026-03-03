@@ -9688,14 +9688,9 @@
         }
 
         function isFilePreviewable(filename) {
-            const ext = filename.split('.').pop().toLowerCase();
-            return ['html', 'htm', 'md', 'markdown', 'py', 'js', 'jsx', 'ts', 'tsx', 'css', 'json',
-                    'txt', 'log', 'yaml', 'yml', 'pdf', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp',
-                    'java', 'go', 'rs', 'php', 'rb', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat',
-                    'cmd', 'xml', 'sql', 'r', 'scala', 'kt', 'swift', 'dart', 'lua', 'perl', 'pl',
-                    'vim', 'dockerfile', 'makefile', 'cmake', 'gradle', 'properties', 'ini', 'cfg',
-                    'conf', 'toml', 'mmd', 'out', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
-                    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico', 'tex', 'v'].includes(ext);
+            // All files are previewable: known types use dedicated viewers,
+            // unknown types fall back to plain-text display.
+            return true;
         }
 
         function toggleDirectory(dirName, event) {
