@@ -4274,9 +4274,30 @@
                 </div>
             </div>
             <div class="modal-body" style="overflow: visible; max-height: none;">
+                {% if lang == 'zh' %}
                 <img src="{{ url_for('user_guide_image') }}"
                      alt="User Guide"
                      style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+                {% else %}
+                <div style="padding: 10px 4px; font-size: 0.95em; line-height: 1.8; color: var(--text-primary);">
+                    <h4 style="margin: 0 0 14px 0; font-size: 1.05em; color: var(--text-primary);">Quick Start Guide:</h4>
+                    <ol style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px;">
+                        <li>To view existing examples, leave the login code blank and click the connect icon 🔌 directly to access some sample cases.</li>
+                        <li>If you want to run tasks on your own, click the <strong>"Register Account"</strong> button 👤Register in the top-right corner to sign up and obtain an API Key.</li>
+                        <li>Return to the homepage. The API Key will be auto-filled, and the connection will be established automatically after a few seconds. You can also click the connect icon 🔌 to connect manually.</li>
+                        <li>Select a skill from the dropdown menu: <strong>Skill: Please select...</strong> (It is recommended to choose the recommended options).</li>
+                        <li>Click <strong>"New Workspace"</strong> 📁 or select a folder from the workspace list on the right by single-clicking it.</li>
+                        <li>Enter your requirements and background information in the prompt box (e.g., <em>"Write a patent for a wind power generation system"</em> — ensure it matches the selected skill), then click the upward arrow button ⬆️ to start the task.</li>
+                        <li>Check the task execution results (various documents and code) in the workspace folder of your working directory.</li>
+                        <li>Click the upload button ⬆️ to upload your own materials (docx, PDF, data files, etc.). If you have files in <code>.doc</code> format, please convert them to <code>.docx</code> using Word first.</li>
+                        <li>If the execution deviates from expectations or fails to meet requirements, simply click <strong>"Stop"</strong> and enter new prompts.</li>
+                        <li>To incrementally modify a specific file, you can drag and drop it from the workspace into the prompt box.</li>
+                        <li>The platform allows you to select different main platforms (e.g., General Tasks, Coding, Professional Writing, Patent Assistant, etc.). Data is not shared between different platforms.</li>
+                        <li>For more usage tips, click the help icon ❓ in the top-right corner, which contains detailed instructions.</li>
+                        <li>Mobile login is supported. Simply enter the URL in your mobile browser to access the platform.</li>
+                    </ol>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

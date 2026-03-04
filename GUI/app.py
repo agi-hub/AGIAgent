@@ -3314,9 +3314,16 @@ def register():
 
     # Load i18n texts for the resolved language
     i18n = I18N_TEXTS.get(current_lang, I18N_TEXTS['en'])
-    # 获取来源页面参数，用于返回时跳转到正确的页面
+    # 获取来源页面参数，用于返回时跳转到正确的页面，并携带当前语言参数
     from_page = request.args.get('from', '/')
-    return render_template('register.html', i18n=i18n, lang=current_lang, from_page=from_page)
+    # 构建返回链接，确保语言参数正确传递（避免 URL 中重复的 lang 参数）
+    from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+    parsed = urlparse(from_page)
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    query_params['lang'] = [current_lang]
+    new_query = urlencode({k: v[0] for k, v in query_params.items()})
+    back_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+    return render_template('register.html', i18n=i18n, lang=current_lang, from_page=from_page, back_url=back_url)
 
 @app.route('/api/register', methods=['POST'])
 def api_register():

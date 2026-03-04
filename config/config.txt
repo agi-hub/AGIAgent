@@ -71,6 +71,12 @@ max_tokens=16384
 # Streaming output configuration: True for streaming, False for batch output
 streaming=True
 
+# Zhipu AI Web Search API configuration
+# If configured, will use Zhipu web search API as default search engine
+# If not configured or empty, falls back to original search engine (Playwright-based)
+zhipu_search_api_key=your key
+zhipu_search_engine=search_std
+
 # Long-term memory configuration
 enable_long_term_memory=True
 
