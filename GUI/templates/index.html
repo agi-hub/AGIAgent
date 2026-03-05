@@ -6175,9 +6175,9 @@
          * 3. 其他情况下允许自动滚动
          */
         function shouldAutoScroll() {
-            // 修改为：只要有新内容，就始终自动滚动到最新
-            // 忽略用户当前的滚动位置和自动滚动开关状态，保证不会剩下几行没滚到底
-            return true;
+            // 只有在自动滚动启用时才滚动到底部
+            // 当用户向上滚动查看历史记录时，autoScrollEnabled 为 false，不强制滚动
+            return autoScrollEnabled;
         }
         
         // HTML escape function
