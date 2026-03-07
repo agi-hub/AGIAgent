@@ -278,6 +278,10 @@ AGIAgent 采用 **Manager + 多子 Agent** 的协作架构：Manager（老板）
 
 - **🔒 私有化部署**：软件无保留开源，完全免费；支持无互联网环境下的纯私有化部署，支持终端运行、个人网页端运行、小规模云端部署等多种模式；适配 GLM-4.5 等多种国产大模型及 Claude Sonnet 4 等国际先进大模型；国产模型成本可控（几十页、数万字文档开销低于 **1 元人民币**）
 
+更详细的介绍，请翻阅[介绍PPT](https://github.com/user-attachments/files/25679954/AGI.Agent.intro.web.version.pdf)  
+技术创新方面，请参考[技术白皮书Wiki](https://github.com/agi-hub/AGIAgent/wiki/AGIAgent-%E6%8A%80%E6%9C%AF%E7%99%BD%E7%9A%AE%E4%B9%A6)  
+使用手册，请参考[使用手册PDF](md/user_guide.pdf)
+
 ## 🤖 模型选择
 
 AGI Agent 支持各种主流 AI 模型，包括 Claude、GPT-4、DeepSeek V3、Kimi K2 等，满足不同用户需求和预算。支持流式/非流式、工具调用或基于聊天的工具接口、Anthropic/OpenAI API 兼容性。
@@ -315,7 +319,7 @@ LANG=zh
 
 ### 操作系统支持
 - ✅ **Linux** - 完全支持
-- ✅ **Windows** - 完全支持  
+- ✅ **Windows** - 完全支持, 如果需要一键部署包，可到https://github.com/agi-hub/AGIAgent/releases/ 获取
 - ✅ **MacOS** - 完全支持
 
 ### 运行时接口
@@ -349,6 +353,16 @@ playwright install-deps && playwright install chromium
 ```
 
 安装后在 `config/config.txt` 中配置 `api_key`、`api_base`、`model` 和 `LANG=en/zh`。
+
+**本软件不依赖于Node.js，不依赖VSCode及其插件，包括GUI在内，只需要python 3.8+，属于python生态**
+**软件核心代码不需要sudo权限安装任何软件**。
+**因此，如果操作系统过老或者权限受限的，可以考虑本软件**。
+额外依赖（可选）：
+- 如果需要mermaid图自动转换及web_search, 需要额外安装playwright（不安装时，Markdown中的mermaid代码为代码形态，不会自动转图像）
+- 如果需要word生成，需要额外安装pandoc
+- 如果需要pdf生成，在windows下需要MS Word或WPS，在linux/MacOS下需要xelatex和pandoc，可以通过install.sh安装
+- 如果需要latex生成，请安装xelatex和pandoc，可以通过install.sh安装
+
 
 ### 基本使用
 
