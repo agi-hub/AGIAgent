@@ -19,9 +19,10 @@
 [**English**](README_en.md)
 
 ## 🚀 项目介绍
-**AGI Agent** 不仅是一个支持 Vibe Colorful Doc、Vibe Coding 和自然语言通用任务执行的智能体平台，更是一个**图文文档与代码的交互式创作平台**。
+**AGI Agent** 是一个支持 Vibe Doc、Vibe Coding 和自然语言通用任务执行的智能体平台，也是一个**图文文档与代码的交互式创作平台**。旨在使用交互式编程智能体的工作模式解决更广泛的生产力任务。
 
-通过直观的 GUI，AGI Agent 能够与您携手完成内容的深度加工——更换图片、编辑文字、实时修改 SVG 矢量图与 Mermaid 流程图，乃至边写边运行 HTML 小程序，让每一次创作都所见即所得。结合自然语言与丰富的 skills 技能库，支持多轮次创意迭代，在网页端和纯 Python 环境下均可获得类 Cursor 的强交互智能体创作体验。
+通过直观的 GUI，AGI Agent 能够与您携手完成内容的深度加工——更换图片、编辑文字、实时修改 SVG 矢量图与 Mermaid 流程图，乃至边写边运行 HTML 小程序，让每一次创作都所见即所得。
+结合自然语言与丰富的 skills 技能库，支持多轮次创意迭代，在网页端和纯 Python 环境下均可获得类 Cursor 的强交互智能体创作体验。
 
 平台内置 40+ 工具，提供 GUI、CLI 及嵌入式运行等多种模式，可部署于云端、笔记本或嵌入式设备（ARM），全面支持 Anthropic/OpenAI 大模型接口及开源/私有化部署。
 
@@ -127,7 +128,7 @@
 | <a href="https://agiagentonline.com/colordocintro/videos/写国家项目申请书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写国家项目申请书.png" width="380" alt="写国家项目申请书"></a> | <a href="https://agiagentonline.com/colordocintro/videos/写图文博客、小红书.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/写图文博客、小红书.png" width="380" alt="写图文博客、小红书"></a> |
 | <a href="https://agiagentonline.com/colordocintro/videos/分析用户数据、绘制图表.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/分析用户数据、绘制图表.png" width="380" alt="分析用户数据、绘制图表"></a> | <a href="https://agiagentonline.com/colordocintro/videos/报告-Agent发展趋势.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/报告-Agent发展趋势.png" width="380" alt="报告-Agent发展趋势"></a> |
 | <a href="https://agiagentonline.com/colordocintro/videos/矢量图像绘制及多格式图像输出.mp4"><img src="https://agiagentonline.com/colordocintro/assets/img/矢量图像绘制及多格式图像输出.png" width="380" alt="矢量图像绘制及多格式图像输出"></a> | <a href="https://agiagentonline.com/example-results-records/izhikevich_neuron_visualization.html"><img src="https://agiagentonline.com/example-results-records/python%E7%A8%8B%E5%BA%8F%E7%BB%98%E5%88%B6%E5%9B%BE%E5%83%8F.png" width="380" alt="python程序绘制图像"></a> |
-| <a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_guide.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="380" alt="写个网页介绍乐山大佛"></a> | <a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="380" alt="抽奖转盘"></a> |
+| <a href="https://agiagentonline.com/example-results-records/leshan_buddha_travel_de.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E7%BD%91%E9%A1%B5%E4%BB%8B%E7%BB%8D%E4%B9%90%E5%B1%B1%E5%A4%A7%E4%BD%9B.png" width="380" alt="写个网页介绍乐山大佛"></a> | <a href="https://agiagentonline.com/example-results-records/lucky_wheel_lottery.html"><img src="https://agiagentonline.com/example-results-records/%E6%8A%BD%E5%A5%96%E8%BD%AC%E7%9B%98.png" width="380" alt="抽奖转盘"></a> |
 | <a href="https://agiagentonline.com/example-results-records/maze-game.html"><img src="https://agiagentonline.com/example-results-records/%E5%86%99%E4%B8%AA%E6%89%BE%E5%A6%88%E5%A6%88%E7%9A%84%E5%B0%8F%E6%B8%B8%E6%88%8F.png" width="380" alt="写个找妈妈的小游戏"></a> | |
 
 </div>
@@ -160,7 +161,7 @@
 - [量子通信数据稳定性增强技术专利交底书](https://agiagentonline.com/colordocintro/assets/examples/量子通信数据稳定性增强技术专利交底书.docx)
 
 ### 🗺️ 旅游攻略与介绍
-- [三亚旅游攻略](https://agiagentonline.com/colordocintro/assets/examples/sanya_travel_guide.docx)
+- [三亚旅游攻略](https://agiagentonline.com/colordocintro/assets/examples/sanya_travel_de.docx)
 - [汕头旅游攻略](https://agiagentonline.com/colordocintro/assets/examples/汕头旅游攻略.docx)
 - [乌镇历史介绍](https://agiagentonline.com/colordocintro/assets/examples/乌镇历史介绍.docx)
 - [北京市鼓楼到珠市口公交路线](https://agiagentonline.com/colordocintro/assets/examples/北京市鼓楼到珠市口公交路线.docx)
@@ -368,7 +369,7 @@ playwright install-deps && playwright install chromium
 
 ### GUI
 ```bash
-python GUI/app.py
+python GUI/app.py --port 5001
 
 # 然后通过浏览器访问 http://localhost:5001
 ```
