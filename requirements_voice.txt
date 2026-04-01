@@ -1,0 +1,10 @@
+# AGI Agent - 语音输入功能最小依赖
+# Voice Input Feature Minimal Dependencies
+
+# 核心依赖 (Core Dependencies)
+sherpa-onnx>=1.9.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# 音频转换 (Audio Conversion) - 可选，推荐安装系统 ffmpeg
+pydub>=0.25.1
