@@ -1,0 +1,20 @@
+{
+  "description": "Authorized API keys for AGI Agent GUI access",
+  "version": "1.0",
+  "keys": [
+    {
+      "name": "admin",
+      "description": "Default admin key",
+      "sha256_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "permissions": [
+        "read",
+        "write",
+        "execute",
+        "admin"
+      ],
+      "created_at": "2026-03-08T09:50:35.254800",
+      "expires_at": null,
+      "enabled": false
+    }
+  ]
+}

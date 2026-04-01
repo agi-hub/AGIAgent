@@ -383,7 +383,7 @@ class AuthenticationManager:
                 "error": f"注册失败: {str(e)}"
             }
 
-    def add_authorized_key(self, name: str, api_key: str, permissions: List[str] = None, expires_at: str = None) -> bool:
+    def add_authorized_key(self, name: str, api_key: str, permissions: List[str] = None, expires_at: str = None, description: str = None) -> bool:
         """Add new authorized key"""
         if permissions is None:
             permissions = ["read", "write", "execute"]
@@ -406,6 +406,10 @@ class AuthenticationManager:
             "expires_at": expires_at,
             "enabled": True
         }
+        
+        # Add description if provided
+        if description:
+            new_key["description"] = description
 
         auth_config["keys"].append(new_key)
 

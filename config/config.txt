@@ -7,11 +7,12 @@ LANG=zh
 # name (with comment #), key, base, model, max_output_tokens
 # the configuration in comment will not be valid.
 
+
 # GLM coding-plan API configuration
-api_key=your key
-api_base=https://open.bigmodel.cn/api/anthropic
-model=glm-4.7
-max_tokens=16384
+# api_key=your key
+# api_base=https://open.bigmodel.cn/api/anthropic
+# model=glm-4.7
+# max_tokens=16384
 
 # GLM coding-plan API configuration
 # api_key=your key
@@ -73,9 +74,9 @@ streaming=True
 
 # Zhipu AI Web Search API configuration
 # If configured, will use Zhipu web search API as default search engine
-# If not configured or empty, falls back to original search engine (Playwright-based)
-zhipu_search_api_key=your key
-zhipu_search_engine=search_std
+# If not configured or empty, falls back to original search engine (Playwright-based) 
+# zhipu_search_api_key=your key
+# zhipu_search_engine=search_std
 
 # Long-term memory configuration
 enable_long_term_memory=True
@@ -131,7 +132,7 @@ tool_call_parse_format=xml
 # When disabled (False), thinking content will be ignored even if the model returns it
 # This applies to both standard tool calling and chat-based tool calling formats
 # Default: True (enabled for models that support thinking)
-enable_thinking=True
+enable_thinking=False
 
 # Truncation Length Configuration
 # These configurations control the length of information returned by tool calls to the large model,
@@ -249,7 +250,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=data
+gui_default_data_directory=.
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions
@@ -351,3 +352,44 @@ GUI_show_multi_agent_button=True
 # Default: True (enabled)
 # Set to False to hide the agent view button
 GUI_show_agent_view_button=True
+
+# Voice Input Button Display Configuration
+# Controls whether to show the voice input button in GUI
+# When enabled (True), users can use the microphone button to input tasks by voice
+# When disabled (False), the voice input button is hidden
+# Default: True (enabled)
+# Set to False to hide the voice input button
+GUI_show_voice_input_button=True
+
+# ============================================
+# Voice/Speech Configuration Section
+# ============================================
+
+# ASR (Automatic Speech Recognition) Configuration
+# Speech recognition provider: sherpa (local offline model)
+asr_provider=sherpa
+# Path to ASR model directory
+asr_model_path=models/sherpa-onnx-paraformer-zh-2023-03-28
+# Audio sample rate (Hz), must be 16000 for Paraformer model
+audio_sample_rate=16000
+
+# TTS (Text-to-Speech) Configuration
+# TTS provider: edge_tts (Microsoft Edge TTS, online service, no local model)
+tts_provider=edge_tts
+# TTS voice selection (EdgeTTS voice name)
+# Available Chinese voices:
+#   zh-CN-XiaoxiaoNeural: 晓晓 (Female, Mainland) - Default
+#   zh-CN-XiaoyiNeural: 晓伊 (Female, Mainland)
+#   zh-CN-YunjianNeural: 云健 (Male, Mainland)
+#   zh-CN-YunxiNeural: 云希 (Male, Mainland)
+#   zh-CN-YunxiaNeural: 云夏 (Male, Mainland)
+#   zh-CN-YunyangNeural: 云扬 (Male, Mainland)
+#   zh-CN-liaoning-XiaobeiNeural: 晓北 (Female, Northeastern)
+#   zh-CN-shaanxi-XiaoniNeural: 晓妮 (Female, Shaanxi)
+#   zh-HK-HiuGaaiNeural: 晓佳 (Female, Cantonese)
+#   zh-HK-HiuMaanNeural: 晓曼 (Female, Hong Kong)
+#   zh-HK-WanLungNeural: 云龙 (Male, Hong Kong)
+#   zh-TW-HsiaoChenNeural: 晓辰 (Female, Taiwan)
+#   zh-TW-HsiaoYuNeural: 晓雨 (Female, Taiwan)
+#   zh-TW-YunJheNeural: 云哲 (Male, Taiwan)
+tts_voice=zh-CN-XiaoxiaoNeural

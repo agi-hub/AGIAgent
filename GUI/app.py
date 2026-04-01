@@ -351,8 +351,11 @@ app.config['SECRET_KEY'] = f'{APP_NAME.lower().replace(" ", "_")}_gui_secret_key
 # ping_interval=60秒发送一次ping，ping_timeout=600秒超时（10分钟）
 # 客户端每55秒发送心跳，服务器每60秒发送ping，双重保活机制
 # 使用 gevent 异步模式（如果可用），否则回退到 threading
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE, 
-                   ping_timeout=600, ping_interval=60, 
+# Flask 3.x 下 RequestContext.session 不可赋值；默认 manage_session=True 会触发崩溃。
+# 本 GUI 使用 Socket.IO auth 与内存中的 user_sessions，不依赖分叉的 cookie session。
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE,
+                   manage_session=False,
+                   ping_timeout=600, ping_interval=60,
                    # 🔧 添加更多配置以支持更好的重连
                    logger=False, engineio_logger=False,
                    # 允许HTTP长轮询作为fallback
@@ -3161,6 +3164,7 @@ def render_index_page(app_name_param=None, session_id=None):
     gui_show_infinite_execute_button = config.get('GUI_show_infinite_execute_button', 'True').lower() == 'true'
     gui_show_multi_agent_button = config.get('GUI_show_multi_agent_button', 'True').lower() == 'true'
     gui_show_agent_view_button = config.get('GUI_show_agent_view_button', 'True').lower() == 'true'
+    gui_show_voice_input_button = config.get('GUI_show_voice_input_button', 'True').lower() == 'true'
     
     # Get app information for initial render (to avoid double display)
     app_name = user_app_manager.get_app_name()
@@ -3189,6 +3193,7 @@ def render_index_page(app_name_param=None, session_id=None):
                          gui_show_infinite_execute_button=gui_show_infinite_execute_button,
                          gui_show_multi_agent_button=gui_show_multi_agent_button,
                          gui_show_agent_view_button=gui_show_agent_view_button,
+                         gui_show_voice_input_button=gui_show_voice_input_button,
                          app_name=app_name,
                          app_logo_url=app_logo_url,
                          is_app_mode=is_app_mode,
@@ -9022,6 +9027,201 @@ def generate_custom_mcp_config(selected_servers, out_dir):
 
     except Exception as e:
         return None
+
+
+@app.route('/api/voice-recognize', methods=['POST'])
+def voice_recognize():
+    """处理语音识别请求"""
+    temp_webm_path = None
+    temp_wav_path = None
+    
+    try:
+        # 检查是否有音频数据
+        if 'audio' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No audio file provided'
+            })
+        
+        audio_file = request.files['audio']
+        
+        # 保存临时音频文件
+        temp_dir = os.path.join(os.getcwd(), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_webm_path = os.path.join(temp_dir, f'voice_input_{timestamp}.webm')
+        temp_wav_path = os.path.join(temp_dir, f'voice_input_{timestamp}.wav')
+        
+        audio_file.save(temp_webm_path)
+        
+        # 转换webm到wav格式
+        try:
+            import subprocess
+            # 使用ffmpeg转换音频格式
+            result = subprocess.run([
+                'ffmpeg', '-i', temp_webm_path,
+                '-ar', '16000',  # 采样率16kHz
+                '-ac', '1',      # 单声道
+                '-y',            # 覆盖输出文件
+                temp_wav_path
+            ], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode != 0:
+                # 如果ffmpeg失败，尝试使用pydub
+                try:
+                    from pydub import AudioSegment
+                    audio = AudioSegment.from_file(temp_webm_path)
+                    audio = audio.set_frame_rate(16000).set_channels(1)
+                    audio.export(temp_wav_path, format='wav')
+                except ImportError:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Audio conversion failed. Please install ffmpeg or pydub.'
+                    })
+        except FileNotFoundError:
+            # ffmpeg未安装，尝试pydub
+            try:
+                from pydub import AudioSegment
+                audio = AudioSegment.from_file(temp_webm_path)
+                audio = audio.set_frame_rate(16000).set_channels(1)
+                audio.export(temp_wav_path, format='wav')
+            except ImportError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Audio conversion failed. Please install ffmpeg or pydub (pip install pydub).'
+                })
+        
+        # 加载配置
+        config = load_config()
+        asr_provider = config.get('asr_provider', 'sherpa')
+        asr_model_path = config.get('asr_model_path', 'models/sherpa-onnx-paraformer-zh-2023-03-28')
+        sample_rate = int(config.get('audio_sample_rate', 16000))
+        
+        # 执行语音识别
+        recognized_text = None
+        
+        if asr_provider == 'sherpa':
+            try:
+                import sherpa_onnx
+                import numpy as np
+                from scipy.io import wavfile
+                
+                # 检查模型路径
+                model_path = os.path.join(os.getcwd(), asr_model_path)
+                if not os.path.exists(model_path):
+                    return jsonify({
+                        'success': False,
+                        'error': f'ASR model not found at {model_path}. Please download the model first.'
+                    })
+                
+                # 检查模型类型（在线流式 vs 离线）
+                has_encoder_decoder = (
+                    os.path.exists(os.path.join(model_path, "encoder.int8.onnx")) and
+                    os.path.exists(os.path.join(model_path, "decoder.int8.onnx"))
+                )
+                has_offline_model = os.path.exists(os.path.join(model_path, "model.int8.onnx"))
+                
+                # 创建识别器
+                if has_encoder_decoder:
+                    # 在线流式模型
+                    recognizer = sherpa_onnx.OnlineRecognizer.from_paraformer(
+                        encoder=os.path.join(model_path, "encoder.int8.onnx"),
+                        decoder=os.path.join(model_path, "decoder.int8.onnx"),
+                        tokens=os.path.join(model_path, "tokens.txt"),
+                        num_threads=2,
+                        sample_rate=sample_rate,
+                        feature_dim=80,
+                        decoding_method="greedy_search",
+                    )
+                    use_streaming = True
+                elif has_offline_model:
+                    # 离线模型
+                    recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
+                        paraformer=os.path.join(model_path, "model.int8.onnx"),
+                        tokens=os.path.join(model_path, "tokens.txt"),
+                        num_threads=2,
+                        sample_rate=sample_rate,
+                        feature_dim=80,
+                        decoding_method="greedy_search",
+                    )
+                    use_streaming = False
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Invalid model format. Please check model files in {model_path}'
+                    })
+                
+                # 读取音频
+                file_sample_rate, audio_data = wavfile.read(temp_wav_path)
+                
+                # 如果是立体声,转换为单声道
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data[:, 0]
+                
+                # 转换为 float32
+                audio_data = audio_data.astype(np.float32) / 32768.0
+                
+                # 根据模型类型进行识别
+                if use_streaming:
+                    # 在线流式识别
+                    stream = recognizer.create_stream()
+                    stream.accept_waveform(sample_rate, audio_data)
+                    recognizer.decode_stream(stream)
+                    recognized_text = stream.result.text
+                else:
+                    # 离线识别
+                    stream = recognizer.create_stream()
+                    stream.accept_waveform(sample_rate, audio_data)
+                    recognizer.decode_stream(stream)
+                    recognized_text = stream.result.text
+                
+            except ImportError as ie:
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing dependency: {str(ie)}. Please run: pip install sherpa-onnx scipy numpy'
+                })
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': f'ASR error: {str(e)}'
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'ASR provider "{asr_provider}" not supported yet. Please set asr_provider=sherpa in config.txt'
+            })
+        
+        # 返回识别结果
+        if recognized_text and recognized_text.strip():
+            return jsonify({
+                'success': True,
+                'text': recognized_text.strip()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No speech detected in audio'
+            })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+    finally:
+        # 清理临时文件
+        try:
+            if temp_webm_path and os.path.exists(temp_webm_path):
+                os.remove(temp_webm_path)
+            if temp_wav_path and os.path.exists(temp_wav_path):
+                os.remove(temp_wav_path)
+        except:
+            pass
 
 
 @app.route('/api/contact-us', methods=['POST'])

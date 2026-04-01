@@ -1764,6 +1764,45 @@
             background: var(--bg-send-button-hover);
         }
 
+        /* 语音输入按钮样式 */
+        #voiceInputButton {
+            transition: all 0.3s ease;
+            width: 28px !important;
+            height: 28px !important;
+            min-width: 28px !important;
+        }
+
+        #voiceInputButton:hover:not(:disabled):not(.recording) {
+            background: var(--color-accent) !important;
+            color: white !important;
+        }
+
+        #voiceInputButton.recording {
+            animation: pulse-recording 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-recording {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.8;
+                transform: scale(1.05);
+            }
+        }
+
+        #voiceInputButton.processing {
+            background: #f59e0b !important;
+            border-color: #f59e0b !important;
+            color: white !important;
+        }
+
+        #voiceInputButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         #stopButton {
             background-color: #f44336 !important;
             border: none !important;
@@ -4168,8 +4207,15 @@
                         <div class="mode-selection">
                             <a href="javascript:void(0);" 
                                id="newUserGuideLink"
-                               style="color: var(--link-color); text-decoration: underline; cursor: pointer; margin-right: auto; font-size: 0.85em; white-space: nowrap;">
+                               style="color: var(--link-color); text-decoration: underline; cursor: pointer; font-size: 0.85em; white-space: nowrap;">
                                 {% if lang == 'zh' %}新手指导{% else %}New User Guide{% endif %}
+                            </a>
+                            <a href="https://agiagentonline.com/colordocintro/"
+                               id="exampleVideoLink"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               style="color: var(--link-color); text-decoration: underline; cursor: pointer; margin-left: 10px; margin-right: auto; font-size: 0.85em; white-space: nowrap;">
+                                {% if lang == 'zh' %}示例视频{% else %}Example Videos{% endif %}
                             </a>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
@@ -4206,6 +4252,11 @@
                             <input type="file" id="quickFileInput" multiple style="display: none;">
                             <input type="file" id="directoryFileInput" multiple style="display: none;">
                             <div class="button-row">
+                                {% if gui_show_voice_input_button %}
+                                <button class="send-button" id="voiceInputButton" title="{{ i18n.get('voice_input', '点击开始/停止录音' if lang == 'zh' else 'Click to Start/Stop Recording') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
+                                    <i class="fas fa-microphone"></i>
+                                </button>
+                                {% endif %}
                                 <button class="send-button" id="sendButton" title="{{ i18n.direct_tooltip }}">
                                     <i class="fas fa-arrow-up"></i>
                                 </button>
@@ -4434,41 +4485,23 @@
                 <p style="margin: 0 0 16px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
                     👋 感谢您使用 <strong>AGI Agent</strong>！这是一个开源的通用智能体平台，支持 Vibe 编程、图文写作、通用任务执行等多种场景。
                 </p>
-                <p style="margin: 0 0 20px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
-                    如果您觉得这个项目对您有帮助，欢迎在 GitHub 上给我们点个 ⭐ Star，这对我们非常重要，感谢您的支持！
+                <p style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
+                    💡 提示：在输入提示词前，请先选择平台和技能。
                 </p>
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer"
-                       style="display: inline-flex; align-items: center; gap: 10px; background: #24292e; color: white;
-                              padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 15px;
-                              font-weight: bold; transition: background 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"
-                       onmouseover="this.style.background='#444d56'" onmouseout="this.style.background='#24292e'">
-                        <i class="fab fa-github" style="font-size: 20px;"></i>
-                        <span>在 GitHub 上点 ⭐ Star</span>
-                    </a>
-                </div>
                 <p style="margin: 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
-                    💡 提示：点击左侧文件夹选择工作区，在下方输入框输入任务即可开始使用。
+                    📎 示例及视频请访问
+                    <a href="https://agiagentonline.com/colordocintro/" target="_blank" rel="noopener noreferrer">https://agiagentonline.com/colordocintro/</a>
                 </p>
                 {% else %}
                 <p style="margin: 0 0 16px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
                     👋 Welcome to <strong>AGI Agent</strong>! This is an open-source general-purpose agent platform supporting Vibe Coding, document writing, and general task execution.
                 </p>
-                <p style="margin: 0 0 20px 0; color: var(--text-primary); line-height: 1.8; font-size: 15px;">
-                    If you find this project helpful, please give us a ⭐ Star on GitHub — it means a lot to us. Thank you for your support!
+                <p style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
+                    💡 Tip: Before entering your prompt, please select a platform and skill first.
                 </p>
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <a href="https://github.com/agi-hub/AGIAgent" target="_blank" rel="noopener noreferrer"
-                       style="display: inline-flex; align-items: center; gap: 10px; background: #24292e; color: white;
-                              padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 15px;
-                              font-weight: bold; transition: background 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"
-                       onmouseover="this.style.background='#444d56'" onmouseout="this.style.background='#24292e'">
-                        <i class="fab fa-github" style="font-size: 20px;"></i>
-                        <span>⭐ Star on GitHub</span>
-                    </a>
-                </div>
                 <p style="margin: 0; color: var(--text-secondary); font-size: 13px; text-align: center; line-height: 1.6;">
-                    💡 Tip: Click a folder on the left to select your workspace, then type your task in the input box below.
+                    📎 Examples and videos:
+                    <a href="https://agiagentonline.com/colordocintro/" target="_blank" rel="noopener noreferrer">https://agiagentonline.com/colordocintro/</a>
                 </p>
                 {% endif %}
             </div>
@@ -4479,6 +4512,40 @@
                                transition: opacity 0.2s;"
                         onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                     {% if lang == 'zh' %}开始使用 🚀{% else %}Get Started 🚀{% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 技能选择弹窗 Skill Selection Modal -->
+    <div id="skillSelectModal" class="modal" style="display: none; z-index: 1600;">
+        <div class="modal-content" style="max-width: 480px; height: auto; max-height: 80vh; margin: 10% auto;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);">
+                <h3 style="display: flex; align-items: center; gap: 8px;">
+                    <span>🧭</span>
+                    <span>{% if lang == 'zh' %}请选择技能{% else %}Please Select a Skill{% endif %}</span>
+                </h3>
+                <span class="close" id="skillSelectModalClose" style="font-size: 22px; cursor: pointer;">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <p style="margin: 0 0 14px 0; color: var(--text-primary); line-height: 1.6; font-size: 14px;">
+                    {% if lang == 'zh' %}
+                    当前未选择技能，请选择一个技能后再发起任务。若不确定，可直接使用“通用任务”。
+                    {% else %}
+                    No skill is selected. Please choose a skill before starting the task. If unsure, use "General Task".
+                    {% endif %}
+                </p>
+                <select id="skillSelectModalOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
+                </select>
+            </div>
+            <div style="padding: 12px 20px 18px; text-align: right; border-top: 1px solid var(--border-primary); display: flex; justify-content: flex-end; gap: 10px;">
+                <button id="skillSelectModalCancelBtn"
+                        style="background: transparent; color: var(--text-primary); border: 1px solid var(--border-primary); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                    {% if lang == 'zh' %}取消{% else %}Cancel{% endif %}
+                </button>
+                <button id="skillSelectModalConfirmBtn"
+                        style="background: var(--color-accent); color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">
+                    {% if lang == 'zh' %}确认{% else %}Confirm{% endif %}
                 </button>
             </div>
         </div>
@@ -5420,10 +5487,7 @@
                     scrollToBottom(false);
                 }, 100);
 
-                // 显示欢迎弹窗
-                setTimeout(() => {
-                    showWelcomeModal();
-                }, 600);
+                // 已按需求隐藏欢迎弹窗
             });
             
             socket.on('status', function(data) {
@@ -7608,6 +7672,91 @@
             }
         }
 
+        function showSkillSelectModal(skillOptions) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('skillSelectModal');
+                const closeBtn = document.getElementById('skillSelectModalClose');
+                const cancelBtn = document.getElementById('skillSelectModalCancelBtn');
+                const confirmBtn = document.getElementById('skillSelectModalConfirmBtn');
+                const optionsSelect = document.getElementById('skillSelectModalOptions');
+
+                if (!modal || !closeBtn || !cancelBtn || !confirmBtn || !optionsSelect) {
+                    resolve('__general__');
+                    return;
+                }
+
+                optionsSelect.innerHTML = '';
+                skillOptions.forEach((item) => {
+                    const option = document.createElement('option');
+                    option.value = item.value;
+                    option.textContent = item.text;
+                    optionsSelect.appendChild(option);
+                });
+                // 默认选中“通用任务”
+                optionsSelect.value = '__general__';
+
+                modal.style.display = 'block';
+                optionsSelect.focus();
+
+                let settled = false;
+                const cleanup = () => {
+                    closeBtn.removeEventListener('click', onCancel);
+                    cancelBtn.removeEventListener('click', onCancel);
+                    confirmBtn.removeEventListener('click', onConfirm);
+                    window.removeEventListener('click', onBackdropClick);
+                };
+
+                const finish = (value) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    modal.style.display = 'none';
+                    resolve(value);
+                };
+
+                const onCancel = () => finish(null);
+                const onConfirm = () => finish(optionsSelect.value || '__general__');
+                const onBackdropClick = (e) => {
+                    if (e.target === modal) onCancel();
+                };
+
+                closeBtn.addEventListener('click', onCancel);
+                cancelBtn.addEventListener('click', onCancel);
+                confirmBtn.addEventListener('click', onConfirm);
+                window.addEventListener('click', onBackdropClick);
+            });
+        }
+
+        async function ensureSkillSelectedBeforeTask() {
+            const routineSelect = document.getElementById('routineSelect');
+            if (!routineSelect) return true;
+
+            // 已选择技能时保持现有行为
+            if (routineSelect.value && routineSelect.value.trim() !== '') {
+                return true;
+            }
+
+            const options = Array.from(routineSelect.options || [])
+                .filter(opt => opt.value && opt.value.trim() !== '')
+                .map(opt => ({ value: opt.value, text: opt.textContent || opt.value }));
+
+            const generalTaskLabel = CURRENT_LANG === 'zh' ? '通用任务' : 'General Task';
+            options.push({ value: '__general__', text: generalTaskLabel });
+
+            const selectedValue = await showSkillSelectModal(options);
+            if (selectedValue === null) {
+                return false;
+            }
+
+            // “通用任务”与“请选择”等价，保持空值
+            if (selectedValue === '__general__') {
+                routineSelect.value = '';
+            } else {
+                routineSelect.value = selectedValue;
+            }
+            return true;
+        }
+
         // Input handling
         async function sendMessage(planMode = null) {
             // Get mode from select if not provided
@@ -7654,6 +7803,12 @@
             // 检查guest用户权限
             if (isGuest) {
                 addMessage(I18N.guest_cannot_execute, 'error');
+                return;
+            }
+
+            // 未选择技能时弹窗要求用户选择（默认通用任务）
+            const skillReady = await ensureSkillSelectedBeforeTask();
+            if (!skillReady) {
                 return;
             }
 
@@ -7997,6 +8152,12 @@
                 return;
             }
 
+            // 未选择技能时弹窗要求用户选择（默认通用任务）
+            const skillReady = await ensureSkillSelectedBeforeTask();
+            if (!skillReady) {
+                return;
+            }
+
             // Get selected model configuration (async)
             const modelConfig = await getSelectedModelConfig();
             if (!modelConfig) {
@@ -8259,6 +8420,119 @@
         });
 
         sendButton.addEventListener('click', () => sendMessage(null)); // Pass null to auto-read from executionModeSelect
+        
+        // Voice input button - 点击开始/停止录音
+        const voiceInputButton = document.getElementById('voiceInputButton');
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let audioStream = null;
+        
+        if (voiceInputButton) {
+            voiceInputButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                
+                if (isRecording) {
+                    // 当前正在录音，点击停止
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                        isRecording = false;
+                        console.log('🎤 停止录音，开始识别...');
+                    }
+                } else {
+                    // 当前未录音，点击开始
+                    try {
+                        // 请求麦克风权限
+                        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        
+                        // 创建录音器
+                        mediaRecorder = new MediaRecorder(audioStream);
+                        audioChunks = [];
+                        
+                        mediaRecorder.ondataavailable = (event) => {
+                            if (event.data.size > 0) {
+                                audioChunks.push(event.data);
+                            }
+                        };
+                        
+                        mediaRecorder.onstop = async () => {
+                            // 停止所有音频轨道
+                            if (audioStream) {
+                                audioStream.getTracks().forEach(track => track.stop());
+                                audioStream = null;
+                            }
+                            
+                            // 合并音频数据
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            
+                            // 显示处理状态
+                            voiceInputButton.classList.remove('recording');
+                            // 恢复原来的蓝色样式
+                            voiceInputButton.style.background = 'transparent';
+                            voiceInputButton.style.borderColor = 'var(--color-accent)';
+                            voiceInputButton.style.color = 'var(--color-accent)';
+                            voiceInputButton.classList.add('processing');
+                            voiceInputButton.querySelector('i').className = 'fas fa-spinner fa-spin';
+                            voiceInputButton.disabled = true;
+                            
+                            // 发送到服务器进行识别
+                            try {
+                                const formData = new FormData();
+                                formData.append('audio', audioBlob, 'voice_input.webm');
+                                
+                                const response = await fetch('/api/voice-recognize', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+                                
+                                const result = await response.json();
+                                
+                                if (result.success && result.text) {
+                                    // 将识别结果填充到输入框
+                                    userInput.value = result.text;
+                                    resizeTextarea();
+                                    
+                                    // 显示成功提示
+                                    addMessage(I18N.get('voice_recognized', `🎤 识别成功: ${result.text}`), 'info');
+                                } else {
+                                    // 显示错误
+                                    addMessage(I18N.get('voice_recognition_failed', `❌ 语音识别失败: ${result.error || '未识别到语音'}`), 'error');
+                                }
+                            } catch (error) {
+                                console.error('Voice recognition error:', error);
+                                addMessage(I18N.get('voice_recognition_error', `❌ 语音识别错误: ${error.message}`), 'error');
+                            } finally {
+                                // 恢复按钮状态
+                                voiceInputButton.classList.remove('processing');
+                                // 确保恢复原来的蓝色样式
+                                voiceInputButton.style.background = 'transparent';
+                                voiceInputButton.style.borderColor = 'var(--color-accent)';
+                                voiceInputButton.style.color = 'var(--color-accent)';
+                                voiceInputButton.querySelector('i').className = 'fas fa-microphone';
+                                voiceInputButton.disabled = false;
+                            }
+                        };
+                        
+                        // 开始录音
+                        mediaRecorder.start();
+                        isRecording = true;
+                        
+                        // 更新按钮状态
+                        voiceInputButton.classList.add('recording');
+                        voiceInputButton.querySelector('i').className = 'fas fa-stop-circle';
+                        voiceInputButton.style.background = '#ef4444';
+                        voiceInputButton.style.borderColor = '#ef4444';
+                        voiceInputButton.style.color = 'white';
+                        
+                        console.log('🎤 开始录音... 再次点击停止');
+                        
+                    } catch (error) {
+                        console.error('Failed to access microphone:', error);
+                        addMessage(I18N.get('microphone_access_failed', '❌ 无法访问麦克风，请检查权限设置'), 'error');
+                    }
+                }
+            });
+        }
         
         // User input modal handlers - 已删除，改为在聊天窗口中显示选择题
 
@@ -8637,79 +8911,11 @@
             });
         }
 
-        // 追踪输入法（IME）组合状态，解决 Safari/macOS 中文输入法回车被误判的问题
-        let isComposingInput = false;
-        userInput.addEventListener('compositionstart', function() {
-            isComposingInput = true;
-        });
-        userInput.addEventListener('compositionend', function() {
-            isComposingInput = false;
-        });
-
+        // 禁用回车键自动执行功能，避免与输入法冲突
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
-                // 如果输入法正在组合输入（如中文输入法确认候选词），忽略此回车事件
-                // e.isComposing 在大多数浏览器有效，isComposingInput 作为 Safari 的兜底方案
-                if (e.isComposing || isComposingInput) {
-                    return;
-                }
-
                 e.preventDefault();
-                
-                console.log('[DEBUG] 回车键按下');
-                console.log('[DEBUG] isWaitingForUserInput:', isWaitingForUserInput);
-                console.log('[DEBUG] 输入框内容:', userInput.value);
-                console.log('[DEBUG] socket状态:', socket ? 'connected' : 'null');
-                
-                // 如果正在等待user_input_request，发送输入内容到终端
-                if (isWaitingForUserInput) {
-                    const inputText = userInput.value.trim();
-                    console.log('[DEBUG] ✅ 检测到等待用户输入，准备发送');
-                    console.log('[DEBUG] 发送内容:', inputText);
-                    console.log('[DEBUG] 发送数据:', { input: inputText });
-                    
-                    // 发送用户输入到终端
-                    socket.emit('user_input_response', { input: inputText });
-                    console.log('[DEBUG] ✅ 已发送 user_input_response 事件');
-                    
-                    // 清除等待标志
-                    isWaitingForUserInput = false;
-                    console.log('[DEBUG] ✅ 已清除 isWaitingForUserInput 标志');
-                    
-                    // 清除超时定时器
-                    if (userInputTimeoutTimer !== null) {
-                        clearTimeout(userInputTimeoutTimer);
-                        userInputTimeoutTimer = null;
-                        console.log('[DEBUG] ✅ 已清除超时定时器');
-                    }
-                    
-                    // 清空输入框（立即执行，确保在return之前完成）
-                    console.log('[DEBUG] 清空前输入框内容:', userInput.value);
-                    userInput.value = '';
-                    console.log('[DEBUG] ✅ 已清空输入框，当前内容:', userInput.value);
-                    resizeTextarea();
-                    console.log('[DEBUG] ✅ 已调用 resizeTextarea()');
-                    
-                    // 再次确认清空（防止被其他代码覆盖）
-                    setTimeout(function() {
-                        if (userInput.value !== '') {
-                            console.log('[DEBUG] ⚠️ 检测到输入框被重新设置，再次清空');
-                            userInput.value = '';
-                            resizeTextarea();
-                        }
-                    }, 10);
-                    
-                    return;
-                } else {
-                    console.log('[DEBUG] ⚠️ 不在等待用户输入状态，检查是否可以发起任务');
-                    // 如果处于非运行状态，则在需求框回车可以直接发起任务
-                    if (!isTaskRunning && socket && isConnected && userInput.value.trim()) {
-                        console.log('[DEBUG] ✅ 检测到非运行状态且有输入内容，自动发起任务');
-                        sendMessage(null); // 使用null让函数自动读取executionModeSelect的值
-                    } else {
-                        console.log('[DEBUG] ⚠️ 无法发起任务：isTaskRunning=', isTaskRunning, 'socket=', !!socket, 'isConnected=', isConnected, 'hasContent=', !!userInput.value.trim());
-                    }
-                }
+                return;
             }
         });
 
