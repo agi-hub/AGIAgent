@@ -413,6 +413,9 @@ I18N_TEXTS = {
         'task_stopped': '任务已被用户停止',
         'task_completed': '任务执行完成！',
         'task_completed_with_errors': '任务达到最大轮数，可能未完全完成',
+        'task_output_workspace_intro': '该任务的输出物位于右侧工作目录列表中，包括如下文件：',
+        'task_output_workspace_empty': '（workspace 目录下暂无顶层文件或文件夹）',
+        'task_output_workspace_web_search_note': '网络搜索结果位于 web_search_result',
         'task_failed': '任务执行失败',
         'no_task_assigned': '未布置任务',
         'creating_directory': '正在自动创建新工作目录...',
@@ -615,7 +618,7 @@ I18N_TEXTS = {
         'new_messages': '条新消息',
         'auto_scrolling': '自动滚动',
         'uploading': '上传中...',
-        'running_input_placeholder': '任务执行中，您可以输入新需求（等待当前任务完成后执行）...',
+        'running_input_placeholder': '请输入新的需求或回复运行过程中提出的问题',
         'reload': '重新加载',
         'save': '保存',
         'type_label': '类型',
@@ -748,17 +751,6 @@ I18N_TEXTS = {
         # Platform selection
         'default_platform': '主平台',
         
-        # Contact us
-        'contact_us': '联系我们',
-        'contact_message_label': '留言内容',
-        'contact_message_placeholder': '请输入您的留言...',
-        'contact_current_dir_label': '当前工作目录',
-        'contact_contact_info_label': '您的联系方式（邮箱或电话，选填）',
-        'contact_contact_info_placeholder': '请输入您的邮箱或电话（选填）',
-        'contact_submit_success': '留言已提交，感谢您的反馈！',
-        'contact_submit_error': '提交失败',
-        'contact_message_empty': '请输入留言内容',
-        
         # History labels
         'oldest': '最老',
         'newest': '最新',
@@ -813,6 +805,9 @@ I18N_TEXTS = {
         'task_stopped': 'Task stopped by user',
         'task_completed': 'Task completed successfully!',
         'task_completed_with_errors': 'Task reached maximum rounds, may not be fully completed',
+        'task_output_workspace_intro': 'Deliverables for this task are listed in the workspace panel on the right. Top-level items under workspace:',
+        'task_output_workspace_empty': '(No top-level files or folders in workspace.)',
+        'task_output_workspace_web_search_note': 'Web search results are in the web_search_result folder.',
         'task_failed': 'Task execution failed',
         'no_task_assigned': 'No task assigned',
         'creating_directory': 'Creating new workspace directory...',
@@ -1015,7 +1010,7 @@ I18N_TEXTS = {
         'new_messages': 'new messages',
         'auto_scrolling': 'Auto Scroll',
         'uploading': 'Uploading...',
-        'running_input_placeholder': 'Task is running. You can type a new request (will execute after current task)...',
+        'running_input_placeholder': 'Enter a new request or reply to questions raised during execution',
         'reload': 'Reload',
         'save': 'Save',
         'type_label': 'Type',
@@ -1147,17 +1142,6 @@ I18N_TEXTS = {
         
         # Platform selection
         'default_platform': 'Default Platform',
-        
-        # Contact us
-        'contact_us': 'Contact Us',
-        'contact_message_label': 'Message',
-        'contact_message_placeholder': 'Please enter your message...',
-        'contact_current_dir_label': 'Current Workspace Directory',
-        'contact_contact_info_label': 'Your Contact Information (Email or Phone, Optional)',
-        'contact_contact_info_placeholder': 'Please enter your email or phone (optional)',
-        'contact_submit_success': 'Message submitted, thank you for your feedback!',
-        'contact_submit_error': 'Submission failed',
-        'contact_message_empty': 'Please enter your message',
         
         # History labels
         'oldest': 'Oldest',
@@ -1848,10 +1832,67 @@ def execute_agia_task_process_target(user_requirement, output_queue, input_queue
             # Extract directory name for GUI display (relative to GUI data directory)
             dir_name = os.path.basename(out_dir)
             
+            workspace_toplevel = []
+            workspace_web_search_nonempty = False
+            if os.path.isdir(workspace_dir):
+                web_search_path = os.path.join(workspace_dir, 'web_search_result')
+                if os.path.isdir(web_search_path):
+                    try:
+                        workspace_web_search_nonempty = len(os.listdir(web_search_path)) > 0
+                    except OSError:
+                        workspace_web_search_nonempty = False
+                try:
+                    names = os.listdir(workspace_dir)
+                except OSError:
+                    names = []
+
+                def _include_workspace_listing(name):
+                    lower = name.lower()
+                    if lower == 'web_search_result':
+                        return False
+                    if lower == 'plan.md':
+                        return False
+                    return True
+
+                for name in sorted(
+                    names,
+                    key=lambda n: (
+                        not os.path.isdir(os.path.join(workspace_dir, n)),
+                        n.lower(),
+                    ),
+                ):
+                    if not _include_workspace_listing(name):
+                        continue
+                    p = os.path.join(workspace_dir, name)
+                    try:
+                        workspace_toplevel.append(
+                            {'name': name, 'is_dir': os.path.isdir(p)}
+                        )
+                    except OSError:
+                        continue
+            
             if success:
-                output_queue.put({'event': 'task_completed', 'data': {'message': i18n['task_completed'], 'output_dir': dir_name, 'success': True}})
+                output_queue.put({
+                    'event': 'task_completed',
+                    'data': {
+                        'message': i18n['task_completed'],
+                        'output_dir': dir_name,
+                        'success': True,
+                        'workspace_toplevel': workspace_toplevel,
+                        'workspace_web_search_nonempty': workspace_web_search_nonempty,
+                    },
+                })
             else:
-                output_queue.put({'event': 'task_completed', 'data': {'message': i18n['task_completed_with_errors'], 'output_dir': dir_name, 'success': False}})
+                output_queue.put({
+                    'event': 'task_completed',
+                    'data': {
+                        'message': i18n['task_completed_with_errors'],
+                        'output_dir': dir_name,
+                        'success': False,
+                        'workspace_toplevel': workspace_toplevel,
+                        'workspace_web_search_nonempty': workspace_web_search_nonempty,
+                    },
+                })
         finally:
             stdout_handler.final_flush()
             stderr_handler.final_flush()
@@ -2804,17 +2845,19 @@ def queue_reader_thread(session_id):
     stop_flag = threading.Event()
     user_session.queue_reader_stop_flag = stop_flag
     
+    # 子进程已结束但队列仍可能短暂“空”的误报：multiprocessing.Queue.empty() 不可靠，不可用其提前退出，
+    # 否则可能永远取不到子进程末尾写入的 task_completed。
+    dead_proc_empty_rounds = 0
+    
     while True:
         try:
             # 检查停止标志
             if stop_flag.is_set():
                 print(f"[{datetime.datetime.now().isoformat()}] 🛑 Queue reader thread stopped by flag: session_id={session_id}")
                 break
-                
-            if user_session.current_process and not user_session.current_process.is_alive() and user_session.output_queue.empty():
-                break
 
             message = user_session.output_queue.get(timeout=1)
+            dead_proc_empty_rounds = 0
             
             if message.get('event') == 'STOP':
                 break
@@ -2987,6 +3030,13 @@ def queue_reader_thread(session_id):
             if not safe_emit(message['event'], message.get('data', {})):
                 break  # 客户端已断开，退出线程
         except queue.Empty:
+            if user_session.current_process and not user_session.current_process.is_alive():
+                dead_proc_empty_rounds += 1
+                # 连续若干次取空后再结束，给管道中滞后的 task_completed / STOP 留出到达时间
+                if dead_proc_empty_rounds >= 5:
+                    break
+            else:
+                dead_proc_empty_rounds = 0
             continue
         except Exception as e:
             # 静默处理异常，避免线程崩溃
@@ -8076,8 +8126,8 @@ def get_routine_files(session_id=None, app_manager=None, lang_param=None):
         except Exception as e:
             print(f"Warning: Error reading workspace directory {workspace_dir}: {e}")
         
-        # 按名称排序（反向排序，推荐类文件在上边）
-        routine_files.sort(key=lambda x: x['name'], reverse=True)
+        # 按名称正序排序（与下拉框、技能选择面板一致）
+        routine_files.sort(key=lambda x: x['name'], reverse=False)
         
         return jsonify({
             'success': True,
@@ -9222,60 +9272,6 @@ def voice_recognize():
                 os.remove(temp_wav_path)
         except:
             pass
-
-
-@app.route('/api/contact-us', methods=['POST'])
-def api_contact_us():
-    """处理联系我们留言提交"""
-    try:
-        data = request.get_json() or {}
-        session_id = data.get('session_id', 'Unknown')
-        message = data.get('message', '').strip()
-        current_dir = data.get('current_dir', '').strip()
-        contact_info = data.get('contact_info', '').strip()
-        
-        if not message:
-            return jsonify({
-                'success': False,
-                'error': 'Message cannot be empty'
-            })
-        
-        # 获取gui_default_data_directory配置的目录
-        gui_data_dir = get_gui_default_data_directory()
-        if not gui_data_dir or not os.path.exists(gui_data_dir):
-            # 如果配置的目录不存在，使用当前工作目录
-            gui_data_dir = os.getcwd()
-        
-        # 在gui_default_data_directory下创建contact_messages目录（如果不存在）
-        contact_dir = os.path.join(gui_data_dir, 'contact_messages')
-        os.makedirs(contact_dir, exist_ok=True)
-        
-        # 保存留言到文件
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'contact_{timestamp}_{session_id[:8]}.txt'
-        filepath = os.path.join(contact_dir, filename)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f'Session ID: {session_id}\n')
-            f.write(f'Timestamp: {datetime.datetime.now().isoformat()}\n')
-            if current_dir:
-                f.write(f'Current Directory: {current_dir}\n')
-            if contact_info:
-                f.write(f'Contact Information: {contact_info}\n')
-            f.write(f'Message:\n{message}\n')
-        
-        return jsonify({
-            'success': True,
-            'message': 'Message received successfully'
-        })
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
 
 
 if __name__ == '__main__':

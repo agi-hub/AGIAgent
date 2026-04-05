@@ -2438,9 +2438,10 @@
                 box-sizing: border-box;
             }
             
+            #appSelect,
             #modelSelect {
-                width: calc(100vw - 20px) !important;
-                max-width: calc(100vw - 20px) !important;
+                width: calc(70vw - 14px) !important;
+                max-width: calc(70vw - 14px) !important;
             }
             
             #routineSelect {
@@ -4047,7 +4048,7 @@
                     <i class="fas fa-th"></i>
                     {{ '平台' if lang == 'zh' else 'Platform' }}
                 </label>
-                <select id="appSelect" class="api-key-input" title="{{ '选择平台' if lang == 'zh' else 'Select Platform' }}" style="width: 180px;">
+                <select id="appSelect" class="api-key-input" title="{{ '选择平台' if lang == 'zh' else 'Select Platform' }}" style="width: 126px;">
                     <option value="">{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
                 </select>
             </div>
@@ -4057,7 +4058,7 @@
                     <i class="fas fa-brain"></i>
                     {{ i18n.model_label }}
                 </label>
-                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 210px;">
+                <select id="modelSelect" class="api-key-input" title="{{ i18n.model_tooltip }}" style="width: 147px;">
                     <option value="" disabled selected>{{ '加载中...' if lang == 'zh' else 'Loading...' }}</option>
                 </select>
             </div>
@@ -4105,9 +4106,6 @@
                 </button>
                 <button id="helpBtn" class="theme-toggle-btn" title="{{ '帮助' if lang == 'zh' else 'Help' }}">
                     <i class="fas fa-question-circle"></i>
-                </button>
-                <button id="contactUsBtn" class="theme-toggle-btn" title="{{ '联系我们' if lang == 'zh' else 'Contact Us' }}">
-                    <i class="fas fa-envelope"></i>
                 </button>
             </div>
         </div>
@@ -4517,9 +4515,61 @@
         </div>
     </div>
 
+    <style>
+        /* 技能选择面板：矩形按钮网格、单选、多行、每行最多 5 个，内容过多时纵向滚动 */
+        #skillSelectModalPanelScroll {
+            max-height: min(50vh, 420px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 4px 4px 10px 0;
+            margin: 0 0 4px 0;
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            background: var(--bg-primary);
+        }
+        #skillSelectModalPanel {
+            display: grid;
+            gap: 10px;
+            padding: 8px;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+        @media (max-width: 900px) {
+            #skillSelectModalPanel { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        @media (max-width: 680px) {
+            #skillSelectModalPanel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 460px) {
+            #skillSelectModalPanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        .skill-select-tile {
+            box-sizing: border-box;
+            min-height: 44px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 2px solid var(--border-primary);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 13px;
+            line-height: 1.35;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            word-break: break-word;
+            font-family: inherit;
+        }
+        .skill-select-tile:hover {
+            border-color: var(--color-accent);
+        }
+        .skill-select-tile.skill-select-tile--selected {
+            border-color: var(--color-accent);
+            background: var(--bg-primary);
+            box-shadow: 0 0 0 1px var(--color-accent);
+        }
+    </style>
     <!-- 技能选择弹窗 Skill Selection Modal -->
     <div id="skillSelectModal" class="modal" style="display: none; z-index: 1600;">
-        <div class="modal-content" style="max-width: 480px; height: auto; max-height: 80vh; margin: 10% auto;">
+        <div class="modal-content" style="max-width: min(920px, 94vw); width: 94vw; height: auto; max-height: 85vh; margin: 8% auto;">
             <div class="modal-header" style="background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);">
                 <h3 style="display: flex; align-items: center; gap: 8px;">
                     <span>🧭</span>
@@ -4535,8 +4585,9 @@
                     No skill is selected. Please choose a skill before starting the task. If unsure, use "General Task".
                     {% endif %}
                 </p>
-                <select id="skillSelectModalOptions" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
-                </select>
+                <div id="skillSelectModalPanelScroll" role="region" aria-label="{% if lang == 'zh' %}技能列表{% else %}Skill list{% endif %}">
+                    <div id="skillSelectModalPanel" role="radiogroup" aria-label="{% if lang == 'zh' %}单选一项技能{% else %}Select one skill{% endif %}"></div>
+                </div>
             </div>
             <div style="padding: 12px 20px 18px; text-align: right; border-top: 1px solid var(--border-primary); display: flex; justify-content: flex-end; gap: 10px;">
                 <button id="skillSelectModalCancelBtn"
@@ -4820,46 +4871,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Contact Us Modal -->
-    <div id="contactUsModal" class="modal">
-        <div class="modal-content" style="width: 80%; max-width: 600px; height: auto;">
-            <div class="modal-header">
-                <h3><i class="fas fa-envelope"></i> {{ i18n.get('contact_us', '联系我们' if lang == 'zh' else 'Contact Us') }}</h3>
-                <span class="close" id="contactUsClose">&times;</span>
-            </div>
-            <div class="modal-body" style="padding: 20px;">
-                <div style="margin-bottom: 15px; padding: 10px; background: var(--bg-secondary); border-radius: 4px;">
-                    <div style="color: var(--text-primary); font-size: 0.95em; line-height: 1.6;">
-                        {{ '如果您对此软件有什么反馈意见，请在此留言，或发邮件到 bitcursor@2925.com' if lang == 'zh' else 'If you have any feedback about this software, please leave a message here or send an email to bitcursor@2925.com' }}
-                    </div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_current_dir_label', '当前工作目录' if lang == 'zh' else 'Current Workspace Directory') }}:</label>
-                    <div id="contactCurrentDir" style="padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-secondary); font-family: monospace; font-size: 0.9em; word-break: break-all;">-</div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_contact_info_label', '您的联系方式（邮箱或电话，选填）' if lang == 'zh' else 'Your Contact Information (Email or Phone, Optional)') }}:</label>
-                    <input type="text" id="contactInfo" placeholder="{{ i18n.get('contact_contact_info_placeholder', '请输入您的邮箱或电话（选填）' if lang == 'zh' else 'Please enter your email or phone (optional)') }}" 
-                           style="width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: inherit;">
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: var(--text-label); font-weight: 500;">{{ i18n.get('contact_message_label', '留言内容' if lang == 'zh' else 'Message') }}:</label>
-                    <textarea id="contactMessage" placeholder="{{ i18n.get('contact_message_placeholder', '请输入您的留言...' if lang == 'zh' else 'Please enter your message...') }}" 
-                              style="width: 100%; min-height: 200px; padding: 10px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button id="contactCancel" class="action-btn" style="background: #6c757d; color: white; padding: 10px 20px;">
-                        <i class="fas fa-times"></i> {{ i18n.cancel }}
-                    </button>
-                    <button id="contactSubmit" class="action-btn" style="background: #007acc; color: white; padding: 10px 20px;">
-                        <i class="fas fa-paper-plane"></i> {{ i18n.get('submit', '提交' if lang == 'zh' else 'Submit') }}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
 
     <!-- socket.io.js - 改为按需加载，在用户点击连接时才加载 -->
     <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
@@ -5846,7 +5857,13 @@
             });
 
             socket.on('task_completed', function(data) {
-                addMessage(data.message, data.success ? 'success' : 'error');
+                addMessageImmediate(data.message, data.success ? 'success' : 'error');
+                if (data.output_dir) {
+                    const wsHtml = buildTaskWorkspaceOutputHtml(data.output_dir, data.workspace_toplevel || []);
+                    if (wsHtml) {
+                        addMessageImmediate(wsHtml, 'info', false, { html: true });
+                    }
+                }
                 setTaskRunning(false);
                 // 任务完成时清理待执行内容
                 pendingUserInput = '';
@@ -6249,6 +6266,90 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        /** 用于 onclick="previewFile('...')" 中的单引号字符串转义 */
+        function escapeJsSingleQuoted(str) {
+            if (str == null || str === '') return '';
+            return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+        
+        /** 任务完成列表：文件名左侧 emoji（文件夹 / md、pdf、docx、代码、默认） */
+        function workspaceOutputEmojiForEntry(e) {
+            if (e.is_dir) {
+                return '📁 ';
+            }
+            const name = (e.name || '');
+            const lower = name.toLowerCase();
+            const dot = lower.lastIndexOf('.');
+            const ext = dot >= 0 ? lower.slice(dot + 1) : '';
+            if (ext === 'md') return '📝 ';
+            if (ext === 'pdf') return '📕 ';
+            if (ext === 'docx' || ext === 'doc') return '📘 ';
+            if (!ext && /^(dockerfile|makefile|rakefile|gemfile)$/i.test(lower)) {
+                return '💻 ';
+            }
+            var codeExts = {
+                py:1, js:1, mjs:1, cjs:1, ts:1, tsx:1, jsx:1, java:1, kt:1, kts:1,
+                c:1, h:1, cpp:1, cc:1, cxx:1, hpp:1, hxx:1, cs:1, go:1, rs:1, rb:1, erb:1,
+                php:1, swift:1, scala:1, sc:1, sbt:1, r:1, sql:1, sh:1, bash:1, zsh:1,
+                fish:1, ps1:1, bat:1, cmd:1, lua:1, pl:1, pm:1, ex:1, exs:1, erl:1, hrl:1,
+                clj:1, cljs:1, edn:1, fs:1, fsx:1, fsi:1, ml:1, mli:1, hs:1, lhs:1,
+                vue:1, svelte:1, astro:1, json:1, jsonc:1, xml:1, xsd:1, yaml:1, yml:1,
+                toml:1, ini:1, conf:1, cfg:1, cnf:1, properties:1, env:1, gitignore:1,
+                cmake:1, gradle:1, groovy:1, tf:1, hcl:1, nim:1, zig:1, v:1, dart:1,
+                css:1, less:1, scss:1, sass:1, wasm:1, tex:1, bib:1, sty:1, cls:1,
+                ipynb:1, lock:1, patch:1, diff:1
+            };
+            if (codeExts[ext]) return '💻 ';
+            return '📄 ';
+        }
+        
+        /**
+         * 任务完成后：workspace 根下一层（已排除 web_search_result、plan.md）；文件可点击预览。
+         * @param webSearchNonempty 为 true 时在末尾追加「网络搜索结果位于 web_search_result」类说明。
+         */
+        function buildTaskWorkspaceOutputHtml(outputDir, entries, webSearchNonempty) {
+            if (!outputDir) return '';
+            const intro = (typeof I18N !== 'undefined' && I18N.task_output_workspace_intro)
+                ? I18N.task_output_workspace_intro
+                : '该任务的输出物位于右侧工作目录列表中，主要文件包括：';
+            const emptyHint = (typeof I18N !== 'undefined' && I18N.task_output_workspace_empty)
+                ? I18N.task_output_workspace_empty
+                : '（workspace 目录下暂无顶层文件或文件夹）';
+            const webNote = (typeof I18N !== 'undefined' && I18N.task_output_workspace_web_search_note)
+                ? I18N.task_output_workspace_web_search_note
+                : '网络搜索结果位于 web_search_result';
+            const hasList = entries && entries.length > 0;
+            let html = escapeHtml(intro);
+            if (hasList) {
+                const lines = entries.map(function(e) {
+                    const icon = workspaceOutputEmojiForEntry(e);
+                    if (e.is_dir) {
+                        return icon + escapeHtml(e.name);
+                    }
+                    const relPath = outputDir + '/workspace/' + e.name;
+                    return (
+                        icon +
+                        '<a href="#" onclick="previewFile(\'' +
+                        escapeJsSingleQuoted(relPath) +
+                        '\', \'' +
+                        escapeJsSingleQuoted(e.name) +
+                        '\'); return false;">' +
+                        escapeHtml(e.name) +
+                        '</a>'
+                    );
+                });
+                html += '<br>' + lines.join('<br>');
+            } else if (webSearchNonempty) {
+                html += '<br>' + escapeHtml(webNote);
+            } else {
+                html += '<br>' + escapeHtml(emptyHint);
+            }
+            if (webSearchNonempty && hasList) {
+                html += '<br>' + escapeHtml(webNote);
+            }
+            return html;
         }
         
         // Convert URLs in text to clickable links
@@ -6789,7 +6890,7 @@
          * @param {string} type 消息类型
          * @description 用于处理用户消息、系统消息或批处理过程中的消息
          */
-        function addMessageImmediate(message, type = 'info', isUpdate = false) {
+        function addMessageImmediate(message, type = 'info', isUpdate = false, options = null) {
             const shouldScroll = shouldAutoScroll();
             
             // 🔧 Fix: 全局检测💬标志，无论当前处于什么状态，都强制结束工具调用框
@@ -6839,6 +6940,25 @@
                     // 其他情况，不更新，直接返回
                     return;
                 }
+            }
+            
+            // 可信 HTML（任务完成后的 workspace 列表等）：跳过 JSON 检测与 convertUrlsToLinks
+            if (options && options.html) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                const textSpan = document.createElement('span');
+                textSpan.className = 'message-text';
+                textSpan.style.whiteSpace = 'normal';
+                textSpan.innerHTML = message;
+                messageDiv.appendChild(textSpan);
+                chatMessages.appendChild(messageDiv);
+                if (shouldScroll) {
+                    throttledAutoScroll(true);
+                }
+                lastMessageType = null;
+                lastMessageDiv = null;
+                lastMessageContent = null;
+                return;
             }
             
             // 过滤掉 ```json 和 ``` 标记（在实际显示前）
@@ -7626,7 +7746,7 @@
                     infiniteExecuteButton.style.cursor = 'not-allowed';
                 }
                 // 更新输入框提示文本
-                userInput.placeholder = I18N.running_input_placeholder || 'Task is running. You can type a new request (will execute after current task)...';
+                userInput.placeholder = I18N.running_input_placeholder || '请输入新的需求或回复运行过程中提出的问题';
             } else {
                 sendButton.style.display = 'flex';
                 newTaskButton.style.display = 'flex';
@@ -7678,25 +7798,49 @@
                 const closeBtn = document.getElementById('skillSelectModalClose');
                 const cancelBtn = document.getElementById('skillSelectModalCancelBtn');
                 const confirmBtn = document.getElementById('skillSelectModalConfirmBtn');
-                const optionsSelect = document.getElementById('skillSelectModalOptions');
+                const panel = document.getElementById('skillSelectModalPanel');
+                const panelScroll = document.getElementById('skillSelectModalPanelScroll');
 
-                if (!modal || !closeBtn || !cancelBtn || !confirmBtn || !optionsSelect) {
+                if (!modal || !closeBtn || !cancelBtn || !confirmBtn || !panel) {
                     resolve('__general__');
                     return;
                 }
 
-                optionsSelect.innerHTML = '';
+                panel.innerHTML = '';
+                let selectedValue = '__general__';
+
+                const applySelection = (value) => {
+                    selectedValue = value;
+                    panel.querySelectorAll('.skill-select-tile').forEach((btn) => {
+                        const isSel = btn.dataset.value === value;
+                        btn.classList.toggle('skill-select-tile--selected', isSel);
+                        btn.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+                        btn.setAttribute('aria-checked', isSel ? 'true' : 'false');
+                    });
+                };
+
                 skillOptions.forEach((item) => {
-                    const option = document.createElement('option');
-                    option.value = item.value;
-                    option.textContent = item.text;
-                    optionsSelect.appendChild(option);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'skill-select-tile';
+                    btn.dataset.value = item.value;
+                    btn.textContent = item.text;
+                    btn.setAttribute('role', 'radio');
+                    btn.setAttribute('aria-checked', 'false');
+                    btn.addEventListener('click', () => applySelection(item.value));
+                    panel.appendChild(btn);
                 });
-                // 默认选中“通用任务”
-                optionsSelect.value = '__general__';
+
+                applySelection('__general__');
 
                 modal.style.display = 'block';
-                optionsSelect.focus();
+                if (panelScroll) {
+                    panelScroll.scrollTop = 0;
+                }
+                const preSel = panel.querySelector('.skill-select-tile--selected');
+                if (preSel && typeof preSel.focus === 'function') {
+                    preSel.focus();
+                }
 
                 let settled = false;
                 const cleanup = () => {
@@ -7715,7 +7859,7 @@
                 };
 
                 const onCancel = () => finish(null);
-                const onConfirm = () => finish(optionsSelect.value || '__general__');
+                const onConfirm = () => finish(selectedValue || '__general__');
                 const onBackdropClick = (e) => {
                     if (e.target === modal) onCancel();
                 };
@@ -7931,6 +8075,49 @@
             } catch (error) {
                 console.error('Configuration validation error:', error);
                 addMessage(`${I18N.config_error_title}: ${I18N.config_validation_failed}`, 'error');
+            }
+        }
+
+        /** 任务运行中通过回车提交：回复 talk_to_user，或多智能体模式下追加任务 */
+        function submitRunningTaskInputFromEnter() {
+            if (!socket || !isConnected || !isTaskRunning) return;
+            const message = userInput.value.trim();
+
+            if (isWaitingForUserInput) {
+                if (!message) {
+                    addMessage(I18N.enter_your_response || '请输入您的回复...', 'warning');
+                    return;
+                }
+                if (userInputTimeoutTimer !== null) {
+                    clearTimeout(userInputTimeoutTimer);
+                    userInputTimeoutTimer = null;
+                }
+                socket.emit('user_input_response', { input: message });
+                isWaitingForUserInput = false;
+                addMessage(message, 'user');
+                userInput.value = '';
+                pendingUserInput = '';
+                if (window.attachedFiles) {
+                    window.attachedFiles.clear();
+                }
+                resizeTextarea();
+                return;
+            }
+
+            if (multiAgentMode && appendTaskButton && appendTaskButton.style.display !== 'none') {
+                if (!message) {
+                    addMessage(I18N.get('append_task_empty', '请输入要追加的任务内容'), 'warning');
+                    return;
+                }
+                socket.emit('append_task', {
+                    content: message
+                });
+                userInput.value = '';
+                pendingUserInput = '';
+                if (window.attachedFiles) {
+                    window.attachedFiles.clear();
+                }
+                resizeTextarea();
             }
         }
 
@@ -8911,12 +9098,25 @@
             });
         }
 
-        // 禁用回车键自动执行功能，避免与输入法冲突
+        // 非任务运行中禁用回车提交，避免与输入法冲突；任务运行中在需要提交时允许回车（回复 / 追加任务）
         userInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
+            if (e.key !== 'Enter' || e.shiftKey) {
                 return;
             }
+            if (e.isComposing || e.keyCode === 229) {
+                return;
+            }
+            if (isTaskRunning) {
+                const canSubmitRunning =
+                    isWaitingForUserInput ||
+                    (multiAgentMode && appendTaskButton && appendTaskButton.style.display !== 'none');
+                if (canSubmitRunning) {
+                    e.preventDefault();
+                    submitRunningTaskInputFromEnter();
+                }
+                return;
+            }
+            e.preventDefault();
         });
 
         userInput.addEventListener('input', resizeTextarea);
@@ -16101,7 +16301,6 @@
             initThemeToggle();
             initAppSelector();
             initFolderIconHint();
-            initContactUs();
             initWelcomeModal();
             
             // Terminal按钮点击事件
@@ -17534,152 +17733,6 @@
                     if (e.target === modal) closeModal();
                 });
             }
-        }
-
-        /**
-         * 初始化联系我们功能
-         */
-        function initContactUs() {
-            const contactUsBtn = document.getElementById('contactUsBtn');
-            const contactUsModal = document.getElementById('contactUsModal');
-            const contactUsClose = document.getElementById('contactUsClose');
-            const contactCancel = document.getElementById('contactCancel');
-            const contactSubmit = document.getElementById('contactSubmit');
-            const contactMessage = document.getElementById('contactMessage');
-            const contactCurrentDir = document.getElementById('contactCurrentDir');
-            const contactInfo = document.getElementById('contactInfo');
-            
-            if (!contactUsBtn || !contactUsModal) return;
-
-            // 获取I18N对象
-            const I18N = window.I18N || JSON.parse(document.getElementById('i18nData')?.textContent || '{}');
-            // 从HTML元素的lang属性获取语言，或从I18N对象获取，默认为'en'
-            const htmlLang = document.documentElement.lang || '';
-            const lang = htmlLang.startsWith('zh') ? 'zh' : (I18N.lang || 'en');
-
-            // 生成格式化的session_id：日期时间戳+用户名+随机数字（用于后台记录）
-            function getCurrentSessionId() {
-                // 生成日期时间戳 (YYYYMMDDHHmmss格式)
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                const seconds = String(now.getSeconds()).padStart(2, '0');
-                const timestamp = `${year}${month}${day}${hours}${minutes}${seconds}`;
-                
-                // 获取用户名（优先使用currentUser，如果没有则使用currentUserName，都没有则使用'guest'）
-                let username = 'guest';
-                if (typeof currentUser !== 'undefined' && currentUser && currentUser !== 'default') {
-                    username = currentUser;
-                } else if (typeof currentUserName !== 'undefined' && currentUserName) {
-                    username = currentUserName;
-                }
-                
-                // 生成4位随机数字
-                const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-                
-                // 组合：日期时间戳+用户名+随机数字
-                return `${timestamp}_${username}_${randomNum}`;
-            }
-
-            // 打开留言框
-            function openContactModal() {
-                // 清空留言内容和联系方式
-                if (contactMessage) {
-                    contactMessage.value = '';
-                }
-                if (contactInfo) {
-                    contactInfo.value = '';
-                }
-                
-                // 显示当前选中的目录
-                if (contactCurrentDir) {
-                    const currentDir = typeof selectedDirectory !== 'undefined' && selectedDirectory ? selectedDirectory : '-';
-                    contactCurrentDir.textContent = currentDir;
-                }
-                
-                contactUsModal.style.display = 'block';
-            }
-
-            // 关闭留言框
-            function closeContactModal() {
-                contactUsModal.style.display = 'none';
-            }
-
-            // 提交留言
-            function submitContactMessage() {
-                const message = contactMessage ? contactMessage.value.trim() : '';
-                if (!message) {
-                    const alertMsg = I18N.contact_message_empty || (lang === 'zh' ? '请输入留言内容' : 'Please enter your message');
-                    alert(alertMsg);
-                    return;
-                }
-
-                const sessionId = getCurrentSessionId();
-                const currentDir = typeof selectedDirectory !== 'undefined' && selectedDirectory ? selectedDirectory : '';
-                const contactInfoValue = contactInfo ? contactInfo.value.trim() : '';
-                
-                // 发送留言到服务器
-                fetch('/api/contact-us', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        session_id: sessionId,
-                        message: message,
-                        current_dir: currentDir,
-                        contact_info: contactInfoValue
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const successMsg = I18N.contact_submit_success || (lang === 'zh' ? '留言已提交，感谢您的反馈！' : 'Message submitted, thank you for your feedback!');
-                        alert(successMsg);
-                        closeContactModal();
-                    } else {
-                        const errorMsg = (I18N.contact_submit_error || (lang === 'zh' ? '提交失败：' : 'Submission failed: ')) + (data.error || (lang === 'zh' ? '未知错误' : 'Unknown error'));
-                        alert(errorMsg);
-                    }
-                })
-                .catch(error => {
-                    const errorMsg = lang === 'zh' ? '网络错误，请稍后重试' : 'Network error, please try again later';
-                    alert(errorMsg);
-                    console.error('Contact us error:', error);
-                });
-            }
-
-            // 绑定事件
-            contactUsBtn.addEventListener('click', openContactModal);
-            
-            if (contactUsClose) {
-                contactUsClose.addEventListener('click', closeContactModal);
-            }
-            
-            if (contactCancel) {
-                contactCancel.addEventListener('click', closeContactModal);
-            }
-            
-            if (contactSubmit) {
-                contactSubmit.addEventListener('click', submitContactMessage);
-            }
-
-            // 点击模态框外部关闭
-            contactUsModal.addEventListener('click', function(e) {
-                if (e.target === contactUsModal) {
-                    closeContactModal();
-                }
-            });
-
-            // ESC键关闭
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && contactUsModal.style.display === 'block') {
-                    closeContactModal();
-                }
-            });
         }
 
 
@@ -19537,6 +19590,15 @@
             // ESC键关闭
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape' && modal && modal.style.display === 'block') {
+                    hideCustomConfigDialog();
+                }
+            });
+        });
+
+    </script>
+</body>
+</html> 
+if (event.key === 'Escape' && modal && modal.style.display === 'block') {
                     hideCustomConfigDialog();
                 }
             });

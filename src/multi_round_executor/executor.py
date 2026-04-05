@@ -641,11 +641,11 @@ class MultiRoundTaskExecutor:
                 print_debug(f"⚠️ Failed to create manager status file: {e}")
         
         # 初始化完成，开始执行第一轮任务之前打印
-        lang = get_language()
-        if lang == 'zh':
-            print_current("初始化完成，我正在分析需求中...\n")
-        else:
-            print_current("Initialization completed, I am analyzing requirements...\n")
+        #lang = get_language()
+        #if lang == 'zh':
+        #    print_current("初始化完成，我正在分析需求中...\n")
+        #else:
+        #    print_current("Initialization completed, I am analyzing requirements...\n")
         
         while (infinite_loop or task_round <= max_rounds) and not task_completed:
             if infinite_loop:

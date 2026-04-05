@@ -2007,9 +2007,10 @@ body {
         box-sizing: border-box;
     }
 
+    #appSelect,
     #modelSelect {
-        width: calc(100vw - 20px) !important;
-        max-width: calc(100vw - 20px) !important;
+        width: calc(70vw - 14px) !important;
+        max-width: calc(70vw - 14px) !important;
     }
 
     #routineSelect {
