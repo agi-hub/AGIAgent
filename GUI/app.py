@@ -8007,6 +8007,30 @@ def user_guide_image():
         print(f"Error serving user guide image: {e}")
         abort(404)
 
+
+def _load_routine_meta_tsv(meta_path):
+    """Load routine_meta.tsv: columns filename, emoji, fee_gold (fee is 免费 or integer string)."""
+    meta = {}
+    try:
+        with open(meta_path, 'r', encoding='utf-8-sig') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split('\t')
+                if len(parts) < 3:
+                    continue
+                fn = parts[0].strip()
+                em = parts[1].strip()
+                fee = parts[2].strip()
+                if fn.lower() == 'filename':
+                    continue
+                meta[fn] = {'emoji': em, 'fee': fee}
+    except Exception as e:
+        print(f"Warning: could not read routine_meta.tsv ({meta_path}): {e}")
+    return meta
+
+
 def get_routine_files(session_id=None, app_manager=None, lang_param=None):
     """Get list of routine files from routine directory and workspace files starting with 'routine_'
     
@@ -8053,6 +8077,8 @@ def get_routine_files(session_id=None, app_manager=None, lang_param=None):
                 for filename in os.listdir(app_routine_dir):
                     file_path = os.path.join(app_routine_dir, filename)
                     if os.path.isfile(file_path):
+                        if filename.lower() == 'routine_meta.tsv':
+                            continue
                         # Remove file extension
                         name_without_ext = os.path.splitext(filename)[0]
                         routine_files.append({
@@ -8101,6 +8127,8 @@ def get_routine_files(session_id=None, app_manager=None, lang_param=None):
                     for filename in os.listdir(routine_dir):
                         file_path = os.path.join(routine_dir, filename)
                         if os.path.isfile(file_path):
+                            if filename.lower() == 'routine_meta.tsv':
+                                continue
                             # Remove file extension
                             name_without_ext = os.path.splitext(filename)[0]
                             routine_files.append({
@@ -8128,6 +8156,24 @@ def get_routine_files(session_id=None, app_manager=None, lang_param=None):
         
         # 按名称正序排序（与下拉框、技能选择面板一致）
         routine_files.sort(key=lambda x: x['name'], reverse=False)
+
+        # 合并 routine_meta.tsv（emoji、金币定价）；优先应用目录，其次工作区 routine_zh / routine
+        meta_map = {}
+        if app_routine_dir and os.path.isdir(app_routine_dir):
+            _mp = os.path.join(app_routine_dir, 'routine_meta.tsv')
+            if os.path.isfile(_mp):
+                meta_map = _load_routine_meta_tsv(_mp)
+        if not meta_map:
+            for rd in (os.path.join(workspace_dir, 'routine_zh'), os.path.join(workspace_dir, 'routine')):
+                _mp = os.path.join(rd, 'routine_meta.tsv')
+                if os.path.isfile(_mp):
+                    meta_map = _load_routine_meta_tsv(_mp)
+                    break
+        for rf in routine_files:
+            fn = rf.get('filename') or ''
+            m = meta_map.get(fn, {})
+            rf['emoji'] = m.get('emoji', '📄')
+            rf['fee'] = m.get('fee', '免费')
         
         return jsonify({
             'success': True,

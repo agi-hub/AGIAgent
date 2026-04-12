@@ -2444,7 +2444,8 @@
                 max-width: calc(70vw - 14px) !important;
             }
             
-            #routineSelect {
+            #routineSelectTrigger,
+            .routine-select-wrap {
                 max-width: 100px !important; /* 手机布局下缩短选择框宽度 */
                 width: auto !important;
             }
@@ -2616,7 +2617,7 @@
                 margin-right: 0; /* 移除右边距，让label和select紧挨着 */
             }
             
-            .mode-selection > select#routineSelect {
+            .mode-selection > .routine-select-wrap {
                 flex-shrink: 0;
                 max-width: 100px !important; /* 进一步缩短选择框宽度 */
                 width: auto !important;
@@ -2772,7 +2773,7 @@
                 margin-right: 0; /* 移除右边距，让label和select紧挨着 */
             }
             
-            .mode-selection > select#routineSelect {
+            .mode-selection > .routine-select-wrap {
                 flex-shrink: 0;
                 max-width: 100px !important; /* 进一步缩短选择框宽度 */
                 width: auto !important;
@@ -4218,9 +4219,15 @@
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
                             </label>
-                            <select id="routineSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; max-width: 180px;" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
-                                <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
-                            </select>
+                            <div class="routine-select-wrap" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
+                                <select id="routineSelect" class="routine-select-native-hidden" tabindex="-1" aria-hidden="true" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}">
+                                    <option value="">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</option>
+                                </select>
+                                <button type="button" id="routineSelectTrigger" class="routine-select-trigger" title="{{ i18n.get('routine_file_tooltip', '选择指导文件' if lang == 'zh' else 'Select Routine File') }}" aria-haspopup="dialog">
+                                    <span id="routineSelectTriggerLabel" class="routine-select-trigger-label">{{ i18n.get('no_routine', '请选择...' if lang == 'zh' else 'Please select...') }}</span>
+                                    <span class="routine-select-trigger-caret" aria-hidden="true">▾</span>
+                                </button>
+                            </div>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('task_type', '技能' if lang == 'zh' else 'Skills') }}:</span>
                             </label>
@@ -4516,7 +4523,7 @@
     </div>
 
     <style>
-        /* 技能选择面板：矩形按钮网格、单选、多行、每行最多 5 个，内容过多时纵向滚动 */
+        /* 技能选择面板：矩形按钮网格、单选、多行、每行最多 3 个，内容过多时纵向滚动 */
         #skillSelectModalPanelScroll {
             max-height: min(50vh, 420px);
             overflow-y: auto;
@@ -4531,40 +4538,123 @@
             display: grid;
             gap: 10px;
             padding: 8px;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-        }
-        @media (max-width: 900px) {
-            #skillSelectModalPanel { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        }
-        @media (max-width: 680px) {
-            #skillSelectModalPanel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        }
-        @media (max-width: 460px) {
-            #skillSelectModalPanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            grid-template-columns: repeat(3, minmax(0, 1fr));
         }
         .skill-select-tile {
             box-sizing: border-box;
-            min-height: 44px;
-            padding: 10px 12px;
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            min-height: 64px;
+            padding: 0;
             border-radius: 8px;
             border: 2px solid var(--border-primary);
             background: var(--bg-secondary);
             color: var(--text-primary);
-            font-size: 13px;
-            line-height: 1.35;
-            text-align: center;
             cursor: pointer;
             transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-            word-break: break-word;
             font-family: inherit;
+            overflow: hidden;
+            text-align: left;
+        }
+        .skill-select-tile__emoji {
+            flex: 0 0 30%;
+            max-width: 30%;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(1.75rem, 4.2vw, 2.85rem);
+            line-height: 1;
+            padding: 10px 6px;
+            background: var(--bg-secondary);
+        }
+        .skill-select-tile__main {
+            flex: 0 0 70%;
+            max-width: 70%;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 10px 12px;
+            gap: 6px;
+        }
+        .skill-select-tile__name {
+            font-size: 13px;
+            line-height: 1.35;
+            word-break: break-word;
+            width: 100%;
+        }
+        .skill-select-tile__fee {
+            font-size: 11px;
+            line-height: 1.2;
+            opacity: 0.88;
+            color: var(--text-secondary, #888);
         }
         .skill-select-tile:hover {
             border-color: var(--color-accent);
         }
         .skill-select-tile.skill-select-tile--selected {
             border-color: var(--color-accent);
-            background: var(--bg-primary);
+            background: var(--bg-secondary);
             box-shadow: 0 0 0 1px var(--color-accent);
+        }
+        .skill-select-tile.skill-select-tile--selected .skill-select-tile__emoji {
+            background: var(--bg-secondary);
+        }
+        /* 技能下拉改为按钮 + 弹窗：隐藏原生 select，保留供脚本读写 */
+        .routine-select-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
+            max-width: 200px;
+            vertical-align: middle;
+        }
+        .routine-select-native-hidden {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        .routine-select-trigger {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-primary);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.9em;
+            max-width: 200px;
+            min-height: 28px;
+            min-width: 0;
+            cursor: pointer;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .routine-select-trigger-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+        .routine-select-trigger-caret {
+            flex-shrink: 0;
+            opacity: 0.75;
+            font-size: 0.85em;
         }
     </style>
     <!-- 技能选择弹窗 Skill Selection Modal -->
@@ -7792,7 +7882,87 @@
             }
         }
 
-        function showSkillSelectModal(skillOptions) {
+        function formatRoutineFeeLabel(fee) {
+            if (fee === undefined || fee === null || fee === '') {
+                return (typeof CURRENT_LANG !== 'undefined' && CURRENT_LANG === 'zh') ? '免费' : 'Free';
+            }
+            const s = String(fee).trim();
+            if (s === '限时免费') {
+                return (typeof CURRENT_LANG !== 'undefined' && CURRENT_LANG === 'zh') ? '限时免费' : 'Limited-time free';
+            }
+            if (s === '免费' || s === 'Free' || s === 'free') {
+                return (typeof CURRENT_LANG !== 'undefined' && CURRENT_LANG === 'zh') ? '免费' : 'Free';
+            }
+            if (/^\d+$/.test(s)) {
+                return (typeof CURRENT_LANG !== 'undefined' && CURRENT_LANG === 'zh') ? (s + '金币') : (s + ' coins');
+            }
+            return s;
+        }
+
+        function updateRoutineSelectTriggerLabel() {
+            const sel = document.getElementById('routineSelect');
+            const labelEl = document.getElementById('routineSelectTriggerLabel');
+            if (!sel || !labelEl) return;
+            const opt = sel.options[sel.selectedIndex];
+            let text = opt ? String(opt.textContent || '').trim() : '';
+            if (!sel.value || sel.value.trim() === '') {
+                text = (typeof I18N !== 'undefined' && I18N.no_routine) ? I18N.no_routine : ((typeof CURRENT_LANG !== 'undefined' && CURRENT_LANG === 'zh') ? '请选择...' : 'Please select...');
+            }
+            const m = window.RoutineFilesMeta && sel.value ? window.RoutineFilesMeta[sel.value] : null;
+            if (m && m.emoji) {
+                labelEl.textContent = m.emoji + '\u00a0' + text;
+            } else {
+                labelEl.textContent = text;
+            }
+        }
+
+        let _routineSelectTriggerBound = false;
+        function bindRoutineSelectTriggerOnce() {
+            if (_routineSelectTriggerBound) return;
+            const btn = document.getElementById('routineSelectTrigger');
+            const sel = document.getElementById('routineSelect');
+            if (!btn || !sel) return;
+            _routineSelectTriggerBound = true;
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickRoutineSkillFromModal();
+            });
+            sel.addEventListener('change', function () {
+                updateRoutineSelectTriggerLabel();
+            });
+        }
+
+        async function pickRoutineSkillFromModal() {
+            const routineSelect = document.getElementById('routineSelect');
+            if (!routineSelect) return;
+            const options = Array.from(routineSelect.options || [])
+                .filter(function (opt) { return opt.value && opt.value.trim() !== ''; })
+                .map(function (opt) {
+                    const m = (window.RoutineFilesMeta && window.RoutineFilesMeta[opt.value]) || {};
+                    return {
+                        value: opt.value,
+                        text: opt.textContent || opt.value,
+                        emoji: m.emoji || '📄',
+                        fee: m.fee !== undefined && m.fee !== null ? m.fee : '免费'
+                    };
+                });
+            const generalTaskLabel = CURRENT_LANG === 'zh' ? '通用任务' : 'General Task';
+            options.push({ value: '__general__', text: generalTaskLabel, emoji: '🌐', fee: '限时免费' });
+            const current = routineSelect.value && routineSelect.value.trim() !== ''
+                ? routineSelect.value
+                : '__general__';
+            const selectedValue = await showSkillSelectModal(options, current);
+            if (selectedValue === null) return;
+            if (selectedValue === '__general__') {
+                routineSelect.value = '';
+            } else {
+                routineSelect.value = selectedValue;
+            }
+            updateRoutineSelectTriggerLabel();
+        }
+
+        function showSkillSelectModal(skillOptions, initialSelectedValue) {
             return new Promise((resolve) => {
                 const modal = document.getElementById('skillSelectModal');
                 const closeBtn = document.getElementById('skillSelectModalClose');
@@ -7808,6 +7978,11 @@
 
                 panel.innerHTML = '';
                 let selectedValue = '__general__';
+                const validValues = new Set(skillOptions.map(function (o) { return o.value; }));
+                let initial = (initialSelectedValue !== undefined && initialSelectedValue !== null) ? initialSelectedValue : '__general__';
+                if (!validValues.has(initial)) {
+                    initial = '__general__';
+                }
 
                 const applySelection = (value) => {
                     selectedValue = value;
@@ -7824,20 +7999,41 @@
                     btn.type = 'button';
                     btn.className = 'skill-select-tile';
                     btn.dataset.value = item.value;
-                    btn.textContent = item.text;
                     btn.setAttribute('role', 'radio');
                     btn.setAttribute('aria-checked', 'false');
+
+                    const emojiSpan = document.createElement('span');
+                    emojiSpan.className = 'skill-select-tile__emoji';
+                    emojiSpan.setAttribute('aria-hidden', 'true');
+                    emojiSpan.textContent = item.emoji || '📄';
+
+                    const main = document.createElement('div');
+                    main.className = 'skill-select-tile__main';
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'skill-select-tile__name';
+                    nameSpan.textContent = item.text;
+                    const feeSpan = document.createElement('span');
+                    feeSpan.className = 'skill-select-tile__fee';
+                    feeSpan.textContent = formatRoutineFeeLabel(item.fee);
+                    main.appendChild(nameSpan);
+                    main.appendChild(feeSpan);
+
+                    btn.appendChild(emojiSpan);
+                    btn.appendChild(main);
                     btn.addEventListener('click', () => applySelection(item.value));
                     panel.appendChild(btn);
                 });
 
-                applySelection('__general__');
+                applySelection(initial);
 
                 modal.style.display = 'block';
                 if (panelScroll) {
                     panelScroll.scrollTop = 0;
                 }
                 const preSel = panel.querySelector('.skill-select-tile--selected');
+                if (preSel && typeof preSel.scrollIntoView === 'function') {
+                    preSel.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }
                 if (preSel && typeof preSel.focus === 'function') {
                     preSel.focus();
                 }
@@ -7882,12 +8078,20 @@
 
             const options = Array.from(routineSelect.options || [])
                 .filter(opt => opt.value && opt.value.trim() !== '')
-                .map(opt => ({ value: opt.value, text: opt.textContent || opt.value }));
+                .map(opt => {
+                    const m = (typeof window.RoutineFilesMeta !== 'undefined' && window.RoutineFilesMeta[opt.value]) || {};
+                    return {
+                        value: opt.value,
+                        text: opt.textContent || opt.value,
+                        emoji: m.emoji || '📄',
+                        fee: m.fee !== undefined && m.fee !== null ? m.fee : '免费'
+                    };
+                });
 
             const generalTaskLabel = CURRENT_LANG === 'zh' ? '通用任务' : 'General Task';
-            options.push({ value: '__general__', text: generalTaskLabel });
+            options.push({ value: '__general__', text: generalTaskLabel, emoji: '🌐', fee: '限时免费' });
 
-            const selectedValue = await showSkillSelectModal(options);
+            const selectedValue = await showSkillSelectModal(options, '__general__');
             if (selectedValue === null) {
                 return false;
             }
@@ -7898,6 +8102,7 @@
             } else {
                 routineSelect.value = selectedValue;
             }
+            updateRoutineSelectTriggerLabel();
             return true;
         }
 
@@ -16427,8 +16632,9 @@
                 toggleIcon.style.transition = 'transform 0.3s ease';
             }
             
-            // 加载routine文件列表
+            // 加载routine文件列表；技能按钮尽早绑定，点击打开弹窗而非原生下拉
             loadRoutineFiles();
+            bindRoutineSelectTriggerOnce();
         }
 
         // 注意：loadUserGuidePDF() 和 renderHelpPDFPages() 函数已移除
@@ -16533,6 +16739,7 @@
                 .then(data => {
                     if (data.success && data.files && Array.isArray(data.files)) {
                         const routineSelect = document.getElementById('routineSelect');
+                        window.RoutineFilesMeta = {};
                         // 清除现有选项（除了"无"选项）
                         routineSelect.innerHTML = '<option value="">' + (I18N.no_routine || '无') + '</option>';
 
@@ -16541,6 +16748,10 @@
                             const option = document.createElement('option');
                             option.value = file.filename;
                             option.textContent = file.name;
+                            window.RoutineFilesMeta[file.filename] = {
+                                emoji: file.emoji || '📄',
+                                fee: file.fee !== undefined && file.fee !== null ? file.fee : '免费'
+                            };
                             // 为workspace文件添加特殊标识
                             if (file.type === 'workspace_file') {
                                 const workspaceLabel = currentLang === 'zh' ? ' (工作区)' : ' (Workspace)';
@@ -16548,6 +16759,7 @@
                             }
                             routineSelect.appendChild(option);
                         });
+                        updateRoutineSelectTriggerLabel();
                     } else {
                         console.error('Failed to load routine files:', data.error || 'Invalid response format');
                         // 确保下拉列表至少有一个选项
