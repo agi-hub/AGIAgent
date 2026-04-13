@@ -1586,6 +1586,12 @@
             margin-top: 4px;
             margin-bottom: 0;
         }
+
+        .mode-selection .mobile-line-break {
+            display: none;
+            flex-basis: 100%;
+            height: 0;
+        }
         
         .button-row {
             display: flex;
@@ -1834,11 +1840,18 @@
             background: transparent;
             border: 1px solid var(--color-accent);
             color: var(--color-accent);
-            padding: 6px 8px;
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            min-height: 28px;
+            padding: 0;
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
             font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .sidebar-header .action-btn:hover:not(:disabled) {
@@ -2610,6 +2623,10 @@
                 flex-wrap: wrap; /* 允许换行以适应小屏幕 */
                 gap: 4px; /* 减小间距以适应小屏幕 */
             }
+
+            .mode-selection .mobile-line-break {
+                display: block;
+            }
             
             /* 确保"规则文件"label和选择框在同一行，不分开 */
             .mode-selection > label:nth-of-type(2) {
@@ -2766,6 +2783,10 @@
                 min-width: 0; /* 允许缩小，防止超出容器 */
                 max-width: 100%; /* 确保不超出容器 */
             }
+
+            .mode-selection .mobile-line-break {
+                display: block;
+            }
             
             /* 确保"规则文件"label和选择框在同一行，不分开 */
             .mode-selection > label:nth-of-type(2) {
@@ -2849,6 +2870,11 @@
                 height: 95vh;
                 margin: 2.5vh auto;
                 border-radius: 6px;
+            }
+
+            /* 手机端技能弹窗：每行仅显示 1 个技能，避免文字拥挤 */
+            #skillSelectModalPanel {
+                grid-template-columns: 1fr !important;
             }
             
             .modal-header {
@@ -4228,6 +4254,7 @@
                                     <span class="routine-select-trigger-caret" aria-hidden="true">▾</span>
                                 </button>
                             </div>
+                            <span class="mobile-line-break" aria-hidden="true"></span>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('task_type', '技能' if lang == 'zh' else 'Skills') }}:</span>
                             </label>
@@ -4235,6 +4262,7 @@
                                 <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
                                 <option value="plan">{{ i18n.get('plan_mode', 'Plan模式' if lang == 'zh' else 'Plan Mode') }}</option>
                             </select>
+                            <span class="mobile-line-break" aria-hidden="true"></span>
                             {% if gui_show_multi_agent_button %}
                             <button class="send-button" id="multiAgentButton" title="{{ i18n.get('enable_multi_agent', '启动多智能体' if lang == 'zh' else 'Multi-Agent') }}" style="width: 28px; height: 28px; min-width: 28px; padding: 0; background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent);">
                                 <i class="fas fa-users"></i>
