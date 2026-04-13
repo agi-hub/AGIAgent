@@ -4242,6 +4242,7 @@
                                style="color: var(--link-color); text-decoration: underline; cursor: pointer; margin-left: 10px; margin-right: auto; font-size: 0.85em; white-space: nowrap;">
                                 {% if lang == 'zh' %}示例视频{% else %}Example Videos{% endif %}
                             </a>
+                            <span class="mobile-line-break" aria-hidden="true"></span>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('routine_file', '规则文件' if lang == 'zh' else 'Routine File') }}:</span>
                             </label>
@@ -4254,11 +4255,10 @@
                                     <span class="routine-select-trigger-caret" aria-hidden="true">▾</span>
                                 </button>
                             </div>
-                            <span class="mobile-line-break" aria-hidden="true"></span>
                             <label style="display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.9em; white-space: nowrap;">
                                 <span>{{ i18n.get('task_type', '技能' if lang == 'zh' else 'Skills') }}:</span>
                             </label>
-                            <select id="executionModeSelect" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; width: 110px;">
+                            <select id="executionModeSelect" style="border-radius: 4px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 0.9em; width: 110px;">
                                 <option value="agent">{{ i18n.get('agent_mode', 'Agent模式' if lang == 'zh' else 'Agent Mode') }}</option>
                                 <option value="plan">{{ i18n.get('plan_mode', 'Plan模式' if lang == 'zh' else 'Plan Mode') }}</option>
                             </select>
@@ -4568,6 +4568,12 @@
             padding: 8px;
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
+        /* 与 GUI 手机断点一致：≤768px 单列，避免视口>480 仍显示 3 列 */
+        @media (max-width: 768px) {
+            #skillSelectModalPanel {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
         .skill-select-tile {
             box-sizing: border-box;
             display: flex;
@@ -4658,18 +4664,35 @@
             align-items: center;
             justify-content: space-between;
             gap: 6px;
-            padding: 4px 8px;
+            height: 28px;
+            min-height: 28px;
+            max-height: 28px;
+            padding: 0 8px;
+            margin: 0;
             border-radius: 4px;
             border: 1px solid var(--border-primary);
             background: var(--bg-primary);
             color: var(--text-primary);
             font-size: 0.9em;
+            line-height: 1.2;
             max-width: 200px;
-            min-height: 28px;
             min-width: 0;
             cursor: pointer;
             font-family: inherit;
             box-sizing: border-box;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        /* 与规则文件选择触发器同高 */
+        #executionModeSelect {
+            height: 28px;
+            min-height: 28px;
+            max-height: 28px;
+            box-sizing: border-box;
+            padding: 0 8px;
+            margin: 0;
+            line-height: 1.2;
+            vertical-align: middle;
         }
         .routine-select-trigger-label {
             flex: 1;
