@@ -42,7 +42,7 @@ class MouseTools:
             import pyautogui
             self.pyautogui = pyautogui
             self.pyautogui_available = True
-            
+
             # 在 macOS 上测试权限
             if self.system == 'Darwin':
                 try:
@@ -51,9 +51,11 @@ class MouseTools:
                 except Exception as e:
                     if 'permission' in str(e).lower() or 'accessibility' in str(e).lower():
                         print_current("⚠️ PyAutoGUI 需要辅助功能权限。请在系统设置中授予权限。")
-        except ImportError:
+        except Exception:
+            # Catches ImportError as well as KeyError('DISPLAY') raised by mouseinfo
+            # when no display server is available (headless environment)
             pass
-        
+
         # 尝试导入 pynput
         if not self.pyautogui_available:
             try:
@@ -62,7 +64,7 @@ class MouseTools:
                 self.Button = Button
                 self.pynput_available = True
                 print_current("✅ PyNput 可用，将使用 PyNput 进行鼠标操作")
-                
+
                 # 在 macOS 上测试权限
                 if self.system == 'Darwin':
                     try:
@@ -71,7 +73,8 @@ class MouseTools:
                     except Exception as e:
                         if 'permission' in str(e).lower() or 'accessibility' in str(e).lower():
                             print_current("⚠️ PyNput 需要辅助功能权限。请在系统设置中授予权限。")
-            except ImportError:
+            except Exception:
+                # Catches ImportError as well as display-related errors in headless environments
                 pass
     
     def mouse_control(self, action: str, x: Optional[int] = None, y: Optional[int] = None, 

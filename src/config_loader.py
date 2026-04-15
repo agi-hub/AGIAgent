@@ -18,6 +18,14 @@ limitations under the License.
 
 import os
 from typing import Dict, Optional, Tuple
+try:
+    from key_decrypt import decrypt_if_needed
+except ImportError:
+    try:
+        from .key_decrypt import decrypt_if_needed  # type: ignore[no-redef]
+    except ImportError:
+        def decrypt_if_needed(key):  # type: ignore[misc]
+            return key
 
 # Global cache configuration
 _config_cache: Dict[str, Dict[str, str]] = {}
@@ -136,19 +144,19 @@ def get_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     # Check environment variable first (for GUI override)
     env_value = os.environ.get('AGIBOT_API_KEY')
     if env_value:
-        return env_value
-    
+        return decrypt_if_needed(env_value)
+
     config = load_config(config_file)
-    
+
     # Check if api_key exists in config (even if empty)
     if 'api_key' in config:
         # Return empty string if api_key= is set but empty
-        return config.get('api_key', '')
-    
+        return decrypt_if_needed(config.get('api_key', ''))
+
     # If not found in config file, try AGIAGENT_API_KEY environment variable
     api_key = os.environ.get('AGIAGENT_API_KEY')
-    
-    return api_key
+
+    return decrypt_if_needed(api_key) if api_key else api_key
 
 def get_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -1020,8 +1028,8 @@ def get_vision_api_key(config_file: str = "config/config.txt") -> Optional[str]:
     # If vision_api_key is not set or is placeholder, return main api_key
     if not vision_api_key or vision_api_key.strip() == '' or vision_api_key.strip() == 'your key':
         return get_api_key(config_file)
-    
-    return vision_api_key
+
+    return decrypt_if_needed(vision_api_key)
 
 def get_vision_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -1103,8 +1111,8 @@ def get_image_generation_api_key(config_file: str = "config/config.txt") -> Opti
     # If image_generation_api_key is not set or is placeholder, return main api_key
     if not image_generation_api_key or image_generation_api_key.strip() == '' or image_generation_api_key.strip() == 'your key':
         return get_api_key(config_file)
-    
-    return image_generation_api_key
+
+    return decrypt_if_needed(image_generation_api_key)
 
 def get_image_generation_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -1163,8 +1171,8 @@ def get_svg_optimizer_api_key(config_file: str = "config/config.txt") -> Optiona
     # If svg_optimizer_api_key is not set or is placeholder, return main api_key
     if not svg_optimizer_api_key or svg_optimizer_api_key.strip() == '' or svg_optimizer_api_key.strip() == 'your key':
         return get_api_key(config_file)
-    
-    return svg_optimizer_api_key
+
+    return decrypt_if_needed(svg_optimizer_api_key)
 
 def get_svg_optimizer_api_base(config_file: str = "config/config.txt") -> Optional[str]:
     """
@@ -1521,7 +1529,8 @@ def get_zhipu_search_api_key(config_file: str = "config/config.txt") -> Optional
     Returns:
         Zhipu search API key if configured, None otherwise
     """
-    return get_config_value("zhipu_search_api_key", config_file=config_file)
+    value = get_config_value("zhipu_search_api_key", config_file=config_file)
+    return decrypt_if_needed(value) if value else value
 
 
 def get_zhipu_search_engine(config_file: str = "config/config.txt") -> str:
