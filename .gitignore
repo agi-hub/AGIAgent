@@ -28,6 +28,8 @@ ENV/
 # IDE
 .idea/
 .vscode/
+# Local MCP secrets (Lazyweb bearer token, etc.)
+.cursor/mcp.json
 *.swp
 *.swo
 
@@ -57,3 +59,8 @@ data/
 data_tale_alfworld/
 data_tale_textworld_express/
 apps/xiaohongshu/
+
+# Local key crypto utilities (do not commit)
+src/encrypt_key.py
+src/key_crypto.py
+src/key_decrypt.py

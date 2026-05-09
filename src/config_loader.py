@@ -1546,6 +1546,20 @@ def get_zhipu_search_engine(config_file: str = "config/config.txt") -> str:
     return get_config_value("zhipu_search_engine", default="search_std", config_file=config_file)
 
 
+def get_pixabay_api_key(config_file: str = "config/config.txt") -> Optional[str]:
+    """
+    Get Pixabay API key from configuration
+
+    Args:
+        config_file: Path to the configuration file
+
+    Returns:
+        Pixabay API key if configured, None otherwise
+    """
+    value = get_config_value("pixabay_api_key", config_file=config_file)
+    return decrypt_if_needed(value) if value else value
+
+
 def get_summary_streaming(config_file: str = "config/config.txt") -> bool:
     """
     Get summary streaming configuration from configuration file

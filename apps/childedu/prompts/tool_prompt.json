@@ -122,13 +122,13 @@
     }
   },
   "search_img": {
-    "description": "Obtain relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses a multi-search engine strategy: If Google is available, search in the order Google->Baidu->Bing; if Google is not available, search in the order Baidu->Bing.",
+    "description": "Obtain relevant images based on the input query, save the images to local files, and return a JSON list of the image file paths. Uses Pixabay API as primary search engine. IMPORTANT: For better search results, use English keywords when possible. If the query is in Chinese, provide BOTH Chinese and English keywords (e.g., '古代钟表 antique clock' or '长城 the Great Wall'). International image search engines work much better with English terms.",
     "parameters": {
       "type": "object",
       "properties": {
         "query": {
           "type": "string",
-          "description": "Image search query string, describing the content of the images to find. Please use specific and clear descriptive terms, such as 'red rose flower', 'blue sky and white clouds landscape', etc."
+          "description": "Image search query string. For Chinese queries, ALWAYS provide English translation as well (e.g., '古代钟表 antique clock', '熊猫 panda', '中国古建筑 ancient Chinese architecture'). Use specific and clear descriptive terms. Pure English queries work best: 'red rose flower', 'blue sky landscape', etc."
         }
       },
       "required": ["query"]

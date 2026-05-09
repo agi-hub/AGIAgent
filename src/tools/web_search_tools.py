@@ -34,7 +34,7 @@ import io
 # Import config_loader to get truncation length configuration
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from config_loader import get_web_content_truncation_length, get_truncation_length, get_zhipu_search_api_key, get_zhipu_search_engine, get_language
+from config_loader import get_web_content_truncation_length, get_truncation_length, get_zhipu_search_api_key, get_zhipu_search_engine, get_pixabay_api_key, get_language
 
 
 class TimeoutError(Exception):
@@ -103,43 +103,10 @@ def get_anthropic_client():
 class WebSearchTools:
     def __init__(self, llm_api_key: str = None, llm_model: str = None, llm_api_base: str = None, enable_llm_filtering: bool = False, enable_summary: bool = True, workspace_root: str = None, out_dir: str = None, verbose: bool = True):
         self.verbose = verbose  # Control verbose debug output
-        
-        # LLM configuration for content filtering and summarization
-        self.enable_llm_filtering = enable_llm_filtering
-        self.enable_summary = enable_summary
-        self.llm_client = None
-        self.llm_model = llm_model
-        self.is_claude = False
 
-        # Zhipu AI web search configuration
-        self.zhipu_search_api_key = get_zhipu_search_api_key()
-        self.zhipu_search_engine = get_zhipu_search_engine()
-        # Only enable Zhipu search if API key is configured and not a placeholder value
-        self.use_zhipu_search = self._is_valid_zhipu_api_key(self.zhipu_search_api_key)
-
-        # Import ZhipuWebSearchTools if available
-        self.zhipu_search_tools = None
-        if self.use_zhipu_search:
-            try:
-                from .web_search_tools_z import ZhipuWebSearchTools
-                self.zhipu_search_tools = ZhipuWebSearchTools(
-                    api_key=self.zhipu_search_api_key,
-                    search_engine=self.zhipu_search_engine,
-                    workspace_root=self.workspace_root
-                )
-                print_debug(f"🔍 Zhipu AI web search enabled (engine: {self.zhipu_search_engine})")
-            except ImportError as e:
-                print_debug(f"⚠️ ZhipuWebSearchTools import failed: {e}")
-                self.use_zhipu_search = False
-        
-        # Track failed search engines to skip them in future attempts
-        self.failed_engines = set()
-        
-        # Track downloaded URLs to avoid duplicate downloads
-        self.downloaded_urls = set()
-        
         # Store workspace root for relative path calculation
         # workspace_root should point to the workspace directory, not the parent out_dir
+        # IMPORTANT: Set this BEFORE using it for ZhipuWebSearchTools initialization
         if workspace_root:
             self.workspace_root = workspace_root
             # Calculate out_dir from workspace_root if not provided
@@ -157,11 +124,52 @@ class WebSearchTools:
             else:
                 self.workspace_root = os.getcwd()
                 out_dir = os.getcwd()
-        
+
+        # LLM configuration for content filtering and summarization
+        self.enable_llm_filtering = enable_llm_filtering
+        self.enable_summary = enable_summary
+        self.llm_client = None
+        self.llm_model = llm_model
+        self.is_claude = False
+
+        # Zhipu AI web search configuration
+        self.zhipu_search_api_key = get_zhipu_search_api_key()
+        self.zhipu_search_engine = get_zhipu_search_engine()
+        # Only enable Zhipu search if API key is configured and not a placeholder value
+        self.use_zhipu_search = self._is_valid_zhipu_api_key(self.zhipu_search_api_key)
+
+        # Import ZhipuWebSearchTools if available (now self.workspace_root is set)
+        self.zhipu_search_tools = None
+        if self.use_zhipu_search:
+            try:
+                from .web_search_tools_z import ZhipuWebSearchTools
+                self.zhipu_search_tools = ZhipuWebSearchTools(
+                    api_key=self.zhipu_search_api_key,
+                    search_engine=self.zhipu_search_engine,
+                    workspace_root=self.workspace_root
+                )
+                print_debug(f"🔍 Zhipu AI web search enabled (engine: {self.zhipu_search_engine})")
+            except ImportError as e:
+                print_debug(f"⚠️ ZhipuWebSearchTools import failed: {e}")
+                self.use_zhipu_search = False
+
+        # Pixabay API configuration for image search
+        self.pixabay_api_key = get_pixabay_api_key()
+        self.use_pixabay_search = bool(self.pixabay_api_key and len(self.pixabay_api_key) > 10)
+
+        # Track failed search engines to skip them in future attempts
+        self.failed_engines = set()
+
+        # Track Baidu failure count (only mark as failed after 3 consecutive failures)
+        self._baidu_failure_count = {}
+
+        # Track downloaded URLs to avoid duplicate downloads
+        self.downloaded_urls = set()
+
         # Initialize web search result directory path but don't create it yet
         # web_result_dir should be in workspace/web_search_result
         self.web_result_dir = os.path.join(self.workspace_root, "web_search_result")
-        
+
         if (enable_llm_filtering or enable_summary) and llm_api_key and llm_model and llm_api_base:
             try:
                 self._setup_llm_client(llm_api_key, llm_model, llm_api_base)
@@ -4336,24 +4344,102 @@ Cleaned Content Length: {len(cleaned_content)} characters
         
         return optimized_term
 
+    def _is_logo_or_branded_image(self, url: str, alt_text: str = '') -> bool:
+        """
+        Check if an image URL or alt text indicates it's a logo or branded image.
+
+        Args:
+            url: Image URL to check
+            alt_text: Alt text of the image
+
+        Returns:
+            True if the image appears to be a logo or branded content
+        """
+        if not url:
+            return False
+
+        url_lower = url.lower()
+        alt_lower = alt_text.lower()
+
+        # Logo and brand keywords to filter
+        logo_keywords = [
+            # Brand/platform logos
+            'wenxin', 'ernie', 'erniebot', '文心', '文心一言',
+            'baidu_logo', 'baidu-logo', 'baidulogo',
+            'google_logo', 'google-logo', 'googlelogo',
+            'logo.', 'logo_', '-logo', 'logo.png', 'logo.jpg', 'logo.svg', 'logo.jpeg',
+            '/logo/', '/icons/', '/icon.', '/icon_',
+            'favicon', 'icon.', 'icon-', 'icon_',
+            'appicon', 'app_icon', 'app-icon',
+            'branding', 'brand.', 'brand_',
+
+            # Service/platform markers
+            'alipay', 'taobao', 'tmall', 'jd.com', 'jingdong',
+            'weixin', 'wechat', 'qq.',
+            'douyin', 'tiktok', 'kuaishou',
+            'zhipu', 'bigmodel', 'chatglm',
+
+            # Stock/platform indicators
+            'getty', 'shutterstock', 'alamy', 'istock',
+            'placeholder', 'default_', 'no-image', 'no_image',
+            'loading.', 'spinner.', 'loader.',
+
+            # Watermarks
+            'watermark', '水印', 'shuiyin',
+        ]
+
+        # Check URL for logo keywords
+        for keyword in logo_keywords:
+            if keyword in url_lower:
+                print_debug(f"🚫 URL contains logo keyword '{keyword}': {url[:80]}...")
+                return True
+
+        # Check alt text for logo indicators
+        if alt_text:
+            alt_logo_indicators = ['logo', '图标', '标志', 'icon', 'brand', '品牌']
+            for indicator in alt_logo_indicators:
+                if indicator in alt_lower:
+                    print_debug(f"🚫 Alt text contains logo indicator '{indicator}': {alt_text[:50]}...")
+                    return True
+
+        # Check for very small dimensions in URL (common for icons)
+        # Example: image_32x32.png, icon-16x16.gif
+        import re
+        size_pattern = r'[_-](\d{1,3})x(\d{1,3})[._]'
+        match = re.search(size_pattern, url_lower)
+        if match:
+            width = int(match.group(1))
+            height = int(match.group(2))
+            if width < 100 or height < 100:
+                print_debug(f"🚫 URL indicates tiny icon size: {width}x{height}")
+                return True
+
+        return False
+
     def search_img(self, query: str, **kwargs) -> Dict[str, Any]:
         """
         Get multiple related images through input query, save to local files, return image file list.
-        
+
+        IMPORTANT: For better search results, use English keywords when possible.
+        - If the query is in Chinese, provide BOTH Chinese and English keywords separated by space
+        - Example: "古代钟表 antique clock" or "长城 the Great Wall"
+        - International image search engines (Pixabay, Google) work much better with English terms
+
         Args:
-            query: Image search query string
+            query: Image search query string (recommended: English or bilingual keywords)
             **kwargs: Other parameters (ignored)
-            
+
         Returns:
             Dictionary containing multiple image information, with images field as JSON list format
         """
         # Define MD5 hashes of images to filter out
         FILTERED_IMAGE_HASHES = [
-            "f7581bb6ed68eec740feb1e9931f22d6",  
-            "923e31f20669ef6cc6b86c48cdcad1f0",  
+            "f7581bb6ed68eec740feb1e9931f22d6",
+            "923e31f20669ef6cc6b86c48cdcad1f0",
             "901093ca6d9ffbb484f2e92abbf83fba",
             "5b2e0a4206c7b08e609d5d705d22b16e",  # Linear_Attention_Models_applic_20250915_114527_01.webp
-            "7b4d6f66b4a09740307aef24d246554a"   # Linear_Attention_Models_applic_20250915_114527_02.webp
+            "7b4d6f66b4a09740307aef24d246554a",  # Linear_Attention_Models_applic_20250915_114527_02.webp
+            "771d941616c9cbf9299173686e4d5b74"   # Baidu Wenxin logo (168x84)
         ]
         # Ignore extra parameters
         if kwargs:
@@ -4481,10 +4567,169 @@ Cleaned Content Length: {len(cleaned_content)} characters
                 
                 # Build image search URL
                 encoded_query = urllib.parse.quote_plus(query)
-                
-                # Build search engine list, priority order: Google -> Baidu -> Bing
-                # Google Images added directly without connectivity check
-                print_debug("🔍 Using Google -> Baidu -> Bing search order for images")
+
+                # Build search engine list, priority order: Pixabay -> Google -> Baidu
+                # Pixabay API is used as default if available
+                print_debug("🔍 Using Pixabay -> Google -> Baidu search order for images")
+
+                # Initialize result data (needed before Pixabay code)
+                image_found = False
+                result_data = {
+                    'status': 'success',
+                    'query': query,
+                    'timestamp': datetime.datetime.now().isoformat(),
+                    'search_engine_used': None,
+                    'image_found': False
+                }
+
+                # First, try Pixabay API if available
+                if self.use_pixabay_search:
+                    print_current(f"🔍 Attempting to use Pixabay API for image search...")
+                    try:
+                        valid_images = self._extract_pixabay_images(query)
+                        if valid_images:
+                            print_current(f"✅ Pixabay API found {len(valid_images)} valid images")
+
+                            # Save images
+                            max_images = min(15, len(valid_images))
+                            saved_images = []
+                            saved_count = 0
+                            skipped_reasons = {}  # Initialize skipped reasons counter
+
+                            # Generate unified timestamp for all images in this batch
+                            batch_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                            print_current(f"📥 Downloading {max_images} images from Pixabay...")
+
+                            import time
+                            for i, selected_image in enumerate(valid_images[:max_images]):
+                                try:
+                                    image_url = selected_image.get('original_src', selected_image['src'])
+                                    thumbnail_url = selected_image['src']
+                                    alt_text = selected_image.get('alt', '')
+
+                                    # Check if URL or alt text indicates logo/branded image
+                                    if self._is_logo_or_branded_image(image_url, alt_text):
+                                        skipped_reasons['logo_filtered'] = skipped_reasons.get('logo_filtered', 0) + 1
+                                        print_debug(f"🚫 Image {i+1} filtered out (logo/branded image)")
+                                        continue
+
+                                    image_start_time = time.time()
+                                    max_image_time = 3.0
+
+                                    # Download image
+                                    import requests
+                                    import urllib3
+                                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+                                    headers = {
+                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                                        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                                        'Referer': 'https://pixabay.com/'
+                                    }
+
+                                    response = requests.get(image_url, headers=headers, timeout=5.0, stream=True)
+                                    if response.status_code == 200:
+                                        content = b''
+                                        max_size = 10 * 1024 * 1024
+                                        for chunk in response.iter_content(chunk_size=8192):
+                                            content += chunk
+                                            if len(content) > max_size:
+                                                raise Exception(f"Image too large: {len(content)} bytes")
+
+                                        # Validate image
+                                        import hashlib
+                                        image_md5 = hashlib.md5(content).hexdigest()
+
+                                        FILTERED_IMAGE_HASHES = [
+                                            "f7581bb6ed68eec740feb1e9931f22d6",
+                                            "923e31f20669ef6cc6b86c48cdcad1f0",
+                                            "901093ca6d9ffbb484f2e92abbf83fba",
+                                            "5b2e0a4206c7b08e609d5d705d22b16e",
+                                            "7b4d6f66b4a09740307aef24d246554a",
+                                            "771d941616c9cbf9299173686e4d5b74"  # Baidu Wenxin logo
+                                        ]
+
+                                        if image_md5 in FILTERED_IMAGE_HASHES:
+                                            continue
+
+                                        with io.BytesIO(content) as img_buffer:
+                                            img = Image.open(img_buffer)
+                                            img.verify()
+                                            img_buffer.seek(0)
+                                            img = Image.open(img_buffer)
+
+                                            saved_count += 1
+
+                                            safe_query = re.sub(r'[^\w\s-]', '', query)[:30]
+                                            safe_query = re.sub(r'[-\s]+', '_', safe_query)
+
+                                            original_format = img.format.lower() if img.format else 'unknown'
+
+                                            filename = f"{safe_query}_{batch_timestamp}_{saved_count:02d}.jpg"
+                                            filepath = os.path.join(images_dir, filename)
+
+                                            if original_format not in ['jpg', 'jpeg']:
+                                                if img.mode in ('RGBA', 'LA', 'P'):
+                                                    background = Image.new('RGB', img.size, (255, 255, 255))
+                                                    if img.mode == 'P':
+                                                        img = img.convert('RGBA')
+                                                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                                                    img = background
+                                                elif img.mode != 'RGB':
+                                                    img = img.convert('RGB')
+
+                                                img.save(filepath, 'JPEG', quality=95, optimize=True)
+                                            else:
+                                                with open(filepath, 'wb') as f:
+                                                    f.write(content)
+
+                                            relative_path = os.path.relpath(filepath, self.workspace_root or os.getcwd())
+
+                                            saved_images.append({
+                                                'original_image_url': image_url,
+                                                'thumbnail_url': thumbnail_url,
+                                                'is_original_image': image_url != thumbnail_url,
+                                                'local_image_path': filepath,
+                                                'relative_image_path': relative_path,
+                                                'original_format': original_format,
+                                                'saved_format': 'jpg',
+                                                'image_format': 'jpg',
+                                                'image_size_bytes': len(content),
+                                                'image_dimensions': f"{img.width}x{img.height}",
+                                                'alt_text': selected_image.get('alt', ''),
+                                                'width': img.width,
+                                                'height': img.height,
+                                                'filename': filename,
+                                                'index': saved_count
+                                            })
+
+                                            print_debug(f"✅ Image {saved_count} saved: {relative_path}")
+
+                                except Exception as e:
+                                    print_debug(f"⚠️ Error downloading image {i+1}: {e}")
+                                    continue
+
+                            if saved_images:
+                                result_data.update({
+                                    'status': 'success',
+                                    'query': query,
+                                    'timestamp': datetime.datetime.now().isoformat(),
+                                    'search_engine_used': 'Pixabay',
+                                    'image_found': True,
+                                    'images': saved_images,
+                                    'total_images_saved': len(saved_images),
+                                    'total_images_available': len(valid_images)
+                                })
+                                print_current(f"✅ Saved {len(saved_images)} images from Pixabay to web_search_result/images/")
+                                browser.close()
+                                return result_data
+
+                    except Exception as e:
+                        print_current(f"⚠️ Pixabay API search failed: {e}")
+                        import traceback
+                        print_current(f"Traceback: {traceback.format_exc()}")
+
                 search_engines = [
                     {
                         'name': 'Google Images',
@@ -4503,32 +4748,25 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         'container_selector': '.imgitem, .card-wrap'
                     }
                 ]
-                
-                image_found = False
-                result_data = {
-                    'status': 'success',
-                    'query': query,
-                    'timestamp': datetime.datetime.now().isoformat(),
-                    'search_engine_used': None,
-                    'image_found': False
-                }
-                
+
                 for engine in search_engines:
                     try:
-                        # Skip this engine if it has failed before (except Baidu Images which should always be tried)
-                        if engine['name'] in self.failed_engines and engine['name'] != 'Baidu Images':
+                        # Skip this engine if it has failed before (except Baidu Images and Google Images which should always be tried)
+                        # Google Images is always retried because failures are often temporary (timeout, anti-bot, etc.)
+                        # Baidu Images is always retried until 3 consecutive failures
+                        if engine['name'] in self.failed_engines and engine['name'] not in ['Baidu Images', 'Google Images']:
                             print_debug(f"⏭️ Skipping {engine['name']} (failed in previous attempt)")
                             continue
                         
                         print_debug(f"🔍 Attempting to use {engine['name']} for image search...")
                         
                         # Visit search page with improved waiting strategy
-                        # Use 5 seconds timeout for Google Images, 20 seconds for Baidu Images (Baidu needs more time)
+                        # Use 15 seconds timeout for Google Images (increased from 5s), 20 seconds for Baidu Images
                         try:
                             if engine['name'] == 'Baidu Images':
                                 engine_timeout = 20000  # 20 seconds for Baidu Images (no timeout limit)
                             elif engine['name'] == 'Google Images':
-                                engine_timeout = 5000  # 5 seconds for Google Images
+                                engine_timeout = 15000  # 15 seconds for Google Images (increased from 5s)
                             else:
                                 engine_timeout = 6000  # 6 seconds for other engines
                             page.goto(engine['url'], timeout=engine_timeout, wait_until='domcontentloaded')
@@ -4541,12 +4779,20 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                 pass  # Continue even if no images found
                         except Exception as page_error:
                             print_debug(f"⚠️ Page loading error for {engine['name']}: {page_error}")
-                            # Mark this engine as failed (except Baidu Images which should always be tried)
-                            if engine['name'] != 'Baidu Images':
-                                self.failed_engines.add(engine['name'])
-                                print_debug(f"🚫 {engine['name']} marked as failed, will be skipped in future attempts")
+                            # Don't permanently mark Google Images as failed - it might be a temporary issue
+                            # Only permanently skip Baidu Images if it repeatedly fails
+                            if engine['name'] == 'Baidu Images':
+                                if engine['name'] in self._baidu_failure_count:
+                                    self._baidu_failure_count[engine['name']] += 1
+                                else:
+                                    self._baidu_failure_count[engine['name']] = 1
+                                # Only mark Baidu as failed after 3 consecutive failures
+                                if self._baidu_failure_count[engine['name']] >= 3:
+                                    self.failed_engines.add(engine['name'])
+                                    print_debug(f"🚫 {engine['name']} marked as failed after 3 attempts")
                             else:
-                                print_debug(f"⚠️ {engine['name']} failed but will not be skipped in future attempts")
+                                # For other engines, don't permanently mark as failed
+                                print_debug(f"⚠️ {engine['name']} failed but will be retried on next search")
                             continue
                         
                         # 根据搜索引擎类型使用不同的图片提取方法
@@ -4575,7 +4821,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         
                         if valid_images:
                             # Save multiple valid images (max 20)
-                            max_images = min(20, len(valid_images))
+                            max_images = min(15, len(valid_images))  # Reduced from 20 to avoid timeout
                             saved_images = []
                             saved_count = 0  # 添加实际保存的图片计数器
 
@@ -4617,16 +4863,35 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
                                         
                                         start_time = time.time()
-                                        max_wait_time = 2.0  # 增加超时时间到2秒
-                                        
+                                        # Increase timeout for Baidu proxy URLs
+                                        max_wait_time = 20.0  # Increase to 20 seconds for Baidu URLs
+
                                         def download_with_requests(url):
                                             headers = {
                                                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                                                 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
                                                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                                                'Referer': 'https://images.google.com/' if 'google' in url else 'https://image.baidu.com/'
                                             }
-                                            response = requests.get(url, headers=headers, timeout=1.5, stream=True)  # 增加请求超时到1.5秒
+
+                                            # Set appropriate referer and timeout based on URL
+                                            # Baidu proxy URLs need longer timeout
+                                            if 'google' in url or 'gstatic.com' in url:
+                                                headers['Referer'] = 'https://images.google.com/'
+                                                request_timeout = 5.0
+                                            elif 'baidu.com' in url or 'bdimg.com' in url:
+                                                headers['Referer'] = 'https://image.baidu.com/'
+                                                # Add additional headers that might help with Baidu images
+                                                headers['Sec-Fetch-Dest'] = 'image'
+                                                headers['Sec-Fetch-Mode'] = 'no-cors'
+                                                headers['Sec-Fetch-Site'] = 'cross-site'
+                                                # Baidu proxy URLs need much longer timeout
+                                                # Use 15 seconds for img*.baidu.com, 10 seconds for others
+                                                request_timeout = 15.0 if ('img' in url or 'gips' in url) else 10.0
+                                            else:
+                                                headers['Referer'] = 'https://image.baidu.com/'
+                                                request_timeout = 5.0
+
+                                            response = requests.get(url, headers=headers, timeout=request_timeout, stream=True, allow_redirects=True)
                                             if response.status_code == 200:
                                                 # 限制下载大小，避免下载超大文件
                                                 content = b''
@@ -4654,7 +4919,7 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                                     future.cancel()  # 取消任务
                                                     continue
                                         except Exception as download_error:
-                                            print_debug(f"Download error for image {i+1}: {download_error}")
+                                            print(f"⚠️ Download error for image {i+1}: {download_error}")
                                             continue
                                     
                                     # Validate if it's a valid image and get format (unified processing for all image data)
@@ -4677,11 +4942,19 @@ Cleaned Content Length: {len(cleaned_content)} characters
                                             with io.BytesIO(image_data) as img_buffer:
                                                 img = Image.open(img_buffer)
                                                 img.verify()  # Verify image format
-                                                
+
                                                 # Reopen to get info (cannot use after verify)
                                                 img_buffer.seek(0)
                                                 img = Image.open(img_buffer)
-                                                
+
+                                                # Filter out small images (logos, icons, etc.)
+                                                min_width = 150
+                                                min_height = 150
+                                                if img.width < min_width or img.height < min_height:
+                                                    skipped_reasons['image_too_small'] = skipped_reasons.get('image_too_small', 0) + 1
+                                                    print_debug(f"🚫 Image {i+1} filtered out (too small: {img.width}x{img.height})")
+                                                    continue
+
                                                 # 增加实际保存的图片计数器
                                                 saved_count += 1
                                                 
@@ -4908,6 +5181,11 @@ Cleaned Content Length: {len(cleaned_content)} characters
                     image_info = self._format_google_image_object(metadata, i+1)
                     
                     if image_info and image_info.get('original_src'):
+                        # Check if URL or alt text indicates logo/branded image
+                        if self._is_logo_or_branded_image(image_info['original_src'], image_info.get('alt', '')):
+                            print_debug(f"🚫 Google image {i+1} filtered out (logo/branded): {image_info['original_src'][:60]}...")
+                            continue
+
                         # 检查URL是否已经添加过，避免重复
                         if image_info['original_src'] not in seen_urls:
                             seen_urls.add(image_info['original_src'])
@@ -5038,10 +5316,88 @@ Cleaned Content Length: {len(cleaned_content)} characters
                     
                     # Get image URL based on search engine
                     if engine['name'] == 'Baidu Images':
-                        src = img.get_attribute('data-imgurl') or img.get_attribute('src')
+                        # Try multiple attributes to find the actual image URL
+                        # Baidu stores URLs in various places:
+                        # 1. data-imgurl - usually contains the real image URL (often URL encoded)
+                        # 2. Parent anchor href - contains objURL parameter with the real image
+                        # 3. src - thumbnail (not the original image)
+                        # 4. Look for URL in page data/JavaScript
+                        data_imgurl = img.get_attribute('data-imgurl')
+                        src = None
+
+                        # Debug: Show attributes for first few images to understand the structure
+                        if processed_count <= 5:
+                            img_src = img.get_attribute('src')
+                            # Get all possible attributes
+                            data_url = img.get_attribute('data-url')
+                            print(f"🔍 Image {processed_count}:")
+                            print(f"  data-imgurl: {data_imgurl[:80] if data_imgurl else 'None'}")
+                            print(f"  data-url: {data_url[:80] if data_url else 'None'}")
+                            print(f"  src: {img_src[:80] if img_src else 'None'}")
+
+                        # First try: data-imgurl (this should contain the real URL, possibly URL encoded)
+                        if data_imgurl:
+                            # Check if it's URL encoded (contains %)
+                            if '%' in data_imgurl and not data_imgurl.startswith('http'):
+                                try:
+                                    import urllib.parse
+                                    src = urllib.parse.unquote(data_imgurl)
+                                    print_debug(f"🔓 Decoded URL from data-imgurl")
+                                except:
+                                    src = data_imgurl
+                            else:
+                                src = data_imgurl
+
+                        # Second try: Look for objURL in parent anchor element
+                        if not src or src.startswith('https://img') or src.startswith('https://ss') or src.startswith('https://gips'):
+                            try:
+                                # Use evaluate to directly get the href string from the parent anchor
+                                parent_href = img.evaluate('el => el.closest("a")?.href')
+                                if parent_href and 'objURL=' in parent_href:
+                                    import urllib.parse
+                                    parsed = urllib.parse.urlparse(parent_href)
+                                    params = urllib.parse.parse_qs(parsed.query)
+                                    if 'objURL' in params:
+                                        src = urllib.parse.unquote(params['objURL'][0])
+                                        print_debug(f"🔓 Extracted real URL from parent objURL")
+                            except Exception as e:
+                                print_debug(f"⚠️ Failed to extract from parent: {e}")
+
+                        # Third try: check data-url attribute
+                        if not src or src.startswith('https://img') or src.startswith('https://ss') or src.startswith('https://gips'):
+                            data_url = img.get_attribute('data-url')
+                            if data_url and not data_url.startswith('https://img') and not data_url.startswith('https://ss') and not data_url.startswith('https://gips'):
+                                src = data_url
+
+                        # Fourth try: Try to extract URL from JavaScript data in the page
+                        # Baidu sometimes stores image URLs in page JavaScript variables
+                        if not src or src.startswith('https://img') or src.startswith('https://ss') or src.startswith('https://gips'):
+                            try:
+                                # Try to get data from img data attributes
+                                for attr in ['data-src', 'data-original', 'data-lazy']:
+                                    attr_value = img.get_attribute(attr)
+                                    if attr_value and not attr_value.startswith('https://img') and not attr_value.startswith('https://ss'):
+                                        src = attr_value
+                                        print_debug(f"🔓 Extracted URL from {attr}")
+                                        break
+                            except Exception as e:
+                                print_debug(f"⚠️ Failed to extract from data attributes: {e}")
+
+                        # For Baidu proxy URLs, we'll try to download them with increased timeout
+                        # The download handler will use appropriate headers and timeout
+
+                        # Last resort: use src (even if it's a Baidu proxy URL - we'll try to download it anyway)
+                        if not src:
+                            img_src = img.get_attribute('src')
+                            if img_src:
+                                src = img_src
+
+                        if not src:
+                            skipped_reasons['no_valid_src'] = skipped_reasons.get('no_valid_src', 0) + 1
+                            continue
                     else:
                         src = img.get_attribute('data-src') or img.get_attribute('src')
-                    
+
                     if not src:
                         skipped_reasons['no_src'] = skipped_reasons.get('no_src', 0) + 1
                         continue
@@ -5058,13 +5414,19 @@ Cleaned Content Length: {len(cleaned_content)} characters
                     if src.endswith('.svg'):
                         skipped_reasons['svg_format'] = skipped_reasons.get('svg_format', 0) + 1
                         continue
-                    
+
+                    # Enhanced logo/branded image filtering
+                    alt = img.get_attribute('alt') or ''
+                    if self._is_logo_or_branded_image(src, alt):
+                        skipped_reasons['logo_branded'] = skipped_reasons.get('logo_branded', 0) + 1
+                        print_debug(f"🚫 Image {i+1} filtered (logo/branded): {src[:60]}...")
+                        continue
+
                     # Get image metadata
                     width = img.get_attribute('width') or 'unknown'
-                    height = img.get_attribute('height') or 'unknown' 
-                    alt = img.get_attribute('alt') or ''
-                    
-                    # Filter by keywords
+                    height = img.get_attribute('height') or 'unknown'
+
+                    # Filter by keywords (additional filtering on top of logo check)
                     src_lower = src.lower()
                     alt_lower = alt.lower()
                     
@@ -5143,6 +5505,8 @@ Cleaned Content Length: {len(cleaned_content)} characters
                     'size_too_small': 'Size too small',
                     'aspect_ratio': 'Abnormal aspect ratio',
                     'baidu_static': 'Baidu static resources',
+                    'baidu_proxy_url': 'Baidu proxy URL could not be resolved',
+                    'no_valid_src': 'No valid source URL found',
                     'exception': 'Processing exception'
                 }
                 for reason, count in skipped_reasons.items():
@@ -5158,3 +5522,93 @@ Cleaned Content Length: {len(cleaned_content)} characters
                         print_debug(f"     Original: {img_info['original_src'][:60]}...")
         except Exception as e:
             print_debug(f"⚠️ Error printing extraction stats: {e}")
+
+    def _extract_pixabay_images(self, query: str) -> list:
+        """
+        从Pixabay API提取图片信息
+
+        Args:
+            query: 搜索关键词
+
+        Returns:
+            图片信息列表
+        """
+        valid_images = []
+
+        try:
+            import requests
+            import json
+
+            # Pixabay API endpoint
+            api_url = "https://pixabay.com/api/"
+
+            # Build parameters
+            params = {
+                'key': self.pixabay_api_key,
+                'q': query,
+                'image_type': 'photo',
+                'per_page': 20,  # 获取20张图片
+                'safesearch': 'true',
+                'order': 'popular'
+            }
+
+            print_debug(f"🔍 Querying Pixabay API: {query}")
+
+            # Make request
+            response = requests.get(api_url, params=params, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if 'hits' in data and len(data['hits']) > 0:
+                    print_debug(f"📸 Pixabay API returned {len(data['hits'])} images")
+
+                    for hit in data['hits']:
+                        try:
+                            # Extract image information from Pixabay response
+                            # Prefer largeImageURL, fall back to webformatURL
+                            original_url = hit.get('largeImageURL') or hit.get('webformatURL')
+                            thumbnail_url = hit.get('previewURL') or hit.get('webformatURL')
+
+                            if not original_url:
+                                continue
+
+                            # Get image metadata
+                            width = hit.get('imageWidth', 0)
+                            height = hit.get('imageHeight', 0)
+                            tags = hit.get('tags', '')
+                            user = hit.get('user', 'Pixabay user')
+
+                            # Create alt text from tags
+                            alt_text = f"{tags} by {user}" if tags else f"Photo by {user}"
+
+                            # Build image info
+                            image_info = {
+                                'src': thumbnail_url,
+                                'original_src': original_url,
+                                'width': width,
+                                'height': height,
+                                'alt': alt_text,
+                                'source': 'pixabay_api',
+                                'image_format': hit.get('type', 'photo'),
+                                'likes': hit.get('likes', 0),
+                                'downloads': hit.get('downloads', 0)
+                            }
+
+                            valid_images.append(image_info)
+                            print_debug(f"✅ Added Pixabay image: {original_url[:60]}...")
+
+                        except Exception as e:
+                            print_debug(f"⚠️ Error processing Pixabay image: {e}")
+                            continue
+
+                    print_debug(f"🎯 Successfully extracted {len(valid_images)} images from Pixabay")
+                else:
+                    print_debug(f"⚠️ Pixabay API returned no results for query: {query}")
+            else:
+                print_debug(f"⚠️ Pixabay API request failed with status {response.status_code}")
+
+        except Exception as e:
+            print_debug(f"⚠️ Error extracting Pixabay images: {e}")
+
+        return valid_images

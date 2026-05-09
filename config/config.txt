@@ -7,65 +7,12 @@ LANG=zh
 # name (with comment #), key, base, model, max_output_tokens
 # the configuration in comment will not be valid.
 
-
 # GLM coding-plan API configuration
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.7
-# max_tokens=16384
+api_key=your key
+api_base=https://open.bigmodel.cn/api/anthropic
+model=glm-4.5
+max_tokens=16384
 
-# GLM coding-plan API configuration
-# api_key=your key
-# api_base=https://open.bigmodel.cn/api/anthropic
-# model=glm-4.5-air
-# max_tokens=16384
-
-# Anthropic models
-# api_key=your key
-# api_base=https://api.openai-proxy.org/anthropic
-# model=claude-sonnet-4-0
-# max_tokens=32768
-
-# Openrouter Nvidia nemotron 3 nano
-# api_key=your key
-# api_base=https://openrouter.ai/api/v1
-# model=nvidia/nemotron-3-nano-30b-a3b:free
-# max_tokens=16384
-
-
-# DeepSeek API configuration
-# api_key=your key
-# api_base=https://api.deepseek.com/v1
-# model=deepseek-chat
-
-# Volcengine Doubao API configuration
-# api_key=your key
-# api_base=https://ark.cn-beijing.volces.com/api/v3
-# model=doubao-1-5-pro-32k-250115
-
-# Moonshot
-# api_key=your key
-# api_base=https://api.moonshot.cn/anthropic
-# model=kimi-k2-0711-preview
-# max_tokens=8192
-
-# SiliconFlow API configuration 
-# api_key=your key
-# api_base=https://api.siliconflow.cn/v1
-# model=Qwen/Qwen3-30B-A3B
-# max_tokens=4096
-
-# Ollama (local serve)
-# api_key=your key
-# api_base=http://localhost:11434/v1
-# model=qwen3:8b
-# max_tokens=4096
-
-# Minimax Coding plan
-# api_key=your key
-# api_base=https://api.minimaxi.com/anthropic
-# model=minimax-m2.1
-# max_tokens=16384
 
 # Note: only the last configuration is valid.
 
@@ -74,12 +21,17 @@ streaming=True
 
 # Zhipu AI Web Search API configuration
 # If configured, will use Zhipu web search API as default search engine
-# If not configured or empty, falls back to original search engine (Playwright-based) 
-# zhipu_search_api_key=your key
-# zhipu_search_engine=search_std
+# If not configured or empty, falls back to original search engine (Playwright-based)
+zhipu_search_api_key=your key
+zhipu_search_engine=search_std
+
+# Pixabay API configuration (for image search)
+# If configured, Pixabay will be used as the default image search engine
+# Get your free API key at: https://pixabay.com/api/docs/
+pixabay_api_key=your key
 
 # Long-term memory configuration
-enable_long_term_memory=True
+enable_long_term_memory=False
 
 # Long-term memory model configuration (default to the same as model and api_base)
 mem_model=gpt-4.1
@@ -94,16 +46,16 @@ embedding_model_api_base=https://api.siliconflow.cn/v1
 # Vision model configuration (for image recognition with get_sensor_data)
 # If not configured, will use the main model (model, api_key, api_base) for vision tasks
 # It's recommended to configure a vision-capable model here (e.g., GPT-4 Vision, Claude 3, Gemini)
-# vision_model=gpt-4o
-# vision_api_key=your key
-# vision_api_base=https://api.openai.com/v1
-# vision_max_tokens=4096
+vision_api_key=your key
+vision_api_base=https://open.bigmodel.cn/api/coding/paas/v4 
+vision_model=glm-4.5v
+vision_max_tokens=16384
 
 # Image generation model configuration
 # glm-image, cogview-4-250304, cogview-4, cogview-3-flash
 image_generation_api_key=your key
 image_generation_api_base=https://open.bigmodel.cn/api/paas/v4/images/generations
-image_generation_model=cogview-3-Flash
+image_generation_model=glm-image
 
 # SVG optimizer API configuration (nano banana)
 # Used by SVG optimizer feature to convert SVG code to images using vision models
@@ -132,7 +84,7 @@ tool_call_parse_format=xml
 # When disabled (False), thinking content will be ignored even if the model returns it
 # This applies to both standard tool calling and chat-based tool calling formats
 # Default: True (enabled for models that support thinking)
-enable_thinking=False
+enable_thinking=True
 
 # Truncation Length Configuration
 # These configurations control the length of information returned by tool calls to the large model,
@@ -195,33 +147,6 @@ summary_trigger_length=100000
 # Default: 70% of summary_trigger_length if not set
 compression_target_length=50000
 
-# History compression strategy (default: delete)
-# Determines how old conversation history is compressed when exceeding trigger_length
-# Options:
-#   - delete: Directly delete old records (fast, zero cost, but loses history)
-#   - llm_summary: Use LLM to generate summary of old records (slower, costs tokens, preserves context)
-# When using llm_summary:
-#   - Old records are summarized into a concise summary by LLM
-#   - Recent N rounds (keep_recent_rounds) are kept uncompressed
-#   - Summary preserves key operations, results, and decisions
-# Recommendation:
-#   - Use 'delete' for faster execution and lower cost
-#   - Use 'llm_summary' when historical context is important for the task
-compression_strategy=llm_summary
-
-# Number of recent conversation rounds to keep uncompressed (default: 2)
-# Only used when compression is triggered
-# These recent rounds will not be compressed/deleted, keeping full context
-# Recommendation: 2-5 rounds, higher values preserve more recent context but use more tokens
-keep_recent_rounds=0
-
-# Summary streaming output configuration (default: True)
-# Controls whether to use streaming output when generating conversation summaries
-# When enabled, summary content is displayed character by character as it's generated
-# When disabled, summary content is displayed all at once after generation completes
-# Default: True (streaming enabled for better user experience)
-summary_streaming=True
-
 # Summary report generation (default: False)
 # When enabled, generates single task summary and task summary reports
 # When disabled, skips summary report generation to save time and resources
@@ -250,7 +175,7 @@ web_search_summary=False
 # Specifies the default directory for GUI to display file lists and manage workspace directories
 # If not set or the specified directory doesn't exist, uses the current working directory as default
 # This directory should contain subdirectories with 'workspace' folders for proper GUI functionality
-gui_default_data_directory=.
+gui_default_data_directory=/data
 
 # Interactive Command Auto-Fix Configuration
 # Controls whether to automatically fix interactive commands to non-interactive versions
@@ -393,3 +318,4 @@ tts_provider=edge_tts
 #   zh-TW-HsiaoYuNeural: 晓雨 (Female, Taiwan)
 #   zh-TW-YunJheNeural: 云哲 (Male, Taiwan)
 tts_voice=zh-CN-XiaoxiaoNeural
+
