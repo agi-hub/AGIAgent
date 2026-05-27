@@ -294,7 +294,7 @@ GUI_show_voice_input_button=True
 # Speech recognition provider: sherpa (local offline model)
 asr_provider=sherpa
 # Path to ASR model directory
-asr_model_path=models/sherpa-onnx-paraformer-zh-2023-03-28
+asr_model_path=GUI/voicesupport/
 # Audio sample rate (Hz), must be 16000 for Paraformer model
 audio_sample_rate=16000
 

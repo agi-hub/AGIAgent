@@ -9191,7 +9191,7 @@ def voice_recognize():
         # 加载配置
         config = load_config()
         asr_provider = config.get('asr_provider', 'sherpa')
-        asr_model_path = config.get('asr_model_path', 'models/sherpa-onnx-paraformer-zh-2023-03-28')
+        asr_model_path = config.get('asr_model_path', 'GUI/voicesupport/')
         sample_rate = int(config.get('audio_sample_rate', 16000))
         
         # 执行语音识别
